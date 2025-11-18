@@ -42,6 +42,11 @@ const HistoryStack = () => {
         component={AuditDetailScreen}
         options={{ title: 'Audit Details' }}
       />
+      <Stack.Screen 
+        name="AuditForm" 
+        component={AuditFormScreen}
+        options={{ title: 'Continue Audit' }}
+      />
     </Stack.Navigator>
   );
 };

@@ -101,18 +101,33 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
 
 const router = express.Router();
 
-// Get all audits for current user with filters
+// Helper function to check if user is admin
+const isAdminUser = (user) => {
+  if (!user) return false;
+  const role = user.role ? user.role.toLowerCase() : '';
+  return role === 'admin' || role === 'superadmin';
+};
+
+// Get all audits for current user with filters (admins see all audits)
 router.get('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const { status, restaurant, template_id, date_from, date_to, min_score, max_score } = req.query;
 
-  let query = `SELECT a.*, ct.name as template_name, ct.category
+  let query = `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name, u.email as user_email
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
-     WHERE a.user_id = ?`;
+     LEFT JOIN users u ON a.user_id = u.id`;
   
-  const params = [userId];
+  // Admins see all audits, regular users only see their own
+  let params = [];
+  if (isAdmin) {
+    query += ` WHERE 1=1`;
+  } else {
+    query += ` WHERE a.user_id = ?`;
+    params = [userId];
+  }
 
   // Apply filters
   if (status) {
@@ -157,24 +172,31 @@ router.get('/', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, audits) => {
     if (err) {
-      return res.status(500).json({ error: 'Database error' });
+      console.error('Error fetching audits:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
     }
-    res.json({ audits });
+    res.json({ audits: audits || [] });
   });
 });
 
-// Get single audit with items
+// Get single audit with items (admins can view any audit)
 router.get('/:id', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const auditId = req.params.id;
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+
+  // Admins can view any audit, regular users only their own
+  const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+  const queryParams = isAdmin ? [auditId] : [auditId, userId];
 
   dbInstance.get(
-    `SELECT a.*, ct.name as template_name, ct.category
+    `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name, u.email as user_email
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
-     WHERE a.id = ? AND a.user_id = ?`,
-    [auditId, userId],
+     LEFT JOIN users u ON a.user_id = u.id
+     ${whereClause}`,
+    queryParams,
     (err, audit) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -345,6 +367,62 @@ router.post('/', authenticate, (req, res) => {
         }
       );
     });
+  });
+});
+
+// Update audit details
+router.put('/:id', authenticate, (req, res) => {
+  const auditId = req.params.id;
+  const { restaurant_name, location, location_id, notes } = req.body;
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+
+  // Verify audit belongs to user
+  dbInstance.get('SELECT * FROM audits WHERE id = ? AND user_id = ?', [auditId, userId], (err, audit) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+
+    // Update audit
+    const updateFields = [];
+    const updateValues = [];
+
+    if (restaurant_name !== undefined) {
+      updateFields.push('restaurant_name = ?');
+      updateValues.push(restaurant_name);
+    }
+    if (location !== undefined) {
+      updateFields.push('location = ?');
+      updateValues.push(location);
+    }
+    if (location_id !== undefined) {
+      updateFields.push('location_id = ?');
+      updateValues.push(location_id);
+    }
+    if (notes !== undefined) {
+      updateFields.push('notes = ?');
+      updateValues.push(notes);
+    }
+
+    if (updateFields.length === 0) {
+      return res.json({ message: 'No fields to update' });
+    }
+
+    updateValues.push(auditId);
+
+    dbInstance.run(
+      `UPDATE audits SET ${updateFields.join(', ')} WHERE id = ?`,
+      updateValues,
+      function(err) {
+        if (err) {
+          return res.status(500).json({ error: 'Error updating audit' });
+        }
+        res.json({ message: 'Audit updated successfully' });
+      }
+    );
   });
 });
 

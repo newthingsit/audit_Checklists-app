@@ -4,15 +4,19 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator
+  ActivityIndicator,
+  TouchableOpacity,
+  Image
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { themeConfig } from '../config/theme';
 
 const AuditDetailScreen = () => {
   const route = useRoute();
+  const navigation = useNavigation();
   const { id } = route.params;
   const [audit, setAudit] = useState(null);
   const [items, setItems] = useState([]);
@@ -50,13 +54,43 @@ const AuditDetailScreen = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'completed':
-        return '#4caf50';
+        return themeConfig.success.main;
       case 'failed':
-        return '#f44336';
+        return themeConfig.error.main;
       case 'warning':
-        return '#ff9800';
+        return themeConfig.warning.main;
+      case 'in_progress':
+        return themeConfig.warning.main;
       default:
-        return '#999';
+        return themeConfig.text.disabled;
+    }
+  };
+
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case 'completed':
+        return themeConfig.success.main;
+      case 'failed':
+        return themeConfig.error.main;
+      case 'warning':
+        return themeConfig.warning.main;
+      case 'in_progress':
+        return themeConfig.warning.main;
+      default:
+        return themeConfig.text.disabled;
+    }
+  };
+
+  const getCriteriaColor = (criteria) => {
+    switch (criteria?.toLowerCase()) {
+      case 'critical':
+        return themeConfig.error.main;
+      case 'major':
+        return themeConfig.warning.main;
+      case 'minor':
+        return themeConfig.info.main;
+      default:
+        return themeConfig.text.secondary;
     }
   };
 
@@ -81,25 +115,30 @@ const AuditDetailScreen = () => {
     : 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={styles.content}
+    >
       <View style={styles.header}>
         <Text style={styles.restaurantName}>{audit.restaurant_name}</Text>
         <Text style={styles.location}>{audit.location || 'No location'}</Text>
         <Text style={styles.template}>{audit.template_name}</Text>
       </View>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.statBox}>
-          <View style={[styles.statusBadge, audit.status === 'completed' && styles.statusCompleted]}>
-            <Text style={styles.statusText}>{audit.status}</Text>
+      <View style={styles.statusContainer}>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(audit.status) }]}>
+            <Text style={styles.statusText}>
+              {audit.status === 'in_progress' ? 'In Progress' : audit.status.charAt(0).toUpperCase() + audit.status.slice(1)}
+            </Text>
           </View>
+          {audit.score !== null && (
+            <View style={styles.scoreContainer}>
+              <Text style={styles.scoreLabel}>Score</Text>
+              <Text style={styles.scoreValue}>{audit.score}%</Text>
+            </View>
+          )}
         </View>
-        {audit.score !== null && (
-          <View style={styles.statBox}>
-            <Text style={styles.scoreLabel}>Score</Text>
-            <Text style={styles.scoreValue}>{audit.score}%</Text>
-          </View>
-        )}
       </View>
 
       <View style={styles.progressContainer}>
@@ -107,7 +146,7 @@ const AuditDetailScreen = () => {
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          {audit.completed_items} / {audit.total_items} items completed
+          {audit.completed_items || 0} / {audit.total_items || items.length} items completed
         </Text>
       </View>
 
@@ -120,35 +159,100 @@ const AuditDetailScreen = () => {
 
       <Text style={styles.sectionTitle}>Checklist Items</Text>
 
-      {items.map((item, index) => (
-        <View key={item.id} style={styles.itemCard}>
-          <View style={styles.itemHeader}>
-            <Text style={styles.itemTitle}>
-              {index + 1}. {item.title}
-            </Text>
-            {getStatusIcon(item.status)}
-          </View>
-          {item.description && (
-            <Text style={styles.itemDescription}>{item.description}</Text>
+      {items.map((item, index) => {
+        // Parse criteria and max_score from description
+        let criteria = null;
+        let maxScore = null;
+        let cleanDescription = item.description || '';
+        
+        if (item.description) {
+          // Extract criteria: "Criteria: Critical | Max Score: 3"
+          const criteriaMatch = item.description.match(/Criteria:\s*(\w+)/i);
+          const scoreMatch = item.description.match(/Max Score:\s*(\d+)/i);
+          
+          if (criteriaMatch) {
+            criteria = criteriaMatch[1];
+          }
+          if (scoreMatch) {
+            maxScore = parseInt(scoreMatch[1]);
+          }
+          
+          // Remove criteria and max score from description if they exist
+          cleanDescription = item.description
+            .replace(/Criteria:\s*\w+\s*\|\s*/i, '')
+            .replace(/Max Score:\s*\d+/i, '')
+            .trim();
+        }
+
+        return (
+          <View key={item.id} style={styles.itemCard}>
+            <View style={styles.itemHeader}>
+              <View style={styles.itemTitleContainer}>
+                <Text style={styles.itemTitle}>
+                  {index + 1}. {item.title}
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.moreButton}>
+                <Icon name="more-vert" size={20} color={themeConfig.text.secondary} />
+              </TouchableOpacity>
+            </View>
+            
+            {cleanDescription && (
+              <Text style={styles.itemDescription}>{cleanDescription}</Text>
+            )}
+
+            <View style={styles.itemInfoRow}>
+              {(criteria || maxScore !== null) && (
+                <View style={styles.criteriaContainer}>
+                  {criteria && (
+                    <Text style={styles.criteriaText}>
+                      Criteria: <Text style={[styles.criteriaValue, { color: getCriteriaColor(criteria) }]}>
+                        {criteria}
+                      </Text>
+                    </Text>
+                  )}
+                  {maxScore !== null && (
+                    <Text style={styles.maxScoreText}>
+                      {criteria ? ' | ' : ''}Max Score: {maxScore}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+
+          {item.category && (
+            <View style={styles.categoryRow}>
+              <Text style={styles.categoryLabel}>{item.category}</Text>
+            </View>
           )}
-          <View style={styles.itemMeta}>
-            <View style={[styles.categoryBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-              <Text style={[styles.categoryText, { color: getStatusColor(item.status) }]}>
-                {item.category}
+
+          <View style={styles.itemFooter}>
+            <View style={[styles.statusChip, { backgroundColor: getStatusColor(item.status || 'pending') }]}>
+              <Text style={styles.statusChipText}>
+                {item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : 'Pending'}
               </Text>
             </View>
-            <View style={[styles.statusChip, { backgroundColor: getStatusColor(item.status) }]}>
-              <Text style={styles.statusChipText}>{item.status}</Text>
-            </View>
           </View>
+
           {item.comment && (
             <View style={styles.commentContainer}>
               <Text style={styles.commentLabel}>Comment:</Text>
               <Text style={styles.commentText}>{item.comment}</Text>
             </View>
           )}
+
+          {item.photo_url && (
+            <View style={styles.photoContainer}>
+              <Image 
+                source={{ uri: item.photo_url.startsWith('http') ? item.photo_url : `${API_BASE_URL.replace('/api', '')}${item.photo_url}` }} 
+                style={styles.itemPhoto}
+                resizeMode="cover"
+              />
+            </View>
+          )}
         </View>
-      ))}
+        );
+      })}
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
@@ -160,6 +264,24 @@ const AuditDetailScreen = () => {
           </Text>
         )}
       </View>
+
+      {audit.status === 'in_progress' && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => {
+              // Navigate to AuditForm in the same stack
+              navigation.navigate('AuditForm', { 
+                auditId: audit.id, 
+                templateId: audit.template_id 
+              });
+            }}
+          >
+            <Icon name="edit" size={20} color="#fff" style={styles.buttonIcon} />
+            <Text style={styles.continueButtonText}>Continue Audit</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -167,7 +289,7 @@ const AuditDetailScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: themeConfig.background.default,
   },
   content: {
     padding: 15,
@@ -179,11 +301,12 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: themeConfig.borderRadius.medium,
     padding: 20,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: themeConfig.border.default,
+    ...themeConfig.shadows.small,
   },
   restaurantName: {
     fontSize: 24,
@@ -200,27 +323,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  statusContainer: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: themeConfig.borderRadius.medium,
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: themeConfig.border.default,
+    ...themeConfig.shadows.small,
   },
-  statBox: {
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   statusBadge: {
-    backgroundColor: '#ff9800',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  statusCompleted: {
-    backgroundColor: '#4caf50',
+  scoreContainer: {
+    alignItems: 'flex-end',
   },
   statusText: {
     color: '#fff',
@@ -240,11 +363,12 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: themeConfig.borderRadius.medium,
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: themeConfig.border.default,
+    ...themeConfig.shadows.small,
   },
   progressBar: {
     height: 8,
@@ -288,53 +412,92 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: themeConfig.borderRadius.medium,
     padding: 15,
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: themeConfig.border.default,
+    ...themeConfig.shadows.small,
   },
   itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 10,
+  },
+  itemTitleContainer: {
+    flex: 1,
+    marginRight: 10,
   },
   itemTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
-    flex: 1,
+    color: themeConfig.text.primary,
+    lineHeight: 22,
+  },
+  moreButton: {
+    padding: 5,
   },
   itemDescription: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
+    color: themeConfig.text.secondary,
+    marginBottom: 12,
+    lineHeight: 20,
   },
-  itemMeta: {
+  itemInfoRow: {
+    marginBottom: 8,
+  },
+  criteriaContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 8,
   },
-  categoryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+  criteriaText: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
   },
-  categoryText: {
-    fontSize: 12,
+  criteriaValue: {
     fontWeight: '600',
   },
+  maxScoreText: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+  },
+  categoryRow: {
+    marginBottom: 10,
+  },
+  categoryLabel: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    fontStyle: 'italic',
+  },
+  itemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
   statusChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    minWidth: 80,
+    alignItems: 'center',
   },
   statusChipText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'capitalize',
+  },
+  photoContainer: {
+    marginTop: 10,
+    borderRadius: themeConfig.borderRadius.medium,
+    overflow: 'hidden',
+  },
+  itemPhoto: {
+    width: '100%',
+    height: 200,
+    borderRadius: themeConfig.borderRadius.medium,
   },
   commentContainer: {
     marginTop: 10,
@@ -361,6 +524,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginBottom: 5,
+  },
+  actionContainer: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  continueButton: {
+    backgroundColor: themeConfig.primary.main,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: themeConfig.borderRadius.medium,
+    ...themeConfig.shadows.medium,
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  continueButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

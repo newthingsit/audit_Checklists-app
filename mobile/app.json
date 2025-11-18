@@ -15,13 +15,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.restaurantaudit.app"
+      "bundleIdentifier": "com.restaurantaudit.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to take photos for audit items",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload images for audit items.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save photos to your library."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       },
-      "package": "com.restaurantaudit.app"
+      "package": "com.restaurantaudit.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     }
   }
 }

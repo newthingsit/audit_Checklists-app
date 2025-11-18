@@ -11,9 +11,10 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import DescriptionIcon from '@mui/icons-material/Description';
+import axios from 'axios';
 import { showSuccess, showError } from '../utils/toast';
 
-const ExportMenu = ({ auditId, auditName, onExport }) => {
+const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
 
@@ -29,18 +30,37 @@ const ExportMenu = ({ auditId, auditName, onExport }) => {
     try {
       let url = '';
       let filename = '';
+      let response;
 
       if (auditId) {
         // Single audit export
         if (format === 'pdf') {
           url = `/api/reports/audit/${auditId}/pdf`;
           filename = `${auditName || 'audit'}.pdf`;
-          window.open(url, '_blank');
+          // Use axios to fetch PDF with authentication
+          response = await axios.get(url, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'application/pdf'
+            }
+          });
+          const blob = new Blob([response.data], { type: 'application/pdf' });
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          link.click();
+          window.URL.revokeObjectURL(downloadUrl);
         } else if (format === 'csv') {
           url = `/api/reports/audit/${auditId}/csv`;
           filename = `${auditName || 'audit'}.csv`;
-          const response = await fetch(url);
-          const blob = await response.blob();
+          response = await axios.get(url, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'text/csv'
+            }
+          });
+          const blob = new Blob([response.data], { type: 'text/csv' });
           const downloadUrl = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = downloadUrl;
@@ -49,21 +69,76 @@ const ExportMenu = ({ auditId, auditName, onExport }) => {
           window.URL.revokeObjectURL(downloadUrl);
         }
       } else {
-        // Multiple audits export
-        if (format === 'pdf') {
-          url = '/api/reports/audits/pdf';
-          window.open(url, '_blank');
-        } else if (format === 'csv') {
-          url = '/api/reports/audits/csv';
-          filename = 'audits.csv';
-          const response = await fetch(url);
-          const blob = await response.blob();
-          const downloadUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.download = filename;
-          link.click();
-          window.URL.revokeObjectURL(downloadUrl);
+        // Multiple audits export - use filtered audits if provided
+        if (audits && Array.isArray(audits) && audits.length > 0) {
+          // Export filtered audits
+          const auditIds = audits.map(a => a.id).join(',');
+          if (format === 'pdf') {
+            url = `/api/reports/audits/pdf?ids=${auditIds}`;
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `audits-${audits.length}-selected.pdf`;
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
+          } else if (format === 'csv') {
+            url = `/api/reports/audits/csv?ids=${auditIds}`;
+            filename = `audits-${new Date().toISOString().split('T')[0]}.csv`;
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'text/csv'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'text/csv' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
+          }
+        } else {
+          // Export all audits
+          if (format === 'pdf') {
+            url = '/api/reports/audits/pdf';
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = 'all-audits.pdf';
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
+          } else if (format === 'csv') {
+            url = '/api/reports/audits/csv';
+            filename = `audits-${new Date().toISOString().split('T')[0]}.csv`;
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'text/csv'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'text/csv' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
+          }
         }
       }
 

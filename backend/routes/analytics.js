@@ -4,129 +4,151 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get dashboard statistics
+// Helper function to check if user is admin
+const isAdminUser = (user) => {
+  if (!user) return false;
+  const role = user.role ? user.role.toLowerCase() : '';
+  return role === 'admin' || role === 'superadmin';
+};
+
+// Get dashboard statistics (admins see all audits)
 router.get('/dashboard', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const dbInstance = db.getDb();
+
+  // Build user filter for queries
+  const userFilter = isAdmin ? '' : 'WHERE user_id = ?';
+  const userParams = isAdmin ? [] : [userId];
 
   // Get all statistics in parallel
   Promise.all([
     // Total audits
     new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT COUNT(*) as total FROM audits WHERE user_id = ?',
-        [userId],
-        (err, row) => err ? reject(err) : resolve(row.total)
-      );
+      const query = isAdmin 
+        ? 'SELECT COUNT(*) as total FROM audits'
+        : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ?';
+      dbInstance.get(query, userParams, (err, row) => err ? reject(err) : resolve(row.total));
     }),
     // Completed audits
     new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?',
-        [userId, 'completed'],
-        (err, row) => err ? reject(err) : resolve(row.total)
-      );
+      const query = isAdmin
+        ? 'SELECT COUNT(*) as total FROM audits WHERE status = ?'
+        : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?';
+      const params = isAdmin ? ['completed'] : [userId, 'completed'];
+      dbInstance.get(query, params, (err, row) => err ? reject(err) : resolve(row.total));
     }),
     // In progress audits
     new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?',
-        [userId, 'in_progress'],
-        (err, row) => err ? reject(err) : resolve(row.total)
-      );
+      const query = isAdmin
+        ? 'SELECT COUNT(*) as total FROM audits WHERE status = ?'
+        : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?';
+      const params = isAdmin ? ['in_progress'] : [userId, 'in_progress'];
+      dbInstance.get(query, params, (err, row) => err ? reject(err) : resolve(row.total));
     }),
     // Average score
     new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT AVG(score) as avg FROM audits WHERE user_id = ? AND score IS NOT NULL',
-        [userId],
-        (err, row) => err ? reject(err) : resolve(row.avg || 0)
-      );
+      const query = isAdmin
+        ? 'SELECT AVG(score) as avg FROM audits WHERE score IS NOT NULL'
+        : 'SELECT AVG(score) as avg FROM audits WHERE user_id = ? AND score IS NOT NULL';
+      dbInstance.get(query, userParams, (err, row) => err ? reject(err) : resolve(row.avg || 0));
     }),
     // Audits by status
     new Promise((resolve, reject) => {
-      dbInstance.all(
-        `SELECT status, COUNT(*) as count 
-         FROM audits 
-         WHERE user_id = ? 
-         GROUP BY status`,
-        [userId],
-        (err, rows) => err ? reject(err) : resolve(rows || [])
-      );
+      const query = isAdmin
+        ? `SELECT status, COUNT(*) as count FROM audits GROUP BY status`
+        : `SELECT status, COUNT(*) as count FROM audits WHERE user_id = ? GROUP BY status`;
+      dbInstance.all(query, userParams, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
     // Audits by month (last 6 months)
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
       let query;
+      const whereClause = isAdmin ? '' : 'WHERE user_id = ?';
+      const params = isAdmin ? [] : [userId];
+      
       if (dbType === 'mssql' || dbType === 'sqlserver') {
         query = `SELECT 
           FORMAT(created_at, 'yyyy-MM') as month,
           COUNT(*) as count
          FROM audits
-         WHERE user_id = ? 
+         ${whereClause}
            AND created_at >= DATEADD(MONTH, -6, GETDATE())
          GROUP BY FORMAT(created_at, 'yyyy-MM')
          ORDER BY month`;
+        if (isAdmin) {
+          query = query.replace('AND created_at', 'WHERE created_at');
+        }
       } else if (dbType === 'mysql') {
         query = `SELECT 
           DATE_FORMAT(created_at, '%Y-%m') as month,
           COUNT(*) as count
          FROM audits
-         WHERE user_id = ? 
+         ${whereClause}
            AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
          GROUP BY DATE_FORMAT(created_at, '%Y-%m')
          ORDER BY month`;
+        if (isAdmin) {
+          query = query.replace('AND created_at', 'WHERE created_at');
+        }
       } else {
         query = `SELECT 
           strftime('%Y-%m', created_at) as month,
           COUNT(*) as count
          FROM audits
-         WHERE user_id = ? 
+         ${whereClause}
            AND created_at >= date('now', '-6 months')
          GROUP BY month
          ORDER BY month`;
+        if (isAdmin) {
+          query = query.replace('AND created_at', 'WHERE created_at');
+        }
       }
-      dbInstance.all(query, [userId], (err, rows) => err ? reject(err) : resolve(rows || []));
+      dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
     // Top restaurants
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
+      const whereClause = isAdmin ? '' : 'WHERE user_id = ?';
+      const params = isAdmin ? [] : [userId];
       let query;
       if (dbType === 'mssql' || dbType === 'sqlserver') {
         query = `SELECT TOP 5 restaurant_name, COUNT(*) as audit_count, AVG(score) as avg_score
          FROM audits
-         WHERE user_id = ?
+         ${whereClause}
          GROUP BY restaurant_name
          ORDER BY audit_count DESC`;
       } else {
         query = `SELECT restaurant_name, COUNT(*) as audit_count, AVG(score) as avg_score
          FROM audits
-         WHERE user_id = ?
+         ${whereClause}
          GROUP BY restaurant_name
          ORDER BY audit_count DESC
          LIMIT 5`;
       }
-      dbInstance.all(query, [userId], (err, rows) => err ? reject(err) : resolve(rows || []));
+      dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
     // Recent audits
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
+      const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+      const params = isAdmin ? [] : [userId];
       let query;
       if (dbType === 'mssql' || dbType === 'sqlserver') {
         query = `SELECT TOP 5 a.*, ct.name as template_name
          FROM audits a
          JOIN checklist_templates ct ON a.template_id = ct.id
-         WHERE a.user_id = ?
+         ${whereClause}
          ORDER BY a.created_at DESC`;
       } else {
         query = `SELECT a.*, ct.name as template_name
          FROM audits a
          JOIN checklist_templates ct ON a.template_id = ct.id
-         WHERE a.user_id = ?
+         ${whereClause}
          ORDER BY a.created_at DESC
          LIMIT 5`;
       }
-      dbInstance.all(query, [userId], (err, rows) => err ? reject(err) : resolve(rows || []));
+      dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     })
   ])
     .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topRestaurants, recent]) => {
@@ -147,9 +169,10 @@ router.get('/dashboard', authenticate, (req, res) => {
     });
 });
 
-// Get audit trends
+// Get audit trends (admins see all audits)
 router.get('/trends', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const { period = 'month' } = req.query; // month, week, day
   const dbInstance = db.getDb();
 
@@ -199,6 +222,9 @@ router.get('/trends', authenticate, (req, res) => {
     }
   }
 
+  const whereClause = isAdmin ? '' : 'WHERE user_id = ?';
+  const params = isAdmin ? [] : [userId];
+  
   let query;
   if (dbType === 'mssql' || dbType === 'sqlserver') {
     query = `SELECT 
@@ -207,9 +233,12 @@ router.get('/trends', authenticate, (req, res) => {
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
       AVG(score) as avg_score
      FROM audits
-     WHERE user_id = ? AND created_at >= ${dateRange}
+     ${whereClause} AND created_at >= ${dateRange}
      GROUP BY ${dateFormat}
      ORDER BY period`;
+    if (isAdmin) {
+      query = query.replace('AND created_at', 'WHERE created_at');
+    }
   } else {
     query = `SELECT 
       ${dateFormat} as period,
@@ -217,12 +246,15 @@ router.get('/trends', authenticate, (req, res) => {
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
       AVG(score) as avg_score
      FROM audits
-     WHERE user_id = ? AND created_at >= ${dateRange}
+     ${whereClause} AND created_at >= ${dateRange}
      GROUP BY period
      ORDER BY period`;
+    if (isAdmin) {
+      query = query.replace('AND created_at', 'WHERE created_at');
+    }
   }
   
-  dbInstance.all(query, [userId],
+  dbInstance.all(query, params,
     (err, rows) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });

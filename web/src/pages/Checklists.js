@@ -492,9 +492,7 @@ const Checklists = () => {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {editingTemplateId ? 'Edit Template' : 'Create New Template'}
-            </Typography>
+            {editingTemplateId ? 'Edit Template' : 'Create New Template'}
             <IconButton onClick={handleCloseAddDialog} size="small" sx={{ color: '#666' }}>
               <CloseIcon />
             </IconButton>
@@ -721,7 +719,7 @@ const Checklists = () => {
             justifyContent: 'space-between',
             alignItems: 'center'
           }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>Import Template from CSV</Typography>
+            Import Template from CSV
             <IconButton onClick={handleCloseImportDialog} size="small" sx={{ color: '#666' }}>
               <CloseIcon />
             </IconButton>

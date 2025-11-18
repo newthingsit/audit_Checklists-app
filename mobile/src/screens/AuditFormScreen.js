@@ -20,7 +20,7 @@ import { themeConfig } from '../config/theme';
 const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { templateId } = route.params;
+  const { templateId, auditId } = route.params || {};
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,11 +36,19 @@ const AuditFormScreen = () => {
   const [uploading, setUploading] = useState({});
   const [locations, setLocations] = useState([]);
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: checklist
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
-    fetchTemplate();
+    if (auditId) {
+      // Editing existing audit
+      setIsEditing(true);
+      fetchAuditData();
+    } else if (templateId) {
+      // Creating new audit
+      fetchTemplate();
+    }
     fetchLocations();
-  }, [templateId]);
+  }, [templateId, auditId]);
 
   const fetchTemplate = async () => {
     try {
@@ -49,6 +57,66 @@ const AuditFormScreen = () => {
       setItems(response.data.items || []);
     } catch (error) {
       Alert.alert('Error', 'Failed to load template');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAuditData = async () => {
+    try {
+      setLoading(true);
+      // Fetch audit details
+      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${auditId}`);
+      const audit = auditResponse.data.audit;
+      const auditItems = auditResponse.data.items || [];
+
+      // Set audit info
+      setRestaurantName(audit.restaurant_name || '');
+      setLocation(audit.location || '');
+      setLocationId(audit.location_id || '');
+      setNotes(audit.notes || '');
+
+      // Fetch template to get all items
+      const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`);
+      setTemplate(templateResponse.data.template);
+      const allItems = templateResponse.data.items || [];
+      setItems(allItems);
+
+      // Populate responses from audit items
+      const responsesData = {};
+      const optionsData = {};
+      const commentsData = {};
+      const photosData = {};
+
+      auditItems.forEach(auditItem => {
+        if (auditItem.status) {
+          responsesData[auditItem.item_id] = auditItem.status;
+        }
+        if (auditItem.selected_option_id) {
+          optionsData[auditItem.item_id] = auditItem.selected_option_id;
+        }
+        if (auditItem.comment) {
+          commentsData[auditItem.item_id] = auditItem.comment;
+        }
+        if (auditItem.photo_url) {
+          // Construct full URL if needed
+          const photoUrl = auditItem.photo_url.startsWith('http') 
+            ? auditItem.photo_url 
+            : `${API_BASE_URL.replace('/api', '')}${auditItem.photo_url}`;
+          photosData[auditItem.item_id] = photoUrl;
+        }
+      });
+
+      setResponses(responsesData);
+      setSelectedOptions(optionsData);
+      setComments(commentsData);
+      setPhotos(photosData);
+
+      // Start at checklist step since we already have the info
+      setCurrentStep(1);
+    } catch (error) {
+      console.error('Error fetching audit data:', error);
+      Alert.alert('Error', 'Failed to load audit data');
     } finally {
       setLoading(false);
     }
@@ -85,7 +153,7 @@ const AuditFormScreen = () => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -100,16 +168,42 @@ const AuditFormScreen = () => {
           name: `photo_${itemId}_${Date.now()}.jpg`,
         });
 
-        const uploadResponse = await axios.post(`${API_BASE_URL}/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+        // Use /photo endpoint (not /upload) and ensure auth token is included
+        // Note: Don't set Content-Type manually for FormData - axios will set it with boundary
+        const uploadResponse = await axios.post(`${API_BASE_URL}/photo`, formData, {
+          // Authorization header is automatically added by axios defaults from AuthContext
+          // Content-Type will be set automatically by axios for FormData
         });
 
-        setPhotos({ ...photos, [itemId]: uploadResponse.data.photo_url || uploadResponse.data.url });
+        // The backend returns photo_url like "/uploads/filename.jpg"
+        // Construct full URL: http://IP:PORT/uploads/filename.jpg
+        const photoUrl = uploadResponse.data.photo_url;
+        const baseUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+        const fullPhotoUrl = photoUrl.startsWith('http') 
+          ? photoUrl 
+          : `${baseUrl}${photoUrl}`;
+        
+        console.log('Photo uploaded successfully:', fullPhotoUrl);
+        setPhotos({ ...photos, [itemId]: fullPhotoUrl });
         Alert.alert('Success', 'Photo uploaded successfully!');
       }
     } catch (error) {
       console.error('Error uploading photo:', error);
-      Alert.alert('Error', 'Failed to upload photo');
+      let errorMessage = 'Failed to upload photo';
+      
+      if (error.response) {
+        if (error.response.status === 401) {
+          errorMessage = 'Authentication required. Please login again.';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Upload endpoint not found. Please check backend server.';
+        } else {
+          errorMessage = error.response.data?.error || `Server error: ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage = 'Cannot connect to server. Please check your connection.';
+      }
+      
+      Alert.alert('Upload Failed', errorMessage);
     } finally {
       setUploading({ ...uploading, [itemId]: false });
     }
@@ -128,16 +222,35 @@ const AuditFormScreen = () => {
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      const auditResponse = await axios.post(`${API_BASE_URL}/audits`, {
-        template_id: parseInt(templateId),
-        restaurant_name: restaurantName,
-        location: locationId || location,
-        location_id: locationId || null,
-        notes
-      });
+      let currentAuditId = auditId;
 
-      const auditId = auditResponse.data.id;
+      if (isEditing) {
+        // Update existing audit info (only if needed)
+        try {
+          await axios.put(`${API_BASE_URL}/audits/${auditId}`, {
+            restaurant_name: restaurantName,
+            location: locationId || location,
+            location_id: locationId || null,
+            notes
+          });
+        } catch (updateError) {
+          // If update fails, log but continue with item updates
+          console.warn('Failed to update audit info, continuing with items:', updateError);
+        }
+        currentAuditId = auditId;
+      } else {
+        // Create new audit
+        const auditResponse = await axios.post(`${API_BASE_URL}/audits`, {
+          template_id: parseInt(templateId),
+          restaurant_name: restaurantName,
+          location: locationId || location,
+          location_id: locationId || null,
+          notes
+        });
+        currentAuditId = auditResponse.data.id;
+      }
 
+      // Update all audit items
       const updatePromises = items.map(async (item) => {
         const updateData = {
           status: responses[item.id] || 'pending',
@@ -152,20 +265,25 @@ const AuditFormScreen = () => {
         }
         
         if (photos[item.id]) {
-          updateData.photo_url = photos[item.id];
+          // Extract just the path if it's a full URL
+          const photoUrl = photos[item.id];
+          updateData.photo_url = photoUrl.startsWith('http') 
+            ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
+            : photoUrl;
         }
 
-        return axios.put(`${API_BASE_URL}/audits/${auditId}/items/${item.id}`, updateData);
+        return axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
       });
 
       await Promise.all(updatePromises);
 
-      Alert.alert('Success', 'Audit saved successfully', [
+      Alert.alert('Success', isEditing ? 'Audit updated successfully' : 'Audit saved successfully', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (error) {
       console.error('Error saving audit:', error);
-      Alert.alert('Error', 'Failed to save audit');
+      const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      Alert.alert('Error', isEditing ? `Failed to update audit: ${errorMessage}` : `Failed to save audit: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

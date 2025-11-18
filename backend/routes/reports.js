@@ -1,26 +1,34 @@
 const express = require('express');
 const PDFDocument = require('pdfkit');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-const path = require('path');
-const fs = require('fs');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Export audit to PDF
+// Helper function to check if user is admin
+const isAdminUser = (user) => {
+  if (!user) return false;
+  const role = user.role ? user.role.toLowerCase() : '';
+  return role === 'admin' || role === 'superadmin';
+};
+
+// Export audit to PDF (admins can export any audit)
 router.get('/audit/:id/pdf', authenticate, (req, res) => {
   const auditId = req.params.id;
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const dbInstance = db.getDb();
+
+  const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+  const params = isAdmin ? [auditId] : [auditId, userId];
 
   dbInstance.get(
     `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
-     JOIN users u ON a.user_id = u.id
-     WHERE a.id = ? AND a.user_id = ?`,
-    [auditId, userId],
+     LEFT JOIN users u ON a.user_id = u.id
+     ${whereClause}`,
+    params,
     (err, audit) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -99,76 +107,216 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
   );
 });
 
-// Export audits to CSV
+// Export audits to CSV (admins see all audits, supports filtering)
 router.get('/audits/csv', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { ids } = req.query; // Optional: comma-separated audit IDs
   const dbInstance = db.getDb();
 
-  dbInstance.all(
-    `SELECT a.id, a.restaurant_name, a.location, a.status, a.score, 
+  let query = `SELECT a.id, a.restaurant_name, a.location, a.status, a.score, 
      a.completed_items, a.total_items, ct.name as template_name,
-     a.created_at, a.completed_at
+     a.created_at, a.completed_at, u.name as user_name, u.email as user_email
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
-     WHERE a.user_id = ?
-     ORDER BY a.created_at DESC`,
-    [userId],
+     LEFT JOIN users u ON a.user_id = u.id`;
+  
+  let params = [];
+  
+  // If specific IDs are requested, use them
+  if (ids) {
+    const auditIds = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    if (auditIds.length > 0) {
+      const placeholders = auditIds.map(() => '?').join(',');
+      query += ` WHERE a.id IN (${placeholders})`;
+      params = auditIds;
+    } else {
+      return res.status(400).json({ error: 'Invalid audit IDs' });
+    }
+  } else {
+    // Otherwise, filter by user (or show all for admins)
+    if (isAdmin) {
+      query += ` WHERE 1=1`;
+    } else {
+      query += ` WHERE a.user_id = ?`;
+      params = [userId];
+    }
+  }
+  
+  query += ` ORDER BY a.created_at DESC`;
+
+  dbInstance.all(query, params,
     (err, audits) => {
       if (err) {
-        return res.status(500).json({ error: 'Database error' });
+        console.error('Database error in CSV export:', err);
+        return res.status(500).json({ error: 'Database error', details: err.message });
       }
 
-      const csvWriter = createCsvWriter({
-        path: path.join(__dirname, '../temp/audits-export.csv'),
-        header: [
-          { id: 'id', title: 'ID' },
-          { id: 'restaurant_name', title: 'Restaurant Name' },
-          { id: 'location', title: 'Location' },
-          { id: 'template_name', title: 'Template' },
-          { id: 'status', title: 'Status' },
-          { id: 'score', title: 'Score (%)' },
-          { id: 'completed_items', title: 'Completed Items' },
-          { id: 'total_items', title: 'Total Items' },
-          { id: 'created_at', title: 'Created Date' },
-          { id: 'completed_at', title: 'Completed Date' }
-        ]
-      });
+      try {
+        // Generate CSV header
+        const headers = [
+          'ID',
+          'Restaurant Name',
+          'Location',
+          'Template',
+          'Status',
+          'Score (%)',
+          'Completed Items',
+          'Total Items'
+        ];
+        
+        if (isAdmin) {
+          headers.push('Created By');
+        }
+        
+        headers.push('Created Date', 'Completed Date');
 
-      // Ensure temp directory exists
-      const tempDir = path.join(__dirname, '../temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      csvWriter.writeRecords(audits.map(audit => ({
-        ...audit,
-        created_at: new Date(audit.created_at).toLocaleString(),
-        completed_at: audit.completed_at ? new Date(audit.completed_at).toLocaleString() : ''
-      })))
-        .then(() => {
-          res.download(csvWriter.path, 'audits-export.csv', (err) => {
-            if (err) {
-              console.error('Error downloading file:', err);
-            }
-            // Clean up temp file after a delay
-            setTimeout(() => {
-              if (fs.existsSync(csvWriter.path)) {
-                fs.unlinkSync(csvWriter.path);
-              }
-            }, 5000);
-          });
-        })
-        .catch(err => {
-          console.error('Error creating CSV:', err);
-          res.status(500).json({ error: 'Error creating CSV file' });
+        // Generate CSV rows
+        const rows = audits.map(audit => {
+          const row = [
+            audit.id,
+            `"${(audit.restaurant_name || '').replace(/"/g, '""')}"`,
+            `"${(audit.location || '').replace(/"/g, '""')}"`,
+            `"${(audit.template_name || '').replace(/"/g, '""')}"`,
+            audit.status || '',
+            audit.score !== null ? audit.score : '',
+            audit.completed_items || 0,
+            audit.total_items || 0
+          ];
+          
+          if (isAdmin) {
+            row.push(`"${(audit.user_name || '').replace(/"/g, '""')}"`);
+          }
+          
+          row.push(
+            new Date(audit.created_at).toLocaleString(),
+            audit.completed_at ? new Date(audit.completed_at).toLocaleString() : ''
+          );
+          
+          return row.join(',');
         });
+
+        // Combine header and rows
+        const csvContent = [
+          headers.join(','),
+          ...rows
+        ].join('\n');
+
+        // Set response headers
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=audits-export.csv');
+        
+        // Send CSV content
+        res.send(csvContent);
+      } catch (error) {
+        console.error('Error generating CSV:', error);
+        res.status(500).json({ error: 'Error generating CSV file', details: error.message });
+      }
     }
   );
 });
 
-// Get monthly scorecard report
+// Export multiple audits to PDF (admins see all audits, supports filtering)
+router.get('/audits/pdf', authenticate, (req, res) => {
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { ids } = req.query; // Optional: comma-separated audit IDs
+  const dbInstance = db.getDb();
+
+  let query = `SELECT a.id, a.restaurant_name, a.location, a.status, a.score, 
+     a.completed_items, a.total_items, ct.name as template_name,
+     a.created_at, a.completed_at, u.name as user_name
+     FROM audits a
+     JOIN checklist_templates ct ON a.template_id = ct.id
+     LEFT JOIN users u ON a.user_id = u.id`;
+  
+  let params = [];
+  
+  // If specific IDs are requested, use them
+  if (ids) {
+    const auditIds = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    if (auditIds.length > 0) {
+      const placeholders = auditIds.map(() => '?').join(',');
+      query += ` WHERE a.id IN (${placeholders})`;
+      params = auditIds;
+    } else {
+      return res.status(400).json({ error: 'Invalid audit IDs' });
+    }
+  } else {
+    // Otherwise, filter by user (or show all for admins)
+    if (isAdmin) {
+      query += ` WHERE 1=1`;
+    } else {
+      query += ` WHERE a.user_id = ?`;
+      params = [userId];
+    }
+  }
+  
+  query += ` ORDER BY a.created_at DESC`;
+
+  dbInstance.all(query, params, (err, audits) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Create PDF
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    const filename = ids ? `audits-${audits.length}-selected.pdf` : 'all-audits.pdf';
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(20).text('Audit History Report', { align: 'center' });
+    doc.fontSize(14).text(`Total Audits: ${audits.length}`, { align: 'center' });
+    doc.moveDown(2);
+
+    // Summary
+    const completed = audits.filter(a => a.status === 'completed').length;
+    const inProgress = audits.filter(a => a.status === 'in_progress').length;
+    const scores = audits.filter(a => a.score !== null).map(a => a.score);
+    const avgScore = scores.length > 0 
+      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 
+      : 0;
+
+    doc.fontSize(16).text('Summary', { underline: true });
+    doc.fontSize(12);
+    doc.text(`Total Audits: ${audits.length}`);
+    doc.text(`Completed: ${completed}`);
+    doc.text(`In Progress: ${inProgress}`);
+    doc.text(`Average Score: ${avgScore}%`);
+    doc.moveDown();
+
+    // Audit Details
+    doc.fontSize(16).text('Audit Details', { underline: true });
+    doc.moveDown(0.5);
+
+    audits.forEach((audit, index) => {
+      doc.fontSize(11);
+      doc.text(`${index + 1}. ${audit.restaurant_name}`, { continued: false });
+      doc.fontSize(10).fillColor('gray');
+      doc.text(`   Location: ${audit.location || 'N/A'} | Template: ${audit.template_name}`);
+      if (isAdmin && audit.user_name) {
+        doc.text(`   Created By: ${audit.user_name}`);
+      }
+      doc.text(`   Status: ${audit.status} | Score: ${audit.score !== null ? audit.score + '%' : 'N/A'}`);
+      doc.text(`   Items: ${audit.completed_items || 0}/${audit.total_items || 0} completed`);
+      doc.text(`   Date: ${new Date(audit.created_at).toLocaleDateString()}`);
+      if (audit.completed_at) {
+        doc.text(`   Completed: ${new Date(audit.completed_at).toLocaleDateString()}`);
+      }
+      doc.fillColor('black');
+      doc.moveDown(0.5);
+    });
+
+    doc.end();
+  });
+});
+
+// Get monthly scorecard report (admins see all audits)
 router.get('/monthly-scorecard', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const { year, month, location_id } = req.query;
   const dbInstance = db.getDb();
 
@@ -182,7 +330,14 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
 
   // Build query with optional location filter
   let locationFilter = '';
-  const params = [userId, yearStr, monthPadded];
+  let params = [];
+  
+  // Build WHERE clause - admins see all audits
+  if (isAdmin) {
+    params = [yearStr, monthPadded];
+  } else {
+    params = [userId, yearStr, monthPadded];
+  }
   
   if (location_id) {
     locationFilter = 'AND a.location_id = ?';
@@ -201,14 +356,18 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
     dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
   }
   
+  const whereClause = isAdmin 
+    ? `WHERE ${dateQuery}`
+    : `WHERE a.user_id = ? AND ${dateQuery}`;
+  
   dbInstance.all(
-    `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name
+    `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name, u.name as user_name
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
      LEFT JOIN locations l ON a.location_id = l.id
-     WHERE a.user_id = ?
-       AND ${dateQuery}
-       ${locationFilter}
+     LEFT JOIN users u ON a.user_id = u.id
+     ${whereClause}
+     ${locationFilter}
      ORDER BY a.created_at DESC`,
     params,
     (err, audits) => {
@@ -374,7 +533,14 @@ router.get('/monthly-scorecard/pdf', authenticate, (req, res) => {
 
   // Build query with optional location filter
   let locationFilter = '';
-  const params = [userId, yearStr, monthPadded];
+  let params = [];
+  
+  // Build WHERE clause - admins see all audits
+  if (isAdmin) {
+    params = [yearStr, monthPadded];
+  } else {
+    params = [userId, yearStr, monthPadded];
+  }
   
   if (location_id) {
     locationFilter = 'AND a.location_id = ?';
@@ -391,14 +557,18 @@ router.get('/monthly-scorecard/pdf', authenticate, (req, res) => {
     dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
   }
   
+  const whereClause = isAdmin 
+    ? `WHERE ${dateQuery}`
+    : `WHERE a.user_id = ? AND ${dateQuery}`;
+  
   dbInstance.all(
-    `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name
+    `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name, u.name as user_name
      FROM audits a
      JOIN checklist_templates ct ON a.template_id = ct.id
      LEFT JOIN locations l ON a.location_id = l.id
-     WHERE a.user_id = ?
-       AND ${dateQuery}
-       ${locationFilter}
+     LEFT JOIN users u ON a.user_id = u.id
+     ${whereClause}
+     ${locationFilter}
      ORDER BY a.created_at DESC`,
     params,
     (err, audits) => {
@@ -601,55 +771,52 @@ router.get('/scheduled-audits/csv', authenticate, (req, res) => {
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
-    const csvWriter = createCsvWriter({
-      path: path.join(__dirname, '../temp/scheduled-audits-export.csv'),
-      header: [
-        { id: 'id', title: 'ID' },
-        { id: 'template_name', title: 'Template' },
-        { id: 'location_name', title: 'Location' },
-        { id: 'assigned_to_name', title: 'Assigned To' },
-        { id: 'scheduled_date', title: 'Scheduled Date' },
-        { id: 'next_run_date', title: 'Next Run Date' },
-        { id: 'frequency', title: 'Frequency' },
-        { id: 'status', title: 'Status' },
-        { id: 'created_at', title: 'Created Date' }
-      ]
-    });
+    try {
+      // Generate CSV header
+      const headers = [
+        'ID',
+        'Template',
+        'Location',
+        'Assigned To',
+        'Scheduled Date',
+        'Next Run Date',
+        'Frequency',
+        'Status',
+        'Created Date'
+      ];
 
-    // Ensure temp directory exists
-    const tempDir = path.join(__dirname, '../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    csvWriter.writeRecords(schedules.map(schedule => ({
-      id: schedule.id,
-      template_name: schedule.template_name,
-      location_name: schedule.location_name || 'N/A',
-      assigned_to_name: schedule.assigned_to_name || 'Unassigned',
-      scheduled_date: new Date(schedule.scheduled_date).toLocaleDateString(),
-      next_run_date: schedule.next_run_date ? new Date(schedule.next_run_date).toLocaleDateString() : 'N/A',
-      frequency: schedule.frequency,
-      status: schedule.status || 'pending',
-      created_at: new Date(schedule.created_at).toLocaleString()
-    })))
-      .then(() => {
-        res.download(csvWriter.path, 'scheduled-audits-report.csv', (err) => {
-          if (err) {
-            console.error('Error downloading file:', err);
-          }
-          // Clean up temp file after a delay
-          setTimeout(() => {
-            if (fs.existsSync(csvWriter.path)) {
-              fs.unlinkSync(csvWriter.path);
-            }
-          }, 5000);
-        });
-      })
-      .catch(err => {
-        console.error('Error creating CSV:', err);
-        res.status(500).json({ error: 'Error creating CSV file' });
+      // Generate CSV rows
+      const rows = schedules.map(schedule => {
+        const row = [
+          schedule.id,
+          `"${(schedule.template_name || '').replace(/"/g, '""')}"`,
+          `"${(schedule.location_name || 'N/A').replace(/"/g, '""')}"`,
+          `"${(schedule.assigned_to_name || 'Unassigned').replace(/"/g, '""')}"`,
+          new Date(schedule.scheduled_date).toLocaleDateString(),
+          schedule.next_run_date ? new Date(schedule.next_run_date).toLocaleDateString() : 'N/A',
+          schedule.frequency || '',
+          schedule.status || 'pending',
+          new Date(schedule.created_at).toLocaleString()
+        ];
+        return row.join(',');
       });
+
+      // Combine header and rows
+      const csvContent = [
+        headers.join(','),
+        ...rows
+      ].join('\n');
+
+      // Set response headers
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename=scheduled-audits-report.csv');
+      
+      // Send CSV content
+      res.send(csvContent);
+    } catch (error) {
+      console.error('Error generating CSV:', error);
+      res.status(500).json({ error: 'Error generating CSV file', details: error.message });
+    }
   });
 });
 

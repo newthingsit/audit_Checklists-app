@@ -32,6 +32,14 @@ const getDbRow = (dbInstance, query, params = []) =>
     });
   });
 
+const getAllRows = (dbInstance, query, params = []) =>
+  new Promise((resolve, reject) => {
+    dbInstance.all(query, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows || []);
+    });
+  });
+
 const insertItemOptions = (dbInstance, itemId, options = []) => {
   if (!Array.isArray(options) || options.length === 0) {
     return Promise.resolve();
@@ -280,47 +288,32 @@ router.post('/import', authenticate, (req, res) => {
       return res.status(400).json({ error: 'No valid items found in CSV' });
     }
 
-    // Create template
-    dbInstance.run(
+    // Create template using runDb helper for cross-database compatibility
+    runDb(
+      dbInstance,
       'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-      [templateName, category, description || '', req.user.id],
-      function(err) {
-        if (err) {
-          console.error('Error creating template:', err);
-          return res.status(500).json({ error: 'Error creating template', details: err.message });
-        }
-
-        const templateId = this.lastID;
-
-        // Insert items
-        const stmt = dbInstance.prepare(
-          'INSERT INTO checklist_items (template_id, title, description, category, required, order_index) VALUES (?, ?, ?, ?, ?, ?)'
-        );
-
-        items.forEach((item, index) => {
-          stmt.run([
-            templateId,
-            item.title,
-            item.description || '',
-            item.category || category,
-            item.required ? 1 : 0,
-            index
-          ]);
-        });
-
-        stmt.finalize((err) => {
-          if (err) {
-            console.error('Error creating items:', err);
-            return res.status(500).json({ error: 'Error creating items', details: err.message });
-          }
-          res.status(201).json({ 
-            id: templateId, 
-            message: `Template created successfully with ${items.length} items`,
-            itemsCount: items.length
-          });
-        });
+      [templateName, category, description || '', req.user.id]
+    ).then(async ({ lastID: templateId }) => {
+      if (!templateId || templateId === 0) {
+        return res.status(500).json({ error: 'Failed to create template - no ID returned' });
       }
-    );
+
+      // Insert items with options using the helper function
+      try {
+        await insertItemsWithOptions(dbInstance, templateId, items, category);
+        res.status(201).json({ 
+          id: templateId, 
+          message: `Template created successfully with ${items.length} items`,
+          itemsCount: items.length
+        });
+      } catch (error) {
+        console.error('Error inserting items:', error);
+        res.status(500).json({ error: 'Error creating items', details: error.message });
+      }
+    }).catch((err) => {
+      console.error('Error creating template:', err);
+      res.status(500).json({ error: 'Error creating template', details: err.message });
+    });
   } catch (error) {
     console.error('Error parsing CSV:', error);
     res.status(400).json({ error: 'Error parsing CSV data', details: error.message });
@@ -397,15 +390,86 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'You do not have permission to delete this template' });
     }
 
+    // Check if there are audits using this template
+    const auditCount = await getDbRow(
+      dbInstance,
+      'SELECT COUNT(*) as count FROM audits WHERE template_id = ?',
+      [templateId]
+    );
+
+    if (auditCount && auditCount.count > 0) {
+      console.log(`Deleting ${auditCount.count} audit(s) and related data for template ${templateId}...`);
+
+      // Get all item IDs from this template
+      const items = await getAllRows(
+        dbInstance,
+        'SELECT id FROM checklist_items WHERE template_id = ?',
+        [templateId]
+      );
+
+      if (items.length > 0) {
+        const itemIds = items.map(i => i.id);
+
+        // Get all option IDs from these items
+        const options = await getAllRows(
+          dbInstance,
+          `SELECT id FROM checklist_item_options WHERE item_id IN (${itemIds.map(() => '?').join(',')})`,
+          itemIds
+        );
+
+        if (options.length > 0) {
+          const optionIds = options.map(o => o.id);
+
+          // Delete audit_items that reference these options
+          await runDb(
+            dbInstance,
+            `DELETE FROM audit_items WHERE selected_option_id IN (${optionIds.map(() => '?').join(',')})`,
+            optionIds
+          );
+          console.log(`  Deleted audit_items referencing ${options.length} options`);
+        }
+
+        // Delete audit_items that reference these items
+        await runDb(
+          dbInstance,
+          `DELETE FROM audit_items WHERE item_id IN (${itemIds.map(() => '?').join(',')})`,
+          itemIds
+        );
+        console.log(`  Deleted audit_items referencing ${items.length} items`);
+      }
+
+      // Delete action items for audits using this template
+      await runDb(
+        dbInstance,
+        'DELETE FROM action_items WHERE audit_id IN (SELECT id FROM audits WHERE template_id = ?)',
+        [templateId]
+      );
+
+      // Delete the audits themselves
+      await runDb(
+        dbInstance,
+        'DELETE FROM audits WHERE template_id = ?',
+        [templateId]
+      );
+      console.log(`  Deleted ${auditCount.count} audit(s)`);
+    }
+
+    // Check for scheduled audits using this template
+    // Delete scheduled audits that reference this template
+    const scheduledDeleteResult = await runDb(
+      dbInstance,
+      'DELETE FROM scheduled_audits WHERE template_id = ?',
+      [templateId]
+    );
+    if (scheduledDeleteResult && scheduledDeleteResult.changes > 0) {
+      console.log(`  Deleted ${scheduledDeleteResult.changes} scheduled audit(s) for template ${templateId}`);
+    }
+
+    // Now delete the template (cascade will delete items and options)
     await runDb(dbInstance, 'DELETE FROM checklist_templates WHERE id = ?', [templateId]);
     res.json({ message: 'Template deleted successfully' });
   } catch (error) {
     console.error('Error deleting checklist template:', error);
-    if (error && error.message && error.message.includes('FOREIGN KEY')) {
-      return res.status(400).json({
-        error: 'Cannot delete template because it is referenced by existing audits'
-      });
-    }
     res.status(500).json({ error: 'Error deleting template', details: error.message });
   }
 });

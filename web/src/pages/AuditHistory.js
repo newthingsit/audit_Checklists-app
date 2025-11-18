@@ -361,6 +361,11 @@ const AuditHistory = () => {
                             <Typography variant="body2" color="text.secondary" gutterBottom>
                               {audit.location || 'No location specified'}
                             </Typography>
+                            {audit.user_name && (
+                              <Typography variant="caption" color="text.secondary">
+                                By: {audit.user_name}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                         
