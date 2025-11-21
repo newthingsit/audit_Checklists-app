@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { IconButton, Badge, Popover, Typography, Box, List, ListItem, ListItemText, ListItemButton, Button, Divider, Chip } from '@mui/material';
+import { IconButton, Badge, Popover, Typography, Box, List, ListItem, ListItemButton, Button, Divider, Chip } from '@mui/material';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import { useNavigate } from 'react-router-dom';
@@ -82,19 +82,6 @@ const NotificationBell = () => {
       navigate(notification.link);
     }
     handleClose();
-  };
-
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    try {
-      await axios.delete(`/api/notifications/${id}`);
-      setNotifications(prev => prev.filter(n => n.id !== id));
-      if (!notifications.find(n => n.id === id)?.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
-    } catch (error) {
-      console.error('Error deleting notification:', error);
-    }
   };
 
   const open = Boolean(anchorEl);

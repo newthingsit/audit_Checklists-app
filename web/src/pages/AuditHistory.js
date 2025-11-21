@@ -34,8 +34,12 @@ import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
 import { showSuccess, showError } from '../utils/toast';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 const AuditHistory = () => {
+  const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
   const [audits, setAudits] = useState([]);
   const [filteredAudits, setFilteredAudits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -194,14 +198,18 @@ const AuditHistory = () => {
                 >
                   Export Selected ({selectedAudits.size})
                 </Button>
-                <Button
-                  startIcon={<DeleteIcon />}
-                  variant="outlined"
-                  color="error"
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  Delete Selected ({selectedAudits.size})
-                </Button>
+                {(hasPermission(userPermissions, 'delete_audits') || 
+                  hasPermission(userPermissions, 'manage_audits') || 
+                  isAdmin(user)) && (
+                  <Button
+                    startIcon={<DeleteIcon />}
+                    variant="outlined"
+                    color="error"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    Delete Selected ({selectedAudits.size})
+                  </Button>
+                )}
               </>
             )}
             <ExportMenu audits={filteredAudits} />

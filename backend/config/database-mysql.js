@@ -94,6 +94,7 @@ const createTables = async () => {
     // Locations table
     `CREATE TABLE IF NOT EXISTS locations (
       id INT AUTO_INCREMENT PRIMARY KEY,
+      store_number VARCHAR(50),
       name VARCHAR(255) NOT NULL,
       address TEXT,
       city VARCHAR(255),
@@ -101,7 +102,9 @@ const createTables = async () => {
       country VARCHAR(255),
       phone VARCHAR(50),
       email VARCHAR(255),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     
     // Audits table

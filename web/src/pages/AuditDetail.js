@@ -427,9 +427,10 @@ const AuditDetail = () => {
               {item.photo_url && (
                 <Box sx={{ mt: 2 }}>
                   <img 
-                    src={`http://localhost:5000${item.photo_url}`} 
+                    src={item.photo_url.startsWith('http') ? item.photo_url : item.photo_url} 
                     alt="Audit evidence"
                     style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px' }}
+                    crossOrigin="anonymous"
                   />
                 </Box>
               )}

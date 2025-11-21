@@ -1,45 +1,129 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 
 const router = express.Router();
 
-// Get all scheduled audits
+// Helper function to check if user is admin
+const isAdminUser = (user) => {
+  if (!user) return false;
+  const role = user.role ? user.role.toLowerCase() : '';
+  return role === 'admin' || role === 'superadmin';
+};
+
+// Get all scheduled audits (admins see all, regular users see their own)
+// Users can see their own scheduled audits - no permission check needed (similar to audits route)
 router.get('/', authenticate, (req, res) => {
+  console.log('[Scheduled Audits] Route hit - GET /api/scheduled-audits');
+  console.log('[Scheduled Audits] User object:', JSON.stringify(req.user, null, 2));
+  
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const userEmail = req.user.email || '';
+  const isAdmin = isAdminUser(req.user);
+  
+  console.log('[Scheduled Audits] User ID:', userId, 'Email:', userEmail, 'Is Admin:', isAdmin);
 
-  dbInstance.all(
-    `SELECT sa.*, ct.name as template_name, l.name as location_name, u.name as assigned_to_name
-     FROM scheduled_audits sa
-     JOIN checklist_templates ct ON sa.template_id = ct.id
-     LEFT JOIN locations l ON sa.location_id = l.id
-     LEFT JOIN users u ON sa.assigned_to = u.id
-     WHERE sa.created_by = ? OR sa.assigned_to = ?
-     ORDER BY sa.scheduled_date ASC`,
-    [userId, userId],
-    (err, schedules) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ schedules });
+  let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, l.store_number,
+               u.name as assigned_to_name, u.email as assigned_to_email,
+               creator.name as created_by_name, creator.email as created_by_email
+               FROM scheduled_audits sa
+               JOIN checklist_templates ct ON sa.template_id = ct.id
+               LEFT JOIN locations l ON sa.location_id = l.id
+               LEFT JOIN users u ON sa.assigned_to = u.id
+               LEFT JOIN users creator ON sa.created_by = creator.id`;
+
+  // Get database type for query compatibility
+  const dbType = process.env.DB_TYPE || 'sqlite';
+  
+  let params = [];
+  if (isAdmin) {
+    query += ` WHERE 1=1`;
+  } else {
+    // For regular users, show audits where:
+    // 1. They created it (created_by = userId)
+    // 2. They are assigned to it (assigned_to = userId)
+    // 3. OR assigned user's email matches (for cases where assigned_to might be wrong but email matches)
+    
+    // Use different syntax for SQL Server vs others
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      // SQL Server syntax
+      query += ` WHERE sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
+        SELECT id FROM users WHERE LOWER(email) = LOWER(?)
+      )`;
+    } else {
+      // SQLite/MySQL/PostgreSQL syntax
+      // Check if assigned_to matches a user with the same email
+      query += ` WHERE sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
+        SELECT 1 FROM users u2 
+        WHERE u2.id = sa.assigned_to 
+        AND LOWER(u2.email) = LOWER(?)
+      ) OR sa.assigned_to IN (
+        SELECT id FROM users WHERE LOWER(email) = LOWER(?)
+      )`;
     }
-  );
+    // For SQL Server, we only need 3 params, for others we need 4
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      params = [userId, userId, userEmail];
+    } else {
+      params = [userId, userId, userEmail, userEmail];
+    }
+  }
+
+  query += ` ORDER BY sa.scheduled_date ASC`;
+
+  dbInstance.all(query, params, (err, schedules) => {
+    if (err) {
+      console.error('Error fetching scheduled audits:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+    
+    // Debug logging
+    console.log(`[Scheduled Audits] User: ${req.user.name} (ID: ${userId}, Email: ${userEmail})`);
+    console.log(`[Scheduled Audits] Query: ${query}`);
+    console.log(`[Scheduled Audits] Params:`, params);
+    console.log(`[Scheduled Audits] Found ${schedules.length} schedules`);
+    if (schedules.length > 0) {
+      console.log(`[Scheduled Audits] Sample schedule:`, {
+        id: schedules[0].id,
+        assigned_to: schedules[0].assigned_to,
+        assigned_to_name: schedules[0].assigned_to_name,
+        assigned_to_email: schedules[0].assigned_to_email,
+        created_by: schedules[0].created_by
+      });
+    }
+    
+    res.json({ schedules });
+  });
 });
 
 // Get single scheduled audit
 router.get('/:id', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const userEmail = req.user.email || '';
+  const isAdmin = isAdminUser(req.user);
 
-  dbInstance.get(
-    `SELECT sa.*, ct.name as template_name, l.name as location_name, u.name as assigned_to_name
+  let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, u.name as assigned_to_name, u.email as assigned_to_email
      FROM scheduled_audits sa
      JOIN checklist_templates ct ON sa.template_id = ct.id
      LEFT JOIN locations l ON sa.location_id = l.id
      LEFT JOIN users u ON sa.assigned_to = u.id
-     WHERE sa.id = ? AND (sa.created_by = ? OR sa.assigned_to = ?)`,
-    [req.params.id, userId, userId],
+     WHERE sa.id = ?`;
+  
+  let params = [req.params.id];
+  
+  if (!isAdmin) {
+    query += ` AND (sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
+      SELECT 1 FROM users u2 
+      WHERE u2.id = sa.assigned_to 
+      AND LOWER(u2.email) = LOWER(?)
+    ))`;
+    params.push(userId, userId, userEmail);
+  }
+
+  dbInstance.get(query, params,
     (err, schedule) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -53,7 +137,7 @@ router.get('/:id', authenticate, (req, res) => {
 });
 
 // Create scheduled audit
-router.post('/', authenticate, (req, res) => {
+router.post('/', authenticate, requirePermission('manage_scheduled_audits', 'create_scheduled_audits'), (req, res) => {
   const { template_id, location_id, scheduled_date, frequency, assigned_to } = req.body;
   const dbInstance = db.getDb();
 
@@ -92,7 +176,7 @@ router.post('/', authenticate, (req, res) => {
 });
 
 // Update scheduled audit
-router.put('/:id', authenticate, (req, res) => {
+router.put('/:id', authenticate, requirePermission('manage_scheduled_audits', 'update_scheduled_audits'), (req, res) => {
   const { id } = req.params;
   const { template_id, location_id, scheduled_date, frequency, assigned_to, status } = req.body;
   const dbInstance = db.getDb();
@@ -129,7 +213,7 @@ router.put('/:id', authenticate, (req, res) => {
 });
 
 // Delete scheduled audit
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id', authenticate, requirePermission('manage_scheduled_audits', 'delete_scheduled_audits'), (req, res) => {
   const { id } = req.params;
   const dbInstance = db.getDb();
   const userId = req.user.id;
@@ -145,17 +229,24 @@ router.delete('/:id', authenticate, (req, res) => {
 // Get scheduled audits report
 router.get('/report', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const { date_from, date_to, location_id, template_id, status, frequency } = req.query;
   const dbInstance = db.getDb();
 
-  let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, u.name as assigned_to_name
-     FROM scheduled_audits sa
-     JOIN checklist_templates ct ON sa.template_id = ct.id
-     LEFT JOIN locations l ON sa.location_id = l.id
-     LEFT JOIN users u ON sa.assigned_to = u.id
-     WHERE sa.created_by = ? OR sa.assigned_to = ?`;
+  let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, l.store_number,
+               u.name as assigned_to_name, u.email as assigned_to_email
+               FROM scheduled_audits sa
+               JOIN checklist_templates ct ON sa.template_id = ct.id
+               LEFT JOIN locations l ON sa.location_id = l.id
+               LEFT JOIN users u ON sa.assigned_to = u.id`;
   
-  const params = [userId, userId];
+  let params = [];
+  if (isAdmin) {
+    query += ` WHERE 1=1`;
+  } else {
+    query += ` WHERE sa.created_by = ? OR sa.assigned_to = ?`;
+    params = [userId, userId];
+  }
 
   // Apply filters
   const dbType = process.env.DB_TYPE || 'sqlite';
@@ -282,6 +373,171 @@ router.get('/report', authenticate, (req, res) => {
         created_at: s.created_at
       }))
     });
+  });
+});
+
+// Bulk import scheduled audits from CSV
+router.post('/import', authenticate, requirePermission('manage_scheduled_audits', 'create_scheduled_audits'), async (req, res) => {
+  const dbInstance = db.getDb();
+  const createdBy = req.user.id;
+  const { schedules } = req.body; // Array of schedule objects
+
+  if (!Array.isArray(schedules) || schedules.length === 0) {
+    return res.status(400).json({ error: 'Schedules array is required' });
+  }
+
+  const results = {
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  // Helper functions
+  const findUser = (employeeId, name) => {
+    return new Promise((resolve, reject) => {
+      // Try case-insensitive name match first
+      dbInstance.get(
+        'SELECT id, name, email FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1',
+        [name],
+        (err, user) => {
+          if (err) return reject(err);
+          if (user) return resolve(user);
+          
+          // Try email match with employee ID (case-insensitive)
+          if (employeeId) {
+            dbInstance.get(
+              'SELECT id, name, email FROM users WHERE LOWER(email) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) LIMIT 1',
+              [`%${employeeId}%`, `${employeeId}@%`],
+              (err, user) => {
+                if (err) return reject(err);
+                resolve(user);
+              }
+            );
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
+  };
+
+  const findTemplate = (checklistName) => {
+    return new Promise((resolve, reject) => {
+      dbInstance.get(
+        'SELECT id, name FROM checklist_templates WHERE name = ? LIMIT 1',
+        [checklistName],
+        (err, template) => {
+          if (err) return reject(err);
+          if (template) return resolve(template);
+          
+          dbInstance.get(
+            'SELECT id, name FROM checklist_templates WHERE LOWER(name) LIKE ? LIMIT 1',
+            [`%${checklistName.toLowerCase()}%`],
+            (err, template) => {
+              if (err) return reject(err);
+              resolve(template);
+            }
+          );
+        }
+      );
+    });
+  };
+
+  const findOrCreateLocation = (storeNumber, storeName) => {
+    return new Promise((resolve, reject) => {
+      dbInstance.get(
+        'SELECT id, name FROM locations WHERE name = ? OR name LIKE ? LIMIT 1',
+        [storeName, `%${storeNumber}%`],
+        (err, location) => {
+          if (err) return reject(err);
+          
+          if (location) {
+            return resolve(location);
+          }
+          
+          const locationName = storeName || `Store ${storeNumber}`;
+          dbInstance.run(
+            'INSERT INTO locations (name, address, created_by) VALUES (?, ?, ?)',
+            [locationName, `Store ${storeNumber}`, createdBy],
+            function(err) {
+              if (err) return reject(err);
+              resolve({ id: this.lastID, name: locationName });
+            }
+          );
+        }
+      );
+    });
+  };
+
+  const createScheduledAudit = (templateId, locationId, assignedTo, scheduledDate) => {
+    return new Promise((resolve, reject) => {
+      dbInstance.run(
+        `INSERT INTO scheduled_audits (template_id, location_id, assigned_to, scheduled_date, frequency, next_run_date, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [templateId, locationId, assignedTo, scheduledDate, 'once', scheduledDate, 'pending', createdBy],
+        function(err, result) {
+          if (err) return reject(err);
+          const scheduleId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
+          resolve(scheduleId);
+        }
+      );
+    });
+  };
+
+  // Process each schedule
+  for (let i = 0; i < schedules.length; i++) {
+    const schedule = schedules[i];
+    const { employee, name, checklist, store, storeName, startDate, status } = schedule;
+
+    try {
+      if (!name || !checklist || !startDate) {
+        results.skipped++;
+        results.errors.push(`Row ${i + 1}: Missing required fields`);
+        continue;
+      }
+
+      // Parse date
+      const scheduledDate = new Date(startDate);
+      if (isNaN(scheduledDate.getTime())) {
+        results.skipped++;
+        results.errors.push(`Row ${i + 1}: Invalid date format: ${startDate}`);
+        continue;
+      }
+      const dateStr = scheduledDate.toISOString().split('T')[0];
+
+      // Find user
+      const user = await findUser(employee || '', name);
+      if (!user) {
+        results.skipped++;
+        results.errors.push(`Row ${i + 1}: User not found: ${name}`);
+        continue;
+      }
+
+      // Find template
+      const template = await findTemplate(checklist);
+      if (!template) {
+        results.skipped++;
+        results.errors.push(`Row ${i + 1}: Template not found: ${checklist}`);
+        continue;
+      }
+
+      // Find or create location
+      const location = await findOrCreateLocation(store || '', storeName || '');
+
+      // Create scheduled audit
+      await createScheduledAudit(template.id, location.id, user.id, dateStr);
+
+      results.success++;
+    } catch (error) {
+      results.failed++;
+      results.errors.push(`Row ${i + 1}: ${error.message}`);
+    }
+  }
+
+  res.json({
+    message: `Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`,
+    results
   });
 });
 

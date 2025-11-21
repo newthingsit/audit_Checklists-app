@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 
 const router = express.Router();
 
@@ -93,7 +94,7 @@ const insertItemsWithOptions = (dbInstance, templateId, items = [], defaultCateg
 };
 
 // Get all checklist templates
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, requirePermission('display_templates', 'view_templates', 'manage_templates'), (req, res) => {
   const dbInstance = db.getDb();
   const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
   
@@ -126,7 +127,8 @@ router.get('/', authenticate, (req, res) => {
       console.error('Checklists error:', err);
       console.error('Query:', query);
       console.error('DB Type:', dbType);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     res.json({ templates: templates || [] });
   });
@@ -134,7 +136,32 @@ router.get('/', authenticate, (req, res) => {
 
 // Get single checklist template with items
 router.get('/:id', authenticate, (req, res) => {
-  const dbInstance = db.getDb();
+  const { getUserPermissions, hasPermission } = require('../middleware/permissions');
+  const isAdmin = isAdminUser(req.user);
+  
+  // Check permissions - allow if user has template permissions OR start_scheduled_audits permission
+  getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+    if (permErr) {
+      console.error('Error fetching permissions:', permErr);
+      return res.status(500).json({ error: 'Error checking permissions' });
+    }
+
+    const canView = isAdmin || 
+                   hasPermission(userPermissions, 'display_templates') ||
+                   hasPermission(userPermissions, 'view_templates') ||
+                   hasPermission(userPermissions, 'manage_templates') ||
+                   hasPermission(userPermissions, 'start_scheduled_audits') ||
+                   hasPermission(userPermissions, 'manage_scheduled_audits');
+
+    if (!canView) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Insufficient permissions',
+        required: ['display_templates', 'view_templates', 'manage_templates', 'start_scheduled_audits'],
+        user_permissions: userPermissions
+      });
+    }
+
+    const dbInstance = db.getDb();
   const templateId = req.params.id;
 
   dbInstance.get(
@@ -181,10 +208,13 @@ router.get('/:id', authenticate, (req, res) => {
                 optionsByItem[option.item_id].push(option);
               });
               
-              // Attach options to items
+              // Attach options to items, normalize option_text to text for compatibility
               const itemsWithOptions = items.map(item => ({
                 ...item,
-                options: optionsByItem[item.id] || []
+                options: (optionsByItem[item.id] || []).map(option => ({
+                  ...option,
+                  text: option.option_text // Add text field for mobile compatibility
+                }))
               }));
               
               res.json({ template, items: itemsWithOptions });
@@ -192,47 +222,76 @@ router.get('/:id', authenticate, (req, res) => {
           );
         }
       );
-    }
-  );
+    });
+  });
 });
 
 // Create new checklist template
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requirePermission('manage_templates', 'create_templates', 'edit_templates'), async (req, res) => {
   const { name, category, description, items } = req.body;
   const dbInstance = db.getDb();
 
-  if (!name || !category) {
-    return res.status(400).json({ error: 'Name and category are required' });
+  if (!name) {
+    return res.status(400).json({ error: 'Template name is required' });
   }
 
   try {
     const { lastID: templateId } = await runDb(
       dbInstance,
       'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-      [name, category, description || '', req.user.id]
+      [name, category || '', description || '', req.user.id]
     );
 
     if (Array.isArray(items) && items.length > 0) {
-      await insertItemsWithOptions(dbInstance, templateId, items, category);
+      await insertItemsWithOptions(dbInstance, templateId, items, category || '');
     }
 
     res.status(201).json({ id: templateId, message: 'Template created successfully' });
   } catch (error) {
     console.error('Error creating checklist template:', error);
-    res.status(500).json({ error: 'Error creating template', details: error.message });
+    console.error('Error creating template:', error);
+    res.status(500).json({ error: 'Error creating template' });
   }
 });
 
 // Import checklist template from CSV
-router.post('/import', authenticate, (req, res) => {
+router.post('/import', authenticate, requirePermission('manage_templates', 'create_templates', 'edit_templates'), (req, res) => {
   const { csvData, templateName, category, description } = req.body;
   const dbInstance = db.getDb();
 
-  if (!csvData || !templateName || !category) {
-    return res.status(400).json({ error: 'CSV data, template name, and category are required' });
+  if (!csvData || !templateName) {
+    return res.status(400).json({ error: 'CSV data and template name are required' });
   }
 
   try {
+    // Improved CSV parser that handles quoted fields
+    const parseCSVLine = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            current += '"';
+            i++; // Skip next quote
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
     // Parse CSV data
     const lines = csvData.split('\n').filter(line => line.trim());
     if (lines.length < 2) {
@@ -240,45 +299,63 @@ router.post('/import', authenticate, (req, res) => {
     }
 
     // Parse header
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const titleIndex = headers.findIndex(h => h.includes('title') || h.includes('item'));
+    const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const titleIndex = headers.findIndex(h => h.includes('title') || h.includes('item') || h === 'name');
     const descIndex = headers.findIndex(h => h.includes('description') || h.includes('desc'));
     const catIndex = headers.findIndex(h => h.includes('category') || h.includes('cat'));
     const reqIndex = headers.findIndex(h => h.includes('required') || h.includes('mandatory'));
     const optionsIndex = headers.findIndex(h => h.includes('option'));
 
     if (titleIndex === -1) {
-      return res.status(400).json({ error: 'CSV must have a "title" or "item" column' });
+      return res.status(400).json({ error: 'CSV must have a "title", "item", or "name" column' });
     }
+
+    // Default options if none provided
+    const defaultOptions = [
+      { option_text: 'Yes', mark: '3', order_index: 0 },
+      { option_text: 'No', mark: '0', order_index: 1 },
+      { option_text: 'N/A', mark: 'NA', order_index: 2 }
+    ];
 
     // Parse data rows
     const items = [];
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      if (values[titleIndex]) {
+      const values = parseCSVLine(lines[i]);
+      const title = values[titleIndex]?.replace(/^"|"$/g, '').trim();
+      
+      if (title) {
         const itemOptions = [];
         if (optionsIndex !== -1 && values[optionsIndex]) {
-          values[optionsIndex]
-            .split(';')
-            .map(option => option.trim())
-            .filter(Boolean)
-            .forEach((option, optionIndex) => {
-              const [label, score] = option.split(':');
+          const optionsStr = values[optionsIndex].replace(/^"|"$/g, '');
+          optionsStr.split(';').forEach((option, optionIndex) => {
+            const trimmed = option.trim();
+            if (trimmed) {
+              const [label, score] = trimmed.split(':').map(s => s.trim());
               if (label) {
                 itemOptions.push({
-                  option_text: label.trim(),
-                  mark: score !== undefined ? score.trim() : '',
+                  option_text: label,
+                  mark: score || '',
                   order_index: optionIndex
                 });
               }
-            });
+            }
+          });
+        }
+
+        // If no options provided, use defaults
+        if (itemOptions.length === 0) {
+          itemOptions.push(...defaultOptions);
         }
 
         items.push({
-          title: values[titleIndex],
-          description: descIndex !== -1 ? values[descIndex] || '' : '',
-          category: catIndex !== -1 ? values[catIndex] || category : category,
-          required: reqIndex !== -1 ? (values[reqIndex]?.toLowerCase() === 'yes' || values[reqIndex]?.toLowerCase() === 'true' || values[reqIndex] === '1') : true,
+          title,
+          description: descIndex !== -1 ? (values[descIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
+          category: catIndex !== -1 ? (values[catIndex]?.replace(/^"|"$/g, '').trim() || '') : (category || ''),
+          required: reqIndex !== -1 
+            ? (values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'yes' || 
+               values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'true' || 
+               values[reqIndex]?.replace(/^"|"$/g, '') === '1')
+            : true,
           options: itemOptions
         });
       }
@@ -292,7 +369,7 @@ router.post('/import', authenticate, (req, res) => {
     runDb(
       dbInstance,
       'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-      [templateName, category, description || '', req.user.id]
+      [templateName, category || '', description || '', req.user.id]
     ).then(async ({ lastID: templateId }) => {
       if (!templateId || templateId === 0) {
         return res.status(500).json({ error: 'Failed to create template - no ID returned' });
@@ -300,7 +377,7 @@ router.post('/import', authenticate, (req, res) => {
 
       // Insert items with options using the helper function
       try {
-        await insertItemsWithOptions(dbInstance, templateId, items, category);
+        await insertItemsWithOptions(dbInstance, templateId, items, category || '');
         res.status(201).json({ 
           id: templateId, 
           message: `Template created successfully with ${items.length} items`,
@@ -308,28 +385,31 @@ router.post('/import', authenticate, (req, res) => {
         });
       } catch (error) {
         console.error('Error inserting items:', error);
-        res.status(500).json({ error: 'Error creating items', details: error.message });
+        console.error('Error inserting items:', error);
+        res.status(500).json({ error: 'Error creating items' });
       }
     }).catch((err) => {
       console.error('Error creating template:', err);
-      res.status(500).json({ error: 'Error creating template', details: err.message });
+      console.error('Error creating template:', err);
+      res.status(500).json({ error: 'Error creating template' });
     });
   } catch (error) {
     console.error('Error parsing CSV:', error);
-    res.status(400).json({ error: 'Error parsing CSV data', details: error.message });
+    console.error('Error parsing CSV:', error);
+    res.status(400).json({ error: 'Error parsing CSV data' });
   }
 });
 
 // Update checklist template
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_templates', 'update_templates'), async (req, res) => {
   const templateId = parseInt(req.params.id, 10);
   if (Number.isNaN(templateId)) {
     return res.status(400).json({ error: 'Invalid template ID' });
   }
 
   const { name, category, description, items } = req.body;
-  if (!name || !category) {
-    return res.status(400).json({ error: 'Name and category are required' });
+  if (!name) {
+    return res.status(400).json({ error: 'Template name is required' });
   }
 
   const dbInstance = db.getDb();
@@ -348,13 +428,13 @@ router.put('/:id', authenticate, async (req, res) => {
     await runDb(
       dbInstance,
       'UPDATE checklist_templates SET name = ?, category = ?, description = ? WHERE id = ?',
-      [name, category, description || '', templateId]
+      [name, category || '', description || '', templateId]
     );
 
     if (Array.isArray(items)) {
       await runDb(dbInstance, 'DELETE FROM checklist_items WHERE template_id = ?', [templateId]);
       if (items.length > 0) {
-        await insertItemsWithOptions(dbInstance, templateId, items, category);
+        await insertItemsWithOptions(dbInstance, templateId, items, category || '');
       }
     }
 
@@ -366,12 +446,13 @@ router.put('/:id', authenticate, async (req, res) => {
         error: 'Cannot update template because it is referenced by existing audits'
       });
     }
-    res.status(500).json({ error: 'Error updating template', details: error.message });
+    console.error('Error updating template:', error);
+    res.status(500).json({ error: 'Error updating template' });
   }
 });
 
 // Delete checklist template
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requirePermission('manage_templates', 'delete_templates'), async (req, res) => {
   const templateId = parseInt(req.params.id, 10);
   if (Number.isNaN(templateId)) {
     return res.status(400).json({ error: 'Invalid template ID' });
@@ -470,7 +551,8 @@ router.delete('/:id', authenticate, async (req, res) => {
     res.json({ message: 'Template deleted successfully' });
   } catch (error) {
     console.error('Error deleting checklist template:', error);
-    res.status(500).json({ error: 'Error deleting template', details: error.message });
+    console.error('Error deleting template:', error);
+    res.status(500).json({ error: 'Error deleting template' });
   }
 });
 

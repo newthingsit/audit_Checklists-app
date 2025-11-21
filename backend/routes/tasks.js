@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission, isAdminUser } = require('../middleware/permissions');
 const { createNotification } = require('./notifications');
 
 const router = express.Router();
 
 // Get all tasks for current user
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, requirePermission('view_tasks', 'manage_tasks'), (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const { status, priority, type, assigned_to } = req.query;
@@ -212,7 +213,7 @@ router.get('/:id', authenticate, (req, res) => {
 });
 
 // Create task
-router.post('/', authenticate, (req, res) => {
+router.post('/', authenticate, requirePermission('manage_tasks', 'create_tasks'), (req, res) => {
   const {
     title,
     description,
@@ -321,7 +322,7 @@ router.post('/', authenticate, (req, res) => {
 });
 
 // Update task
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks'), async (req, res) => {
   const { id } = req.params;
   const {
     title,
@@ -519,7 +520,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Delete task
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id', authenticate, requirePermission('manage_tasks', 'delete_tasks'), (req, res) => {
   const { id } = req.params;
   const dbInstance = db.getDb();
   const userId = req.user.id;

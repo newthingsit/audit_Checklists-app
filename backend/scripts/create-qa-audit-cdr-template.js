@@ -539,12 +539,16 @@ const templateData = {
       required: true,
       order_index: 84
     },
+    
+    // QA Requirement
     {
       title: 'QA and Cleaning Chemicals SOPs available, staff aware about it.',
-      category: 'Regulatory Requirement',
+      category: 'QA Requirement',
       required: true,
       order_index: 85
     },
+    
+    // Regulatory Requirement (continued)
     {
       title: 'Training done by FosTAC certified trainers as per the modules shared every month and staff aware/have knowledge of food safety as per training topics.',
       category: 'Regulatory Requirement',
@@ -846,16 +850,16 @@ const templateData = {
       order_index: 134
     },
     
-    // Acknowledgement
+    // ACKNOWLEDGEMENT
     {
       title: 'Manager on Duty',
-      category: 'Acknowledgement',
+      category: 'ACKNOWLEDGEMENT',
       required: false,
       order_index: 135
     },
     {
       title: 'Signature',
-      category: 'Acknowledgement',
+      category: 'ACKNOWLEDGEMENT',
       required: false,
       order_index: 136
     }

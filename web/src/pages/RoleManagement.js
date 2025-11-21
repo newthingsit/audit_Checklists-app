@@ -32,8 +32,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
-  Security as SecurityIcon,
-  Info as InfoIcon
+  Security as SecurityIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import Layout from '../components/Layout';
@@ -61,7 +60,7 @@ const normalizePermissionsSelection = (permissionDefs, selectedPermissions = [])
 };
 
 const RoleManagement = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +78,7 @@ const RoleManagement = () => {
   useEffect(() => {
     fetchRoles();
     fetchPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchRoles = async () => {
@@ -108,6 +108,7 @@ const RoleManagement = () => {
     if (searchTerm !== undefined) {
       fetchRoles();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm]);
 
   useEffect(() => {
@@ -182,6 +183,12 @@ const RoleManagement = () => {
       if (editingRole) {
         await axios.put(`/api/roles/${editingRole.id}`, formData);
         showSuccess('Role updated successfully');
+        
+        // Always refresh current user's permissions after role update
+        // This ensures permissions are up-to-date if the user has the updated role
+        if (currentUser) {
+          await refreshUser();
+        }
       } else {
         await axios.post('/api/roles', formData);
         showSuccess('Role created successfully');

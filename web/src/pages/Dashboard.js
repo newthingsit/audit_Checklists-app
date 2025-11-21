@@ -26,12 +26,35 @@ import RestaurantIcon from '@mui/icons-material/Restaurant';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { themeConfig } from '../config/theme';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
   const [stats, setStats] = useState({ templates: 0, audits: 0, completed: 0, pendingActions: 0 });
   const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Permission checks - permissions must come from role only
+  const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
+                         hasPermission(userPermissions, 'manage_audits') ||
+                         isAdmin(user);
+  const canViewActions = hasPermission(userPermissions, 'view_actions') ||
+                         hasPermission(userPermissions, 'manage_actions') ||
+                         isAdmin(user);
+  const canManageScheduled = hasPermission(userPermissions, 'manage_scheduled_audits') ||
+                             hasPermission(userPermissions, 'create_scheduled_audits') ||
+                             isAdmin(user);
+  const canManageTemplates = hasPermission(userPermissions, 'manage_templates') ||
+                             hasPermission(userPermissions, 'edit_templates') ||
+                             hasPermission(userPermissions, 'create_templates') ||
+                             isAdmin(user);
+  const canViewAudits = hasPermission(userPermissions, 'view_audits') ||
+                        hasPermission(userPermissions, 'manage_audits') ||
+                        hasPermission(userPermissions, 'view_own_audits') ||
+                        isAdmin(user);
 
   useEffect(() => {
     fetchData();
@@ -39,11 +62,26 @@ const Dashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [templatesRes, auditsRes, actionsRes] = await Promise.all([
-        axios.get('/api/templates'),
-        axios.get('/api/audits'),
-        axios.get('/api/actions').catch(() => ({ data: { actions: [] } }))
-      ]);
+      // Only fetch data if user has permission
+      const fetchPromises = [
+        // Templates - only if user can view templates
+        (hasPermission(userPermissions, 'display_templates') || 
+         hasPermission(userPermissions, 'view_templates') || 
+         hasPermission(userPermissions, 'manage_templates') || 
+         isAdmin(user))
+          ? axios.get('/api/templates').catch(() => ({ data: { templates: [] } }))
+          : Promise.resolve({ data: { templates: [] } }),
+        // Audits - only if user can view audits
+        canViewAudits
+          ? axios.get('/api/audits').catch(() => ({ data: { audits: [] } }))
+          : Promise.resolve({ data: { audits: [] } }),
+        // Actions - only if user can view actions
+        canViewActions 
+          ? axios.get('/api/actions').catch(() => ({ data: { actions: [] } }))
+          : Promise.resolve({ data: { actions: [] } })
+      ];
+
+      const [templatesRes, auditsRes, actionsRes] = await Promise.all(fetchPromises);
 
       const audits = auditsRes.data.audits || [];
       const completed = audits.filter(a => a.status === 'completed').length;
@@ -79,6 +117,7 @@ const Dashboard = () => {
   return (
     <Layout>
       <Container maxWidth="lg">
+        <>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
             Dashboard
@@ -89,121 +128,128 @@ const Dashboard = () => {
         </Box>
 
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Fade in timeout={600}>
-              <Card sx={{ 
-                background: themeConfig.dashboardCards.card1,
-                color: 'white',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
-                  <ChecklistIcon sx={{ fontSize: 120 }} />
-                </Box>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                      <ChecklistIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {stats.templates}
-                      </Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                        Templates
-                      </Typography>
-                    </Box>
+          {(hasPermission(userPermissions, 'display_templates') || 
+             hasPermission(userPermissions, 'view_templates') || 
+             hasPermission(userPermissions, 'manage_templates') || 
+             isAdmin(user)) && (
+            <Grid item xs={12} sm={6} md={3}>
+              <Fade in timeout={600}>
+                <Card sx={{ 
+                  background: themeConfig.dashboardCards.card1,
+                  color: 'white',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
+                    <ChecklistIcon sx={{ fontSize: 120 }} />
                   </Box>
-                </CardContent>
-              </Card>
-            </Fade>
-          </Grid>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                        <ChecklistIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                          {stats.templates}
+                        </Typography>
+                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                          Templates
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Fade>
+            </Grid>
+          )}
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Fade in timeout={800}>
-              <Card sx={{ 
-                background: themeConfig.dashboardCards.card2,
-                color: 'white',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
-                  <HistoryIcon sx={{ fontSize: 120 }} />
-                </Box>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                      <HistoryIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {stats.audits}
-                      </Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                        Total Audits
-                      </Typography>
+          {canViewAudits && (
+            <>
+              <Grid item xs={12} sm={6} md={3}>
+                <Fade in timeout={800}>
+                  <Card sx={{ 
+                    background: themeConfig.dashboardCards.card2,
+                    color: 'white',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
+                      <HistoryIcon sx={{ fontSize: 120 }} />
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Fade>
-          </Grid>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                          <HistoryIcon />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                            {stats.audits}
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                            Total Audits
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Fade>
+              </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Fade in timeout={1000}>
-              <Card sx={{ 
-                background: themeConfig.dashboardCards.card3,
-                color: 'white',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
-                  <CheckCircleIcon sx={{ fontSize: 120 }} />
-                </Box>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                      <CheckCircleIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {stats.completed}
-                      </Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                        Completed
-                      </Typography>
+              <Grid item xs={12} sm={6} md={3}>
+                <Fade in timeout={1000}>
+                  <Card sx={{ 
+                    background: themeConfig.dashboardCards.card3,
+                    color: 'white',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
+                      <CheckCircleIcon sx={{ fontSize: 120 }} />
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Fade>
-          </Grid>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                          <CheckCircleIcon />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                            {stats.completed}
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                            Completed
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Fade>
+              </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Fade in timeout={1200}>
-              <Card sx={{ 
-                background: themeConfig.dashboardCards.card4,
-                color: 'white',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
-                  <TrendingUpIcon sx={{ fontSize: 120 }} />
-                </Box>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                      <TrendingUpIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        {completionRate}%
-                      </Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                        Completion Rate
-                      </Typography>
+              <Grid item xs={12} sm={6} md={3}>
+                <Fade in timeout={1200}>
+                  <Card sx={{ 
+                    background: themeConfig.dashboardCards.card4,
+                    color: 'white',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}>
+                    <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
+                      <TrendingUpIcon sx={{ fontSize: 120 }} />
                     </Box>
-                  </Box>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                          <TrendingUpIcon />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                            {completionRate}%
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                            Completion Rate
+                          </Typography>
+                        </Box>
+                      </Box>
                   <LinearProgress 
                     variant="determinate" 
                     value={completionRate} 
@@ -221,41 +267,48 @@ const Dashboard = () => {
               </Card>
             </Fade>
           </Grid>
+            </>
+          )}
         </Grid>
 
-        <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
-                Recent Audits
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Your latest audit activities
-              </Typography>
+        {canViewAudits && (
+          <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Recent Audits
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Your latest audit activities
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {(hasPermission(userPermissions, 'view_scheduled_audits') || isAdmin(user)) && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<ScheduleIcon />}
+                    onClick={() => navigate('/scheduled')}
+                  >
+                    Scheduled
+                  </Button>
+                )}
+                {canCreateAudit && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => navigate('/checklists')}
+                    sx={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #5568d3 0%, #653a8f 100%)',
+                      }
+                    }}
+                  >
+                    New Audit
+                  </Button>
+                )}
+              </Box>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
-                startIcon={<ScheduleIcon />}
-                onClick={() => navigate('/scheduled')}
-              >
-                Scheduled
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => navigate('/checklists')}
-                sx={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #5568d3 0%, #653a8f 100%)',
-                  }
-                }}
-              >
-                New Audit
-              </Button>
-            </Box>
-          </Box>
 
           {recentAudits.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
@@ -266,14 +319,16 @@ const Dashboard = () => {
               <Typography variant="body2" color="text.secondary" paragraph>
                 Create your first audit to get started!
               </Typography>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => navigate('/checklists')}
-                sx={{ mt: 2 }}
-              >
-                Create First Audit
-              </Button>
+              {canCreateAudit && (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => navigate('/checklists')}
+                  sx={{ mt: 2 }}
+                >
+                  Create First Audit
+                </Button>
+              )}
             </Box>
           ) : (
             <Grid container spacing={3}>
@@ -343,6 +398,7 @@ const Dashboard = () => {
             </Grid>
           )}
         </Paper>
+        )}
 
         <Grid container spacing={3} sx={{ mt: 2 }}>
           <Grid item xs={12} md={6}>
@@ -351,42 +407,55 @@ const Dashboard = () => {
                 Quick Actions
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={() => navigate('/checklists')}
-                  sx={{ justifyContent: 'flex-start', py: 1.5 }}
-                >
-                  Start New Audit
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<ScheduleIcon />}
-                  onClick={() => navigate('/scheduled')}
-                  sx={{ justifyContent: 'flex-start', py: 1.5 }}
-                >
-                  Schedule Audit
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<ChecklistIcon />}
-                  onClick={() => navigate('/checklists')}
-                  sx={{ justifyContent: 'flex-start', py: 1.5 }}
-                >
-                  Manage Templates
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<HistoryIcon />}
-                  onClick={() => navigate('/audits')}
-                  sx={{ justifyContent: 'flex-start', py: 1.5 }}
-                >
-                  View All Audits
-                </Button>
+                {canCreateAudit && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => navigate('/checklists')}
+                    sx={{ justifyContent: 'flex-start', py: 1.5 }}
+                  >
+                    Start New Audit
+                  </Button>
+                )}
+                {canManageScheduled && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<ScheduleIcon />}
+                    onClick={() => navigate('/scheduled')}
+                    sx={{ justifyContent: 'flex-start', py: 1.5 }}
+                  >
+                    Schedule Audit
+                  </Button>
+                )}
+                {canManageTemplates && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<ChecklistIcon />}
+                    onClick={() => navigate('/checklists')}
+                    sx={{ justifyContent: 'flex-start', py: 1.5 }}
+                  >
+                    Manage Templates
+                  </Button>
+                )}
+                {canViewAudits && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<HistoryIcon />}
+                    onClick={() => navigate('/audits')}
+                    sx={{ justifyContent: 'flex-start', py: 1.5 }}
+                  >
+                    View All Audits
+                  </Button>
+                )}
+                {!canCreateAudit && !canManageScheduled && !canManageTemplates && !canViewAudits && (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                    No quick actions available
+                  </Typography>
+                )}
               </Box>
             </Paper>
           </Grid>
@@ -453,6 +522,7 @@ const Dashboard = () => {
             </Paper>
           </Grid>
         </Grid>
+        </>
       </Container>
     </Layout>
   );

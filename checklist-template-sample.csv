@@ -1,0 +1,10 @@
+title,description,category,required,options
+Designated hand wash sink,Ensure sink has soap and paper towels,Personal Hygiene,yes,"Yes:3;No:0;NA:NA"
+Food storage temperature,Check refrigerators for 4°C or below,Food Safety,yes,"Yes:3;No:0;NA:NA"
+Equipment cleanliness,Clean and sanitize food-contact surfaces,Cleanliness,yes,"Yes:3;No:0;NA:NA"
+Fire extinguisher present,Verify fire extinguisher is accessible and not expired,Safety,yes,"Yes:3;No:0;NA:NA"
+Staff wearing proper uniforms,All staff wearing clean uniforms and hairnets,Staff,yes,"Yes:3;No:0;NA:NA"
+Temperature logs maintained,Check that temperature logs are being filled daily,Compliance,yes,"Yes:3;No:0;NA:NA"
+Storage area organized,Storage area is clean and organized,Cleanliness,yes,"Yes:3;No:0;NA:NA"
+Equipment maintenance,All equipment in good working condition,Equipment,yes,"Yes:3;No:0;NA:NA"
+

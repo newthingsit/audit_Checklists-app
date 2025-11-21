@@ -80,6 +80,7 @@ const createTables = () => {
       // Locations table (must be created before audits table)
       db.run(`CREATE TABLE IF NOT EXISTS locations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_number TEXT,
         name TEXT NOT NULL,
         address TEXT,
         city TEXT,
@@ -87,7 +88,9 @@ const createTables = () => {
         country TEXT,
         phone TEXT,
         email TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id)
       )`);
 
       // Audits table
@@ -344,28 +347,28 @@ const seedDefaultRoles = () => {
         display_name: 'Administrator', 
         description: 'Full system access. Can manage users, roles, audits, and all settings.',
         is_system_role: 1,
-        permissions: JSON.stringify(['manage_users', 'manage_roles', 'manage_audits', 'manage_templates', 'manage_locations', 'view_analytics', 'export_data'])
+        permissions: JSON.stringify(['*'])
       },
       { 
         name: 'manager', 
         display_name: 'Manager', 
         description: 'Can manage audits, locations, and view reports. Cannot manage users or roles.',
         is_system_role: 1,
-        permissions: JSON.stringify(['manage_audits', 'manage_locations', 'view_analytics', 'export_data'])
+        permissions: JSON.stringify(['manage_audits', 'view_audits', 'manage_locations', 'view_locations', 'manage_tasks', 'view_tasks', 'manage_actions', 'view_actions', 'display_templates', 'edit_templates', 'delete_templates', 'manage_templates', 'view_templates', 'manage_scheduled_audits', 'view_scheduled_audits', 'start_scheduled_audits', 'view_analytics', 'export_data'])
       },
       { 
         name: 'auditor', 
         display_name: 'Auditor', 
         description: 'Can create and view audits, manage action items. Limited access to settings.',
         is_system_role: 1,
-        permissions: JSON.stringify(['create_audits', 'view_audits', 'manage_actions'])
+        permissions: JSON.stringify(['create_audits', 'view_audits', 'manage_actions', 'view_actions', 'create_tasks', 'view_tasks', 'update_tasks', 'display_templates', 'view_templates', 'view_scheduled_audits', 'start_scheduled_audits'])
       },
       { 
         name: 'user', 
         display_name: 'User', 
-        description: 'Basic access. Can view own audits and create action items.',
+        description: 'Basic access. Can view own audits, create action items, and start scheduled audits.',
         is_system_role: 1,
-        permissions: JSON.stringify(['view_own_audits', 'create_actions'])
+        permissions: JSON.stringify(['view_own_audits', 'create_actions', 'view_actions', 'view_tasks', 'update_tasks', 'display_templates', 'view_locations', 'start_scheduled_audits', 'view_scheduled_audits'])
       }
     ];
 

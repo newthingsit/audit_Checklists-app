@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission, isAdminUser } = require('../middleware/permissions');
 const { createNotification } = require('./notifications');
 
 const router = express.Router();
 
 // Create action plan from audit item or standalone
-router.post('/', authenticate, (req, res) => {
+router.post('/', authenticate, requirePermission('manage_actions', 'create_actions'), (req, res) => {
   const { audit_id, item_id, title, description, assigned_to, due_date, priority } = req.body;
   const dbInstance = db.getDb();
 
@@ -19,13 +20,19 @@ router.post('/', authenticate, (req, res) => {
     `INSERT INTO action_items (audit_id, item_id, title, description, assigned_to, due_date, priority, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
     [audit_id || null, item_id || null, title, description || '', assigned_to || null, due_date || null, priority || 'medium'],
-    async function(err) {
+    async function(err, result) {
       if (err) {
         console.error('Error creating action item:', err);
         return res.status(500).json({ error: 'Error creating action item', details: err.message });
       }
 
-      const actionItemId = this.lastID;
+      // Handle both SQL Server (result.lastID) and SQLite/MySQL/PostgreSQL (this.lastID)
+      const actionItemId = (result && result.lastID !== undefined) ? result.lastID : (this.lastID || 0);
+      
+      if (!actionItemId || actionItemId === 0) {
+        console.error('Failed to get action item ID after insert');
+        return res.status(500).json({ error: 'Failed to create action item - no ID returned' });
+      }
 
       // Send notification to assigned user
       if (assigned_to) {
@@ -94,7 +101,7 @@ router.get('/audit/:auditId', authenticate, (req, res) => {
 });
 
 // Get all action items for current user
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, requirePermission('view_actions', 'manage_actions'), (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const { status, priority } = req.query;
@@ -129,7 +136,7 @@ router.get('/', authenticate, (req, res) => {
 });
 
 // Update action item
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission('manage_actions', 'update_actions'), async (req, res) => {
   const { id } = req.params;
   const { status, title, description, assigned_to, due_date, priority, notes, auto_create_task } = req.body;
   const dbInstance = db.getDb();
@@ -233,8 +240,10 @@ router.put('/:id', authenticate, async (req, res) => {
                 currentAction.due_date || null,
                 req.user.id
               ],
-              async function(taskErr) {
-                if (!taskErr && this.lastID) {
+              async function(taskErr, taskResult) {
+                // Handle both SQL Server (result.lastID) and SQLite/MySQL/PostgreSQL (this.lastID)
+                const taskId = (taskResult && taskResult.lastID !== undefined) ? taskResult.lastID : (this.lastID || 0);
+                if (!taskErr && taskId) {
                   // Update action item to link to task
                   dbInstance.run(
                     'UPDATE action_items SET status = ? WHERE id = ?',
@@ -290,7 +299,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Delete action item
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id', authenticate, requirePermission('manage_actions', 'delete_actions'), (req, res) => {
   const { id } = req.params;
   const dbInstance = db.getDb();
 

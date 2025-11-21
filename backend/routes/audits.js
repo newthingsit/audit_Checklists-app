@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { isAdminUser } = require('../middleware/permissions');
 
 const getNextScheduledDate = (currentDate, frequency) => {
   if (!frequency) return null;
@@ -101,12 +102,6 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
 
 const router = express.Router();
 
-// Helper function to check if user is admin
-const isAdminUser = (user) => {
-  if (!user) return false;
-  const role = user.role ? user.role.toLowerCase() : '';
-  return role === 'admin' || role === 'superadmin';
-};
 
 // Get all audits for current user with filters (admins see all audits)
 router.get('/', authenticate, (req, res) => {
@@ -115,10 +110,13 @@ router.get('/', authenticate, (req, res) => {
   const isAdmin = isAdminUser(req.user);
   const { status, restaurant, template_id, date_from, date_to, min_score, max_score } = req.query;
 
-  let query = `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name, u.email as user_email
-     FROM audits a
-     JOIN checklist_templates ct ON a.template_id = ct.id
-     LEFT JOIN users u ON a.user_id = u.id`;
+  let query = `SELECT a.*, ct.name as template_name, ct.category, 
+               l.name as location_name, l.store_number,
+               u.name as user_name, u.email as user_email
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN locations l ON a.location_id = l.id
+               LEFT JOIN users u ON a.user_id = u.id`;
   
   // Admins see all audits, regular users only see their own
   let params = [];
@@ -173,9 +171,56 @@ router.get('/', authenticate, (req, res) => {
   dbInstance.all(query, params, (err, audits) => {
     if (err) {
       console.error('Error fetching audits:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     res.json({ audits: audits || [] });
+  });
+});
+
+// Get audit by scheduled_audit_id
+router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+  const scheduledId = req.params.scheduledId;
+  const isAdmin = isAdminUser(req.user);
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  const selectFields = `a.*, ct.name as template_name, ct.category, 
+               l.name as location_name, l.store_number,
+               u.name as user_name, u.email as user_email`;
+
+  let query = `${isSqlServer ? 'SELECT TOP 1' : 'SELECT'} ${selectFields}
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN locations l ON a.location_id = l.id
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE a.scheduled_audit_id = ?`;
+  
+  let params = [scheduledId];
+  
+  // Regular users can only see their own audits
+  if (!isAdmin) {
+    query += ' AND a.user_id = ?';
+    params.push(userId);
+  }
+
+  query += ' ORDER BY a.created_at DESC';
+  if (!isSqlServer) {
+    query += ' LIMIT 1';
+  }
+
+  dbInstance.get(query, params, (err, audit) => {
+    if (err) {
+      console.error('Error fetching audit by scheduled_id:', err);
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+    res.json({ audit });
   });
 });
 
@@ -244,10 +289,13 @@ router.get('/:id', authenticate, (req, res) => {
                 optionsByItem[option.item_id].push(option);
               });
               
-              // Attach options to items
+              // Attach options to items, normalize option_text to text for compatibility
               const itemsWithOptions = items.map(item => ({
                 ...item,
-                options: optionsByItem[item.item_id] || []
+                options: (optionsByItem[item.item_id] || []).map(option => ({
+                  ...option,
+                  text: option.option_text // Add text field for mobile compatibility
+                }))
               }));
               
               res.json({ audit, items: itemsWithOptions });
@@ -263,31 +311,51 @@ router.get('/:id', authenticate, (req, res) => {
 router.post('/', authenticate, (req, res) => {
   const { template_id, restaurant_name, location, location_id, team_id, notes, scheduled_audit_id } = req.body;
   const dbInstance = db.getDb();
+  const { requirePermission, getUserPermissions, hasPermission } = require('../middleware/permissions');
 
   if (!template_id || !restaurant_name) {
     return res.status(400).json({ error: 'Template ID and restaurant name are required' });
   }
 
+  // If creating audit from scheduled audit, check permission
   const validateScheduledAudit = (callback) => {
     if (!scheduled_audit_id) {
       return callback(null, null);
     }
-    dbInstance.get(
-      `SELECT * FROM scheduled_audits WHERE id = ? AND (created_by = ? OR assigned_to = ?)`,
-      [scheduled_audit_id, req.user.id, req.user.id],
-      (err, schedule) => {
-        if (err) {
-          return callback({ status: 500, message: 'Database error validating scheduled audit' });
-        }
-        if (!schedule) {
-          return callback({ status: 403, message: 'Scheduled audit not found or not assigned to you' });
-        }
-        if (schedule.status === 'completed') {
-          return callback({ status: 400, message: 'Scheduled audit is already completed' });
-        }
-        callback(null, schedule);
+    
+    // Check if user has permission to start scheduled audits
+    getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+      if (permErr) {
+        console.error('Error fetching permissions:', permErr);
+        return callback({ status: 500, message: 'Error checking permissions' });
       }
-    );
+
+      // Check if user has permission to start scheduled audits
+      const canStartScheduledAudit = hasPermission(userPermissions, 'start_scheduled_audits') || 
+                                      hasPermission(userPermissions, 'manage_scheduled_audits') ||
+                                      isAdminUser(req.user);
+
+      if (!canStartScheduledAudit) {
+        return callback({ status: 403, message: 'You do not have permission to start scheduled audits' });
+      }
+
+      dbInstance.get(
+        `SELECT * FROM scheduled_audits WHERE id = ? AND (created_by = ? OR assigned_to = ?)`,
+        [scheduled_audit_id, req.user.id, req.user.id],
+        (err, schedule) => {
+          if (err) {
+            return callback({ status: 500, message: 'Database error validating scheduled audit' });
+          }
+          if (!schedule) {
+            return callback({ status: 403, message: 'Scheduled audit not found or not assigned to you' });
+          }
+          if (schedule.status === 'completed') {
+            return callback({ status: 400, message: 'Scheduled audit is already completed' });
+          }
+          callback(null, schedule);
+        }
+      );
+    });
   };
 
   validateScheduledAudit((scheduleErr, linkedSchedule) => {
@@ -317,7 +385,8 @@ router.post('/', authenticate, (req, res) => {
             function(err, result) {
               if (err) {
                 console.error('Error creating audit:', err);
-                return res.status(500).json({ error: 'Error creating audit', details: err.message });
+                console.error('Error creating audit:', err);
+                return res.status(500).json({ error: 'Error creating audit' });
               }
 
               // Handle both SQL Server (result.lastID) and SQLite (this.lastID)
@@ -348,7 +417,8 @@ router.post('/', authenticate, (req, res) => {
                       if (err) {
                         hasError = true;
                         console.error('Error creating audit item:', err);
-                        return res.status(500).json({ error: 'Error creating audit items', details: err.message });
+                        console.error('Error creating audit items:', err);
+                        return res.status(500).json({ error: 'Error creating audit items' });
                       }
 
                       completed++;
@@ -376,9 +446,29 @@ router.put('/:id', authenticate, (req, res) => {
   const { restaurant_name, location, location_id, notes } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const { getUserPermissions, hasPermission } = require('../middleware/permissions');
+  const isAdmin = isAdminUser(req.user);
 
-  // Verify audit belongs to user
-  dbInstance.get('SELECT * FROM audits WHERE id = ? AND user_id = ?', [auditId, userId], (err, audit) => {
+  // Check permissions first
+  getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+    if (permErr) {
+      console.error('Error fetching permissions:', permErr);
+      return res.status(500).json({ error: 'Error checking permissions' });
+    }
+
+    const canUpdate = isAdmin || 
+                     hasPermission(userPermissions, 'update_audits') ||
+                     hasPermission(userPermissions, 'manage_audits');
+
+    if (!canUpdate) {
+      return res.status(403).json({ error: 'You do not have permission to update audits' });
+    }
+
+    // Verify audit belongs to user (or admin can update any)
+    const whereClause = isAdmin ? 'id = ?' : 'id = ? AND user_id = ?';
+    const queryParams = isAdmin ? [auditId] : [auditId, userId];
+    
+    dbInstance.get(`SELECT * FROM audits WHERE ${whereClause}`, queryParams, (err, audit) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -423,6 +513,7 @@ router.put('/:id', authenticate, (req, res) => {
         res.json({ message: 'Audit updated successfully' });
       }
     );
+    });
   });
 });
 
@@ -714,14 +805,43 @@ router.delete('/:id', authenticate, (req, res) => {
   const auditId = req.params.id;
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const { requirePermission, getUserPermissions, hasPermission } = require('../middleware/permissions');
+  const isAdmin = isAdminUser(req.user);
 
-  // Verify audit belongs to user
-  dbInstance.get('SELECT * FROM audits WHERE id = ? AND user_id = ?', [auditId, userId], (err, audit) => {
+  // Check permissions first
+  getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+    if (permErr) {
+      console.error('Error fetching permissions:', permErr);
+      return res.status(500).json({ error: 'Error checking permissions' });
+    }
+
+    const canDelete = isAdmin || 
+                      hasPermission(userPermissions, 'delete_audits') ||
+                      hasPermission(userPermissions, 'manage_audits');
+
+    if (!canDelete) {
+      return res.status(403).json({ error: 'You do not have permission to delete audits' });
+    }
+
+    // Verify audit exists and check ownership (admins can delete any audit, others only their own)
+    let query = 'SELECT * FROM audits WHERE id = ?';
+    let params = [auditId];
+    
+    if (!isAdmin) {
+      query += ' AND user_id = ?';
+      params.push(userId);
+    }
+  
+  dbInstance.get(query, params, (err, audit) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
     if (!audit) {
-      return res.status(404).json({ error: 'Audit not found' });
+      if (isAdmin) {
+        return res.status(404).json({ error: 'Audit not found' });
+      } else {
+        return res.status(403).json({ error: 'Audit not found or you do not have permission to delete it' });
+      }
     }
 
     // Delete audit items first (cascade)
@@ -745,6 +865,7 @@ router.delete('/:id', authenticate, (req, res) => {
         });
       });
     });
+    });
   });
 });
 
@@ -753,51 +874,62 @@ router.post('/bulk-delete', authenticate, (req, res) => {
   const { auditIds } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
 
   if (!auditIds || !Array.isArray(auditIds) || auditIds.length === 0) {
     return res.status(400).json({ error: 'Audit IDs are required' });
   }
 
-  // Verify all audits belong to user
+  // Verify audits exist and check ownership (admins can delete any audit)
   const placeholders = auditIds.map(() => '?').join(',');
-  dbInstance.all(
-    `SELECT id FROM audits WHERE id IN (${placeholders}) AND user_id = ?`,
-    [...auditIds, userId],
-    (err, validAudits) => {
+  let query = `SELECT id FROM audits WHERE id IN (${placeholders})`;
+  let params = [...auditIds];
+  
+  // Non-admin users can only delete their own audits
+  if (!isAdmin) {
+    query += ' AND user_id = ?';
+    params.push(userId);
+  }
+  
+  dbInstance.all(query, params, (err, validAudits) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Check if all requested audits were found
+    if (validAudits.length !== auditIds.length) {
+      if (isAdmin) {
+        return res.status(404).json({ error: 'Some audits were not found' });
+      } else {
+        return res.status(403).json({ error: 'Some audits do not belong to you or were not found' });
+      }
+    }
+
+    const validIds = validAudits.map(a => a.id);
+    const validPlaceholders = validIds.map(() => '?').join(',');
+
+    // Delete audit items
+    dbInstance.run(`DELETE FROM audit_items WHERE audit_id IN (${validPlaceholders})`, validIds, (err) => {
       if (err) {
-        return res.status(500).json({ error: 'Database error' });
+        return res.status(500).json({ error: 'Error deleting audit items' });
       }
 
-      if (validAudits.length !== auditIds.length) {
-        return res.status(403).json({ error: 'Some audits do not belong to you' });
-      }
-
-      const validIds = validAudits.map(a => a.id);
-      const validPlaceholders = validIds.map(() => '?').join(',');
-
-      // Delete audit items
-      dbInstance.run(`DELETE FROM audit_items WHERE audit_id IN (${validPlaceholders})`, validIds, (err) => {
+      // Delete action items
+      dbInstance.run(`DELETE FROM action_items WHERE audit_id IN (${validPlaceholders})`, validIds, (err) => {
         if (err) {
-          return res.status(500).json({ error: 'Error deleting audit items' });
+          return res.status(500).json({ error: 'Error deleting action items' });
         }
 
-        // Delete action items
-        dbInstance.run(`DELETE FROM action_items WHERE audit_id IN (${validPlaceholders})`, validIds, (err) => {
+        // Delete audits
+        dbInstance.run(`DELETE FROM audits WHERE id IN (${validPlaceholders})`, validIds, function(err) {
           if (err) {
-            return res.status(500).json({ error: 'Error deleting action items' });
+            return res.status(500).json({ error: 'Error deleting audits' });
           }
-
-          // Delete audits
-          dbInstance.run(`DELETE FROM audits WHERE id IN (${validPlaceholders})`, validIds, function(err) {
-            if (err) {
-              return res.status(500).json({ error: 'Error deleting audits' });
-            }
-            res.json({ message: `${validIds.length} audit(s) deleted successfully`, deletedCount: validIds.length });
-          });
+          res.json({ message: `${validIds.length} audit(s) deleted successfully`, deletedCount: validIds.length });
         });
       });
-    }
-  );
+    });
+  });
 });
 
 module.exports = router;

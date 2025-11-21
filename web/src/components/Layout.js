@@ -13,7 +13,6 @@ import {
   IconButton,
   useTheme,
   useMediaQuery,
-  Tooltip,
   Avatar,
   Divider,
   Menu,
@@ -38,6 +37,7 @@ import TaskIcon from '@mui/icons-material/Task';
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 const drawerWidth = 260;
 
@@ -50,21 +50,37 @@ const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
 
+  const userPermissions = user?.permissions || [];
+  
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-    { text: 'Checklists', icon: <ChecklistIcon />, path: '/checklists' },
+    ...(hasPermission(userPermissions, 'display_templates') || hasPermission(userPermissions, 'view_templates') || isAdmin(user) ? [
+      { text: 'Checklists', icon: <ChecklistIcon />, path: '/checklists' }
+    ] : []),
     { text: 'Audit History', icon: <HistoryIcon />, path: '/audits' },
-    { text: 'Scheduled', icon: <ScheduleIcon />, path: '/scheduled' },
-    { text: 'Tasks', icon: <TaskIcon />, path: '/tasks' },
-    { text: 'Action Plans', icon: <AssignmentIcon />, path: '/actions' },
-    { text: 'Stores', icon: <StorefrontIcon />, path: '/stores' },
-    { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
-    { text: 'Monthly Scorecard', icon: <AssessmentIcon />, path: '/scorecard' },
-        { text: 'Profile', icon: <PersonIcon />, path: '/profile' },
-        ...(user?.role === 'admin' ? [
-          { text: 'Users', icon: <PeopleIcon />, path: '/users' },
-          { text: 'Roles', icon: <SecurityIcon />, path: '/roles' }
-        ] : []),
+    ...(hasPermission(userPermissions, 'view_scheduled_audits') || isAdmin(user) ? [
+      { text: 'Scheduled', icon: <ScheduleIcon />, path: '/scheduled' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_tasks') || isAdmin(user) ? [
+      { text: 'Tasks', icon: <TaskIcon />, path: '/tasks' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_actions') || isAdmin(user) ? [
+      { text: 'Action Plans', icon: <AssignmentIcon />, path: '/actions' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_locations') || isAdmin(user) ? [
+      { text: 'Stores', icon: <StorefrontIcon />, path: '/stores' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_analytics') || isAdmin(user) ? [
+      { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
+      { text: 'Monthly Scorecard', icon: <AssessmentIcon />, path: '/scorecard' }
+    ] : []),
+    { text: 'Profile', icon: <PersonIcon />, path: '/profile' },
+    ...(isAdmin(user) || hasPermission(userPermissions, 'create_users') || hasPermission(userPermissions, 'manage_users') || hasPermission(userPermissions, 'view_users') ? [
+      { text: 'Users', icon: <PeopleIcon />, path: '/users' }
+    ] : []),
+    ...(isAdmin(user) ? [
+      { text: 'Roles', icon: <SecurityIcon />, path: '/roles' }
+    ] : []),
   ];
 
   const handleDrawerToggle = () => {

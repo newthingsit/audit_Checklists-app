@@ -41,9 +41,8 @@ const AuditForm = () => {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [restaurantName, setRestaurantName] = useState('');
   const [locationId, setLocationId] = useState(searchParams.get('location_id') || '');
-  const [locationText, setLocationText] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [notes, setNotes] = useState('');
   const [activeStep, setActiveStep] = useState(0);
   const [responses, setResponses] = useState({});
@@ -61,6 +60,16 @@ const AuditForm = () => {
     fetchLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
+
+  // Update selectedLocation when locationId changes (e.g., from URL params)
+  useEffect(() => {
+    if (locationId && locations.length > 0) {
+      const location = locations.find(l => l.id === parseInt(locationId));
+      if (location) {
+        setSelectedLocation(location);
+      }
+    }
+  }, [locationId, locations]);
 
   const fetchTemplate = useCallback(async () => {
     try {
@@ -134,10 +143,8 @@ const AuditForm = () => {
     const newErrors = {};
     
     if (step === 0) {
-      if (!restaurantName.trim()) {
-        newErrors.restaurantName = 'Restaurant name is required';
-      } else if (restaurantName.trim().length < 2) {
-        newErrors.restaurantName = 'Restaurant name must be at least 2 characters';
+      if (!locationId) {
+        newErrors.locationId = 'Store selection is required';
       }
     } else if (step === 1) {
       const requiredItems = items.filter(item => item.required);
@@ -182,19 +189,21 @@ const AuditForm = () => {
     setError('');
 
     try {
+      // Get selected store details
+      const selectedStore = locations.find(l => l.id === parseInt(locationId));
+      if (!selectedStore) {
+        setError('Please select a store');
+        return;
+      }
+
       // Create audit
       const auditData = {
         template_id: parseInt(templateId),
-        restaurant_name: restaurantName,
+        restaurant_name: selectedStore.name,
+        location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+        location_id: parseInt(locationId),
         notes
       };
-      
-      // Add location_id if selected, otherwise add location text if provided
-      if (locationId) {
-        auditData.location_id = parseInt(locationId);
-      } else if (locationText) {
-        auditData.location = locationText;
-      }
 
       if (scheduledId) {
         auditData.scheduled_audit_id = parseInt(scheduledId, 10);
@@ -272,7 +281,7 @@ const AuditForm = () => {
     );
   }
 
-  const steps = ['Restaurant Information', 'Audit Checklist'];
+  const steps = ['Store Information', 'Audit Checklist'];
   const completedItems = Object.values(responses).filter(r => r === 'completed').length;
 
   return (
@@ -299,51 +308,38 @@ const AuditForm = () => {
         {activeStep === 0 && (
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Restaurant Information
+              Store Information
             </Typography>
-            <TextField
-              fullWidth
-              label="Restaurant Name"
-              required
-              value={restaurantName}
-              onChange={(e) => setRestaurantName(e.target.value)}
-              margin="normal"
-            />
             <Autocomplete
               fullWidth
               options={locations}
-              getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
-              value={locationId ? locations.find(l => l.id === parseInt(locationId)) || null : (locationText ? locationText : null)}
+              getOptionLabel={(option) => {
+                if (typeof option === 'string') return option;
+                return option.store_number 
+                  ? `Store ${option.store_number} - ${option.name}` 
+                  : option.name;
+              }}
+              value={selectedLocation}
               onChange={(event, newValue) => {
-                if (newValue && typeof newValue === 'object' && newValue.id) {
-                  // Selected from dropdown
-                  setLocationId(newValue.id.toString());
-                  setLocationText('');
-                } else if (typeof newValue === 'string') {
-                  // Custom text entered
-                  setLocationId('');
-                  setLocationText(newValue);
-                } else {
-                  // Cleared
-                  setLocationId('');
-                  setLocationText('');
+                setSelectedLocation(newValue);
+                setLocationId(newValue ? newValue.id.toString() : '');
+                if (newValue) {
+                  setErrors({ ...errors, locationId: '' });
                 }
               }}
-              onInputChange={(event, newInputValue, reason) => {
-                // Only update text if user is typing (not selecting)
-                if (reason === 'input' && !locationId) {
-                  setLocationText(newInputValue);
-                }
-              }}
-              freeSolo
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Store"
+                  label="Store *"
+                  required
                   margin="normal"
-                  placeholder="Search or type store name..."
+                  error={touched[0] && !!errors.locationId}
+                  helperText={touched[0] && errors.locationId}
+                  placeholder="Search and select a store..."
                 />
               )}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              noOptionsText="No stores found"
             />
             <TextField
               fullWidth
@@ -541,9 +537,10 @@ const AuditForm = () => {
                     {photos[item.id] && (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <img 
-                          src={`http://localhost:5000${photos[item.id]}`} 
+                          src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]} 
                           alt="Uploaded"
                           style={{ width: 50, height: 50, borderRadius: 4, objectFit: 'cover' }}
+                          crossOrigin="anonymous"
                         />
                         <IconButton
                           size="small"

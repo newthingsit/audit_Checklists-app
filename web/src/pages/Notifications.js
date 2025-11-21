@@ -8,7 +8,6 @@ import {
   CardContent,
   List,
   ListItem,
-  ListItemText,
   ListItemButton,
   IconButton,
   Chip,
@@ -32,6 +31,7 @@ const Notifications = () => {
 
   useEffect(() => {
     fetchNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabValue]);
 
   const fetchNotifications = async () => {

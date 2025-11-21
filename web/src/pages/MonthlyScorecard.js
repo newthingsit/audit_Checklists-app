@@ -18,7 +18,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip
 } from '@mui/material';
 import {
@@ -49,6 +48,7 @@ const MonthlyScorecard = () => {
   useEffect(() => {
     fetchLocations();
     fetchScorecard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, locationId]);
 
   const fetchLocations = async () => {

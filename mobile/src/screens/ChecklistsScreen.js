@@ -6,18 +6,34 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 const ChecklistsScreen = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
+
+  // Permission check - can view templates
+  const canViewTemplates = hasPermission(userPermissions, 'display_templates') ||
+                          hasPermission(userPermissions, 'view_templates') ||
+                          hasPermission(userPermissions, 'manage_templates') ||
+                          isAdmin(user);
+  
+  // Permission check - can create audits
+  const canCreateAudit = hasPermission(userPermissions, 'create_audits') ||
+                         hasPermission(userPermissions, 'manage_audits') ||
+                         isAdmin(user);
 
   useEffect(() => {
     fetchTemplates();
@@ -41,6 +57,10 @@ const ChecklistsScreen = () => {
   };
 
   const handleStartAudit = (templateId) => {
+    if (!canCreateAudit) {
+      Alert.alert('Permission Denied', 'You do not have permission to create audits.');
+      return;
+    }
     navigation.navigate('AuditForm', { templateId });
   };
 
@@ -71,8 +91,16 @@ const ChecklistsScreen = () => {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#1976d2" />
+      </View>
+    );
+  }
+
+  if (!canViewTemplates) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Text style={styles.emptyText}>You do not have permission to view templates</Text>
       </View>
     );
   }

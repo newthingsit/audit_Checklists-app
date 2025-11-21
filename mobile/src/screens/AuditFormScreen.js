@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Image
+  Image,
+  Modal,
+  FlatList
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,14 +22,13 @@ import { themeConfig } from '../config/theme';
 const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { templateId, auditId } = route.params || {};
+  const { templateId, auditId, scheduledAuditId, locationId: initialLocationId } = route.params || {};
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [restaurantName, setRestaurantName] = useState('');
-  const [location, setLocation] = useState('');
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState(initialLocationId || '');
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [notes, setNotes] = useState('');
   const [responses, setResponses] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({});
@@ -35,6 +36,8 @@ const AuditFormScreen = () => {
   const [photos, setPhotos] = useState({});
   const [uploading, setUploading] = useState({});
   const [locations, setLocations] = useState([]);
+  const [showStorePicker, setShowStorePicker] = useState(false);
+  const [storeSearchText, setStoreSearchText] = useState('');
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: checklist
   const [isEditing, setIsEditing] = useState(false);
 
@@ -43,38 +46,77 @@ const AuditFormScreen = () => {
       // Editing existing audit
       setIsEditing(true);
       fetchAuditData();
+    } else if (scheduledAuditId && templateId) {
+      // Check if audit already exists for this scheduled audit
+      checkExistingAudit();
     } else if (templateId) {
       // Creating new audit
       fetchTemplate();
     }
     fetchLocations();
-  }, [templateId, auditId]);
+  }, [templateId, auditId, scheduledAuditId]);
 
-  const fetchTemplate = async () => {
+  // Pre-fill location when scheduled audit provides locationId
+  useEffect(() => {
+    if (initialLocationId && locations.length > 0 && !selectedLocation) {
+      const location = locations.find(l => l.id === parseInt(initialLocationId));
+      if (location) {
+        setSelectedLocation(location);
+        setLocationId(initialLocationId.toString());
+      }
+    }
+  }, [initialLocationId, locations, selectedLocation]);
+
+  const checkExistingAudit = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`);
-      setTemplate(response.data.template);
-      setItems(response.data.items || []);
+      setLoading(true);
+      // Check if an audit already exists for this scheduled audit
+      const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`);
+      if (response.data.audit) {
+        // Audit exists, switch to edit mode
+        const existingAuditId = response.data.audit.id;
+        setIsEditing(true);
+        // Update route params to include auditId
+        navigation.setParams({ auditId: existingAuditId });
+        // Fetch the existing audit data
+        await fetchAuditDataById(existingAuditId);
+      } else {
+        // No existing audit, create new one
+        fetchTemplate();
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load template');
+      // If audit not found (404), it's a new audit
+      if (error.response?.status === 404) {
+        fetchTemplate();
+      } else {
+        console.error('Error checking existing audit:', error);
+        Alert.alert('Error', 'Failed to check for existing audit. Creating new audit.');
+        fetchTemplate();
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAuditData = async () => {
+  const fetchAuditDataById = async (id) => {
     try {
       setLoading(true);
       // Fetch audit details
-      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${auditId}`);
+      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${id}`);
       const audit = auditResponse.data.audit;
       const auditItems = auditResponse.data.items || [];
 
       // Set audit info
-      setRestaurantName(audit.restaurant_name || '');
-      setLocation(audit.location || '');
       setLocationId(audit.location_id || '');
       setNotes(audit.notes || '');
+      
+      // Find and set selected location
+      if (audit.location_id && locations.length > 0) {
+        const location = locations.find(l => l.id === audit.location_id);
+        if (location) {
+          setSelectedLocation(location);
+        }
+      }
 
       // Fetch template to get all items
       const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`);
@@ -122,10 +164,35 @@ const AuditFormScreen = () => {
     }
   };
 
+  const fetchTemplate = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`);
+      setTemplate(response.data.template);
+      setItems(response.data.items || []);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load template');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAuditData = async () => {
+    await fetchAuditDataById(auditId);
+  };
+
   const fetchLocations = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/locations`).catch(() => ({ data: { locations: [] } }));
-      setLocations(response.data.locations || []);
+      const locationsData = response.data.locations || [];
+      setLocations(locationsData);
+      
+      // If locationId is set (e.g., from URL params), find and set selected location
+      if (locationId && locationsData.length > 0) {
+        const location = locationsData.find(l => l.id === parseInt(locationId));
+        if (location) {
+          setSelectedLocation(location);
+        }
+      }
     } catch (error) {
       console.error('Error fetching locations:', error);
     }
@@ -211,8 +278,8 @@ const AuditFormScreen = () => {
 
   const handleNext = () => {
     if (currentStep === 0) {
-      if (!restaurantName.trim()) {
-        Alert.alert('Error', 'Restaurant name is required');
+      if (!locationId || !selectedLocation) {
+        Alert.alert('Error', 'Please select a store');
         return;
       }
       setCurrentStep(1);
@@ -224,29 +291,64 @@ const AuditFormScreen = () => {
     try {
       let currentAuditId = auditId;
 
-      if (isEditing) {
-        // Update existing audit info (only if needed)
+      // Get selected store details
+      if (!selectedLocation || !locationId) {
+        Alert.alert('Error', 'Please select a store');
+        setSaving(false);
+        return;
+      }
+
+      // Determine if we're editing an existing audit
+      if (auditId) {
+        // We have an explicit auditId, update existing audit
+        currentAuditId = auditId;
         try {
           await axios.put(`${API_BASE_URL}/audits/${auditId}`, {
-            restaurant_name: restaurantName,
-            location: locationId || location,
-            location_id: locationId || null,
+            restaurant_name: selectedLocation.name,
+            location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+            location_id: parseInt(locationId),
             notes
           });
         } catch (updateError) {
           // If update fails, log but continue with item updates
           console.warn('Failed to update audit info, continuing with items:', updateError);
         }
-        currentAuditId = auditId;
-      } else {
-        // Create new audit
-        const auditResponse = await axios.post(`${API_BASE_URL}/audits`, {
+      } else if (scheduledAuditId) {
+        // Check if audit already exists for this scheduled audit
+        try {
+          const existingAuditResponse = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`);
+          if (existingAuditResponse.data.audit) {
+            // Audit exists, update it
+            currentAuditId = existingAuditResponse.data.audit.id;
+            await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, {
+              restaurant_name: selectedLocation.name,
+              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              location_id: parseInt(locationId),
+              notes
+            });
+          }
+        } catch (error) {
+          // If audit doesn't exist (404) or other error, we'll create a new one below
+          console.log('No existing audit found for scheduled audit, will create new one');
+        }
+      }
+      
+      // Create new audit if we don't have an existing one
+      if (!currentAuditId) {
+        const auditData = {
           template_id: parseInt(templateId),
-          restaurant_name: restaurantName,
-          location: locationId || location,
-          location_id: locationId || null,
+          restaurant_name: selectedLocation.name,
+          location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+          location_id: parseInt(locationId),
           notes
-        });
+        };
+        
+        // Link to scheduled audit if provided
+        if (scheduledAuditId) {
+          auditData.scheduled_audit_id = parseInt(scheduledAuditId);
+        }
+        
+        const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
         currentAuditId = auditResponse.data.id;
       }
 
@@ -316,27 +418,24 @@ const AuditFormScreen = () => {
     <View style={styles.container}>
       {currentStep === 0 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.title}>Restaurant Information</Text>
+          <Text style={styles.title}>Store Information</Text>
           <Text style={styles.subtitle}>{template?.name}</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Restaurant Name *</Text>
-            <TextInput
+            <Text style={styles.label}>Store *</Text>
+            <TouchableOpacity
               style={styles.input}
-              value={restaurantName}
-              onChangeText={setRestaurantName}
-              placeholder="Enter restaurant name"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Location</Text>
-            <TextInput
-              style={styles.input}
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Enter location"
-            />
+              onPress={() => setShowStorePicker(true)}
+            >
+              <Text style={selectedLocation ? styles.inputText : styles.placeholderText}>
+                {selectedLocation
+                  ? (selectedLocation.store_number
+                      ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
+                      : selectedLocation.name)
+                  : 'Select a store'}
+              </Text>
+              <Icon name="arrow-drop-down" size={24} color="#666" />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.inputGroup}>
@@ -356,6 +455,65 @@ const AuditFormScreen = () => {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Store Picker Modal */}
+      <Modal
+        visible={showStorePicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowStorePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Store</Text>
+              <TouchableOpacity onPress={() => setShowStorePicker(false)}>
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search stores..."
+              value={storeSearchText}
+              onChangeText={setStoreSearchText}
+            />
+            
+            <FlatList
+              data={locations.filter(loc => {
+                if (!storeSearchText) return true;
+                const search = storeSearchText.toLowerCase();
+                return (
+                  loc.name.toLowerCase().includes(search) ||
+                  (loc.store_number && loc.store_number.toLowerCase().includes(search))
+                );
+              })}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.storeOption,
+                    selectedLocation?.id === item.id && styles.storeOptionSelected
+                  ]}
+                  onPress={() => {
+                    setSelectedLocation(item);
+                    setLocationId(item.id.toString());
+                    setShowStorePicker(false);
+                    setStoreSearchText('');
+                  }}
+                >
+                  <Text style={styles.storeOptionText}>
+                    {item.store_number ? `Store ${item.store_number} - ${item.name}` : item.name}
+                  </Text>
+                  {selectedLocation?.id === item.id && (
+                    <Icon name="check" size={20} color="#1976d2" />
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {currentStep === 1 && (
         <View style={styles.container}>
@@ -396,7 +554,7 @@ const AuditFormScreen = () => {
                             selectedOptions[item.id] === option.id && styles.optionTextActive
                           ]}
                         >
-                          {option.text}
+                          {option.text || option.option_text}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -726,6 +884,65 @@ const styles = StyleSheet.create({
   },
   statusButtonTextActive: {
     color: '#fff',
+  },
+  inputText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: '#999',
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  searchInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    margin: 20,
+    marginBottom: 10,
+    fontSize: 16,
+  },
+  storeOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  storeOptionSelected: {
+    backgroundColor: '#e3f2fd',
+  },
+  storeOptionText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
   },
 });
 

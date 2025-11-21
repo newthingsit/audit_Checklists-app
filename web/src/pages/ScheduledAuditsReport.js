@@ -18,7 +18,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   TextField
 } from '@mui/material';
@@ -61,6 +60,7 @@ const ScheduledAuditsReport = () => {
     fetchLocations();
     fetchTemplates();
     fetchReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo, locationId, templateId, status, frequency]);
 
   const fetchLocations = async () => {

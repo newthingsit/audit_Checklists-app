@@ -10,8 +10,6 @@ import {
   Paper
 } from '@mui/material';
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   PieChart,

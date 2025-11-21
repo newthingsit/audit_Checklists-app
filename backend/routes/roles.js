@@ -2,12 +2,12 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/permissions');
+const { requireAdmin, requirePermission, normalizePermissionList } = require('../middleware/permissions');
 
 const router = express.Router();
 
-// Get all roles (admin only)
-router.get('/', authenticate, requireAdmin, (req, res) => {
+// Get all roles (admin or users with view_users, manage_users, or create_users permission - needed to assign roles)
+router.get('/', authenticate, requirePermission('view_users', 'manage_users', 'create_users'), (req, res) => {
   const dbInstance = db.getDb();
   const { search } = req.query;
 
@@ -24,13 +24,14 @@ router.get('/', authenticate, requireAdmin, (req, res) => {
   dbInstance.all(query, params, (err, roles) => {
     if (err) {
       console.error('Error fetching roles:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     
     // Parse permissions JSON for each role
     const rolesWithParsedPermissions = roles.map(role => ({
       ...role,
-      permissions: role.permissions ? JSON.parse(role.permissions) : []
+      permissions: role.permissions ? normalizePermissionList(JSON.parse(role.permissions)) : []
     }));
     
     res.json({ roles: rolesWithParsedPermissions });
@@ -45,7 +46,8 @@ router.get('/:id', authenticate, requireAdmin, (req, res) => {
   dbInstance.get('SELECT * FROM roles WHERE id = ?', [id], (err, role) => {
     if (err) {
       console.error('Error fetching role:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     if (!role) {
       return res.status(404).json({ error: 'Role not found' });
@@ -54,7 +56,7 @@ router.get('/:id', authenticate, requireAdmin, (req, res) => {
     // Parse permissions JSON
     const roleWithParsedPermissions = {
       ...role,
-      permissions: role.permissions ? JSON.parse(role.permissions) : []
+      permissions: role.permissions ? normalizePermissionList(JSON.parse(role.permissions)) : []
     };
     
     res.json({ role: roleWithParsedPermissions });
@@ -87,7 +89,8 @@ router.post('/', authenticate, requireAdmin, [
     }
 
     try {
-      const permissionsJson = permissions ? JSON.stringify(permissions) : JSON.stringify([]);
+      const normalizedPermissions = normalizePermissionList(permissions || []);
+      const permissionsJson = JSON.stringify(normalizedPermissions);
       
       dbInstance.run(
         'INSERT INTO roles (name, display_name, description, permissions, is_system_role) VALUES (?, ?, ?, ?, 0)',
@@ -95,7 +98,8 @@ router.post('/', authenticate, requireAdmin, [
         function(err) {
           if (err) {
             console.error('Error creating role:', err);
-            return res.status(500).json({ error: 'Error creating role', details: err.message });
+            console.error('Error creating role:', err);
+            return res.status(500).json({ error: 'Error creating role' });
           }
           
           // Return the created role with parsed permissions
@@ -104,13 +108,13 @@ router.post('/', authenticate, requireAdmin, [
               return res.status(201).json({ 
                 id: this.lastID, 
                 message: 'Role created successfully',
-                role: { id: this.lastID, name, display_name, description, permissions: permissions || [] }
+                role: { id: this.lastID, name, display_name, description, permissions: normalizedPermissions }
               });
             }
             
             const roleWithParsedPermissions = {
               ...role,
-              permissions: role.permissions ? JSON.parse(role.permissions) : []
+              permissions: role.permissions ? normalizePermissionList(JSON.parse(role.permissions)) : []
             };
             
             res.status(201).json({ 
@@ -171,7 +175,8 @@ router.put('/:id', authenticate, requireAdmin, [
       }
       if (permissions !== undefined) {
         updates.push('permissions = ?');
-        params.push(JSON.stringify(permissions));
+        const normalizedPermissions = normalizePermissionList(permissions || []);
+        params.push(JSON.stringify(normalizedPermissions));
       }
 
       if (updates.length === 0) {
@@ -186,7 +191,8 @@ router.put('/:id', authenticate, requireAdmin, [
         function(err) {
           if (err) {
             console.error('Error updating role:', err);
-            return res.status(500).json({ error: 'Error updating role', details: err.message });
+            console.error('Error updating role:', err);
+            return res.status(500).json({ error: 'Error updating role' });
           }
           
           // Return updated role
@@ -197,7 +203,7 @@ router.put('/:id', authenticate, requireAdmin, [
             
             const roleWithParsedPermissions = {
               ...updatedRole,
-              permissions: updatedRole.permissions ? JSON.parse(updatedRole.permissions) : []
+              permissions: updatedRole.permissions ? normalizePermissionList(JSON.parse(updatedRole.permissions)) : []
             };
             
             res.json({ message: 'Role updated successfully', role: roleWithParsedPermissions });
@@ -248,7 +254,8 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
       dbInstance.run('DELETE FROM roles WHERE id = ?', [id], function(err) {
         if (err) {
           console.error('Error deleting role:', err);
-          return res.status(500).json({ error: 'Error deleting role', details: err.message });
+          console.error('Error deleting role:', err);
+          return res.status(500).json({ error: 'Error deleting role' });
         }
         res.json({ message: 'Role deleted successfully' });
       });
@@ -264,9 +271,9 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
       name: 'Manage Users',
       description: 'Create, edit, and delete users',
       children: [
-        { id: 'users.create', name: 'Create Users', description: 'Add new users' },
-        { id: 'users.edit', name: 'Edit Users', description: 'Update existing users' },
-        { id: 'users.delete', name: 'Delete Users', description: 'Remove users' }
+        { id: 'create_users', name: 'Create Users', description: 'Add new users' },
+        { id: 'edit_users', name: 'Edit Users', description: 'Update existing users' },
+        { id: 'delete_users', name: 'Delete Users', description: 'Remove users' }
       ]
     },
     {
@@ -274,9 +281,9 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
       name: 'Manage Roles',
       description: 'Create, edit, and delete roles',
       children: [
-        { id: 'roles.create', name: 'Create Roles', description: 'Add new roles' },
-        { id: 'roles.edit', name: 'Edit Roles', description: 'Update existing roles' },
-        { id: 'roles.delete', name: 'Delete Roles', description: 'Remove roles' }
+        { id: 'create_roles', name: 'Create Roles', description: 'Add new roles' },
+        { id: 'edit_roles', name: 'Edit Roles', description: 'Update existing roles' },
+        { id: 'delete_roles', name: 'Delete Roles', description: 'Remove roles' }
       ]
     },
     {
@@ -284,41 +291,77 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
       name: 'Manage Audits',
       description: 'Create, edit, and delete audits',
       children: [
-        { id: 'audits.create', name: 'Create Audits', description: 'Create new audits' },
-        { id: 'audits.edit', name: 'Edit Audits', description: 'Update audits' },
-        { id: 'audits.delete', name: 'Delete Audits', description: 'Remove audits' }
+        { id: 'create_audits', name: 'Create Audits', description: 'Create new audits' },
+        { id: 'edit_audits', name: 'Edit Audits', description: 'Update audits' },
+        { id: 'delete_audits', name: 'Delete Audits', description: 'Remove audits' }
       ]
     },
     {
       id: 'manage_templates',
       name: 'Manage Templates',
-      description: 'Create, edit, and delete checklist templates',
+      description: 'Full access to checklist templates (includes display, edit, delete)',
       children: [
-        { id: 'templates.create', name: 'Create Templates', description: 'Add new templates' },
-        { id: 'templates.edit', name: 'Edit Templates', description: 'Update existing templates' },
-        { id: 'templates.delete', name: 'Delete Templates', description: 'Remove templates' }
+        { id: 'display_templates', name: 'Display Templates', description: 'View checklist templates' },
+        { id: 'view_templates', name: 'View Templates', description: 'View template details' },
+        { id: 'create_templates', name: 'Create Templates', description: 'Add new templates' },
+        { id: 'update_templates', name: 'Update Templates', description: 'Update existing templates' },
+        { id: 'edit_templates', name: 'Edit Templates', description: 'Create and update templates' },
+        { id: 'delete_templates', name: 'Delete Templates', description: 'Remove templates' }
       ]
     },
     {
       id: 'manage_locations',
-      name: 'Manage Stores',
-      description: 'Create, edit, and delete stores',
+      name: 'Manage Stores/Locations',
+      description: 'Create, edit, and delete stores/locations',
       children: [
-        { id: 'locations.create', name: 'Create Stores', description: 'Add new stores' },
-        { id: 'locations.edit', name: 'Edit Stores', description: 'Update stores' },
-        { id: 'locations.delete', name: 'Delete Stores', description: 'Remove stores' }
+        { id: 'view_locations', name: 'View Stores', description: 'View locations list' },
+        { id: 'create_locations', name: 'Create Stores', description: 'Add new stores' },
+        { id: 'edit_locations', name: 'Edit Stores', description: 'Update stores' },
+        { id: 'delete_locations', name: 'Delete Stores', description: 'Remove stores' }
       ]
     },
     {
       id: 'manage_actions',
-      name: 'Manage Actions',
+      name: 'Manage Action Plans',
       description: 'Create, edit, and delete action items',
       children: [
-        { id: 'actions.create', name: 'Create Actions', description: 'Add new action items' },
-        { id: 'actions.edit', name: 'Edit Actions', description: 'Update action items' },
-        { id: 'actions.delete', name: 'Delete Actions', description: 'Remove action items' }
+        { id: 'view_actions', name: 'View Actions', description: 'View action items' },
+        { id: 'create_actions', name: 'Create Actions', description: 'Add new action items' },
+        { id: 'update_actions', name: 'Edit Actions', description: 'Update action items' },
+        { id: 'delete_actions', name: 'Delete Actions', description: 'Remove action items' }
       ]
     },
+    {
+      id: 'manage_tasks',
+      name: 'Manage Tasks',
+      description: 'Create, edit, and delete tasks',
+      children: [
+        { id: 'view_tasks', name: 'View Tasks', description: 'View tasks' },
+        { id: 'create_tasks', name: 'Create Tasks', description: 'Add new tasks' },
+        { id: 'update_tasks', name: 'Edit Tasks', description: 'Update tasks' },
+        { id: 'delete_tasks', name: 'Delete Tasks', description: 'Remove tasks' }
+      ]
+    },
+    {
+      id: 'manage_scheduled_audits',
+      name: 'Manage Scheduled Audits',
+      description: 'Full access to scheduled audits',
+      children: [
+        { id: 'view_scheduled_audits', name: 'View Scheduled Audits', description: 'View scheduled audits' },
+        { id: 'create_scheduled_audits', name: 'Create Scheduled Audits', description: 'Create new scheduled audits' },
+        { id: 'update_scheduled_audits', name: 'Update Scheduled Audits', description: 'Update scheduled audits' },
+        { id: 'delete_scheduled_audits', name: 'Delete Scheduled Audits', description: 'Remove scheduled audits' },
+        { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits' }
+      ]
+    },
+    { id: 'view_scheduled_audits', name: 'View Scheduled Audits', description: 'View scheduled audits' },
+    { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits (required to begin an audit from a scheduled audit)' },
+    { id: 'display_templates', name: 'Display Templates', description: 'View checklist templates (read-only access)' },
+    { id: 'edit_templates', name: 'Edit Templates', description: 'Create and update checklist templates' },
+    { id: 'delete_templates', name: 'Delete Templates', description: 'Remove checklist templates' },
+    { id: 'view_locations', name: 'View Stores', description: 'View stores/locations' },
+    { id: 'view_actions', name: 'View Actions', description: 'View action items' },
+    { id: 'view_tasks', name: 'View Tasks', description: 'View tasks' },
     { id: 'view_analytics', name: 'View Analytics', description: 'Access analytics and reports' },
     { id: 'export_data', name: 'Export Data', description: 'Export audits and reports' },
     { id: 'view_audits', name: 'View Audits', description: 'View all audits' },

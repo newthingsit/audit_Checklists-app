@@ -2,13 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/permissions');
+const { requireAdmin, requirePermission } = require('../middleware/permissions');
 const { body, validationResult } = require('express-validator');
 
 const router = express.Router();
 
-// Get all users (admin only)
-router.get('/', authenticate, requireAdmin, (req, res) => {
+// Get all users (admin or users with view_users, manage_users, or create_users permission)
+router.get('/', authenticate, requirePermission('view_users', 'manage_users', 'create_users'), (req, res) => {
   const dbInstance = db.getDb();
   const { search, role } = req.query;
 
@@ -36,8 +36,8 @@ router.get('/', authenticate, requireAdmin, (req, res) => {
   });
 });
 
-// Get single user (admin only)
-router.get('/:id', authenticate, requireAdmin, (req, res) => {
+// Get single user (admin or users with view_users, manage_users, or create_users permission)
+router.get('/:id', authenticate, requirePermission('view_users', 'manage_users', 'create_users'), (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.params.id;
 
@@ -58,7 +58,7 @@ router.get('/:id', authenticate, requireAdmin, (req, res) => {
 });
 
 // Create new user (admin only)
-router.post('/', authenticate, requireAdmin, [
+router.post('/', authenticate, requirePermission('create_users', 'manage_users'), [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   body('name').trim().notEmpty(),
@@ -122,8 +122,8 @@ router.post('/', authenticate, requireAdmin, [
   });
 });
 
-// Update user (admin only)
-router.put('/:id', authenticate, requireAdmin, [
+// Update user (admin or users with manage_users permission)
+router.put('/:id', authenticate, requirePermission('manage_users'), [
   body('email').optional().isEmail().normalizeEmail(),
   body('name').optional().trim().notEmpty(),
       body('role').optional().custom(async (value) => {
@@ -225,7 +225,7 @@ router.put('/:id', authenticate, requireAdmin, [
 });
 
 // Delete user (admin only)
-router.delete('/:id', authenticate, requireAdmin, (req, res) => {
+router.delete('/:id', authenticate, requirePermission('manage_users'), (req, res) => {
   const { id } = req.params;
   const dbInstance = db.getDb();
   const currentUserId = req.user.id;
@@ -252,6 +252,128 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
       }
       res.json({ message: 'User deleted successfully' });
     });
+  });
+});
+
+// Bulk import users from CSV
+router.post('/import', authenticate, requirePermission('create_users', 'manage_users'), async (req, res) => {
+  const dbInstance = db.getDb();
+  const { users: usersData } = req.body; // Array of user objects
+
+  if (!Array.isArray(usersData) || usersData.length === 0) {
+    return res.status(400).json({ error: 'Users array is required' });
+  }
+
+  const results = {
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    errors: []
+  };
+
+  // Helper function to validate role
+  const validateRole = (role) => {
+    return new Promise((resolve, reject) => {
+      if (!role) {
+        return reject(new Error('Role is required'));
+      }
+      dbInstance.get('SELECT * FROM roles WHERE name = ?', [role], (err, roleRecord) => {
+        if (err) {
+          return reject(new Error('Database error checking role'));
+        }
+        if (!roleRecord) {
+          return reject(new Error(`Invalid role: ${role}`));
+        }
+        resolve();
+      });
+    });
+  };
+
+  // Helper function to check if user exists
+  const checkUserExists = (email) => {
+    return new Promise((resolve, reject) => {
+      dbInstance.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(!!user);
+      });
+    });
+  };
+
+  // Helper function to create user
+  const createUser = (userData) => {
+    return new Promise(async (resolve, reject) => {
+      const { name, email, role, password } = userData;
+
+      // Validate required fields
+      if (!name || !email || !role) {
+        return reject(new Error('Name, email, and role are required'));
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return reject(new Error(`Invalid email format: ${email}`));
+      }
+
+      try {
+        // Validate role
+        await validateRole(role);
+
+        // Check if user already exists
+        const exists = await checkUserExists(email);
+        if (exists) {
+          return reject(new Error(`User with email ${email} already exists`));
+        }
+
+        // Generate default password if not provided
+        const userPassword = password || 'TempPassword123!';
+        
+        // Validate password length
+        if (userPassword.length < 6) {
+          return reject(new Error('Password must be at least 6 characters'));
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(userPassword, 10);
+
+        // Create user
+        dbInstance.run(
+          'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
+          [email, hashedPassword, name, role],
+          function(err) {
+            if (err) {
+              return reject(new Error(`Database error: ${err.message}`));
+            }
+            resolve({ id: this.lastID, email, name, role });
+          }
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
+  // Process each user
+  for (let i = 0; i < usersData.length; i++) {
+    const userData = usersData[i];
+    try {
+      await createUser(userData);
+      results.success++;
+    } catch (error) {
+      results.failed++;
+      results.errors.push({
+        row: i + 1,
+        email: userData.email || 'N/A',
+        error: error.message
+      });
+    }
+  }
+
+  res.json({
+    message: `Import completed: ${results.success} successful, ${results.failed} failed`,
+    results
   });
 });
 

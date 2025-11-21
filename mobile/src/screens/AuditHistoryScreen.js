@@ -77,6 +77,18 @@ const AuditHistoryScreen = () => {
       setFilteredAudits(auditsData);
     } catch (error) {
       console.error('Error fetching audits:', error);
+      if (error.response) {
+        console.error('Error response status:', error.response.status);
+        console.error('Error response data:', error.response.data);
+        // If it's a 401 or 403, the user might not have permission
+        if (error.response.status === 401 || error.response.status === 403) {
+          // Don't show alert, just log - the user will see empty list
+          console.warn('User may not have permission to view audits');
+        }
+      }
+      // Set empty array on error so UI doesn't break
+      setAudits([]);
+      setFilteredAudits([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -96,7 +96,8 @@ router.post('/login', [
     if (err) {
       console.error('Login error:', err);
       console.error('Email:', normalizedEmail);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
     }
     if (!user) {
       console.log(`Login failed: User not found for email: ${email} (normalized: ${normalizedEmail})`);
@@ -115,25 +116,59 @@ router.post('/login', [
       { expiresIn: '7d' }
     );
 
-    res.json({
-      token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role }
+    // Get user permissions from role
+    const { getUserPermissions } = require('../middleware/permissions');
+    getUserPermissions(user.id, user.role, (permErr, permissions) => {
+      if (permErr) {
+        console.error('Error fetching permissions:', permErr);
+        // Return user without permissions if error
+        return res.json({
+          token,
+          user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
+        });
+      }
+      res.json({
+        token,
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
+      });
     });
   });
 });
 
-// Get current user
+// Get current user with permissions
 router.get('/me', require('../middleware/auth').authenticate, (req, res) => {
   const dbInstance = db.getDb();
   dbInstance.get('SELECT id, email, name, role, created_at FROM users WHERE id = ?', 
     [req.user.id], (err, user) => {
       if (err) {
+        console.error('Error fetching user:', err);
+        console.error('Error fetching user:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json({ user });
+
+      // Get user permissions from role
+      try {
+        const { getUserPermissions } = require('../middleware/permissions');
+        if (!user.role) {
+          console.warn('User has no role:', user.id);
+          return res.json({ user: { ...user, permissions: [] } });
+        }
+        getUserPermissions(user.id, user.role, (permErr, permissions) => {
+          if (permErr) {
+            console.error('Error fetching permissions:', permErr);
+            // Return user without permissions if error
+            return res.json({ user: { ...user, permissions: [] } });
+          }
+          res.json({ user: { ...user, permissions: permissions || [] } });
+        });
+      } catch (requireErr) {
+        console.error('Error requiring permissions module:', requireErr);
+        console.error('Error requiring permissions module:', requireErr);
+        return res.status(500).json({ error: 'Error loading permissions module' });
+      }
     });
 });
 

@@ -102,6 +102,7 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[locations]') AND type in (N'U'))
     CREATE TABLE [dbo].[locations] (
       [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [store_number] NVARCHAR(50),
       [name] NVARCHAR(255) NOT NULL,
       [address] NTEXT,
       [city] NVARCHAR(255),
@@ -109,7 +110,9 @@ const createTables = async () => {
       [country] NVARCHAR(255),
       [phone] NVARCHAR(50),
       [email] NVARCHAR(255),
-      [created_at] DATETIME DEFAULT GETDATE()
+      [created_by] INT,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([created_by]) REFERENCES [users]([id])
     )`,
     
     // Audits table
@@ -496,6 +499,64 @@ const addMissingColumns = async () => {
         ADD [mark] NVARCHAR(10) NULL;
       `);
       console.log('mark column added to audit_items table');
+    }
+    
+    // Check and add store_number and created_by to locations table
+    const checkLocations = await request.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'locations'
+    `);
+    
+    const locationColumns = checkLocations.recordset.map(r => r.COLUMN_NAME);
+    
+    if (!locationColumns.includes('store_number')) {
+      console.log('Adding store_number column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [store_number] NVARCHAR(50) NULL;
+        `);
+        console.log('store_number column added to locations table');
+      } catch (err) {
+        console.warn('Error adding store_number to locations:', err.message);
+      }
+    }
+    
+    if (!locationColumns.includes('created_by')) {
+      console.log('Adding created_by column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [created_by] INT NULL;
+        `);
+        
+        // Check if users table exists before adding foreign key
+        const usersTableCheck = await pool.request().query(`
+          SELECT COUNT(*) as count 
+          FROM INFORMATION_SCHEMA.TABLES 
+          WHERE TABLE_NAME = 'users'
+        `);
+        
+        if (usersTableCheck.recordset[0].count > 0) {
+          const constraintCheck = await pool.request().query(`
+            SELECT COUNT(*) as count 
+            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS 
+            WHERE TABLE_NAME = 'locations' AND CONSTRAINT_NAME = 'FK_locations_users'
+          `);
+          
+          if (constraintCheck.recordset[0].count === 0) {
+            await pool.request().query(`
+              ALTER TABLE [dbo].[locations]
+              ADD CONSTRAINT [FK_locations_users] 
+              FOREIGN KEY ([created_by]) REFERENCES [users]([id]);
+            `);
+          }
+        }
+        console.log('created_by column added to locations table');
+      } catch (err) {
+        console.warn('Error adding created_by to locations:', err.message);
+      }
     }
     
   } catch (error) {

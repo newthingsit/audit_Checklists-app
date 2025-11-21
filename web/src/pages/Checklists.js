@@ -21,7 +21,14 @@ import {
   MenuItem,
   IconButton,
   Paper,
-  Divider
+  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -35,6 +42,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission, isAdmin } from '../utils/permissions';
 
 const getTemplateId = (template) => {
   if (!template) return null;
@@ -49,7 +58,6 @@ const getTemplateId = (template) => {
 
 const defaultOptions = [
   { option_text: 'Yes', mark: '3' },
-  { option_text: 'Warning', mark: '1' },
   { option_text: 'No', mark: '0' },
   { option_text: 'N/A', mark: 'NA' }
 ];
@@ -63,12 +71,19 @@ const createEmptyItem = (category = '') => ({
 });
 
 const sampleCsvContent = `title,description,category,required,options
-Designated hand wash sink,Ensure sink has soap and paper towels,Personal Hygiene,yes,"Yes:3;Warning:1;No:0;NA:NA"
-Food storage temperature,Check refrigerators for 4°C or below,Food Safety,yes,"Yes:2;No:0;NA:NA"
-Equipment cleanliness,Clean and sanitize food-contact surfaces,Cleanliness,yes,"Compliant:3;Needs Improvement:1;Non-compliant:0"
+Designated hand wash sink,Ensure sink has soap and paper towels,Personal Hygiene,yes,"Yes:3;No:0;NA:NA"
+Food storage temperature,Check refrigerators for 4°C or below,Food Safety,yes,"Yes:3;No:0;NA:NA"
+Equipment cleanliness,Clean and sanitize food-contact surfaces,Cleanliness,yes,"Yes:3;No:0;NA:NA"
+Fire extinguisher present,Verify fire extinguisher is accessible and not expired,Safety,yes,"Yes:3;No:0;NA:NA"
+Staff wearing proper uniforms,All staff wearing clean uniforms and hairnets,Staff,yes,"Yes:3;No:0;NA:NA"
+Temperature logs maintained,Check that temperature logs are being filled daily,Compliance,yes,"Yes:3;No:0;NA:NA"
+Storage area organized,Storage area is clean and organized,Cleanliness,yes,"Yes:3;No:0;NA:NA"
+Equipment maintenance,All equipment in good working condition,Equipment,yes,"Yes:3;No:0;NA:NA"
 `;
 
 const Checklists = () => {
+  const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -77,17 +92,21 @@ const Checklists = () => {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [templateForm, setTemplateForm] = useState({
     name: '',
-    category: '',
     description: ''
   });
   const [items, setItems] = useState([createEmptyItem('')]);
   const [csvData, setCsvData] = useState('');
+  const [parsedItems, setParsedItems] = useState([]);
+  const [parseError, setParseError] = useState('');
   const [importForm, setImportForm] = useState({
     templateName: '',
-    category: '',
     description: ''
   });
   const navigate = useNavigate();
+
+  // Permission checks
+  const canEdit = hasPermission(userPermissions, 'edit_templates') || hasPermission(userPermissions, 'manage_templates') || isAdmin(user);
+  const canDelete = hasPermission(userPermissions, 'delete_templates') || hasPermission(userPermissions, 'manage_templates') || isAdmin(user);
 
   useEffect(() => {
     fetchTemplates();
@@ -110,7 +129,7 @@ const Checklists = () => {
 
   const handleOpenAddDialog = () => {
     setEditingTemplateId(null);
-    setTemplateForm({ name: '', category: '', description: '' });
+    setTemplateForm({ name: '', description: '' });
     setItems([createEmptyItem('')]);
     setShowAddDialog(true);
   };
@@ -122,8 +141,10 @@ const Checklists = () => {
   };
 
   const handleOpenImportDialog = () => {
-    setImportForm({ templateName: '', category: '', description: '' });
+    setImportForm({ templateName: '', description: '' });
     setCsvData('');
+    setParsedItems([]);
+    setParseError('');
     setShowImportDialog(true);
   };
 
@@ -144,7 +165,7 @@ const Checklists = () => {
   };
 
   const handleAddItem = () => {
-    setItems([...items, createEmptyItem(templateForm.category || '')]);
+    setItems([...items, createEmptyItem('')]);
   };
 
   const handleRemoveItem = (index) => {
@@ -189,8 +210,8 @@ const Checklists = () => {
   };
 
   const handleSaveTemplate = async () => {
-    if (!templateForm.name || !templateForm.category) {
-      showError('Name and category are required');
+    if (!templateForm.name) {
+      showError('Template name is required');
       return;
     }
 
@@ -203,12 +224,12 @@ const Checklists = () => {
     setSavingTemplate(true);
     const payload = {
       name: templateForm.name,
-      category: templateForm.category,
+      category: '', // Category removed from template level
       description: templateForm.description,
       items: validItems.map((item, index) => ({
         title: item.title,
         description: item.description || '',
-        category: item.category || templateForm.category,
+        category: item.category || '',
         required: item.required !== false,
         order_index: index,
         options: (item.options || []).map((option, optionIndex) => ({
@@ -257,7 +278,7 @@ const Checklists = () => {
           mark: option.mark ?? ''
         }))
       }));
-      setItems(mappedItems.length > 0 ? mappedItems : [createEmptyItem(template.category)]);
+      setItems(mappedItems.length > 0 ? mappedItems : [createEmptyItem('')]);
       setShowAddDialog(true);
     } catch (error) {
       console.error('Error loading template:', error);
@@ -278,13 +299,129 @@ const Checklists = () => {
   };
 
 
+  // Improved CSV parser that handles quoted fields
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const parseCSVData = (csvText) => {
+    try {
+      setParseError('');
+      const lines = csvText.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        setParseError('CSV must have at least a header row and one data row');
+        setParsedItems([]);
+        return;
+      }
+
+      // Parse header
+      const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+      const titleIndex = headers.findIndex(h => h.includes('title') || h.includes('item') || h === 'name');
+      const descIndex = headers.findIndex(h => h.includes('description') || h.includes('desc'));
+      const catIndex = headers.findIndex(h => h.includes('category') || h.includes('cat'));
+      const reqIndex = headers.findIndex(h => h.includes('required') || h.includes('mandatory'));
+      const optionsIndex = headers.findIndex(h => h.includes('option'));
+
+      if (titleIndex === -1) {
+        setParseError('CSV must have a "title", "item", or "name" column');
+        setParsedItems([]);
+        return;
+      }
+
+      // Parse data rows
+      const items = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const title = values[titleIndex]?.replace(/^"|"$/g, '').trim();
+        
+        if (title) {
+          // Parse options
+          const itemOptions = [];
+          if (optionsIndex !== -1 && values[optionsIndex]) {
+            const optionsStr = values[optionsIndex].replace(/^"|"$/g, '');
+            optionsStr.split(';').forEach((option, optionIndex) => {
+              const trimmed = option.trim();
+              if (trimmed) {
+                const [label, score] = trimmed.split(':').map(s => s.trim());
+                if (label) {
+                  itemOptions.push({
+                    option_text: label,
+                    mark: score || '',
+                    order_index: optionIndex
+                  });
+                }
+              }
+            });
+          }
+
+          // If no options provided, use defaults
+          if (itemOptions.length === 0) {
+            itemOptions.push(
+              { option_text: 'Yes', mark: '3', order_index: 0 },
+              { option_text: 'No', mark: '0', order_index: 1 },
+              { option_text: 'N/A', mark: 'NA', order_index: 2 }
+            );
+          }
+
+          items.push({
+            title,
+            description: descIndex !== -1 ? (values[descIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
+            category: catIndex !== -1 ? (values[catIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
+            required: reqIndex !== -1 
+              ? (values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'yes' || 
+                 values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'true' || 
+                 values[reqIndex]?.replace(/^"|"$/g, '') === '1')
+              : true,
+            options: itemOptions
+          });
+        }
+      }
+
+      if (items.length === 0) {
+        setParseError('No valid items found in CSV');
+        setParsedItems([]);
+        return;
+      }
+
+      setParsedItems(items);
+    } catch (error) {
+      setParseError(`Error parsing CSV: ${error.message}`);
+      setParsedItems([]);
+    }
+  };
+
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      setCsvData(e.target.result);
+      const text = e.target.result;
+      setCsvData(text);
+      parseCSVData(text);
     };
     reader.onerror = () => {
       showError('Error reading file');
@@ -292,25 +429,40 @@ const Checklists = () => {
     reader.readAsText(file);
   };
 
+  const handleCsvDataChange = (text) => {
+    setCsvData(text);
+    if (text.trim()) {
+      parseCSVData(text);
+    } else {
+      setParsedItems([]);
+      setParseError('');
+    }
+  };
+
   const handleImportCSV = async () => {
-    if (!importForm.templateName || !importForm.category || !csvData) {
-      showError('Template name, category, and CSV data are required');
+    if (!importForm.templateName || !csvData) {
+      showError('Template name and CSV data are required');
+      return;
+    }
+
+    if (parseError || parsedItems.length === 0) {
+      showError('Please fix CSV errors before importing');
       return;
     }
 
     try {
-      await axios.post('/api/checklists/import', {
+      const response = await axios.post('/api/checklists/import', {
         templateName: importForm.templateName,
-        category: importForm.category,
+        category: '', // Category removed from template level
         description: importForm.description,
         csvData
       });
-      showSuccess('Template imported successfully!');
+      showSuccess(`Template imported successfully with ${response.data.itemsCount || parsedItems.length} items!`);
       handleCloseImportDialog();
       fetchTemplates();
     } catch (error) {
       console.error('Error importing template:', error);
-      showError(error.response?.data?.error || 'Error importing template');
+      showError(error.response?.data?.error || error.response?.data?.details || 'Error importing template');
     }
   };
 
@@ -336,28 +488,30 @@ const Checklists = () => {
               Select a template to start a new audit
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<UploadFileIcon />}
-              onClick={handleOpenImportDialog}
-            >
-              Import CSV
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddDialog}
-              sx={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #5568d3 0%, #653a8f 100%)',
-                }
-              }}
-            >
-              Add Template
-            </Button>
-          </Box>
+          {canEdit && (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<UploadFileIcon />}
+                onClick={handleOpenImportDialog}
+              >
+                Import CSV
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleOpenAddDialog}
+                sx={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #5568d3 0%, #653a8f 100%)',
+                  }
+                }}
+              >
+                Add Template
+              </Button>
+            </Box>
+          )}
         </Box>
 
         <Grid container spacing={3} sx={{ mt: 2 }}>
@@ -450,20 +604,24 @@ const Checklists = () => {
                     >
                       Start Audit
                     </Button>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditTemplate(getTemplateId(template))}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteTemplate(getTemplateId(template))}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {canEdit && (
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleEditTemplate(getTemplateId(template))}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                    {canDelete && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteTemplate(getTemplateId(template))}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </CardActions>
                 </Card>
               </Grid>
@@ -506,22 +664,6 @@ const Checklists = () => {
               margin="normal"
               required
             />
-            <FormControl fullWidth margin="normal" required>
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={templateForm.category}
-                label="Category"
-                onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}
-              >
-                <MenuItem value="Safety">Safety</MenuItem>
-                <MenuItem value="Cleanliness">Cleanliness</MenuItem>
-                <MenuItem value="Food Safety">Food Safety</MenuItem>
-                <MenuItem value="Equipment">Equipment</MenuItem>
-                <MenuItem value="Compliance">Compliance</MenuItem>
-                <MenuItem value="Staff">Staff</MenuItem>
-                <MenuItem value="Other">Other</MenuItem>
-              </Select>
-            </FormControl>
             <TextField
               fullWidth
               label="Description"
@@ -580,7 +722,7 @@ const Checklists = () => {
                   value={item.category}
                   onChange={(e) => handleItemChange(index, 'category', e.target.value)}
                   margin="dense"
-                  placeholder={templateForm.category || 'Item category'}
+                  placeholder="Item category (optional)"
                 />
                 <FormControl fullWidth margin="dense">
                   <InputLabel>Required</InputLabel>
@@ -733,22 +875,6 @@ const Checklists = () => {
               margin="normal"
               required
             />
-            <FormControl fullWidth margin="normal" required>
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={importForm.category}
-                label="Category"
-                onChange={(e) => setImportForm({ ...importForm, category: e.target.value })}
-              >
-                <MenuItem value="Safety">Safety</MenuItem>
-                <MenuItem value="Cleanliness">Cleanliness</MenuItem>
-                <MenuItem value="Food Safety">Food Safety</MenuItem>
-                <MenuItem value="Equipment">Equipment</MenuItem>
-                <MenuItem value="Compliance">Compliance</MenuItem>
-                <MenuItem value="Staff">Staff</MenuItem>
-                <MenuItem value="Other">Other</MenuItem>
-              </Select>
-            </FormControl>
             <TextField
               fullWidth
               label="Description"
@@ -784,27 +910,89 @@ const Checklists = () => {
             >
               Download Sample CSV
             </Button>
-            {csvData && (
-              <TextField
-                fullWidth
-                label="CSV Preview"
-                value={csvData}
-                onChange={(e) => setCsvData(e.target.value)}
-                margin="normal"
-                multiline
-                rows={6}
-                helperText="CSV format: title,description,category,required (header row required)"
-              />
+            <TextField
+              fullWidth
+              label="Paste CSV Data or Edit Below"
+              value={csvData}
+              onChange={(e) => handleCsvDataChange(e.target.value)}
+              margin="normal"
+              multiline
+              rows={4}
+              placeholder="title,description,category,required,options&#10;Item 1,Description here,Category,yes,&quot;Yes:3;No:0;NA:NA&quot;"
+              helperText="Only 'title' column is required. Other columns are optional. Options will default to Yes/No/NA if not provided."
+            />
+            
+            {parseError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {parseError}
+              </Alert>
             )}
+
+            {parsedItems.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                  Preview: {parsedItems.length} item(s) found
+                </Typography>
+                <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>#</strong></TableCell>
+                        <TableCell><strong>Title</strong></TableCell>
+                        <TableCell><strong>Description</strong></TableCell>
+                        <TableCell><strong>Category</strong></TableCell>
+                        <TableCell><strong>Required</strong></TableCell>
+                        <TableCell><strong>Options</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {parsedItems.map((item, index) => (
+                        <TableRow key={index} hover>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell>{item.title}</TableCell>
+                          <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {item.description || '-'}
+                          </TableCell>
+                          <TableCell>{item.category || '-'}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={item.required ? 'Yes' : 'No'} 
+                              size="small" 
+                              color={item.required ? 'success' : 'default'}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {item.options.map((opt, optIdx) => (
+                              <Chip
+                                key={optIdx}
+                                label={`${opt.option_text}:${opt.mark}`}
+                                size="small"
+                                sx={{ mr: 0.5, mb: 0.5 }}
+                              />
+                            ))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
             <Paper sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
               <Typography variant="caption" color="text.secondary">
-                <strong>CSV Format:</strong><br />
-                Required columns: title (or item)<br />
-                Optional columns: description, category, required, options<br />
-                Example:<br />
-                title,description,category,required,options<br />
-                Food Storage Temperature,Check refrigerators,Food Safety,yes,"Yes:3;Warning:1;No:0;NA:NA"<br />
-                Use the options column to define scoring options separated by semicolons. Each option should be in the form Label:Score (e.g., Yes:3).
+                <strong>Simple CSV Format:</strong><br />
+                • <strong>Required:</strong> title (or item/name column)<br />
+                • <strong>Optional:</strong> description, category, required (yes/no), options<br />
+                • <strong>Options format:</strong> "Yes:3;No:0;NA:NA" (semicolon-separated, Label:Score pairs)<br />
+                • <strong>If options are missing:</strong> Default options (Yes:3, No:0, N/A:NA) will be added automatically<br />
+                <br />
+                <strong>Example:</strong><br />
+                <code style={{ fontSize: '11px' }}>
+                  title,description,category,required,options<br />
+                  Food Storage Temperature,Check refrigerators,Food Safety,yes,"Yes:3;No:0;NA:NA"<br />
+                  Equipment Cleanliness,Clean surfaces,Cleanliness,yes,"Yes:3;No:0;NA:NA"
+                </code>
               </Typography>
             </Paper>
           </DialogContent>
@@ -834,7 +1022,7 @@ const Checklists = () => {
             <Button 
               onClick={handleImportCSV} 
               variant="contained"
-              disabled={!csvData}
+              disabled={!csvData || !importForm.templateName || parseError || parsedItems.length === 0}
               sx={{
                 borderRadius: 2,
                 textTransform: 'none',

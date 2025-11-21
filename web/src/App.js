@@ -3,9 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/ThemeContext';
+import { ThemeProvider as CustomThemeProvider } from './context/ThemeContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
+import PermissionRoute from './components/PermissionRoute';
 import Toast from './components/Toast';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -85,6 +86,8 @@ const getTheme = (darkMode) => createTheme({
         root: {
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
           transition: 'all 0.3s ease-in-out',
+          borderRadius: themeConfig.borderRadius.medium,
+          border: `1px solid ${themeConfig.border.default}`,
           '&:hover': {
             boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             transform: 'translateY(-2px)',
@@ -115,14 +118,6 @@ const getTheme = (darkMode) => createTheme({
             borderRadius: 8,
             backgroundColor: '#fff',
           },
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: themeConfig.borderRadius.medium,
-          border: `1px solid ${themeConfig.border.default}`,
         },
       },
     },
@@ -256,9 +251,9 @@ function AppContent() {
                 <Route
                   path="/users"
                   element={
-                    <AdminRoute>
+                    <PermissionRoute requiredPermissions={['create_users', 'manage_users', 'view_users']}>
                       <UserManagement />
-                    </AdminRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route

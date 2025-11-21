@@ -31,8 +31,8 @@ import { useAuth } from '../context/AuthContext';
 import { showSuccess, showError } from '../utils/toast';
 
 const Profile = () => {
-  const { user: authUser } = useAuth();
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
+  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,7 +54,7 @@ const Profile = () => {
     try {
       const response = await axios.get('/api/auth/me');
       const userData = response.data.user;
-      setUser(userData);
+      setUserData(userData);
       setFormData({
         name: userData.name || '',
         email: userData.email || '',
@@ -129,7 +129,7 @@ const Profile = () => {
       await axios.put('/api/auth/profile', updateData);
 
       // If email or password changed, re-login
-      if (formData.email !== user.email || formData.newPassword) {
+      if (formData.email !== userData?.email || formData.newPassword) {
         showSuccess('Profile updated. Please login again.');
         setTimeout(() => {
           window.location.href = '/login';
@@ -202,16 +202,16 @@ const Profile = () => {
                     fontWeight: 600
                   }}
                 >
-                  {getInitials(user?.name)}
+                  {getInitials(userData?.name || user?.name)}
                 </Avatar>
                 <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                  {user?.name}
+                  {userData?.name || user?.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  {user?.email}
+                  {userData?.email || user?.email}
                 </Typography>
                 <Chip
-                  label={user?.role || 'User'}
+                  label={userData?.role || user?.role || 'User'}
                   color="primary"
                   size="small"
                   sx={{ mt: 1 }}
@@ -230,8 +230,8 @@ const Profile = () => {
                     Member Since
                   </Typography>
                   <Typography variant="body2">
-                    {user?.created_at
-                      ? new Date(user.created_at).toLocaleDateString('en-US', {
+                    {userData?.created_at
+                      ? new Date(userData.created_at).toLocaleDateString('en-US', {
                           year: 'numeric',
                           month: 'long',
                           day: 'numeric'

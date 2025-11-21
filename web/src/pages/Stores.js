@@ -13,12 +13,23 @@ import {
   DialogActions,
   TextField,
   Grid,
-  IconButton
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Alert,
+  Paper
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import CloseIcon from '@mui/icons-material/Close';
+import DownloadIcon from '@mui/icons-material/Download';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -27,8 +38,14 @@ const Stores = () => {
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openImportDialog, setOpenImportDialog] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [csvData, setCsvData] = useState('');
+  const [parsedStores, setParsedStores] = useState([]);
+  const [parseError, setParseError] = useState('');
   const [editingStore, setEditingStore] = useState(null);
   const [formData, setFormData] = useState({
+    store_number: '',
     name: '',
     address: '',
     city: '',
@@ -58,6 +75,7 @@ const Stores = () => {
     if (store) {
       setEditingStore(store);
       setFormData({
+        store_number: store.store_number || '',
         name: store.name,
         address: store.address || '',
         city: store.city || '',
@@ -69,6 +87,7 @@ const Stores = () => {
     } else {
       setEditingStore(null);
       setFormData({
+        store_number: '',
         name: '',
         address: '',
         city: '',
@@ -115,6 +134,184 @@ const Stores = () => {
     }
   };
 
+  // Improved CSV parser that handles quoted fields
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const parseCSVData = (csvText) => {
+    try {
+      setParseError('');
+      const lines = csvText.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        setParseError('CSV must have at least a header row and one data row');
+        setParsedStores([]);
+        return;
+      }
+
+      // Parse header
+      const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+      const headerMap = {
+        store: headers.findIndex(h => h === 'store' || h === 'store number' || h === 'storenumber'),
+        storeName: headers.findIndex(h => h === 'store name' || h === 'storename' || h === 'name'),
+        address: headers.findIndex(h => h === 'address' || h === 'brand name' || h === 'brandname'),
+        city: headers.findIndex(h => h === 'city'),
+        state: headers.findIndex(h => h === 'state'),
+        country: headers.findIndex(h => h === 'country'),
+        phone: headers.findIndex(h => h === 'phone' || h === 'phone number'),
+        email: headers.findIndex(h => h === 'email')
+      };
+
+      // Check for required fields
+      if (headerMap.storeName === -1 && headerMap.store === -1) {
+        setParseError('CSV must have a "Store Name" or "Store" column');
+        setParsedStores([]);
+        return;
+      }
+
+      // Parse data rows
+      const stores = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const storeName = headerMap.storeName >= 0 ? values[headerMap.storeName]?.replace(/^"|"$/g, '').trim() : '';
+        const store = headerMap.store >= 0 ? values[headerMap.store]?.replace(/^"|"$/g, '').trim() : '';
+        
+        if (storeName || store) {
+          stores.push({
+            store: store || '',
+            storeName: storeName || '',
+            address: headerMap.address >= 0 ? (values[headerMap.address]?.replace(/^"|"$/g, '').trim() || '') : '',
+            city: headerMap.city >= 0 ? (values[headerMap.city]?.replace(/^"|"$/g, '').trim() || '') : '',
+            state: headerMap.state >= 0 ? (values[headerMap.state]?.replace(/^"|"$/g, '').trim() || '') : '',
+            country: headerMap.country >= 0 ? (values[headerMap.country]?.replace(/^"|"$/g, '').trim() || '') : '',
+            phone: headerMap.phone >= 0 ? (values[headerMap.phone]?.replace(/^"|"$/g, '').trim() || '') : '',
+            email: headerMap.email >= 0 ? (values[headerMap.email]?.replace(/^"|"$/g, '').trim() || '') : ''
+          });
+        }
+      }
+
+      if (stores.length === 0) {
+        setParseError('No valid stores found in CSV');
+        setParsedStores([]);
+        return;
+      }
+
+      setParsedStores(stores);
+    } catch (error) {
+      setParseError(`Error parsing CSV: ${error.message}`);
+      setParsedStores([]);
+    }
+  };
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      setCsvData(text);
+      parseCSVData(text);
+    };
+    reader.onerror = () => {
+      showError('Error reading file');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCsvDataChange = (text) => {
+    setCsvData(text);
+    if (text.trim()) {
+      parseCSVData(text);
+    } else {
+      setParsedStores([]);
+      setParseError('');
+    }
+  };
+
+  const handleCSVImport = async () => {
+    if (!csvData || parsedStores.length === 0) {
+      showError('Please provide valid CSV data');
+      return;
+    }
+
+    if (parseError) {
+      showError('Please fix CSV errors before importing');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const response = await axios.post('/api/locations/import', { stores: parsedStores });
+      showSuccess(response.data.message);
+      fetchStores();
+      setOpenImportDialog(false);
+      setCsvData('');
+      setParsedStores([]);
+      setParseError('');
+    } catch (error) {
+      console.error('Import error:', error);
+      showError(error.response?.data?.error || 'Failed to import CSV file');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDownloadSampleCsv = () => {
+    const sampleCsv = `Store,Store Name,Brand Name,City,State,Country,Phone,Email
+5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store5438@example.com
+5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,India,+91-9876543210,store5046@example.com
+5040,PG Phoenix Pune,Punjab Grill,Pune,Maharashtra,India,+91-1122334455,store5040@example.com
+5025,PG Select City Saket,Punjab Grill,New Delhi,Delhi,India,+91-5566778899,store5025@example.com`;
+    
+    const blob = new Blob([sampleCsv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stores-sample.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleOpenImportDialog = () => {
+    setCsvData('');
+    setParsedStores([]);
+    setParseError('');
+    setOpenImportDialog(true);
+  };
+
+  const handleCloseImportDialog = () => {
+    if (!importing) {
+      setOpenImportDialog(false);
+      setCsvData('');
+      setParsedStores([]);
+      setParseError('');
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -132,13 +329,22 @@ const Stores = () => {
           <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
             Stores
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Add Store
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={handleOpenImportDialog}
+            >
+              Import CSV
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Add Store
+            </Button>
+          </Box>
         </Box>
 
         {stores.length === 0 ? (
@@ -197,6 +403,11 @@ const Stores = () => {
                           <StorefrontIcon sx={{ fontSize: 28, color: 'primary.main' }} />
                         </Box>
                         <Box sx={{ flex: 1 }}>
+                          {store.store_number && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 500 }}>
+                              Store #{store.store_number}
+                            </Typography>
+                          )}
                           <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                             {store.name}
                           </Typography>
@@ -269,6 +480,14 @@ const Stores = () => {
           <DialogContent sx={{ pt: 3 }}>
             <TextField
               fullWidth
+              label="Store Number"
+              value={formData.store_number}
+              onChange={(e) => setFormData({ ...formData, store_number: e.target.value })}
+              margin="normal"
+              placeholder="e.g., 5438"
+            />
+            <TextField
+              fullWidth
               label="Store Name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -277,7 +496,7 @@ const Stores = () => {
             />
             <TextField
               fullWidth
-              label="Address"
+              label="Brand Name"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               margin="normal"
@@ -364,6 +583,183 @@ const Stores = () => {
               }}
             >
               {editingStore ? 'Update' : 'Create'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* CSV Import Dialog */}
+        <Dialog
+          open={openImportDialog}
+          onClose={handleCloseImportDialog}
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            pb: 2,
+            borderBottom: '1px solid #e0e0e0'
+          }}>
+            Import Stores from CSV
+            <IconButton onClick={handleCloseImportDialog} size="small" sx={{ color: '#666' }}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 3 }}>
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <input
+                accept=".csv"
+                style={{ display: 'none' }}
+                id="csv-upload-stores"
+                type="file"
+                onChange={handleFileUpload}
+              />
+              <label htmlFor="csv-upload-stores">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<UploadFileIcon />}
+                  fullWidth
+                >
+                  Upload CSV File
+                </Button>
+              </label>
+            </Box>
+            <Button
+              variant="text"
+              onClick={handleDownloadSampleCsv}
+              startIcon={<DownloadIcon />}
+              sx={{ mb: 2 }}
+            >
+              Download Sample CSV
+            </Button>
+            <TextField
+              fullWidth
+              label="Paste CSV Data or Edit Below"
+              value={csvData}
+              onChange={(e) => handleCsvDataChange(e.target.value)}
+              margin="normal"
+              multiline
+              rows={4}
+              placeholder="Store,Store Name,Brand Name,City,State,Country,Phone,Email&#10;5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store@example.com"
+              helperText="Only 'Store Name' or 'Store' column is required. Other columns are optional."
+            />
+            
+            {parseError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {parseError}
+              </Alert>
+            )}
+
+            {parsedStores.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                  Preview: {parsedStores.length} store(s) found
+                </Typography>
+                <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>#</strong></TableCell>
+                        <TableCell><strong>Store #</strong></TableCell>
+                        <TableCell><strong>Store Name</strong></TableCell>
+                        <TableCell><strong>Brand Name</strong></TableCell>
+                        <TableCell><strong>City</strong></TableCell>
+                        <TableCell><strong>State</strong></TableCell>
+                        <TableCell><strong>Country</strong></TableCell>
+                        <TableCell><strong>Phone</strong></TableCell>
+                        <TableCell><strong>Email</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {parsedStores.map((store, index) => (
+                        <TableRow key={index} hover>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell>{store.store || '-'}</TableCell>
+                          <TableCell>{store.storeName || '-'}</TableCell>
+                          <TableCell sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {store.address || '-'}
+                          </TableCell>
+                          <TableCell>{store.city || '-'}</TableCell>
+                          <TableCell>{store.state || '-'}</TableCell>
+                          <TableCell>{store.country || '-'}</TableCell>
+                          <TableCell>{store.phone || '-'}</TableCell>
+                          <TableCell sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {store.email || '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+
+            <Paper sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
+              <Typography variant="caption" color="text.secondary">
+                <strong>Simple CSV Format:</strong><br />
+                • <strong>Required:</strong> Store Name (or Store/Store Number column)<br />
+                • <strong>Optional:</strong> Store Number, Brand Name, City, State, Country, Phone, Email<br />
+                • <strong>Column names are flexible:</strong> "Store Name" or "Name", "Brand Name" or "Address", etc.<br />
+                • <strong>Quoted fields supported:</strong> Use quotes for values containing commas<br />
+                <br />
+                <strong>Example:</strong><br />
+                <code style={{ fontSize: '11px' }}>
+                  Store,Store Name,Brand Name,City,State,Country,Phone,Email<br />
+                  5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store@example.com<br />
+                  5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,India,+91-9876543210,store2@example.com
+                </code>
+              </Typography>
+            </Paper>
+          </DialogContent>
+          <DialogActions sx={{ 
+            px: 3, 
+            py: 2, 
+            borderTop: '1px solid #e0e0e0',
+            gap: 2
+          }}>
+            <Button 
+              onClick={handleCloseImportDialog}
+              disabled={importing}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                px: 3,
+                borderColor: '#e0e0e0',
+                color: '#666',
+                '&:hover': {
+                  borderColor: '#1976d2',
+                  color: '#1976d2',
+                },
+              }}
+              variant="outlined"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCSVImport} 
+              variant="contained"
+              disabled={!csvData || !parsedStores.length || parseError || importing}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                px: 3,
+                bgcolor: '#1976d2',
+                '&:hover': {
+                  bgcolor: '#1565c0',
+                },
+                '&:disabled': {
+                  bgcolor: '#e0e0e0',
+                },
+              }}
+            >
+              {importing ? 'Importing...' : `Import ${parsedStores.length} Store(s)`}
             </Button>
           </DialogActions>
         </Dialog>

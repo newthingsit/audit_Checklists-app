@@ -93,6 +93,7 @@ const createTables = () => {
       // Locations table
       `CREATE TABLE IF NOT EXISTS locations (
         id SERIAL PRIMARY KEY,
+        store_number VARCHAR(50),
         name VARCHAR(255) NOT NULL,
         address TEXT,
         city VARCHAR(255),
@@ -100,7 +101,9 @@ const createTables = () => {
         country VARCHAR(255),
         phone VARCHAR(50),
         email VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id)
       )`,
       
       // Audits table
