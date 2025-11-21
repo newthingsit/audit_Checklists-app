@@ -40,6 +40,7 @@ const AuditFormScreen = () => {
   const [storeSearchText, setStoreSearchText] = useState('');
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: checklist
   const [isEditing, setIsEditing] = useState(false);
+  const [auditStatus, setAuditStatus] = useState(null); // Track audit status
 
   useEffect(() => {
     if (auditId) {
@@ -105,6 +106,18 @@ const AuditFormScreen = () => {
       const auditResponse = await axios.get(`${API_BASE_URL}/audits/${id}`);
       const audit = auditResponse.data.audit;
       const auditItems = auditResponse.data.items || [];
+
+      // Check if audit is completed
+      setAuditStatus(audit.status);
+      if (audit.status === 'completed') {
+        Alert.alert(
+          'Audit Completed',
+          'This audit has been completed and cannot be modified.',
+          [{ text: 'OK' }]
+        );
+        navigation.goBack();
+        return;
+      }
 
       // Set audit info
       setLocationId(audit.location_id || '');
@@ -199,19 +212,35 @@ const AuditFormScreen = () => {
   };
 
   const handleResponseChange = (itemId, status) => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
     setResponses({ ...responses, [itemId]: status });
   };
 
   const handleOptionChange = (itemId, optionId) => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
     setSelectedOptions({ ...selectedOptions, [itemId]: optionId });
     setResponses({ ...responses, [itemId]: 'completed' });
   };
 
   const handleCommentChange = (itemId, comment) => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
     setComments({ ...comments, [itemId]: comment });
   };
 
   const handlePhotoUpload = async (itemId) => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -287,6 +316,10 @@ const AuditFormScreen = () => {
   };
 
   const handleSubmit = async () => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify a completed audit');
+      return;
+    }
     setSaving(true);
     try {
       let currentAuditId = auditId;
@@ -544,9 +577,11 @@ const AuditFormScreen = () => {
                         key={option.id}
                         style={[
                           styles.optionButton,
-                          selectedOptions[item.id] === option.id && styles.optionButtonActive
+                          selectedOptions[item.id] === option.id && styles.optionButtonActive,
+                          auditStatus === 'completed' && styles.disabledButton
                         ]}
                         onPress={() => handleOptionChange(item.id, option.id)}
+                        disabled={auditStatus === 'completed'}
                       >
                         <Text
                           style={[
@@ -566,9 +601,11 @@ const AuditFormScreen = () => {
                         key={status}
                         style={[
                           styles.statusButton,
-                          responses[item.id] === status && styles.statusButtonActive
+                          responses[item.id] === status && styles.statusButtonActive,
+                          auditStatus === 'completed' && styles.disabledButton
                         ]}
                         onPress={() => handleResponseChange(item.id, status)}
+                        disabled={auditStatus === 'completed'}
                       >
                         <Text
                           style={[
@@ -639,9 +676,9 @@ const AuditFormScreen = () => {
                 <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, saving && styles.buttonDisabled]}
+                style={[styles.button, (saving || auditStatus === 'completed') && styles.buttonDisabled]}
                 onPress={handleSubmit}
-                disabled={saving}
+                disabled={saving || auditStatus === 'completed'}
               >
                 {saving ? (
                   <ActivityIndicator color="#fff" />
@@ -884,6 +921,9 @@ const styles = StyleSheet.create({
   },
   statusButtonTextActive: {
     color: '#fff',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   inputText: {
     fontSize: 16,

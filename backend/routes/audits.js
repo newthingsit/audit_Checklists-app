@@ -476,6 +476,11 @@ router.put('/:id', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Audit not found' });
     }
 
+    // Prevent changes to completed audits (admins can still update for corrections)
+    if (audit.status === 'completed' && !isAdmin) {
+      return res.status(403).json({ error: 'Cannot modify a completed audit' });
+    }
+
     // Update audit
     const updateFields = [];
     const updateValues = [];
@@ -531,6 +536,11 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
     }
     if (!audit) {
       return res.status(404).json({ error: 'Audit not found' });
+    }
+
+    // Prevent changes to completed audits
+    if (audit.status === 'completed') {
+      return res.status(403).json({ error: 'Cannot modify items in a completed audit' });
     }
 
     // If selected_option_id is provided, get the mark from the option

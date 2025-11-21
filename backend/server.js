@@ -44,6 +44,12 @@ app.use(cors({
   exposedHeaders: ['Content-Type', 'Content-Length']
 }));
 
+// Trust proxy if behind a reverse proxy (nginx, load balancer, etc.)
+// Only enable in production or if explicitly set
+if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Rate Limiting - More lenient in development
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
@@ -53,6 +59,10 @@ const authLimiter = rateLimit({
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip X-Forwarded-For validation in development to avoid warnings
+  validate: {
+    xForwardedForHeader: isDevelopment ? false : true,
+  },
 });
 
 const apiLimiter = rateLimit({
@@ -61,6 +71,10 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip X-Forwarded-For validation in development to avoid warnings
+  validate: {
+    xForwardedForHeader: isDevelopment ? false : true,
+  },
 });
 
 // Apply rate limiting to auth routes

@@ -71,6 +71,17 @@ router.get('/', authenticate, (req, res) => {
     }
   }
 
+  // Exclude completed scheduled audits from the main list
+  // Completed audits should be viewed in audit history, not in scheduled audits
+  // Handle case-insensitive comparison and NULL values
+  if (dbType === 'mssql' || dbType === 'sqlserver') {
+    // SQL Server: Use LOWER and LTRIM/RTRIM for case-insensitive comparison
+    query += ` AND (sa.status IS NULL OR LOWER(LTRIM(RTRIM(CAST(sa.status AS VARCHAR(50))))) <> 'completed')`;
+  } else {
+    // SQLite/MySQL/PostgreSQL: Use LOWER() and TRIM() for case-insensitive comparison
+    query += ` AND (sa.status IS NULL OR LOWER(TRIM(COALESCE(sa.status, ''))) <> 'completed')`;
+  }
+
   query += ` ORDER BY sa.scheduled_date ASC`;
 
   dbInstance.all(query, params, (err, schedules) => {
@@ -393,80 +404,167 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
     errors: []
   };
 
+  // Get database type for query compatibility
+  const dbType = process.env.DB_TYPE || 'sqlite';
+
   // Helper functions
   const findUser = (employeeId, name) => {
     return new Promise((resolve, reject) => {
-      // Try case-insensitive name match first
-      dbInstance.get(
-        'SELECT id, name, email FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1',
-        [name],
-        (err, user) => {
+      // If employeeId looks like an email, try email match first
+      if (employeeId && employeeId.includes('@')) {
+        const query1 = dbType === 'mssql' || dbType === 'sqlserver'
+          ? 'SELECT TOP 1 id, name, email FROM users WHERE LOWER(LTRIM(RTRIM(email))) = LOWER(LTRIM(RTRIM(?)))'
+          : 'SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(?)) LIMIT 1';
+        dbInstance.get(query1, [employeeId], (err, user) => {
+          if (err) return reject(err);
+          if (user) return resolve(user);
+          
+          // Fallback to name match
+          const query2 = dbType === 'mssql' || dbType === 'sqlserver'
+            ? 'SELECT TOP 1 id, name, email FROM users WHERE LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))'
+            : 'SELECT id, name, email FROM users WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1';
+          dbInstance.get(query2, [name], (err, user) => {
+            if (err) return reject(err);
+            resolve(user);
+          });
+        });
+      } else {
+        // Try case-insensitive name match first
+        const query1 = dbType === 'mssql' || dbType === 'sqlserver'
+          ? 'SELECT TOP 1 id, name, email FROM users WHERE LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))'
+          : 'SELECT id, name, email FROM users WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1';
+        dbInstance.get(query1, [name], (err, user) => {
           if (err) return reject(err);
           if (user) return resolve(user);
           
           // Try email match with employee ID (case-insensitive)
           if (employeeId) {
-            dbInstance.get(
-              'SELECT id, name, email FROM users WHERE LOWER(email) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) LIMIT 1',
-              [`%${employeeId}%`, `${employeeId}@%`],
-              (err, user) => {
-                if (err) return reject(err);
-                resolve(user);
-              }
-            );
+            const query2 = dbType === 'mssql' || dbType === 'sqlserver'
+              ? 'SELECT TOP 1 id, name, email FROM users WHERE LOWER(LTRIM(RTRIM(email))) LIKE LOWER(?) OR LOWER(LTRIM(RTRIM(email))) LIKE LOWER(?)'
+              : 'SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) LIKE LOWER(?) OR LOWER(TRIM(email)) LIKE LOWER(?) LIMIT 1';
+            dbInstance.get(query2, [`%${employeeId}%`, `${employeeId}@%`], (err, user) => {
+              if (err) return reject(err);
+              resolve(user);
+            });
           } else {
             resolve(null);
           }
-        }
-      );
+        });
+      }
     });
   };
 
   const findTemplate = (checklistName) => {
     return new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT id, name FROM checklist_templates WHERE name = ? LIMIT 1',
-        [checklistName],
-        (err, template) => {
+      // First try exact match (case-insensitive)
+      const query1 = dbType === 'mssql' || dbType === 'sqlserver'
+        ? 'SELECT TOP 1 id, name FROM checklist_templates WHERE LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))'
+        : 'SELECT id, name FROM checklist_templates WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1';
+      dbInstance.get(query1, [checklistName], (err, template) => {
+        if (err) return reject(err);
+        if (template) return resolve(template);
+        
+        // Try partial match (case-insensitive)
+        const query2 = dbType === 'mssql' || dbType === 'sqlserver'
+          ? 'SELECT TOP 1 id, name FROM checklist_templates WHERE LOWER(LTRIM(RTRIM(name))) LIKE LOWER(LTRIM(RTRIM(?)))'
+          : 'SELECT id, name FROM checklist_templates WHERE LOWER(TRIM(name)) LIKE LOWER(TRIM(?)) LIMIT 1';
+        dbInstance.get(query2, [`%${checklistName}%`], (err, template) => {
           if (err) return reject(err);
           if (template) return resolve(template);
           
-          dbInstance.get(
-            'SELECT id, name FROM checklist_templates WHERE LOWER(name) LIKE ? LIMIT 1',
-            [`%${checklistName.toLowerCase()}%`],
-            (err, template) => {
-              if (err) return reject(err);
-              resolve(template);
-            }
-          );
-        }
-      );
+          // Try matching without special characters
+          const cleanName = checklistName.replace(/[-\s]/g, '');
+          const query3 = dbType === 'mssql' || dbType === 'sqlserver'
+            ? 'SELECT TOP 1 id, name FROM checklist_templates WHERE LOWER(REPLACE(REPLACE(name, \'-\', \'\'), \' \', \'\')) = LOWER(?)'
+            : 'SELECT id, name FROM checklist_templates WHERE LOWER(REPLACE(REPLACE(name, "-", ""), " ", "")) = LOWER(?) LIMIT 1';
+          dbInstance.get(query3, [cleanName], (err, template) => {
+            if (err) return reject(err);
+            resolve(template);
+          });
+        });
+      });
     });
   };
 
   const findOrCreateLocation = (storeNumber, storeName) => {
     return new Promise((resolve, reject) => {
-      dbInstance.get(
-        'SELECT id, name FROM locations WHERE name = ? OR name LIKE ? LIMIT 1',
-        [storeName, `%${storeNumber}%`],
-        (err, location) => {
+      // Try to find by store name first (case-insensitive)
+      if (storeName) {
+        const query1 = dbType === 'mssql' || dbType === 'sqlserver'
+          ? 'SELECT TOP 1 id, name FROM locations WHERE LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))'
+          : 'SELECT id, name FROM locations WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1';
+        dbInstance.get(query1, [storeName], (err, location) => {
           if (err) return reject(err);
+          if (location) return resolve(location);
           
-          if (location) {
-            return resolve(location);
-          }
+          // Try partial match on store name
+          const query2 = dbType === 'mssql' || dbType === 'sqlserver'
+            ? 'SELECT TOP 1 id, name FROM locations WHERE LOWER(LTRIM(RTRIM(name))) LIKE LOWER(?)'
+            : 'SELECT id, name FROM locations WHERE LOWER(TRIM(name)) LIKE LOWER(?) LIMIT 1';
+          dbInstance.get(query2, [`%${storeName}%`], (err, location) => {
+            if (err) return reject(err);
+            if (location) return resolve(location);
+            
+            // Try finding by store number
+            if (storeNumber) {
+              const query3 = dbType === 'mssql' || dbType === 'sqlserver'
+                ? 'SELECT TOP 1 id, name FROM locations WHERE store_number = ? OR name LIKE ?'
+                : 'SELECT id, name FROM locations WHERE store_number = ? OR name LIKE ? LIMIT 1';
+              dbInstance.get(query3, [storeNumber, `%${storeNumber}%`], (err, location) => {
+                if (err) return reject(err);
+                if (location) return resolve(location);
+                
+                // Create new location
+                const locationName = storeName || `Store ${storeNumber}`;
+                dbInstance.run(
+                  'INSERT INTO locations (name, store_number, address, created_by) VALUES (?, ?, ?, ?)',
+                  [locationName, storeNumber || null, `Store ${storeNumber || 'Unknown'}`, createdBy],
+                  function(err) {
+                    if (err) return reject(err);
+                    const scheduleId = (this && this.lastID) ? this.lastID : 0;
+                    resolve({ id: scheduleId, name: locationName });
+                  }
+                );
+              });
+            } else {
+              // Create new location without store number
+              const locationName = storeName || 'Unknown Store';
+              dbInstance.run(
+                'INSERT INTO locations (name, address, created_by) VALUES (?, ?, ?)',
+                [locationName, 'Unknown', createdBy],
+                function(err) {
+                  if (err) return reject(err);
+                  const scheduleId = (this && this.lastID) ? this.lastID : 0;
+                  resolve({ id: scheduleId, name: locationName });
+                }
+              );
+            }
+          });
+        });
+      } else if (storeNumber) {
+        // Try finding by store number only
+        const query = dbType === 'mssql' || dbType === 'sqlserver'
+          ? 'SELECT TOP 1 id, name FROM locations WHERE store_number = ? OR name LIKE ?'
+          : 'SELECT id, name FROM locations WHERE store_number = ? OR name LIKE ? LIMIT 1';
+        dbInstance.get(query, [storeNumber, `%${storeNumber}%`], (err, location) => {
+          if (err) return reject(err);
+          if (location) return resolve(location);
           
-          const locationName = storeName || `Store ${storeNumber}`;
+          // Create new location
+          const locationName = `Store ${storeNumber}`;
           dbInstance.run(
-            'INSERT INTO locations (name, address, created_by) VALUES (?, ?, ?)',
-            [locationName, `Store ${storeNumber}`, createdBy],
+            'INSERT INTO locations (name, store_number, address, created_by) VALUES (?, ?, ?, ?)',
+            [locationName, storeNumber, `Store ${storeNumber}`, createdBy],
             function(err) {
               if (err) return reject(err);
-              resolve({ id: this.lastID, name: locationName });
+              const scheduleId = (this && this.lastID) ? this.lastID : 0;
+              resolve({ id: scheduleId, name: locationName });
             }
           );
-        }
-      );
+        });
+      } else {
+        return reject(new Error('Store number or store name is required'));
+      }
     });
   };
 
@@ -477,8 +575,15 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [templateId, locationId, assignedTo, scheduledDate, 'once', scheduledDate, 'pending', createdBy],
         function(err, result) {
-          if (err) return reject(err);
-          const scheduleId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
+          if (err) {
+            console.error('Error creating scheduled audit:', err);
+            return reject(err);
+          }
+          // Handle different database types for lastID
+          const scheduleId = (this && this.lastID) ? this.lastID : ((result && result.lastID) ? result.lastID : 0);
+          if (scheduleId === 0) {
+            console.warn('Warning: Could not get lastID after insert. Schedule may have been created but ID is unknown.');
+          }
           resolve(scheduleId);
         }
       );
@@ -491,28 +596,93 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
     const { employee, name, checklist, store, storeName, startDate, status } = schedule;
 
     try {
+      console.log(`[Import] Processing row ${i + 1}:`, { employee, name, checklist, store, storeName, startDate });
+      
       if (!name || !checklist || !startDate) {
+        const missing = [];
+        if (!name) missing.push('name');
+        if (!checklist) missing.push('checklist');
+        if (!startDate) missing.push('startDate');
         results.skipped++;
-        results.errors.push(`Row ${i + 1}: Missing required fields`);
+        results.errors.push(`Row ${i + 1}: Missing required fields: ${missing.join(', ')}`);
+        console.log(`[Import] Row ${i + 1} skipped: Missing fields`);
         continue;
       }
 
-      // Parse date
-      const scheduledDate = new Date(startDate);
-      if (isNaN(scheduledDate.getTime())) {
+      // Parse date - handle multiple formats (DD-MM-YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.)
+      let dateStr;
+      
+      // Clean the date string
+      const cleanDate = startDate.trim().replace(/['"]/g, '').replace(/\s+/g, ' ');
+      
+      console.log(`[Import] Parsing date for row ${i + 1}: "${cleanDate}"`);
+      
+      // Try parsing different date formats
+      try {
+        // First, try DD-MM-YYYY or DD/MM/YYYY format (e.g., "26-11-2025")
+        const parts = cleanDate.split(/[-\/\.]/);
+        if (parts.length === 3) {
+          const part1 = parseInt(parts[0], 10);
+          const part2 = parseInt(parts[1], 10);
+          const part3 = parseInt(parts[2], 10);
+          
+          // Check if it's DD-MM-YYYY format (day > 12 indicates DD-MM format)
+          if (part1 > 12 && part1 <= 31 && part2 >= 1 && part2 <= 12 && part3 > 1000) {
+            // DD-MM-YYYY format: day, month, year
+            // Format directly as YYYY-MM-DD to avoid timezone issues
+            const year = part3;
+            const month = String(part2).padStart(2, '0');
+            const day = String(part1).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+            console.log(`[Import] Parsed as DD-MM-YYYY: ${dateStr}`);
+          } else if (part1 >= 1 && part1 <= 12 && part2 >= 1 && part2 <= 31 && part3 > 1000) {
+            // MM-DD-YYYY format: month, day, year
+            const year = part3;
+            const month = String(part1).padStart(2, '0');
+            const day = String(part2).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+            console.log(`[Import] Parsed as MM-DD-YYYY: ${dateStr}`);
+          } else if (part1 > 1000 && part2 >= 1 && part2 <= 12 && part3 >= 1 && part3 <= 31) {
+            // YYYY-MM-DD format: year, month, day
+            const year = part1;
+            const month = String(part2).padStart(2, '0');
+            const day = String(part3).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+            console.log(`[Import] Parsed as YYYY-MM-DD: ${dateStr}`);
+          }
+        }
+        
+        // If not parsed yet, try standard Date constructor and format manually
+        if (!dateStr) {
+          const scheduledDate = new Date(cleanDate);
+          if (!isNaN(scheduledDate.getTime()) && scheduledDate.getFullYear() > 1000 && scheduledDate.getFullYear() <= 2100) {
+            // Format manually to avoid timezone issues
+            const year = scheduledDate.getFullYear();
+            const month = String(scheduledDate.getMonth() + 1).padStart(2, '0');
+            const day = String(scheduledDate.getDate()).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+            console.log(`[Import] Parsed using Date constructor: ${dateStr}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[Import] Date parsing error for row ${i + 1}:`, error);
+        dateStr = null;
+      }
+      
+      if (!dateStr) {
         results.skipped++;
-        results.errors.push(`Row ${i + 1}: Invalid date format: ${startDate}`);
+        results.errors.push(`Row ${i + 1}: Invalid date format: "${startDate}" (expected: DD-MM-YYYY, MM/DD/YYYY, or YYYY-MM-DD)`);
         continue;
       }
-      const dateStr = scheduledDate.toISOString().split('T')[0];
 
       // Find user
       const user = await findUser(employee || '', name);
       if (!user) {
         results.skipped++;
-        results.errors.push(`Row ${i + 1}: User not found: ${name}`);
+        results.errors.push(`Row ${i + 1}: User not found: ${name}${employee ? ` (${employee})` : ''}`);
         continue;
       }
+      console.log(`[Import] Found user: ${user.name} (${user.email}) for row ${i + 1}`);
 
       // Find template
       const template = await findTemplate(checklist);
@@ -521,20 +691,32 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
         results.errors.push(`Row ${i + 1}: Template not found: ${checklist}`);
         continue;
       }
+      console.log(`[Import] Found template: ${template.name} for row ${i + 1}`);
 
       // Find or create location
+      console.log(`[Import] Finding/creating location for row ${i + 1}: store="${store}", storeName="${storeName}"`);
       const location = await findOrCreateLocation(store || '', storeName || '');
+      console.log(`[Import] Found/created location: ${location.name} (ID: ${location.id}) for row ${i + 1}`);
 
       // Create scheduled audit
-      await createScheduledAudit(template.id, location.id, user.id, dateStr);
+      console.log(`[Import] Creating scheduled audit for row ${i + 1}: templateId=${template.id}, locationId=${location.id}, userId=${user.id}, date=${dateStr}`);
+      const scheduleId = await createScheduledAudit(template.id, location.id, user.id, dateStr);
+      console.log(`[Import] ✓ Successfully created scheduled audit ID: ${scheduleId} for row ${i + 1}`);
 
       results.success++;
     } catch (error) {
+      console.error(`[Import] ✗ Error processing row ${i + 1}:`, error);
       results.failed++;
-      results.errors.push(`Row ${i + 1}: ${error.message}`);
+      const errorMsg = error.message || error.toString();
+      results.errors.push(`Row ${i + 1}: ${errorMsg}`);
     }
   }
 
+  console.log(`[Import] Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`);
+  if (results.errors.length > 0) {
+    console.log(`[Import] Errors:`, results.errors);
+  }
+  
   res.json({
     message: `Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`,
     results

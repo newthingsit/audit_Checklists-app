@@ -109,8 +109,16 @@ const ScheduledAuditsScreen = () => {
       const response = await axios.get(`${API_BASE_URL}/scheduled-audits`);
       console.log('[Mobile] Response status:', response.status);
       console.log('[Mobile] Response data:', JSON.stringify(response.data, null, 2));
-      const schedulesData = response.data.schedules || [];
-      console.log('[Mobile] Fetched scheduled audits:', schedulesData.length);
+      let schedulesData = response.data.schedules || [];
+      
+      // Filter out completed scheduled audits on frontend as backup
+      // (Backend should also filter, but this ensures it works)
+      schedulesData = schedulesData.filter(schedule => {
+        const status = getStatusValue(schedule.status);
+        return status !== 'completed';
+      });
+      
+      console.log('[Mobile] Fetched scheduled audits (after filtering):', schedulesData.length);
       if (schedulesData.length > 0) {
         console.log('[Mobile] First schedule:', JSON.stringify(schedulesData[0], null, 2));
       }

@@ -105,6 +105,11 @@ const AuditDetail = () => {
   };
 
   const handleOpenItemDialog = (item) => {
+    // Prevent editing completed audits
+    if (audit && audit.status === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
     setSelectedItem(item);
     setItemForm({
       selected_option_id: item.selected_option_id || '',
@@ -374,6 +379,7 @@ const AuditDetail = () => {
                         variant={item.selected_option_id === option.id ? 'contained' : 'outlined'}
                         size="small"
                         onClick={() => handleOpenItemDialog(item)}
+                        disabled={audit && audit.status === 'completed'}
                         sx={{
                           minWidth: 'auto',
                           px: 2,
@@ -412,6 +418,7 @@ const AuditDetail = () => {
                     variant="outlined"
                     size="small"
                     onClick={() => handleOpenItemDialog(item)}
+                    disabled={audit && audit.status === 'completed'}
                   >
                     Update Item
                   </Button>

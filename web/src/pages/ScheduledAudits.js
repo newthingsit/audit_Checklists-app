@@ -129,9 +129,16 @@ const ScheduledAudits = () => {
       }
       
       const results = await Promise.all(promises);
-      const schedulesData = results[0].data.schedules || [];
+      let schedulesData = results[0].data.schedules || [];
       const templatesData = results[1].data.templates || [];
       const locationsData = results[2].data.locations || [];
+      
+      // Filter out completed scheduled audits on frontend as backup
+      // (Backend should also filter, but this ensures it works)
+      schedulesData = schedulesData.filter(schedule => {
+        const status = getStatusValue(schedule.status);
+        return status !== 'completed';
+      });
       
       setSchedules(schedulesData);
       setTemplates(templatesData);
@@ -410,15 +417,35 @@ const ScheduledAudits = () => {
     setImporting(true);
     try {
       const response = await axios.post('/api/scheduled-audits/import', { schedules: parsedSchedules });
-      showSuccess(response.data.message);
-      fetchData();
+      
+      // Show detailed results
+      if (response.data.results) {
+        const { success, failed, skipped, errors } = response.data.results;
+        let message = `Import completed: ${success} successful`;
+        if (failed > 0) message += `, ${failed} failed`;
+        if (skipped > 0) message += `, ${skipped} skipped`;
+        if (errors.length > 0) {
+          console.warn('Import errors:', errors);
+          message += `. Errors: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? '...' : ''}`;
+        }
+        showSuccess(message);
+      } else {
+        showSuccess(response.data.message);
+      }
+      
+      // Refresh data after import
+      await fetchData();
       setOpenImportDialog(false);
       setCsvData('');
       setParsedSchedules([]);
       setParseError('');
     } catch (error) {
       console.error('Import error:', error);
-      showError(error.response?.data?.error || 'Failed to import CSV file');
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to import CSV file';
+      showError(errorMsg);
+      
+      // Still refresh data in case some records were imported
+      fetchData();
     } finally {
       setImporting(false);
     }
