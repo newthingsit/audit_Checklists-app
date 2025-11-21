@@ -1,5 +1,50 @@
 # Project Version Information
 
+## Version 1.2.0 - Scheduled Audits Import & Completed Audit Protection
+
+**Date:** 2025-01-22
+
+### What's New in This Version
+
+#### Scheduled Audits CSV Import
+- ✅ **SQL Server Compatibility**: Fixed all LIMIT clauses to use TOP 1 for SQL Server
+- ✅ **Enhanced Date Parsing**: Supports DD-MM-YYYY format (e.g., "26-11-2025")
+- ✅ **Improved User Lookup**: Better email and name matching with case-insensitive search
+- ✅ **Template Matching**: Flexible template name matching with special character handling
+- ✅ **Location Management**: Auto-creates locations if not found during import
+- ✅ **Comprehensive Logging**: Detailed import logs for debugging
+- ✅ **Error Reporting**: Detailed error messages for each failed row
+
+#### Completed Audit Protection
+- ✅ **Backend Validation**: Prevents modifications to completed audits
+- ✅ **Frontend Restrictions**: Disabled edit buttons for completed audits (web & mobile)
+- ✅ **Mobile App Protection**: Prevents loading completed audits for editing
+- ✅ **User Feedback**: Clear error messages when attempting to modify completed audits
+
+#### Scheduled Audits Filtering
+- ✅ **Completed Audit Exclusion**: Completed scheduled audits no longer show in main list
+- ✅ **Database Query Filter**: Backend filters out completed audits at query level
+- ✅ **Frontend Backup Filter**: Additional filtering on frontend for safety
+- ✅ **Works on Web & Mobile**: Consistent behavior across all platforms
+
+#### Security & Performance
+- ✅ **Rate Limiting Fix**: Fixed X-Forwarded-For validation error
+- ✅ **Trust Proxy Configuration**: Conditional proxy trust for production
+- ✅ **Development Mode**: More lenient rate limiting in development
+
+### Bug Fixes
+- ✅ **Date Parsing**: Fixed timezone issues causing one-day offset in dates
+- ✅ **SQL Server Syntax**: Fixed all database queries for SQL Server compatibility
+- ✅ **Import Errors**: Better error handling and reporting for CSV imports
+- ✅ **Completed Audit Editing**: Prevented score changes after audit completion
+
+### Components Version
+- **Backend:** 1.2.0
+- **Web App:** 1.2.0
+- **Mobile App:** 1.2.0
+
+---
+
 ## Version 1.1.0 - User Management & Bug Fixes
 
 **Date:** 2024-12-20
