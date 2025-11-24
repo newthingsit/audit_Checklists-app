@@ -150,6 +150,24 @@ const AuditDetailScreen = () => {
         </Text>
       </View>
 
+      {audit.status === 'in_progress' && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => {
+              // Navigate to AuditForm in the same stack
+              navigation.navigate('AuditForm', { 
+                auditId: audit.id, 
+                templateId: audit.template_id 
+              });
+            }}
+          >
+            <Icon name="edit" size={20} color="#fff" style={styles.buttonIcon} />
+            <Text style={styles.continueButtonText}>Continue Audit</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {audit.notes && (
         <View style={styles.notesContainer}>
           <Text style={styles.notesTitle}>Notes:</Text>
@@ -264,24 +282,6 @@ const AuditDetailScreen = () => {
           </Text>
         )}
       </View>
-
-      {audit.status === 'in_progress' && (
-        <View style={styles.actionContainer}>
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={() => {
-              // Navigate to AuditForm in the same stack
-              navigation.navigate('AuditForm', { 
-                auditId: audit.id, 
-                templateId: audit.template_id 
-              });
-            }}
-          >
-            <Icon name="edit" size={20} color="#fff" style={styles.buttonIcon} />
-            <Text style={styles.continueButtonText}>Continue Audit</Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </ScrollView>
   );
 };
@@ -528,6 +528,7 @@ const styles = StyleSheet.create({
   actionContainer: {
     padding: 15,
     paddingTop: 0,
+    marginBottom: 15,
   },
   continueButton: {
     backgroundColor: themeConfig.primary.main,

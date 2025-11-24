@@ -251,13 +251,13 @@ const AuditFormScreen = () => {
       return;
     }
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+        Alert.alert('Permission needed', 'Please grant camera permissions to take photos');
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
@@ -663,7 +663,7 @@ const AuditFormScreen = () => {
                       <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
                     )}
                     <Text style={styles.photoButtonText}>
-                      {photos[item.id] ? 'Change Photo' : 'Add Photo'}
+                      {photos[item.id] ? 'Change Photo' : 'Take Photo'}
                     </Text>
                   </TouchableOpacity>
                 </View>
