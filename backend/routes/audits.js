@@ -449,26 +449,11 @@ router.put('/:id', authenticate, (req, res) => {
   const { getUserPermissions, hasPermission } = require('../middleware/permissions');
   const isAdmin = isAdminUser(req.user);
 
-  // Check permissions first
-  getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
-    if (permErr) {
-      console.error('Error fetching permissions:', permErr);
-      return res.status(500).json({ error: 'Error checking permissions' });
-    }
-
-    const canUpdate = isAdmin || 
-                     hasPermission(userPermissions, 'update_audits') ||
-                     hasPermission(userPermissions, 'manage_audits');
-
-    if (!canUpdate) {
-      return res.status(403).json({ error: 'You do not have permission to update audits' });
-    }
-
-    // Verify audit belongs to user (or admin can update any)
-    const whereClause = isAdmin ? 'id = ?' : 'id = ? AND user_id = ?';
-    const queryParams = isAdmin ? [auditId] : [auditId, userId];
-    
-    dbInstance.get(`SELECT * FROM audits WHERE ${whereClause}`, queryParams, (err, audit) => {
+  // First, check if audit exists and belongs to user (or admin can access any)
+  const whereClause = isAdmin ? 'id = ?' : 'id = ? AND user_id = ?';
+  const queryParams = isAdmin ? [auditId] : [auditId, userId];
+  
+  dbInstance.get(`SELECT * FROM audits WHERE ${whereClause}`, queryParams, (err, audit) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -476,10 +461,35 @@ router.put('/:id', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Audit not found' });
     }
 
-    // Prevent changes to completed audits (admins can still update for corrections)
-    if (audit.status === 'completed' && !isAdmin) {
-      return res.status(403).json({ error: 'Cannot modify a completed audit' });
+    // Users can always update their own audits, but check permissions for others
+    const isOwnAudit = audit.user_id === userId;
+    
+    // If not own audit and not admin, check permissions
+    if (!isOwnAudit && !isAdmin) {
+      getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+        if (permErr) {
+          console.error('Error fetching permissions:', permErr);
+          return res.status(500).json({ error: 'Error checking permissions' });
+        }
+
+        const canUpdate = hasPermission(userPermissions, 'update_audits') ||
+                         hasPermission(userPermissions, 'manage_audits');
+
+        if (!canUpdate) {
+          return res.status(403).json({ error: 'You do not have permission to update this audit' });
+        }
+        proceedWithUpdate();
+      });
+    } else {
+      // Own audit or admin - proceed directly
+      proceedWithUpdate();
     }
+
+    function proceedWithUpdate() {
+      // Prevent changes to completed audits (admins can still update for corrections)
+      if (audit.status === 'completed' && !isAdmin) {
+        return res.status(403).json({ error: 'Cannot modify a completed audit' });
+      }
 
     // Update audit
     const updateFields = [];
@@ -508,17 +518,17 @@ router.put('/:id', authenticate, (req, res) => {
 
     updateValues.push(auditId);
 
-    dbInstance.run(
-      `UPDATE audits SET ${updateFields.join(', ')} WHERE id = ?`,
-      updateValues,
-      function(err) {
-        if (err) {
-          return res.status(500).json({ error: 'Error updating audit' });
+      dbInstance.run(
+        `UPDATE audits SET ${updateFields.join(', ')} WHERE id = ?`,
+        updateValues,
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Error updating audit' });
+          }
+          res.json({ message: 'Audit updated successfully' });
         }
-        res.json({ message: 'Audit updated successfully' });
-      }
-    );
-    });
+      );
+    }
   });
 });
 
@@ -528,9 +538,13 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
   const { status, comment, photo_url, selected_option_id, mark } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
 
-  // Verify audit belongs to user
-  dbInstance.get('SELECT * FROM audits WHERE id = ? AND user_id = ?', [auditId, userId], (err, audit) => {
+  // Verify audit belongs to user (or admin can access any)
+  const whereClause = isAdmin ? 'id = ?' : 'id = ? AND user_id = ?';
+  const queryParams = isAdmin ? [auditId] : [auditId, userId];
+  
+  dbInstance.get(`SELECT * FROM audits WHERE ${whereClause}`, queryParams, (err, audit) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -538,16 +552,22 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Audit not found' });
     }
 
-    // Prevent changes to completed audits
-    if (audit.status === 'completed') {
+    // Prevent changes to completed audits (admins can still update for corrections)
+    if (audit.status === 'completed' && !isAdmin) {
       return res.status(403).json({ error: 'Cannot modify items in a completed audit' });
     }
 
-    // If selected_option_id is provided, get the mark from the option
+    // If selected_option_id is provided, validate it exists and get the mark from the option
     let finalMark = mark;
+    let validSelectedOptionId = selected_option_id || null;
+    
     if (selected_option_id) {
       dbInstance.get('SELECT mark FROM checklist_item_options WHERE id = ?', [selected_option_id], (err, option) => {
-        if (!err && option) {
+        if (err || !option) {
+          // Option doesn't exist or error occurred - set to null to avoid foreign key violation
+          console.warn(`Selected option ${selected_option_id} not found, setting to null`);
+          validSelectedOptionId = null;
+        } else {
           finalMark = option.mark;
         }
         updateAuditItem();
@@ -557,135 +577,191 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
     }
 
     function updateAuditItem() {
-      // Update audit item
-      const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?', 'completed_at = CURRENT_TIMESTAMP'];
-      const updateValues = [status, comment || null, photo_url || null];
-      
-      if (selected_option_id !== undefined) {
-        updateFields.push('selected_option_id = ?');
-        updateValues.push(selected_option_id || null);
-      }
-      
-      if (finalMark !== undefined) {
-        updateFields.push('mark = ?');
-        updateValues.push(finalMark || null);
-      }
-      
-      updateValues.push(auditId, itemId);
-      
-      dbInstance.run(
-        `UPDATE audit_items 
-         SET ${updateFields.join(', ')}
-         WHERE audit_id = ? AND item_id = ?`,
-        updateValues,
-        function(err) {
+      // First check if audit item exists
+      dbInstance.get(
+        'SELECT id FROM audit_items WHERE audit_id = ? AND item_id = ?',
+        [auditId, itemId],
+        (err, existingItem) => {
           if (err) {
-            return res.status(500).json({ error: 'Error updating audit item' });
+            console.error('Error checking for existing audit item:', err);
+            return res.status(500).json({ error: 'Database error checking existing item' });
           }
 
-          // Update audit progress - calculate score based on marks
-          // First, get the actual marks from audit items (excluding N/A)
-          dbInstance.all(
-            `SELECT ai.item_id, ai.mark, ci.id as checklist_item_id
-             FROM audit_items ai
-             JOIN checklist_items ci ON ai.item_id = ci.id
-             WHERE ai.audit_id = ?`,
-            [auditId],
-            (err, auditItems) => {
-              if (err) {
-                console.error('Error fetching audit items:', err);
+          // If item doesn't exist, create it first
+          if (!existingItem) {
+            const insertFields = ['audit_id', 'item_id', 'status'];
+            const insertValues = [auditId, itemId, status || 'pending'];
+            const insertPlaceholders = ['?', '?', '?'];
+            
+            // Always include comment, photo_url, selected_option_id, and mark fields (can be null)
+            insertFields.push('comment', 'photo_url', 'selected_option_id', 'mark');
+            insertValues.push(comment || null, photo_url || null, validSelectedOptionId, finalMark || null);
+            insertPlaceholders.push('?', '?', '?', '?');
+            
+            dbInstance.run(
+              `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`,
+              insertValues,
+              function(insertErr) {
+                if (insertErr) {
+                  console.error('Error creating audit item:', insertErr);
+                  console.error('Insert query:', `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`);
+                  console.error('Insert values:', insertValues);
+                  console.error('Audit ID:', auditId, 'Item ID:', itemId);
+                  return res.status(500).json({ error: 'Error creating audit item: ' + insertErr.message });
+                }
+                // After creating, continue with score calculation
+                calculateScoreAndUpdate();
+              }
+            );
+          } else {
+            // Update existing audit item
+            const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
+            const updateValues = [status || 'pending', comment || null, photo_url || null];
+            
+            if (selected_option_id !== undefined) {
+              updateFields.push('selected_option_id = ?');
+              updateValues.push(validSelectedOptionId);
+            }
+            
+            if (finalMark !== undefined) {
+              updateFields.push('mark = ?');
+              updateValues.push(finalMark || null);
+            }
+            
+            // Only update completed_at if status is completed
+            if (status === 'completed') {
+              updateFields.push('completed_at = CURRENT_TIMESTAMP');
+            }
+            
+            updateValues.push(auditId, itemId);
+            
+            dbInstance.run(
+              `UPDATE audit_items 
+               SET ${updateFields.join(', ')}
+               WHERE audit_id = ? AND item_id = ?`,
+              updateValues,
+              function(updateErr) {
+                if (updateErr) {
+                  console.error('Error updating audit item:', updateErr);
+                  console.error('Update query:', `UPDATE audit_items SET ${updateFields.join(', ')} WHERE audit_id = ? AND item_id = ?`);
+                  console.error('Update values:', updateValues);
+                  return res.status(500).json({ error: 'Error updating audit item: ' + updateErr.message });
+                }
+                // After updating, continue with score calculation
+                calculateScoreAndUpdate();
+              }
+            );
+          }
+        }
+      );
+
+      function calculateScoreAndUpdate() {
+        // Update audit progress - calculate score based on marks
+        // First, get the actual marks from audit items (excluding N/A)
+        dbInstance.all(
+          `SELECT ai.item_id, ai.mark, ci.id as checklist_item_id
+           FROM audit_items ai
+           JOIN checklist_items ci ON ai.item_id = ci.id
+           WHERE ai.audit_id = ?`,
+          [auditId],
+          (err, auditItems) => {
+            if (err) {
+              console.error('Error fetching audit items:', err);
+              return res.json({ message: 'Audit item updated successfully' });
+            }
+
+            // Get total possible score from template (sum of "Yes" option marks, excluding N/A items)
+            dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (err, audit) => {
+              if (err || !audit) {
+                console.error('Error fetching audit:', err);
                 return res.json({ message: 'Audit item updated successfully' });
               }
 
-              // Get total possible score from template (sum of "Yes" option marks, excluding N/A items)
-              dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (err, audit) => {
-                if (err || !audit) {
-                  console.error('Error fetching audit:', err);
-                  return res.json({ message: 'Audit item updated successfully' });
-                }
-
-                // Get all checklist items for this template with their "Yes" option marks
-                // Use database-agnostic query
-                const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
-                let query;
-                if (dbType === 'mssql' || dbType === 'sqlserver') {
-                  // SQL Server: Use TOP in subquery
-                  query = `SELECT ci.id, 
-                           (SELECT TOP 1 CAST(cio.mark AS FLOAT)
-                            FROM checklist_item_options cio 
-                            WHERE cio.item_id = ci.id AND cio.option_text = 'Yes') as max_score
-                           FROM checklist_items ci
-                           WHERE ci.template_id = ?`;
-                } else {
-                  // SQLite, PostgreSQL, MySQL: Use LIMIT
-                  query = `SELECT ci.id, 
-                           (SELECT CAST(cio.mark AS REAL)
-                            FROM checklist_item_options cio 
-                            WHERE cio.item_id = ci.id AND cio.option_text = 'Yes' 
-                            LIMIT 1) as max_score
-                           FROM checklist_items ci
-                           WHERE ci.template_id = ?`;
-                }
-                
-                dbInstance.all(
-                  query,
-                  [audit.template_id],
-                  (err, templateItems) => {
-                    if (err) {
-                      console.error('Error fetching template items:', err);
-                      // Fallback to old calculation
-                      return calculateScoreFallback();
-                    }
-
-                    // Calculate total possible score (sum of max scores from template)
-                    let totalPossibleScore = 0;
-                    templateItems.forEach(item => {
-                      if (item.max_score !== null) {
-                        totalPossibleScore += parseFloat(item.max_score) || 0;
-                      }
-                    });
-
-                    // Calculate actual score (sum of marks, excluding N/A)
-                    let actualScore = 0;
-                    let itemsWithMarks = 0;
-                    auditItems.forEach(item => {
-                      if (item.mark && item.mark !== 'NA') {
-                        actualScore += parseFloat(item.mark) || 0;
-                        itemsWithMarks++;
-                      }
-                    });
-
-                    // Calculate percentage: (actual / total possible) * 100
-                    const score = totalPossibleScore > 0 
-                      ? Math.round((actualScore / totalPossibleScore) * 100) 
-                      : 0;
-
-                    const total = auditItems.length;
-                    const completed = auditItems.filter(item => item.mark !== null && item.mark !== undefined).length;
-                    const auditStatus = completed === total ? 'completed' : 'in_progress';
-
-                    dbInstance.run(
-                      `UPDATE audits 
-                       SET completed_items = ?, score = ?, status = ?, 
-                           completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
-                       WHERE id = ?`,
-                      [completed, score, auditStatus, completed, total, auditId],
-                      function(updateErr) {
-                        if (updateErr) {
-                          console.error('Error updating audit:', updateErr);
-                        }
-                        if (auditStatus === 'completed') {
-                          handleScheduledAuditCompletion(dbInstance, auditId);
-                        }
-                        res.json({ message: 'Audit item updated successfully' });
-                      }
-                    );
+              // Get all checklist items for this template with their "Yes" option marks
+              // Use database-agnostic query
+              const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
+              let query;
+              if (dbType === 'mssql' || dbType === 'sqlserver') {
+                // SQL Server: Use TOP in subquery
+                query = `SELECT ci.id, 
+                         (SELECT TOP 1 CAST(cio.mark AS FLOAT)
+                          FROM checklist_item_options cio 
+                          WHERE cio.item_id = ci.id AND cio.option_text = 'Yes') as max_score
+                         FROM checklist_items ci
+                         WHERE ci.template_id = ?`;
+              } else {
+                // SQLite, PostgreSQL, MySQL: Use LIMIT
+                query = `SELECT ci.id, 
+                         (SELECT CAST(cio.mark AS REAL)
+                          FROM checklist_item_options cio 
+                          WHERE cio.item_id = ci.id AND cio.option_text = 'Yes' 
+                          LIMIT 1) as max_score
+                         FROM checklist_items ci
+                         WHERE ci.template_id = ?`;
+              }
+              
+              dbInstance.all(
+                query,
+                [audit.template_id],
+                (err, templateItems) => {
+                  if (err) {
+                    console.error('Error fetching template items:', err);
+                    // Fallback to old calculation
+                    return calculateScoreFallback();
                   }
-                );
-              });
 
-              // Fallback calculation (old method)
-              function calculateScoreFallback() {
+                  // Calculate total possible score (sum of max scores from template)
+                  let totalPossibleScore = 0;
+                  templateItems.forEach(item => {
+                    if (item.max_score !== null) {
+                      totalPossibleScore += parseFloat(item.max_score) || 0;
+                    }
+                  });
+
+                  // Calculate actual score (sum of marks, excluding N/A)
+                  let actualScore = 0;
+                  let itemsWithMarks = 0;
+                  auditItems.forEach(item => {
+                    if (item.mark && item.mark !== 'NA') {
+                      actualScore += parseFloat(item.mark) || 0;
+                      itemsWithMarks++;
+                    }
+                  });
+
+                  // Calculate percentage: (actual / total possible) * 100
+                  const score = totalPossibleScore > 0 
+                    ? Math.round((actualScore / totalPossibleScore) * 100) 
+                    : 0;
+
+                  const total = auditItems.length;
+                  const completed = auditItems.filter(item => item.mark !== null && item.mark !== undefined).length;
+                  const auditStatus = completed === total ? 'completed' : 'in_progress';
+
+                  dbInstance.run(
+                    `UPDATE audits 
+                     SET completed_items = ?, score = ?, status = ?, 
+                         completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
+                     WHERE id = ?`,
+                    [completed, score, auditStatus, completed, total, auditId],
+                    function(updateErr) {
+                      if (updateErr) {
+                        console.error('Error updating audit:', updateErr);
+                      }
+                      if (auditStatus === 'completed') {
+                        handleScheduledAuditCompletion(dbInstance, auditId);
+                      }
+                      res.json({ message: 'Audit item updated successfully' });
+                    }
+                  );
+                }
+              );
+            });
+          }
+        );
+      }
+
+      // Fallback calculation (old method)
+      function calculateScoreFallback() {
                 dbInstance.all(
                   `SELECT COUNT(*) as total, 
                    SUM(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN CAST(mark AS REAL) ELSE 0 END) as total_marks,
@@ -740,11 +816,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                     }
                   }
                 );
-              }
-            }
-          );
-        }
-      );
+      }
     }
   });
 });

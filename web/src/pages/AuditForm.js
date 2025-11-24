@@ -54,14 +54,28 @@ const AuditForm = () => {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const scheduledId = searchParams.get('scheduled_id');
+  const auditId = searchParams.get('audit_id'); // Support resuming existing audit
+  const [isEditing, setIsEditing] = useState(false);
+  const [auditStatus, setAuditStatus] = useState(null);
 
   useEffect(() => {
-    fetchTemplate();
     fetchLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId]);
+  }, []);
 
-  // Update selectedLocation when locationId changes (e.g., from URL params)
+  useEffect(() => {
+    if (auditId) {
+      // Editing existing audit - fetch audit data (locations will be set after they load)
+      setIsEditing(true);
+      fetchAuditData();
+    } else if (templateId) {
+      // Creating new audit - fetch template
+      fetchTemplate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId, auditId]);
+
+  // Update selectedLocation when locationId changes (e.g., from URL params or audit data)
   useEffect(() => {
     if (locationId && locations.length > 0) {
       const location = locations.find(l => l.id === parseInt(locationId));
@@ -70,6 +84,74 @@ const AuditForm = () => {
       }
     }
   }, [locationId, locations]);
+
+  const fetchAuditData = useCallback(async () => {
+    try {
+      setLoading(true);
+      // Fetch audit details
+      const auditResponse = await axios.get(`/api/audits/${auditId}`);
+      const audit = auditResponse.data.audit;
+      const auditItems = auditResponse.data.items || [];
+
+      // Check if audit is completed
+      setAuditStatus(audit.status);
+      if (audit.status === 'completed') {
+        setError('This audit has been completed and cannot be modified.');
+        showError('This audit has been completed and cannot be modified.');
+        setTimeout(() => navigate(`/audit/${auditId}`), 2000);
+        return;
+      }
+
+      // Set audit info
+      setLocationId(audit.location_id?.toString() || '');
+      setNotes(audit.notes || '');
+
+      // Fetch template to get all items
+      const templateResponse = await axios.get(`/api/checklists/${audit.template_id}`);
+      setTemplate(templateResponse.data.template);
+      const allItems = templateResponse.data.items || [];
+      setItems(allItems);
+
+      // Populate responses from audit items
+      const responsesData = {};
+      const optionsData = {};
+      const commentsData = {};
+      const photosData = {};
+
+      auditItems.forEach(auditItem => {
+        if (auditItem.status) {
+          responsesData[auditItem.item_id] = auditItem.status;
+        }
+        if (auditItem.selected_option_id) {
+          optionsData[auditItem.item_id] = auditItem.selected_option_id;
+        }
+        if (auditItem.comment) {
+          commentsData[auditItem.item_id] = auditItem.comment;
+        }
+        if (auditItem.photo_url) {
+          // Construct full URL if needed
+          const photoUrl = auditItem.photo_url.startsWith('http') 
+            ? auditItem.photo_url 
+            : auditItem.photo_url;
+          photosData[auditItem.item_id] = photoUrl;
+        }
+      });
+
+      setResponses(responsesData);
+      setSelectedOptions(optionsData);
+      setComments(commentsData);
+      setPhotos(photosData);
+
+      // Start at checklist step since we already have the info
+      setActiveStep(1);
+    } catch (error) {
+      console.error('Error fetching audit data:', error);
+      setError('Failed to load audit data');
+      showError('Failed to load audit data');
+    } finally {
+      setLoading(false);
+    }
+  }, [auditId, locations, navigate]);
 
   const fetchTemplate = useCallback(async () => {
     try {
@@ -94,10 +176,18 @@ const AuditForm = () => {
   };
 
   const handleResponseChange = (itemId, status) => {
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
     setResponses({ ...responses, [itemId]: status });
   };
 
   const handleOptionChange = (itemId, optionId) => {
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
     setSelectedOptions({ ...selectedOptions, [itemId]: optionId });
     // Also update status to 'completed' when an option is selected
     setResponses({ ...responses, [itemId]: 'completed' });
@@ -113,11 +203,19 @@ const AuditForm = () => {
   };
 
   const handleCommentChange = (itemId, comment) => {
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
     setComments({ ...comments, [itemId]: comment });
   };
 
   const handlePhotoUpload = async (itemId, file) => {
     if (!file) return;
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
 
     setUploading({ ...uploading, [itemId]: true });
 
@@ -179,9 +277,15 @@ const AuditForm = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(1)) {
-      setTouched({ ...touched, 1: true });
-      setError(errors.items || 'Please complete all required fields');
+    if (auditStatus === 'completed') {
+      showError('Cannot modify a completed audit');
+      return;
+    }
+
+    // Only validate store selection, allow partial saves
+    if (!locationId) {
+      setTouched({ ...touched, 0: true });
+      setError('Please select a store');
       return;
     }
 
@@ -193,46 +297,72 @@ const AuditForm = () => {
       const selectedStore = locations.find(l => l.id === parseInt(locationId));
       if (!selectedStore) {
         setError('Please select a store');
+        setSaving(false);
         return;
       }
 
-      // Create audit
-      const auditData = {
-        template_id: parseInt(templateId),
-        restaurant_name: selectedStore.name,
-        location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
-        location_id: parseInt(locationId),
-        notes
-      };
+      let currentAuditId = auditId;
 
-      if (scheduledId) {
-        auditData.scheduled_audit_id = parseInt(scheduledId, 10);
+      // If editing existing audit, update it
+      if (auditId) {
+        try {
+          await axios.put(`/api/audits/${auditId}`, {
+            restaurant_name: selectedStore.name,
+            location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+            location_id: parseInt(locationId),
+            notes
+          });
+        } catch (updateError) {
+          console.warn('Failed to update audit info, continuing with items:', updateError);
+        }
+      } else {
+        // Create new audit
+        const auditData = {
+          template_id: parseInt(templateId),
+          restaurant_name: selectedStore.name,
+          location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+          location_id: parseInt(locationId),
+          notes
+        };
+
+        if (scheduledId) {
+          auditData.scheduled_audit_id = parseInt(scheduledId, 10);
+        }
+        
+        const auditResponse = await axios.post('/api/audits', auditData);
+        currentAuditId = auditResponse.data.id;
       }
-      
-      const auditResponse = await axios.post('/api/audits', auditData);
 
-      const auditId = auditResponse.data.id;
+      // Update all items (for both new and existing audits)
+      // Update items that have responses, and also ensure all items from template are in audit_items
+      const updatePromises = items.map(async (item) => {
+        const updateData = {
+          status: responses[item.id] || 'pending',
+        };
+        
+        if (selectedOptions[item.id]) {
+          updateData.selected_option_id = parseInt(selectedOptions[item.id]);
+        }
+        
+        if (comments[item.id]) {
+          updateData.comment = comments[item.id];
+        }
+        
+        if (photos[item.id]) {
+          // Extract just the path if it's a full URL
+          const photoUrl = photos[item.id];
+          updateData.photo_url = photoUrl.startsWith('http') 
+            ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
+            : photoUrl;
+        }
 
-      // Update all items
-      const updatePromises = Object.entries(responses).map(([itemId, status]) => {
-        const updateData = { status };
-        // If an option was selected, include selected_option_id
-        if (selectedOptions[itemId]) {
-          updateData.selected_option_id = parseInt(selectedOptions[itemId]);
-        }
-        if (comments[itemId]) {
-          updateData.comment = comments[itemId];
-        }
-        if (photos[itemId]) {
-          updateData.photo_url = photos[itemId];
-        }
-        return axios.put(`/api/audits/${auditId}/items/${itemId}`, updateData);
+        return axios.put(`/api/audits/${currentAuditId}/items/${item.id}`, updateData);
       });
 
       await Promise.all(updatePromises);
 
-      showSuccess('Audit saved successfully!');
-      navigate(`/audit/${auditId}`);
+      showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
+      navigate(`/audit/${currentAuditId}`);
     } catch (err) {
       const errorMsg = err.response?.data?.error || 'Failed to save audit';
       setError(errorMsg);
@@ -288,7 +418,7 @@ const AuditForm = () => {
     <Layout>
       <Container maxWidth="md">
         <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: '#333', mb: 3 }}>
-          New Audit: {template?.name}
+          {isEditing ? 'Resume Audit' : 'New Audit'}: {template?.name}
         </Typography>
 
         <Stepper activeStep={activeStep} sx={{ mt: 3, mb: 4 }}>
@@ -366,22 +496,27 @@ const AuditForm = () => {
               </Typography>
             </Paper>
 
-            {errors.items && touched[1] && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                {errors.items}
-              </Alert>
-            )}
+            {(() => {
+              const requiredItems = items.filter(item => item.required);
+              const missingRequired = requiredItems.filter(item => {
+                if (item.options && item.options.length > 0) {
+                  return !selectedOptions[item.id];
+                }
+                return !responses[item.id] || responses[item.id] === 'pending';
+              });
+              return missingRequired.length > 0 ? (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  ℹ️ You have {missingRequired.length} required item(s) remaining. You can save your progress and resume later.
+                </Alert>
+              ) : null;
+            })()}
             {items.map((item, index) => (
               <Card 
                 key={item.id} 
                 sx={{ 
                   mb: 2,
-                  border: item.required && (!responses[item.id] || responses[item.id] === 'pending') && touched[1]
-                    ? '2px solid' 
-                    : '1px solid',
-                  borderColor: item.required && (!responses[item.id] || responses[item.id] === 'pending') && touched[1]
-                    ? 'error.main'
-                    : 'divider'
+                  border: '1px solid',
+                  borderColor: 'divider'
                 }}
               >
                 <CardContent>
@@ -561,9 +696,9 @@ const AuditForm = () => {
               <Button
                 onClick={handleSubmit}
                 variant="contained"
-                disabled={saving}
+                disabled={saving || auditStatus === 'completed'}
               >
-                {saving ? <CircularProgress size={24} /> : 'Save Audit'}
+                {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
               </Button>
             </Box>
           </Box>
@@ -574,4 +709,5 @@ const AuditForm = () => {
 };
 
 export default AuditForm;
+
 

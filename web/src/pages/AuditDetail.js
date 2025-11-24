@@ -29,6 +29,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import EditIcon from '@mui/icons-material/Edit';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -300,6 +301,38 @@ const AuditDetail = () => {
             {audit.completed_at && ` | Completed: ${new Date(audit.completed_at).toLocaleString()}`}
           </Typography>
         </Paper>
+
+        {audit.status === 'in_progress' && (
+          <Paper sx={{ p: 3, mb: 3, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: 'info.dark' }}>
+                  Continue Your Audit
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  You have {audit.completed_items} of {audit.total_items} items completed. Click below to resume and complete the remaining items.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                startIcon={<EditIcon />}
+                onClick={() => navigate(`/audit/new/${audit.template_id}?audit_id=${audit.id}`)}
+                sx={{
+                  minWidth: 200,
+                  py: 1.5,
+                  px: 3,
+                  fontWeight: 600,
+                  textTransform: 'none',
+                  fontSize: '1rem'
+                }}
+              >
+                Resume Audit
+              </Button>
+            </Box>
+          </Paper>
+        )}
 
         <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#333', mt: 4, mb: 2 }}>
           Checklist Items

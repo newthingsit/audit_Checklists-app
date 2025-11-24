@@ -57,8 +57,9 @@ const AuditFormScreen = () => {
     fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
 
-  // Pre-fill location when scheduled audit provides locationId
+  // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
+    // Handle initialLocationId from route params
     if (initialLocationId && locations.length > 0 && !selectedLocation) {
       const location = locations.find(l => l.id === parseInt(initialLocationId));
       if (location) {
@@ -66,7 +67,14 @@ const AuditFormScreen = () => {
         setLocationId(initialLocationId.toString());
       }
     }
-  }, [initialLocationId, locations, selectedLocation]);
+    // Handle locationId set from audit data (when resuming)
+    else if (locationId && locations.length > 0 && !selectedLocation) {
+      const location = locations.find(l => l.id === parseInt(locationId));
+      if (location) {
+        setSelectedLocation(location);
+      }
+    }
+  }, [initialLocationId, locationId, locations, selectedLocation]);
 
   const checkExistingAudit = async () => {
     try {
@@ -120,12 +128,13 @@ const AuditFormScreen = () => {
       }
 
       // Set audit info
-      setLocationId(audit.location_id || '');
+      const auditLocationId = audit.location_id?.toString() || '';
+      setLocationId(auditLocationId);
       setNotes(audit.notes || '');
       
-      // Find and set selected location
-      if (audit.location_id && locations.length > 0) {
-        const location = locations.find(l => l.id === audit.location_id);
+      // If locations are already loaded, set selectedLocation immediately
+      if (auditLocationId && locations.length > 0) {
+        const location = locations.find(l => l.id === parseInt(auditLocationId));
         if (location) {
           setSelectedLocation(location);
         }
@@ -324,7 +333,15 @@ const AuditFormScreen = () => {
     try {
       let currentAuditId = auditId;
 
-      // Get selected store details
+      // Get selected store details - if resuming audit, try to get location from audit data
+      if (!selectedLocation && locationId && locations.length > 0) {
+        const location = locations.find(l => l.id === parseInt(locationId));
+        if (location) {
+          setSelectedLocation(location);
+        }
+      }
+
+      // Final check - if still no location, show error
       if (!selectedLocation || !locationId) {
         Alert.alert('Error', 'Please select a store');
         setSaving(false);
@@ -385,32 +402,46 @@ const AuditFormScreen = () => {
         currentAuditId = auditResponse.data.id;
       }
 
-      // Update all audit items
+      // Update all audit items - handle errors gracefully
       const updatePromises = items.map(async (item) => {
-        const updateData = {
-          status: responses[item.id] || 'pending',
-        };
-        
-        if (selectedOptions[item.id]) {
-          updateData.selected_option_id = selectedOptions[item.id];
-        }
-        
-        if (comments[item.id]) {
-          updateData.comment = comments[item.id];
-        }
-        
-        if (photos[item.id]) {
-          // Extract just the path if it's a full URL
-          const photoUrl = photos[item.id];
-          updateData.photo_url = photoUrl.startsWith('http') 
-            ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
-            : photoUrl;
-        }
+        try {
+          const updateData = {
+            status: responses[item.id] || 'pending',
+          };
+          
+          if (selectedOptions[item.id]) {
+            updateData.selected_option_id = selectedOptions[item.id];
+          }
+          
+          if (comments[item.id]) {
+            updateData.comment = comments[item.id];
+          }
+          
+          if (photos[item.id]) {
+            // Extract just the path if it's a full URL
+            const photoUrl = photos[item.id];
+            updateData.photo_url = photoUrl.startsWith('http') 
+              ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
+              : photoUrl;
+          }
 
-        return axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
+          return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
+        } catch (itemError) {
+          // Log error but don't fail the entire save
+          console.warn(`Failed to update item ${item.id}:`, itemError);
+          return { error: itemError, itemId: item.id };
+        }
       });
 
-      await Promise.all(updatePromises);
+      const results = await Promise.all(updatePromises);
+      
+      // Check if there were any critical errors
+      const errors = results.filter(r => r && r.error);
+      if (errors.length > 0 && errors.length === results.length) {
+        // All items failed - this is a critical error
+        throw new Error(`Failed to save ${errors.length} items`);
+      }
+      // Some items may have failed, but continue if at least some succeeded
 
       Alert.alert('Success', isEditing ? 'Audit updated successfully' : 'Audit saved successfully', [
         { text: 'OK', onPress: () => navigation.goBack() }
