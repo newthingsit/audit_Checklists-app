@@ -30,6 +30,10 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -44,6 +48,7 @@ const Stores = () => {
   const [parsedStores, setParsedStores] = useState([]);
   const [parseError, setParseError] = useState('');
   const [editingStore, setEditingStore] = useState(null);
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
   const [formData, setFormData] = useState({
     store_number: '',
     name: '',
@@ -312,6 +317,75 @@ const Stores = () => {
     }
   };
 
+  const handleViewModeChange = (event, newViewMode) => {
+    if (newViewMode !== null) {
+      setViewMode(newViewMode);
+    }
+  };
+
+  const handleExportCSV = () => {
+    try {
+      // CSV Headers
+      const headers = [
+        'Store Number',
+        'Store Name',
+        'Brand Name',
+        'Address',
+        'City',
+        'State',
+        'Country',
+        'Phone',
+        'Email'
+      ];
+
+      // CSV Rows
+      const rows = stores.map(store => {
+        const row = [
+          store.store_number || '',
+          store.name || '',
+          store.address || '',
+          store.address || '',
+          store.city || '',
+          store.state || '',
+          store.country || '',
+          store.phone || '',
+          store.email || ''
+        ];
+        // Escape commas and quotes in CSV
+        return row.map(cell => {
+          const cellStr = String(cell || '');
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(',');
+      });
+
+      // Combine header and rows
+      const csvContent = [
+        headers.join(','),
+        ...rows
+      ].join('\n');
+
+      // Create download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `stores-export-${new Date().toISOString().split('T')[0]}.csv`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      showSuccess('Stores exported to CSV successfully');
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      showError('Failed to export CSV');
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -329,7 +403,31 @@ const Stores = () => {
           <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
             Stores
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={handleViewModeChange}
+              aria-label="view mode"
+              size="small"
+            >
+              <ToggleButton value="card" aria-label="card view">
+                <ViewModuleIcon sx={{ mr: 1 }} />
+                Card
+              </ToggleButton>
+              <ToggleButton value="list" aria-label="list view">
+                <ViewListIcon sx={{ mr: 1 }} />
+                List
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleExportCSV}
+              disabled={stores.length === 0}
+            >
+              Download CSV
+            </Button>
             <Button
               variant="outlined"
               startIcon={<UploadFileIcon />}
@@ -368,7 +466,7 @@ const Stores = () => {
               </Box>
             </CardContent>
           </Card>
-        ) : (
+        ) : viewMode === 'card' ? (
           <Grid container spacing={3}>
             {stores.map((store) => (
               <Grid item xs={12} sm={6} md={4} key={store.id}>
@@ -454,6 +552,67 @@ const Stores = () => {
               </Grid>
             ))}
           </Grid>
+        ) : (
+          <Card>
+            <CardContent>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Store #</strong></TableCell>
+                      <TableCell><strong>Store Name</strong></TableCell>
+                      <TableCell><strong>Brand Name</strong></TableCell>
+                      <TableCell><strong>Address</strong></TableCell>
+                      <TableCell><strong>City</strong></TableCell>
+                      <TableCell><strong>State</strong></TableCell>
+                      <TableCell><strong>Country</strong></TableCell>
+                      <TableCell><strong>Phone</strong></TableCell>
+                      <TableCell><strong>Email</strong></TableCell>
+                      <TableCell align="center"><strong>Actions</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {stores.map((store) => (
+                      <TableRow key={store.id} hover>
+                        <TableCell>{store.store_number || '-'}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <StorefrontIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {store.name}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>{store.address || '-'}</TableCell>
+                        <TableCell>{store.address || '-'}</TableCell>
+                        <TableCell>{store.city || '-'}</TableCell>
+                        <TableCell>{store.state || '-'}</TableCell>
+                        <TableCell>{store.country || '-'}</TableCell>
+                        <TableCell>{store.phone || '-'}</TableCell>
+                        <TableCell>{store.email || '-'}</TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(store)}
+                            sx={{ color: 'primary.main' }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDelete(store.id)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
         )}
 
         <Dialog

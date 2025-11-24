@@ -1,5 +1,61 @@
 # Project Version Information
 
+## Version 1.4.0 - Store Analytics & Enhanced Reporting
+
+**Date:** 2025-11-24
+
+### What's New in This Version
+
+#### Store Analytics Report
+- ✅ **Store Analytics Page**: New dedicated page for store-based analytics with card and list views
+- ✅ **Card/List View Toggle**: Users can switch between visual card view and detailed list view
+- ✅ **CSV Export**: Download store analytics report as CSV file
+- ✅ **Date Range Filtering**: Filter analytics by date range (from/to dates)
+- ✅ **Summary Cards**: Display total stores, total audits, and date range summary
+- ✅ **Bar Chart Visualization**: Visual representation of audits by store
+- ✅ **Detailed Metrics**: Shows total audits, completed, in-progress, average/min/max scores, completion rates per store
+
+#### Enhanced Audit CSV Export
+- ✅ **Column Updates**: Changed "Location" to "Store Number", added "Category" column
+- ✅ **Audit By Information**: Changed "Created By" to "Audit By Name" and added "Audit By Email" column
+- ✅ **India Time Format**: All dates formatted in DD-MM-YYYY format (India Standard Time)
+- ✅ **Date Only**: Removed time component from dates, showing only date
+- ✅ **Multiple Categories**: Shows all unique categories from checklist items (comma-separated)
+- ✅ **Scheduled Date Support**: Uses scheduled_date when available, falls back to created_at
+
+#### Store Analytics CSV Enhancements
+- ✅ **Brand Name Column**: Changed "Address" column to "Brand Name"
+- ✅ **Template Column**: Added template information per store
+- ✅ **Scheduled Date Column**: Shows scheduled date or created date
+- ✅ **Completed Date Column**: Shows latest completed date
+- ✅ **Deviation Calculation**: Calculates deviation in schedule (days) with proper date normalization
+- ✅ **Multiple Rows Per Store**: Creates separate rows for each store-template combination
+- ✅ **Accurate Metrics**: All calculations (scores, completion rates, deviations) calculated per store-template
+
+#### Stores Page Enhancements
+- ✅ **Card/List View Toggle**: Added view toggle for stores page
+- ✅ **CSV Export**: Added ability to download stores list as CSV
+- ✅ **Improved UI**: Better organization of action buttons and view controls
+
+#### Backend Improvements
+- ✅ **SQL Server Compatibility**: Fixed STRING_AGG syntax for SQL Server using STUFF + FOR XML PATH
+- ✅ **Cross-Database Support**: Proper handling of category aggregation for SQLite, MySQL, PostgreSQL, and SQL Server
+- ✅ **Date Normalization**: Fixed deviation calculation to show 0 when scheduled and completed dates are the same
+- ✅ **Query Optimization**: Improved queries for better performance with multiple templates per store
+
+### Bug Fixes
+- ✅ **Deviation Calculation**: Fixed to show 0 when scheduled and completed dates are the same day
+- ✅ **SQL Server Syntax**: Fixed "Incorrect syntax near ','" error in CSV export
+- ✅ **Date Formatting**: Consistent India time formatting across all reports
+- ✅ **Category Display**: Fixed category column to show all unique categories from checklist items
+
+### Components Version
+- **Backend:** 1.4.0
+- **Web App:** 1.4.0
+- **Mobile App:** 1.3.0
+
+---
+
 ## Version 1.3.0 - Audit Resume Functionality & Mobile UI Improvements
 
 **Date:** 2025-01-23

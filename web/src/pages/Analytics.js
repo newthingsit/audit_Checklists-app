@@ -23,11 +23,14 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@mui/material';
 import Layout from '../components/Layout';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 const Analytics = () => {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -69,9 +72,18 @@ const Analytics = () => {
   return (
     <Layout>
       <Container maxWidth="lg">
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: '#333', mb: 3 }}>
-          Analytics Dashboard
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
+            Analytics Dashboard
+          </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={() => navigate('/store-analytics')}
+          >
+            View Store Analytics
+          </Button>
+        </Box>
 
         <Grid container spacing={3} sx={{ mt: 2 }}>
           {/* Summary Cards */}

@@ -26,6 +26,7 @@ import UserManagement from './pages/UserManagement';
 import RoleManagement from './pages/RoleManagement';
 import MonthlyScorecard from './pages/MonthlyScorecard';
 import ScheduledAuditsReport from './pages/ScheduledAuditsReport';
+import StoreAnalytics from './pages/StoreAnalytics';
 import { themeConfig } from './config/theme';
 
 const getTheme = (darkMode) => createTheme({
@@ -180,6 +181,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <Analytics />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/store-analytics"
+              element={
+                <PrivateRoute>
+                  <StoreAnalytics />
                 </PrivateRoute>
               }
             />
