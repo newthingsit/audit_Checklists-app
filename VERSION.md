@@ -1,5 +1,44 @@
 # Project Version Information
 
+## Version 1.3.0 - Audit Resume Functionality & Mobile UI Improvements
+
+**Date:** 2025-01-23
+
+### What's New in This Version
+
+#### Audit Resume Functionality
+- ✅ **Web App Resume Support**: Added ability to resume partially completed audits on web platform
+- ✅ **Mobile App Resume Fix**: Fixed location selection issue when resuming audits on mobile
+- ✅ **Resume Audit Button**: Added prominent "Resume Audit" button on audit detail pages
+- ✅ **Partial Save Support**: Users can now save audits at any stage of completion
+- ✅ **Upsert Logic**: Backend now supports creating or updating audit items seamlessly
+- ✅ **Validation Improvements**: Relaxed validation to allow partial saves while maintaining data integrity
+
+#### Mobile UI Enhancements
+- ✅ **Continue Audit Button**: Moved from bottom to top of audit detail screen for better accessibility
+- ✅ **Photo Functionality**: Changed from gallery selection to direct camera capture
+- ✅ **Button Text Updates**: Changed "Add Photo" to "Take Photo" for clarity
+- ✅ **Camera Integration**: Direct camera access with proper permission handling
+
+#### Backend Improvements
+- ✅ **Fixed 500 Errors**: Resolved database errors when saving audit items
+- ✅ **Foreign Key Validation**: Added validation for selected_option_id before database operations
+- ✅ **Error Handling**: Improved error logging and user-friendly error messages
+- ✅ **Upsert Operations**: Audit items now support insert-if-not-exists or update-if-exists logic
+
+### Bug Fixes
+- ✅ **404 Errors on Resume**: Fixed 404 errors when updating non-existent audit items
+- ✅ **Location Selection**: Fixed "Please select the store" error on mobile when resuming audits
+- ✅ **Syntax Errors**: Fixed JavaScript syntax errors in backend routes
+- ✅ **Permission Issues**: Improved handling of 403 errors with graceful fallbacks
+
+### Components Version
+- **Backend:** 1.3.0
+- **Web App:** 1.3.0
+- **Mobile App:** 1.3.0
+
+---
+
 ## Version 1.2.0 - Scheduled Audits Import & Completed Audit Protection
 
 **Date:** 2025-01-22
