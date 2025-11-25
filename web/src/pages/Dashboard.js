@@ -13,16 +13,40 @@ import {
   Avatar,
   Paper,
   Fade,
-  Grow
+  Grow,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import HistoryIcon from '@mui/icons-material/History';
 import AddIcon from '@mui/icons-material/Add';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
+import StoreIcon from '@mui/icons-material/Store';
+import PersonIcon from '@mui/icons-material/Person';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { themeConfig } from '../config/theme';
@@ -33,11 +57,13 @@ const Dashboard = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
   const [stats, setStats] = useState({ templates: 0, audits: 0, completed: 0, pendingActions: 0 });
+  const [analytics, setAnalytics] = useState(null);
+  const [trends, setTrends] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Permission checks - permissions must come from role only
+  // Permission checks
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
@@ -55,33 +81,43 @@ const Dashboard = () => {
                         hasPermission(userPermissions, 'manage_audits') ||
                         hasPermission(userPermissions, 'view_own_audits') ||
                         isAdmin(user);
+  const canViewAnalytics = hasPermission(userPermissions, 'view_analytics') || isAdmin(user);
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchData = async () => {
     try {
-      // Only fetch data if user has permission
+      setLoading(true);
       const fetchPromises = [
-        // Templates - only if user can view templates
+        // Templates
         (hasPermission(userPermissions, 'display_templates') || 
          hasPermission(userPermissions, 'view_templates') || 
          hasPermission(userPermissions, 'manage_templates') || 
          isAdmin(user))
           ? axios.get('/api/templates').catch(() => ({ data: { templates: [] } }))
           : Promise.resolve({ data: { templates: [] } }),
-        // Audits - only if user can view audits
+        // Audits
         canViewAudits
           ? axios.get('/api/audits').catch(() => ({ data: { audits: [] } }))
           : Promise.resolve({ data: { audits: [] } }),
-        // Actions - only if user can view actions
+        // Actions
         canViewActions 
           ? axios.get('/api/actions').catch(() => ({ data: { actions: [] } }))
-          : Promise.resolve({ data: { actions: [] } })
+          : Promise.resolve({ data: { actions: [] } }),
+        // Analytics
+        canViewAnalytics
+          ? axios.get('/api/analytics/dashboard').catch(() => ({ data: {} }))
+          : Promise.resolve({ data: {} }),
+        // Trends
+        canViewAnalytics
+          ? axios.get('/api/analytics/trends?period=month').catch(() => ({ data: { trends: [] } }))
+          : Promise.resolve({ data: { trends: [] } })
       ];
 
-      const [templatesRes, auditsRes, actionsRes] = await Promise.all(fetchPromises);
+      const [templatesRes, auditsRes, actionsRes, analyticsRes, trendsRes] = await Promise.all(fetchPromises);
 
       const audits = auditsRes.data.audits || [];
       const completed = audits.filter(a => a.status === 'completed').length;
@@ -94,7 +130,9 @@ const Dashboard = () => {
         pendingActions
       });
 
-      setRecentAudits(audits.slice(0, 5));
+      setAnalytics(analyticsRes.data);
+      setTrends(trendsRes.data.trends || []);
+      setRecentAudits(analyticsRes.data?.recent || audits.slice(0, 5));
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -113,20 +151,48 @@ const Dashboard = () => {
   }
 
   const completionRate = stats.audits > 0 ? Math.round((stats.completed / stats.audits) * 100) : 0;
+  const monthChange = analytics?.monthChange || {};
+  const currentMonthStats = analytics?.currentMonthStats || {};
+  const lastMonthStats = analytics?.lastMonthStats || {};
+
+  // Prepare chart data
+  const statusColors = {
+    completed: '#4caf50',
+    in_progress: '#ff9800',
+    pending: '#9e9e9e'
+  };
+
+  const pieData = analytics?.byStatus?.map(status => ({
+    name: status.status === 'completed' ? 'Completed' : status.status === 'in_progress' ? 'In Progress' : 'Pending',
+    value: status.count,
+    color: statusColors[status.status] || '#9e9e9e'
+  })) || [];
+
+  const monthTrendData = analytics?.byMonth?.map(month => ({
+    month: new Date(month.month + '-01').toLocaleDateString('default', { month: 'short', year: 'numeric' }),
+    count: month.count
+  })) || [];
+
+  const trendChartData = (trends || []).map(trend => ({
+    period: trend.period,
+    total: trend.total,
+    completed: trend.completed,
+    avgScore: Math.round((trend.avg_score || 0) * 100) / 100
+  }));
 
   return (
     <Layout>
-      <Container maxWidth="lg">
-        <>
+      <Container maxWidth="xl">
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
             Dashboard
           </Typography>
           <Typography variant="body1" sx={{ color: '#666' }}>
-            Welcome back! Here's an overview of your audit activities.
+            Welcome back! Here's an overview of your audit activities and performance trends.
           </Typography>
         </Box>
 
+        {/* Summary Cards */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           {(hasPermission(userPermissions, 'display_templates') || 
              hasPermission(userPermissions, 'view_templates') || 
@@ -250,29 +316,302 @@ const Dashboard = () => {
                           </Typography>
                         </Box>
                       </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={completionRate} 
-                    sx={{ 
-                      mt: 1, 
-                      height: 6, 
-                      borderRadius: 3,
-                      bgcolor: 'rgba(255,255,255,0.2)',
-                      '& .MuiLinearProgress-bar': {
-                        bgcolor: 'white'
-                      }
-                    }} 
-                  />
-                </CardContent>
-              </Card>
-            </Fade>
-          </Grid>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={completionRate} 
+                        sx={{ 
+                          mt: 1, 
+                          height: 6, 
+                          borderRadius: 3,
+                          bgcolor: 'rgba(255,255,255,0.2)',
+                          '& .MuiLinearProgress-bar': {
+                            bgcolor: 'white'
+                          }
+                        }} 
+                      />
+                    </CardContent>
+                  </Card>
+                </Fade>
+              </Grid>
             </>
           )}
         </Grid>
 
+        {/* Month-over-Month Comparison */}
+        {canViewAnalytics && analytics && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    This Month vs Last Month
+                  </Typography>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Total Audits
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                            {currentMonthStats.total}
+                          </Typography>
+                          {monthChange.total !== 0 && (
+                            <Chip
+                              icon={monthChange.total > 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                              label={Math.abs(monthChange.total)}
+                              color={monthChange.total > 0 ? 'success' : 'error'}
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Last month: {lastMonthStats.total}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Completed Audits
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                            {currentMonthStats.completed}
+                          </Typography>
+                          {monthChange.completed !== 0 && (
+                            <Chip
+                              icon={monthChange.completed > 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                              label={Math.abs(monthChange.completed)}
+                              color={monthChange.completed > 0 ? 'success' : 'error'}
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Last month: {lastMonthStats.completed}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Average Score
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                            {currentMonthStats.avgScore}%
+                          </Typography>
+                          {monthChange.avgScore !== 0 && (
+                            <Chip
+                              icon={monthChange.avgScore > 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                              label={`${monthChange.avgScore > 0 ? '+' : ''}${Math.round(monthChange.avgScore * 100) / 100}%`}
+                              color={monthChange.avgScore > 0 ? 'success' : 'error'}
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Last month: {lastMonthStats.avgScore}%
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* Charts Section */}
+        {canViewAnalytics && analytics && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {/* Audit Status Pie Chart */}
+            {pieData.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                      Audits by Status
+                    </Typography>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
+
+            {/* Monthly Trend Chart */}
+            {monthTrendData.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                      Audit Trends (Last 6 Months)
+                    </Typography>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={monthTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="count" fill="#1976d2" name="Total Audits" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
+
+            {/* Performance Trend Line Chart */}
+            {trendChartData.length > 0 && (
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                      Performance Trends (Last 12 Months)
+                    </Typography>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <LineChart data={trendChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="period" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="total" stroke="#1976d2" name="Total Audits" />
+                        <Line type="monotone" dataKey="completed" stroke="#4caf50" name="Completed" />
+                        <Line type="monotone" dataKey="avgScore" stroke="#ff9800" name="Avg Score %" yAxisId="right" />
+                        <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
+          </Grid>
+        )}
+
+        {/* Top Performing Stores */}
+        {canViewAnalytics && analytics?.topStores && analytics.topStores.length > 0 && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <StoreIcon sx={{ mr: 1, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Top Performing Stores
+                    </Typography>
+                  </Box>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Store</TableCell>
+                          <TableCell align="right">Audits</TableCell>
+                          <TableCell align="right">Avg Score</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {analytics.topStores.map((store, index) => (
+                          <TableRow key={index}>
+                            <TableCell>
+                              {store.store_name || 'Unknown'}
+                              {store.store_number && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  #{store.store_number}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{store.audit_count}</TableCell>
+                            <TableCell align="right">
+                              <Chip
+                                label={`${Math.round((store.avg_score || 0) * 100) / 100}%`}
+                                size="small"
+                                color={store.avg_score >= 80 ? 'success' : store.avg_score >= 60 ? 'warning' : 'error'}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Top Users */}
+            {analytics?.topUsers && analytics.topUsers.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Top Users
+                      </Typography>
+                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>User</TableCell>
+                            <TableCell align="right">Audits</TableCell>
+                            <TableCell align="right">Avg Score</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {analytics.topUsers.map((user, index) => (
+                            <TableRow key={index}>
+                              <TableCell>
+                                {user.user_name || 'Unknown'}
+                                {user.email && (
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    {user.email}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="right">{user.audit_count}</TableCell>
+                              <TableCell align="right">
+                                <Chip
+                                  label={`${Math.round((user.avg_score || 0) * 100) / 100}%`}
+                                  size="small"
+                                  color={user.avg_score >= 80 ? 'success' : user.avg_score >= 60 ? 'warning' : 'error'}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
+          </Grid>
+        )}
+
+        {/* Recent Audits Section */}
         {canViewAudits && (
-          <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea15 0%, #764ba215 100%)' }}>
+          <Paper sx={{ p: 3, mb: 3, bgcolor: 'background.paper' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
               <Box>
                 <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
@@ -310,96 +649,97 @@ const Dashboard = () => {
               </Box>
             </Box>
 
-          {recentAudits.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 6 }}>
-              <RestaurantIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                No audits yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Create your first audit to get started!
-              </Typography>
-              {canCreateAudit && (
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => navigate('/checklists')}
-                  sx={{ mt: 2 }}
-                >
-                  Create First Audit
-                </Button>
-              )}
-            </Box>
-          ) : (
-            <Grid container spacing={3}>
-              {recentAudits.map((audit, index) => (
-                <Grid item xs={12} sm={6} md={4} key={audit.id}>
-                  <Grow in timeout={300 + index * 100}>
-                    <Card
-                      sx={{ 
-                        cursor: 'pointer',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        transition: 'all 0.3s ease',
-                        '&:hover': { 
-                          transform: 'translateY(-4px)',
-                          boxShadow: 6,
-                          borderColor: 'primary.main'
-                        }
-                      }}
-                      onClick={() => navigate(`/audit/${audit.id}`)}
-                    >
-                      <CardContent sx={{ flexGrow: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: 'primary.light', mr: 2 }}>
-                            <RestaurantIcon />
-                          </Avatar>
-                          <Box sx={{ flexGrow: 1 }}>
-                            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                              {audit.restaurant_name}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                              {audit.template_name}
-                            </Typography>
-                          </Box>
-                        </Box>
-                        
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <ScheduleIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5 }} />
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(audit.created_at).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-                          <Chip
-                            label={audit.status}
-                            color={audit.status === 'completed' ? 'success' : 'warning'}
-                            size="small"
-                            sx={{ fontWeight: 500 }}
-                          />
-                          {audit.score !== null && (
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <TrendingUpIcon sx={{ fontSize: 18, color: 'success.main', mr: 0.5 }} />
-                              <Typography variant="body2" fontWeight="bold" color="success.main">
-                                {audit.score}%
+            {recentAudits.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <RestaurantIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No audits yet
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Create your first audit to get started!
+                </Typography>
+                {canCreateAudit && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => navigate('/checklists')}
+                    sx={{ mt: 2 }}
+                  >
+                    Create First Audit
+                  </Button>
+                )}
+              </Box>
+            ) : (
+              <Grid container spacing={3}>
+                {recentAudits.map((audit, index) => (
+                  <Grid item xs={12} sm={6} md={4} key={audit.id}>
+                    <Grow in timeout={300 + index * 100}>
+                      <Card
+                        sx={{ 
+                          cursor: 'pointer',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          transition: 'all 0.3s ease',
+                          '&:hover': { 
+                            transform: 'translateY(-4px)',
+                            boxShadow: 6,
+                            borderColor: 'primary.main'
+                          }
+                        }}
+                        onClick={() => navigate(`/audit/${audit.id}`)}
+                      >
+                        <CardContent sx={{ flexGrow: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
+                            <Avatar sx={{ bgcolor: 'primary.light', mr: 2 }}>
+                              <RestaurantIcon />
+                            </Avatar>
+                            <Box sx={{ flexGrow: 1 }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                                {audit.restaurant_name}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" gutterBottom>
+                                {audit.template_name}
                               </Typography>
                             </Box>
-                          )}
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grow>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-        </Paper>
+                          </Box>
+                          
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <ScheduleIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 0.5 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              {new Date(audit.created_at).toLocaleDateString()}
+                            </Typography>
+                          </Box>
+
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+                            <Chip
+                              label={audit.status}
+                              color={audit.status === 'completed' ? 'success' : 'warning'}
+                              size="small"
+                              sx={{ fontWeight: 500 }}
+                            />
+                            {audit.score !== null && (
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <TrendingUpIcon sx={{ fontSize: 18, color: 'success.main', mr: 0.5 }} />
+                                <Typography variant="body2" fontWeight="bold" color="success.main">
+                                  {audit.score}%
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grow>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </Paper>
         )}
 
+        {/* Quick Actions */}
         <Grid container spacing={3} sx={{ mt: 2 }}>
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3, height: '100%' }}>
@@ -522,11 +862,9 @@ const Dashboard = () => {
             </Paper>
           </Grid>
         </Grid>
-        </>
       </Container>
     </Layout>
   );
 };
 
 export default Dashboard;
-

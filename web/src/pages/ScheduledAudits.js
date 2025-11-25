@@ -40,10 +40,11 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Layout from '../components/Layout';
-import { showSuccess, showError } from '../utils/toast';
+import { showSuccess, showError, showInfo } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
@@ -75,6 +76,10 @@ const ScheduledAudits = () => {
   const [linkedAudits, setLinkedAudits] = useState({}); // Map of scheduleId -> auditId
   const [openDialog, setOpenDialog] = useState(false);
   const [openImportDialog, setOpenImportDialog] = useState(false);
+  const [openRescheduleDialog, setOpenRescheduleDialog] = useState(false);
+  const [reschedulingSchedule, setReschedulingSchedule] = useState(null);
+  const [newRescheduleDate, setNewRescheduleDate] = useState('');
+  const [rescheduleCount, setRescheduleCount] = useState({ count: 0, limit: 2, remaining: 2 });
   const [importing, setImporting] = useState(false);
   const [csvData, setCsvData] = useState('');
   const [parsedSchedules, setParsedSchedules] = useState([]);
@@ -96,8 +101,18 @@ const ScheduledAudits = () => {
 
   useEffect(() => {
     fetchData();
+    fetchRescheduleCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchRescheduleCount = async () => {
+    try {
+      const response = await axios.get('/api/scheduled-audits/reschedule-count');
+      setRescheduleCount(response.data);
+    } catch (error) {
+      console.error('Error fetching reschedule count:', error);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -280,6 +295,77 @@ const ScheduledAudits = () => {
       return isCreator || isAssignee;
     }
     return isCreator;
+  };
+
+  const canReschedule = (schedule) => {
+    if (!schedule) return false;
+    
+    // Check permission to reschedule
+    const hasReschedulePermission = hasPermission(userPermissions, 'reschedule_scheduled_audits') || 
+                                    hasPermission(userPermissions, 'manage_scheduled_audits') || 
+                                    isAdmin(user);
+    
+    if (!hasReschedulePermission) return false;
+    
+    // User can reschedule if they are assigned to it or created it
+    const isCreator = schedule.created_by === user?.id;
+    const isAssignee = schedule.assigned_to ? schedule.assigned_to === user?.id : false;
+    const statusValue = getStatusValue(schedule.status);
+    const isPending = !schedule.status || statusValue === 'pending';
+    // Can only reschedule pending audits
+    return isPending && (isCreator || isAssignee || isAdmin(user));
+  };
+
+  const handleOpenRescheduleDialog = (schedule) => {
+    if (rescheduleCount.count >= rescheduleCount.limit) {
+      showError(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
+      return;
+    }
+    setReschedulingSchedule(schedule);
+    setNewRescheduleDate(schedule.scheduled_date || '');
+    setOpenRescheduleDialog(true);
+  };
+
+  const handleCloseRescheduleDialog = () => {
+    setOpenRescheduleDialog(false);
+    setReschedulingSchedule(null);
+    setNewRescheduleDate('');
+  };
+
+  const handleReschedule = async () => {
+    if (!reschedulingSchedule || !newRescheduleDate) {
+      showError('Please select a new date');
+      return;
+    }
+
+    if (rescheduleCount.count >= rescheduleCount.limit) {
+      showInfo(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `/api/scheduled-audits/${reschedulingSchedule.id}/reschedule`,
+        { new_date: newRescheduleDate }
+      );
+      showSuccess(response.data.message || 'Audit rescheduled successfully!');
+      handleCloseRescheduleDialog();
+      fetchData();
+      fetchRescheduleCount();
+    } catch (error) {
+      console.error('Error rescheduling audit:', error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to reschedule audit';
+      
+      // Check if it's a limit reached error - show as info notification, not error
+      if (error.response?.status === 400 && 
+          (errorMessage.toLowerCase().includes('limit') || 
+           errorMessage.toLowerCase().includes('rescheduled') ||
+           errorMessage.toLowerCase().includes('already rescheduled'))) {
+        showInfo(errorMessage);
+      } else {
+        showError(errorMessage);
+      }
+    }
   };
 
   // Improved CSV parser that handles quoted fields
@@ -496,9 +582,11 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
     <Layout>
       <Container maxWidth="lg">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
-            Scheduled Audits
-          </Typography>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
+              Scheduled Audits
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
               variant="outlined"
@@ -526,14 +614,13 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
               </Button>
             )}
             {canCreateScheduled && (
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => handleOpenDialog()}
-                  >
-                    New Schedule
-                  </Button>
-                )}
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => handleOpenDialog()}
+              >
+                New Schedule
+              </Button>
             )}
           </Box>
         </Box>
@@ -624,6 +711,17 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                         })()}
                       </TableCell>
                       <TableCell align="center">
+                        {canReschedule(schedule) && (
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenRescheduleDialog(schedule)}
+                            color="info"
+                            title="Reschedule Audit"
+                            sx={{ mr: 0.5 }}
+                          >
+                            <EventAvailableIcon />
+                          </IconButton>
+                        )}
                         {canManageScheduled && (
                           <>
                             <IconButton
@@ -781,6 +879,23 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           }}
                         >
                           Continue Audit
+                        </Button>
+                      )}
+                      {/* Reschedule Button */}
+                      {canReschedule(schedule) && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<EventAvailableIcon />}
+                          onClick={() => handleOpenRescheduleDialog(schedule)}
+                          fullWidth
+                          sx={{
+                            mt: 1,
+                            textTransform: 'none',
+                            borderRadius: 1
+                          }}
+                        >
+                          Reschedule
                         </Button>
                       )}
                       {/* Start Audit Button - only show if user can start */}
@@ -1125,6 +1240,68 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
               }}
             >
               {importing ? 'Importing...' : `Import ${parsedSchedules.length} Schedule(s)`}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Reschedule Dialog */}
+        <Dialog open={openRescheduleDialog} onClose={handleCloseRescheduleDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">Reschedule Audit</Typography>
+              <IconButton onClick={handleCloseRescheduleDialog} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            {reschedulingSchedule && (
+              <>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Template: <strong>{reschedulingSchedule.template_name}</strong>
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Current Date: <strong>{new Date(reschedulingSchedule.scheduled_date).toLocaleDateString()}</strong>
+                  </Typography>
+                  {reschedulingSchedule.location_name && (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Location: <strong>{reschedulingSchedule.location_name}</strong>
+                    </Typography>
+                  )}
+                </Box>
+                <TextField
+                  fullWidth
+                  label="New Scheduled Date"
+                  type="date"
+                  value={newRescheduleDate}
+                  onChange={(e) => setNewRescheduleDate(e.target.value)}
+                  InputLabelProps={{
+                    shrink: true,
+                  }}
+                  inputProps={{
+                    min: new Date().toISOString().split('T')[0] // Prevent selecting past dates
+                  }}
+                  margin="normal"
+                  required
+                />
+                {rescheduleCount.count >= rescheduleCount.limit && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    You have reached the monthly reschedule limit of {rescheduleCount.limit}. 
+                    You cannot reschedule more audits this month.
+                  </Alert>
+                )}
+              </>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={handleCloseRescheduleDialog}>Cancel</Button>
+            <Button
+              onClick={handleReschedule}
+              variant="contained"
+              disabled={!newRescheduleDate || rescheduleCount.count >= rescheduleCount.limit}
+            >
+              Reschedule
             </Button>
           </DialogActions>
         </Dialog>

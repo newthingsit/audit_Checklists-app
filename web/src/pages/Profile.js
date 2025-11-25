@@ -239,6 +239,14 @@ const Profile = () => {
                       : 'N/A'}
                   </Typography>
                 </Box>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  onClick={() => window.location.href = '/settings'}
+                  sx={{ mt: 2 }}
+                >
+                  Go to Settings
+                </Button>
               </CardContent>
             </Card>
           </Grid>

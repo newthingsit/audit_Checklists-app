@@ -57,7 +57,10 @@ const Stores = () => {
     state: '',
     country: '',
     phone: '',
-    email: ''
+    email: '',
+    parent_id: '',
+    region: '',
+    district: ''
   });
 
   useEffect(() => {
@@ -87,7 +90,10 @@ const Stores = () => {
         state: store.state || '',
         country: store.country || '',
         phone: store.phone || '',
-        email: store.email || ''
+        email: store.email || '',
+        parent_id: store.parent_id || '',
+        region: store.region || '',
+        district: store.district || ''
       });
     } else {
       setEditingStore(null);
@@ -99,7 +105,10 @@ const Stores = () => {
         state: '',
         country: '',
         phone: '',
-        email: ''
+        email: '',
+        parent_id: '',
+        region: '',
+        district: ''
       });
     }
     setOpenDialog(true);
@@ -517,6 +526,11 @@ const Stores = () => {
                               {[store.city, store.state, store.country].filter(Boolean).join(', ')}
                             </Typography>
                           )}
+                          {(store.region || store.district) && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              {[store.region, store.district].filter(Boolean).join(' • ')}
+                            </Typography>
+                          )}
                         </Box>
                       </Box>
                       <Box>
@@ -702,6 +716,48 @@ const Stores = () => {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               margin="normal"
             />
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Region"
+                  value={formData.region}
+                  onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., North, South, East, West"
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="District"
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                  margin="normal"
+                  placeholder="e.g., District 1, District 2"
+                />
+              </Grid>
+            </Grid>
+            <TextField
+              fullWidth
+              select
+              label="Parent Location (Optional)"
+              value={formData.parent_id || ''}
+              onChange={(e) => setFormData({ ...formData, parent_id: e.target.value || null })}
+              margin="normal"
+              SelectProps={{
+                native: true,
+              }}
+            >
+              <option value="">None (Top Level)</option>
+              {stores
+                .filter(store => !editingStore || store.id !== editingStore.id)
+                .map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name} {store.store_number ? `(#${store.store_number})` : ''}
+                  </option>
+                ))}
+            </TextField>
           </DialogContent>
           <DialogActions
             sx={{

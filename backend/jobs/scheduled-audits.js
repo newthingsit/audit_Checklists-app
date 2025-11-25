@@ -136,7 +136,15 @@ const processScheduledAudits = async () => {
                           'audit',
                           'New Audit Created',
                           `Audit "${scheduledAudit.template_name}" has been created from your scheduled audit`,
-                          `/audits/${auditId}`
+                          `/audits/${auditId}`,
+                          {
+                            template: 'scheduledAuditReminder',
+                            data: [
+                              scheduledAudit.template_name,
+                              scheduledAudit.scheduled_date,
+                              scheduledAudit.location_name || 'Not specified'
+                            ]
+                          }
                         );
                       } catch (notifErr) {
                         console.error('[Scheduled Audits Job] Error creating notification:', notifErr);
@@ -179,17 +187,28 @@ const sendReminders = async () => {
         if (!err && tasks && tasks.length > 0) {
           console.log(`[Reminders Job] Found ${tasks.length} task reminder(s)`);
           for (const task of tasks) {
-            try {
-              await createNotification(
-                task.assigned_to,
-                'reminder',
-                'Task Reminder',
-                `Reminder: Task "${task.title}" is due${task.due_date ? ` on ${new Date(task.due_date).toLocaleDateString()}` : ' soon'}`,
-                `/tasks`
-              );
-            } catch (notifErr) {
-              console.error(`[Reminders Job] Error sending reminder for task ${task.id}:`, notifErr);
-            }
+            // Get user info for email and send notification
+            dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
+              if (userErr) {
+                console.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
+                return;
+              }
+              try {
+                await createNotification(
+                  task.assigned_to,
+                  'reminder',
+                  'Task Reminder',
+                  `Reminder: Task "${task.title}" is due${task.due_date ? ` on ${new Date(task.due_date).toLocaleDateString()}` : ' soon'}`,
+                  `/tasks`,
+                  {
+                    template: 'taskReminder',
+                    data: [task.title, task.due_date]
+                  }
+                );
+              } catch (notifErr) {
+                console.error(`[Reminders Job] Error sending reminder for task ${task.id}:`, notifErr);
+              }
+            });
           }
         }
       }
@@ -206,17 +225,27 @@ const sendReminders = async () => {
         if (!err && tasks && tasks.length > 0) {
           console.log(`[Reminders Job] Found ${tasks.length} task(s) due today`);
           for (const task of tasks) {
-            try {
-              await createNotification(
-                task.assigned_to,
-                'reminder',
-                'Task Due Today',
-                `Task "${task.title}" is due today`,
-                `/tasks`
-              );
-            } catch (notifErr) {
-              console.error(`[Reminders Job] Error sending due date notification for task ${task.id}:`, notifErr);
-            }
+            dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
+              if (userErr) {
+                console.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
+                return;
+              }
+              try {
+                await createNotification(
+                  task.assigned_to,
+                  'reminder',
+                  'Task Due Today',
+                  `Task "${task.title}" is due today`,
+                  `/tasks`,
+                  {
+                    template: 'taskReminder',
+                    data: [task.title, task.due_date]
+                  }
+                );
+              } catch (notifErr) {
+                console.error(`[Reminders Job] Error sending due date notification for task ${task.id}:`, notifErr);
+              }
+            });
           }
         }
       }
@@ -271,17 +300,27 @@ const sendReminders = async () => {
         if (!err && overdueTasks && overdueTasks.length > 0) {
           console.log(`[Reminders Job] Found ${overdueTasks.length} overdue task(s)`);
           for (const task of overdueTasks) {
-            try {
-              await createNotification(
-                task.assigned_to,
-                'reminder',
-                'Overdue Task',
-                `Task "${task.title}" is overdue (was due ${new Date(task.due_date).toLocaleDateString()})`,
-                `/tasks`
-              );
-            } catch (notifErr) {
-              console.error(`[Reminders Job] Error sending overdue notification for task ${task.id}:`, notifErr);
-            }
+            dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
+              if (userErr) {
+                console.error(`[Reminders Job] Error fetching user for overdue task ${task.id}:`, userErr);
+                return;
+              }
+              try {
+                await createNotification(
+                  task.assigned_to,
+                  'reminder',
+                  'Overdue Task',
+                  `Task "${task.title}" is overdue (was due ${new Date(task.due_date).toLocaleDateString()})`,
+                  `/tasks`,
+                  {
+                    template: 'overdueItem',
+                    data: ['Task', task.title, task.due_date]
+                  }
+                );
+              } catch (notifErr) {
+                console.error(`[Reminders Job] Error sending overdue notification for task ${task.id}:`, notifErr);
+              }
+            });
           }
         }
       }

@@ -351,7 +351,8 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
         { id: 'create_scheduled_audits', name: 'Create Scheduled Audits', description: 'Create new scheduled audits' },
         { id: 'update_scheduled_audits', name: 'Update Scheduled Audits', description: 'Update scheduled audits' },
         { id: 'delete_scheduled_audits', name: 'Delete Scheduled Audits', description: 'Remove scheduled audits' },
-        { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits' }
+        { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits' },
+        { id: 'reschedule_scheduled_audits', name: 'Reschedule Scheduled Audits', description: 'Reschedule audits (limited to 2 times per month per user)' }
       ]
     },
     { id: 'view_scheduled_audits', name: 'View Scheduled Audits', description: 'View scheduled audits' },

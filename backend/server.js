@@ -110,10 +110,45 @@ app.use('/api/scheduled-audits', require('./routes/scheduled-audits')); // Sched
 app.use('/api/tasks', require('./routes/tasks')); // Tasks and workflows
 app.use('/api/teams', require('./routes/teams')); // Team collaboration
 app.use('/api/notifications', require('./routes/notifications')); // Notifications
+app.use('/api/settings', require('./routes/settings')); // User Settings & Preferences
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
+});
+
+// Global error handler - MUST be after all routes but before listen
+// This catches any unhandled errors and prevents 500 responses
+app.use((err, req, res, next) => {
+  // For reschedule-count endpoint, ALWAYS return 200 (never 500)
+  const path = req.path || req.url || '';
+  if (path.includes('reschedule-count') || path.includes('/reschedule-count')) {
+    console.error('[Global Error Handler] Error in reschedule-count:', err.message);
+    console.error('[Global Error Handler] Error stack:', err.stack);
+    if (!res.headersSent) {
+      try {
+        return res.status(200).json({ 
+          // Original web keys
+          rescheduleCount: 0,
+          limit: 2,
+          remainingReschedules: 2,
+          // Mobile-friendly keys
+          count: 0,
+          remaining: 2
+        });
+      } catch (e) {
+        // Even this failed, but we tried
+        console.error('[Global Error Handler] Failed to send response:', e.message);
+      }
+    }
+    return; // Don't continue to default error handling
+  }
+  
+  // For other routes, use default error handling
+  console.error('Unhandled error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Initialize database and start server

@@ -2,8 +2,9 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { Box, CircularProgress } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider as CustomThemeProvider } from './context/ThemeContext';
+import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/ThemeContext';
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import PermissionRoute from './components/PermissionRoute';
@@ -22,6 +23,7 @@ import ScheduledAudits from './pages/ScheduledAudits';
 import Tasks from './pages/Tasks';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import UserManagement from './pages/UserManagement';
 import RoleManagement from './pages/RoleManagement';
 import MonthlyScorecard from './pages/MonthlyScorecard';
@@ -31,7 +33,7 @@ import { themeConfig } from './config/theme';
 
 const getTheme = (darkMode) => createTheme({
   palette: {
-    mode: 'light', // Always light mode to match screenshot
+    mode: darkMode ? 'dark' : 'light',
     primary: {
       main: themeConfig.primary.main,
       light: themeConfig.primary.light,
@@ -58,12 +60,12 @@ const getTheme = (darkMode) => createTheme({
       dark: '#d32f2f',
     },
     background: {
-      default: themeConfig.background.default,
-      paper: themeConfig.background.paper,
+      default: darkMode ? '#121212' : themeConfig.background.default,
+      paper: darkMode ? '#1e1e1e' : themeConfig.background.paper,
     },
     text: {
-      primary: themeConfig.text.primary,
-      secondary: themeConfig.text.secondary,
+      primary: darkMode ? '#ffffff' : themeConfig.text.primary,
+      secondary: darkMode ? '#b0b0b0' : themeConfig.text.secondary,
     },
   },
   typography: {
@@ -117,7 +119,7 @@ const getTheme = (darkMode) => createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: 8,
-            backgroundColor: '#fff',
+            backgroundColor: darkMode ? '#1e1e1e' : '#fff',
           },
         },
       },
@@ -126,7 +128,39 @@ const getTheme = (darkMode) => createTheme({
 });
 
 function AppContent() {
-  const theme = getTheme(false); // Always use light theme to match screenshot
+  return (
+    <CustomThemeProvider>
+      <ThemeWrapper />
+    </CustomThemeProvider>
+  );
+}
+
+function ThemeWrapper() {
+  const { darkMode, loading } = useThemeMode();
+  const theme = getTheme(darkMode);
+
+  // Show loading state while theme is being determined
+  // Use a default light theme for the loading spinner to prevent unmounting
+  if (loading) {
+    const defaultTheme = getTheme(false); // Use light theme as default
+    return (
+      <ThemeProvider theme={defaultTheme}>
+        <CssBaseline />
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '100vh',
+            width: '100%',
+            backgroundColor: 'background.default'
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -242,6 +276,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/settings"
+              element={
+                <PrivateRoute>
+                  <Settings />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/scorecard"
               element={
                 <PrivateRoute>
@@ -283,11 +325,7 @@ function AppContent() {
 }
 
 function App() {
-  return (
-    <CustomThemeProvider>
-      <AppContent />
-    </CustomThemeProvider>
-  );
+  return <AppContent />;
 }
 
 export default App;

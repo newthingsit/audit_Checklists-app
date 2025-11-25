@@ -20,6 +20,13 @@ router.get('/dashboard', authenticate, (req, res) => {
   // Build user filter for queries
   const userFilter = isAdmin ? '' : 'WHERE user_id = ?';
   const userParams = isAdmin ? [] : [userId];
+  
+  // Get current month and last month for comparison
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+  const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
 
   // Get all statistics in parallel
   Promise.all([
@@ -106,24 +113,26 @@ router.get('/dashboard', authenticate, (req, res) => {
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
-    // Top restaurants
+    // Top users
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
-      const whereClause = isAdmin ? '' : 'WHERE user_id = ?';
+      const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
       const params = isAdmin ? [] : [userId];
       let query;
       if (dbType === 'mssql' || dbType === 'sqlserver') {
-        query = `SELECT TOP 5 restaurant_name, COUNT(*) as audit_count, AVG(score) as avg_score
-         FROM audits
+        query = `SELECT TOP 5 u.id, u.name as user_name, u.email, COUNT(*) as audit_count, AVG(a.score) as avg_score
+         FROM audits a
+         JOIN users u ON a.user_id = u.id
          ${whereClause}
-         GROUP BY restaurant_name
-         ORDER BY audit_count DESC`;
+         GROUP BY u.id, u.name, u.email
+         ORDER BY audit_count DESC, avg_score DESC`;
       } else {
-        query = `SELECT restaurant_name, COUNT(*) as audit_count, AVG(score) as avg_score
-         FROM audits
+        query = `SELECT u.id, u.name as user_name, u.email, COUNT(*) as audit_count, AVG(a.score) as avg_score
+         FROM audits a
+         JOIN users u ON a.user_id = u.id
          ${whereClause}
-         GROUP BY restaurant_name
-         ORDER BY audit_count DESC
+         GROUP BY u.id, u.name, u.email
+         ORDER BY audit_count DESC, avg_score DESC
          LIMIT 5`;
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
@@ -149,9 +158,136 @@ router.get('/dashboard', authenticate, (req, res) => {
          LIMIT 5`;
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    }),
+    // Current month stats for comparison
+    new Promise((resolve, reject) => {
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      let query;
+      const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+      const params = isAdmin ? [] : [userId];
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND YEAR', 'WHERE YEAR');
+        }
+        params.push(currentYear, currentMonth);
+      } else if (dbType === 'mysql') {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND YEAR', 'WHERE YEAR');
+        }
+        params.push(currentYear, currentMonth);
+      } else {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND strftime', 'WHERE strftime');
+        }
+        params.push(String(currentYear), String(currentMonth).padStart(2, '0'));
+      }
+      dbInstance.get(query, params, (err, row) => err ? reject(err) : resolve(row || { total: 0, completed: 0, avg_score: 0 }));
+    }),
+    // Last month stats for comparison
+    new Promise((resolve, reject) => {
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      let query;
+      const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+      const params = isAdmin ? [] : [userId];
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND YEAR', 'WHERE YEAR');
+        }
+        params.push(lastMonthYear, lastMonth);
+      } else if (dbType === 'mysql') {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND YEAR', 'WHERE YEAR');
+        }
+        params.push(lastMonthYear, lastMonth);
+      } else {
+        query = `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+          AVG(a.score) as avg_score
+         FROM audits a
+         ${whereClause} AND strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+        if (isAdmin) {
+          query = query.replace('AND strftime', 'WHERE strftime');
+        }
+        params.push(String(lastMonthYear), String(lastMonth).padStart(2, '0'));
+      }
+      dbInstance.get(query, params, (err, row) => err ? reject(err) : resolve(row || { total: 0, completed: 0, avg_score: 0 }));
+    }),
+    // Top performing stores
+    new Promise((resolve, reject) => {
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+      const params = isAdmin ? [] : [userId];
+      let query;
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `SELECT TOP 5 
+          l.name as store_name,
+          l.store_number,
+          COUNT(*) as audit_count,
+          AVG(a.score) as avg_score
+         FROM audits a
+         LEFT JOIN locations l ON a.location_id = l.id
+         ${whereClause}
+         GROUP BY l.id, l.name, l.store_number
+         HAVING COUNT(*) > 0
+         ORDER BY avg_score DESC`;
+      } else {
+        query = `SELECT 
+          l.name as store_name,
+          l.store_number,
+          COUNT(*) as audit_count,
+          AVG(a.score) as avg_score
+         FROM audits a
+         LEFT JOIN locations l ON a.location_id = l.id
+         ${whereClause}
+         GROUP BY l.id, l.name, l.store_number
+         HAVING COUNT(*) > 0
+         ORDER BY avg_score DESC
+         LIMIT 5`;
+      }
+      dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     })
   ])
-    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topRestaurants, recent]) => {
+    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topUsers, recent, currentMonthStats, lastMonthStats, topStores]) => {
+      // Calculate month-over-month changes
+      const monthChange = {
+        total: currentMonthStats.total - lastMonthStats.total,
+        completed: currentMonthStats.completed - lastMonthStats.completed,
+        avgScore: (currentMonthStats.avg_score || 0) - (lastMonthStats.avg_score || 0)
+      };
+      
       res.json({
         total,
         completed,
@@ -159,8 +295,20 @@ router.get('/dashboard', authenticate, (req, res) => {
         avgScore: Math.round(avgScore * 100) / 100,
         byStatus,
         byMonth,
-        topRestaurants,
-        recent
+        topUsers,
+        recent,
+        currentMonthStats: {
+          total: currentMonthStats.total || 0,
+          completed: currentMonthStats.completed || 0,
+          avgScore: Math.round((currentMonthStats.avg_score || 0) * 100) / 100
+        },
+        lastMonthStats: {
+          total: lastMonthStats.total || 0,
+          completed: lastMonthStats.completed || 0,
+          avgScore: Math.round((lastMonthStats.avg_score || 0) * 100) / 100
+        },
+        monthChange,
+        topStores
       });
     })
     .catch(err => {

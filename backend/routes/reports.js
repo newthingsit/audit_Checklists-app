@@ -2,6 +2,7 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { exportAuditsToExcel, exportStoreAnalyticsToExcel, exportMonthlyScorecardToExcel } = require('../utils/excelExport');
 
 const router = express.Router();
 
@@ -300,6 +301,169 @@ router.get('/audits/csv', authenticate, (req, res) => {
   );
 });
 
+// Export audits to Excel
+router.get('/audits/excel', authenticate, async (req, res) => {
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { ids, status, restaurant, date_from, date_to, min_score, max_score, template_id } = req.query;
+  const dbInstance = db.getDb();
+
+  // Helper function to format dates to India time (DD-MM-YYYY)
+  const formatIndiaDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      
+      // Convert to IST (UTC+5:30)
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(date.getTime() + istOffset);
+      
+      const day = String(istDate.getUTCDate()).padStart(2, '0');
+      const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+      const year = istDate.getUTCFullYear();
+      
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  try {
+    // Build query similar to CSV export
+    const dbType = process.env.DB_TYPE || 'sqlite';
+    let categoryQuery;
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      categoryQuery = `(SELECT STUFF((SELECT DISTINCT N',' + category FROM checklist_items WHERE template_id = ct.id AND category IS NOT NULL AND category != N'' FOR XML PATH('')), 1, 1, ''))`;
+    } else if (dbType === 'mysql') {
+      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+    } else {
+      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+    }
+
+    let query = `
+      SELECT a.*, 
+        ct.name as template_name,
+        ${categoryQuery} as template_category,
+        l.name as location_name,
+        l.store_number,
+        u.name as user_name,
+        u.email as user_email,
+        sa.scheduled_date,
+        COALESCE(sa.scheduled_date, a.created_at) as audit_date
+      FROM audits a
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN users u ON a.user_id = u.id
+      LEFT JOIN scheduled_audits sa ON a.scheduled_audit_id = sa.id
+    `;
+    
+    const params = [];
+    const conditions = [];
+    
+    if (!isAdmin) {
+      conditions.push('a.user_id = ?');
+      params.push(userId);
+    }
+    
+    if (ids) {
+      const idList = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      if (idList.length > 0) {
+        const placeholders = idList.map(() => '?').join(',');
+        conditions.push(`a.id IN (${placeholders})`);
+        params.push(...idList);
+      }
+    }
+    
+    if (status && status !== 'all') {
+      conditions.push('a.status = ?');
+      params.push(status);
+    }
+    
+    if (restaurant) {
+      conditions.push('a.restaurant_name LIKE ?');
+      params.push(`%${restaurant}%`);
+    }
+    
+    if (date_from) {
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        conditions.push('CAST(a.created_at AS DATE) >= CAST(? AS DATE)');
+      } else {
+        conditions.push('DATE(a.created_at) >= ?');
+      }
+      params.push(date_from);
+    }
+    
+    if (date_to) {
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        conditions.push('CAST(a.created_at AS DATE) <= CAST(? AS DATE)');
+      } else {
+        conditions.push('DATE(a.created_at) <= ?');
+      }
+      params.push(date_to);
+    }
+    
+    if (min_score !== undefined) {
+      conditions.push('a.score >= ?');
+      params.push(min_score);
+    }
+    
+    if (max_score !== undefined) {
+      conditions.push('a.score <= ?');
+      params.push(max_score);
+    }
+    
+    if (template_id) {
+      conditions.push('a.template_id = ?');
+      params.push(template_id);
+    }
+    
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    query += ' ORDER BY a.created_at DESC';
+    
+    dbInstance.all(query, params, async (err, audits) => {
+      if (err) {
+        console.error('Error fetching audits for Excel export:', err);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+      }
+      
+      try {
+        // Format audits for Excel
+        const formattedAudits = audits.map(audit => ({
+          ...audit,
+          store_number: audit.store_number || (audit.location_name ? extractStoreNumber(audit.location_name) : ''),
+          category: audit.template_category || '',
+          created_at: formatIndiaDate(audit.audit_date || audit.created_at),
+          scheduled_date: audit.scheduled_date ? formatIndiaDate(audit.scheduled_date) : '',
+          completed_at: audit.completed_at ? formatIndiaDate(audit.completed_at) : ''
+        }));
+        
+        const buffer = await exportAuditsToExcel(formattedAudits);
+        
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename=audits-export.xlsx');
+        res.send(buffer);
+      } catch (excelErr) {
+        console.error('Error generating Excel file:', excelErr);
+        res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
+      }
+    });
+  } catch (error) {
+    console.error('Error in Excel export:', error);
+    res.status(500).json({ error: 'Error exporting to Excel', details: error.message });
+  }
+  
+  // Helper to extract store number
+  function extractStoreNumber(location) {
+    if (!location) return '';
+    const match = location.match(/#(\d+)/);
+    return match ? match[1] : '';
+  }
+});
+
 // Export multiple audits to PDF (admins see all audits, supports filtering)
 router.get('/audits/pdf', authenticate, (req, res) => {
   const userId = req.user.id;
@@ -398,51 +562,87 @@ router.get('/audits/pdf', authenticate, (req, res) => {
 });
 
 // Get monthly scorecard report (admins see all audits)
+// Supports multiple months (comma-separated: month=1,2,3) and multiple locations (comma-separated: location_id=1,2,3)
 router.get('/monthly-scorecard', authenticate, (req, res) => {
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
-  const { year, month, location_id } = req.query;
+  const { year, month, location_id, compare_mode } = req.query;
   const dbInstance = db.getDb();
 
-  // Default to current month if not specified
+  // Parse multiple months if provided (comma-separated)
+  let months = [];
+  if (month) {
+    months = month.toString().split(',').map(m => parseInt(m.trim())).filter(m => !isNaN(m) && m >= 1 && m <= 12);
+  }
+  if (months.length === 0) {
+    // Default to current month if not specified
+    months = [new Date().getMonth() + 1];
+  }
+
+  // Parse multiple location_ids if provided (comma-separated)
+  let locationIds = [];
+  if (location_id) {
+    locationIds = location_id.toString().split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+  }
+
+  // Default to current year if not specified
   const reportYear = year || new Date().getFullYear();
-  const reportMonth = month || (new Date().getMonth() + 1);
-  
-  // Pad month with leading zero for SQLite strftime comparison
-  const monthPadded = String(reportMonth).padStart(2, '0');
   const yearStr = String(reportYear);
 
   // Build query with optional location filter
   let locationFilter = '';
   let params = [];
   
-  // Build WHERE clause - admins see all audits
-  if (isAdmin) {
-    params = [yearStr, monthPadded];
-  } else {
-    params = [userId, yearStr, monthPadded];
-  }
-  
-  if (location_id) {
-    locationFilter = 'AND a.location_id = ?';
-    params.push(location_id);
-  }
-
-  // Get all audits for the month
+  // Build date filter for multiple months
   const dbType = process.env.DB_TYPE || 'sqlite';
   let dateQuery;
-  if (dbType === 'mssql' || dbType === 'sqlserver') {
-    dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
-  } else if (dbType === 'mysql') {
-    dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+  if (months.length === 1) {
+    // Single month - use existing logic
+    const monthPadded = String(months[0]).padStart(2, '0');
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+      params.push(yearStr, months[0]);
+    } else if (dbType === 'mysql') {
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+      params.push(yearStr, months[0]);
+    } else {
+      dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+      params.push(yearStr, monthPadded);
+    }
   } else {
-    // SQLite and PostgreSQL
-    dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+    // Multiple months - use IN clause
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      const monthPlaceholders = months.map(() => '?').join(',');
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...months);
+    } else if (dbType === 'mysql') {
+      const monthPlaceholders = months.map(() => '?').join(',');
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...months);
+    } else {
+      // SQLite and PostgreSQL
+      const monthPaddeds = months.map(m => String(m).padStart(2, '0'));
+      const monthPlaceholders = monthPaddeds.map(() => '?').join(',');
+      dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...monthPaddeds);
+    }
   }
   
+  // Build location filter for multiple locations
+  if (locationIds.length > 0) {
+    const locationPlaceholders = locationIds.map(() => '?').join(',');
+    locationFilter = `AND a.location_id IN (${locationPlaceholders})`;
+    params.push(...locationIds);
+  }
+  
+  // Build WHERE clause - admins see all audits
   const whereClause = isAdmin 
     ? `WHERE ${dateQuery}`
     : `WHERE a.user_id = ? AND ${dateQuery}`;
+  
+  if (!isAdmin) {
+    params.unshift(userId);
+  }
   
   dbInstance.all(
     `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name, u.name as user_name
@@ -454,7 +654,7 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
      ${locationFilter}
      ORDER BY a.created_at DESC`,
     params,
-    (err, audits) => {
+    async (err, audits) => {
       if (err) {
         console.error('Monthly scorecard error:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
@@ -568,11 +768,50 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
         }
       });
 
-      res.json({
-        period: {
+      // If compare_mode is enabled and multiple months, group by month for comparison
+      let monthComparison = null;
+      if (compare_mode === 'true' && months.length > 1) {
+        monthComparison = {};
+        months.forEach(m => {
+          const monthName = new Date(reportYear, m - 1, 1).toLocaleString('default', { month: 'long' });
+          const monthAudits = audits.filter(a => {
+            const auditDate = new Date(a.created_at);
+            return auditDate.getFullYear() === parseInt(reportYear) && auditDate.getMonth() + 1 === m;
+          });
+          
+          const monthScores = monthAudits.filter(a => a.score !== null).map(a => a.score);
+          const monthAvgScore = monthScores.length > 0 
+            ? Math.round((monthScores.reduce((a, b) => a + b, 0) / monthScores.length) * 100) / 100 
+            : 0;
+          
+          monthComparison[monthName] = {
+            month: m,
+            monthName: monthName,
+            totalAudits: monthAudits.length,
+            completedAudits: monthAudits.filter(a => a.status === 'completed').length,
+            inProgressAudits: monthAudits.filter(a => a.status === 'in_progress').length,
+            avgScore: monthAvgScore,
+            minScore: monthScores.length > 0 ? Math.min(...monthScores) : 0,
+            maxScore: monthScores.length > 0 ? Math.max(...monthScores) : 0,
+            completionRate: monthAudits.length > 0 
+              ? Math.round((monthAudits.filter(a => a.status === 'completed').length / monthAudits.length) * 100) 
+              : 0
+          };
+        });
+      }
+
+      // Build response
+      const response = {
+        period: months.length === 1 ? {
           year: parseInt(reportYear),
-          month: parseInt(reportMonth),
-          monthName: new Date(reportYear, reportMonth - 1, 1).toLocaleString('default', { month: 'long' })
+          month: months[0],
+          monthName: new Date(reportYear, months[0] - 1, 1).toLocaleString('default', { month: 'long' })
+        } : {
+          year: parseInt(reportYear),
+          months: months.map(m => ({
+            month: m,
+            monthName: new Date(reportYear, m - 1, 1).toLocaleString('default', { month: 'long' })
+          }))
         },
         summary: {
           totalAudits,
@@ -595,7 +834,31 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
           score: a.score,
           created_at: a.created_at
         }))
-      });
+      };
+
+      // Add month comparison if enabled
+      if (monthComparison) {
+        response.monthComparison = monthComparison;
+      }
+
+      // Check if Excel export is requested
+      if (req.query.format === 'excel') {
+        try {
+          const buffer = await exportMonthlyScorecardToExcel(response);
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          const filename = months.length === 1 
+            ? `monthly-scorecard-${reportYear}-${String(months[0]).padStart(2, '0')}.xlsx`
+            : `monthly-scorecard-${reportYear}-${months.map(m => String(m).padStart(2, '0')).join('-')}.xlsx`;
+          res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+          res.send(buffer);
+          return;
+        } catch (excelErr) {
+          console.error('Error generating Excel file:', excelErr);
+          return res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
+        }
+      }
+
+      res.json(response);
     }
   );
 });
@@ -603,47 +866,87 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
 // Export monthly scorecard to PDF
 router.get('/monthly-scorecard/pdf', authenticate, (req, res) => {
   const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
   const { year, month, location_id } = req.query;
   const dbInstance = db.getDb();
 
-  // Default to current month if not specified
+  // Parse multiple months if provided (comma-separated)
+  let months = [];
+  if (month) {
+    months = month.toString().split(',').map(m => parseInt(m.trim())).filter(m => !isNaN(m) && m >= 1 && m <= 12);
+  }
+  if (months.length === 0) {
+    // Default to current month if not specified
+    months = [new Date().getMonth() + 1];
+  }
+
+  // Parse multiple location_ids if provided (comma-separated)
+  let locationIds = [];
+  if (location_id) {
+    locationIds = location_id.toString().split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+  }
+
+  // Default to current year if not specified
   const reportYear = year || new Date().getFullYear();
-  const reportMonth = month || (new Date().getMonth() + 1);
-  const monthName = new Date(reportYear, reportMonth - 1, 1).toLocaleString('default', { month: 'long' });
-  
-  // Pad month with leading zero for SQLite strftime comparison
-  const monthPadded = String(reportMonth).padStart(2, '0');
   const yearStr = String(reportYear);
 
   // Build query with optional location filter
   let locationFilter = '';
   let params = [];
   
-  // Build WHERE clause - admins see all audits
-  if (isAdmin) {
-    params = [yearStr, monthPadded];
-  } else {
-    params = [userId, yearStr, monthPadded];
-  }
-  
-  if (location_id) {
-    locationFilter = 'AND a.location_id = ?';
-    params.push(location_id);
-  }
-
+  // Build date filter for multiple months
   const dbType = process.env.DB_TYPE || 'sqlite';
   let dateQuery;
-  if (dbType === 'mssql' || dbType === 'sqlserver') {
-    dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
-  } else if (dbType === 'mysql') {
-    dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+  if (months.length === 1) {
+    // Single month - use existing logic
+    const monthPadded = String(months[0]).padStart(2, '0');
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+      params.push(yearStr, months[0]);
+    } else if (dbType === 'mysql') {
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+      params.push(yearStr, months[0]);
+    } else {
+      dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+      params.push(yearStr, monthPadded);
+    }
   } else {
-    dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+    // Multiple months - use IN clause
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      const monthPlaceholders = months.map(() => '?').join(',');
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...months);
+    } else if (dbType === 'mysql') {
+      const monthPlaceholders = months.map(() => '?').join(',');
+      dateQuery = `YEAR(a.created_at) = ? AND MONTH(a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...months);
+    } else {
+      // SQLite and PostgreSQL
+      const monthPaddeds = months.map(m => String(m).padStart(2, '0'));
+      const monthPlaceholders = monthPaddeds.map(() => '?').join(',');
+      dateQuery = `strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) IN (${monthPlaceholders})`;
+      params.push(yearStr, ...monthPaddeds);
+    }
   }
   
+  // Build location filter for multiple locations
+  if (locationIds.length > 0) {
+    const locationPlaceholders = locationIds.map(() => '?').join(',');
+    locationFilter = `AND a.location_id IN (${locationPlaceholders})`;
+    params.push(...locationIds);
+  }
+  
+  // Build WHERE clause - admins see all audits
   const whereClause = isAdmin 
     ? `WHERE ${dateQuery}`
     : `WHERE a.user_id = ? AND ${dateQuery}`;
+  
+  if (!isAdmin) {
+    params.unshift(userId);
+  }
+  
+  const monthNames = months.map(m => new Date(reportYear, m - 1, 1).toLocaleString('default', { month: 'long' }));
+  const monthName = monthNames.length === 1 ? monthNames[0] : monthNames.join(', ');
   
   dbInstance.all(
     `SELECT a.*, ct.name as template_name, ct.category, l.name as location_name, u.name as user_name
@@ -672,7 +975,10 @@ router.get('/monthly-scorecard/pdf', authenticate, (req, res) => {
       // Create PDF
       const doc = new PDFDocument({ margin: 50 });
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=monthly-scorecard-${reportYear}-${String(reportMonth).padStart(2, '0')}.pdf`);
+      const filename = months.length === 1 
+        ? `monthly-scorecard-${reportYear}-${String(months[0]).padStart(2, '0')}.pdf`
+        : `monthly-scorecard-${reportYear}-${months.map(m => String(m).padStart(2, '0')).join('-')}.pdf`;
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
       doc.pipe(res);
 
       // Header
@@ -977,7 +1283,7 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
     ORDER BY l.store_number, l.name, a.created_at DESC
   `;
 
-  dbInstance.all(query, params, (err, audits) => {
+  dbInstance.all(query, params, async (err, audits) => {
     if (err) {
       console.error('Store analytics error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
@@ -1184,8 +1490,19 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
       return (a.template_name || '').localeCompare(b.template_name || '');
     });
 
-    // Return CSV or JSON
-    if (format === 'csv') {
+    // Return CSV, Excel, or JSON
+    if (format === 'excel') {
+      try {
+        const buffer = await exportStoreAnalyticsToExcel(storeAnalytics);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=store-analytics-${new Date().toISOString().split('T')[0]}.xlsx`);
+        res.send(buffer);
+        return;
+      } catch (excelErr) {
+        console.error('Error generating Excel file:', excelErr);
+        return res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
+      }
+    } else if (format === 'csv') {
       try {
         // CSV Headers
         const headers = [

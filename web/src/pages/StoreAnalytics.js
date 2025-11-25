@@ -7,7 +7,6 @@ import {
   Typography,
   Box,
   CircularProgress,
-  Paper,
   Table,
   TableBody,
   TableCell,
@@ -19,7 +18,6 @@ import {
   Alert,
   ToggleButton,
   ToggleButtonGroup,
-  IconButton,
   Menu,
   MenuItem,
   Chip
@@ -53,6 +51,7 @@ const StoreAnalytics = () => {
 
   useEffect(() => {
     fetchStoreAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchStoreAnalytics = async () => {
@@ -96,6 +95,41 @@ const StoreAnalytics = () => {
       window.URL.revokeObjectURL(url);
       
       toast.success('CSV exported successfully');
+      setDownloadAnchor(null);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      toast.error('Failed to export CSV');
+      setExporting(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const params = { format: 'excel' };
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      
+      const response = await axios.get('/api/reports/analytics-by-store', {
+        params,
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `planner-analytics-bystore-${new Date().toISOString().split('T')[0]}.xlsx`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Excel exported successfully');
       setDownloadAnchor(null);
     } catch (error) {
       console.error('Error exporting CSV:', error);
@@ -191,6 +225,9 @@ const StoreAnalytics = () => {
             >
               <MenuItem onClick={handleExportCSV} disabled={exporting}>
                 Download as CSV
+              </MenuItem>
+              <MenuItem onClick={handleExportExcel} disabled={exporting}>
+                Download as Excel
               </MenuItem>
             </Menu>
           </Box>

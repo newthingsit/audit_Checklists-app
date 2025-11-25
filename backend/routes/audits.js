@@ -868,7 +868,11 @@ router.put('/:id/complete', authenticate, (req, res) => {
                 'audit',
                 'Audit Completed',
                 `Audit "${audit.restaurant_name}" has been completed with a score of ${score}%`,
-                `/audits/${auditId}`
+                `/audits/${auditId}`,
+                {
+                  template: 'auditCompleted',
+                  data: [audit.restaurant_name, score, audit.location_name || 'Not specified']
+                }
               );
             } catch (notifErr) {
               console.error('Error creating completion notification:', notifErr);

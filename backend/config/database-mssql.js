@@ -110,9 +110,13 @@ const createTables = async () => {
       [country] NVARCHAR(255),
       [phone] NVARCHAR(50),
       [email] NVARCHAR(255),
+      [parent_id] INT,
+      [region] NVARCHAR(255),
+      [district] NVARCHAR(255),
       [created_by] INT,
       [created_at] DATETIME DEFAULT GETDATE(),
-      FOREIGN KEY ([created_by]) REFERENCES [users]([id])
+      FOREIGN KEY ([created_by]) REFERENCES [users]([id]),
+      FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE SET NULL
     )`,
     
     // Audits table
@@ -193,6 +197,20 @@ const createTables = async () => {
       FOREIGN KEY ([location_id]) REFERENCES [locations]([id]),
       FOREIGN KEY ([assigned_to]) REFERENCES [users]([id]),
       FOREIGN KEY ([created_by]) REFERENCES [users]([id])
+    )`,
+    
+    // Reschedule Tracking table
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[reschedule_tracking]') AND type in (N'U'))
+    CREATE TABLE [dbo].[reschedule_tracking] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [scheduled_audit_id] INT NOT NULL,
+      [user_id] INT NOT NULL,
+      [old_date] DATE NOT NULL,
+      [new_date] DATE NOT NULL,
+      [reschedule_month] NVARCHAR(7) NOT NULL,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([scheduled_audit_id]) REFERENCES [scheduled_audits]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id])
     )`,
     
     // Tasks table (for workflow management)
@@ -278,6 +296,26 @@ const createTables = async () => {
       [link] NTEXT,
       [read] BIT DEFAULT 0,
       [created_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
+    )`,
+    
+    // User preferences table
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[user_preferences]') AND type in (N'U'))
+    CREATE TABLE [dbo].[user_preferences] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL UNIQUE,
+      [email_notifications_enabled] BIT DEFAULT 1,
+      [email_audit_completed] BIT DEFAULT 1,
+      [email_action_assigned] BIT DEFAULT 1,
+      [email_task_reminder] BIT DEFAULT 1,
+      [email_overdue_items] BIT DEFAULT 1,
+      [email_scheduled_audit] BIT DEFAULT 1,
+      [date_format] NVARCHAR(20) DEFAULT N'DD-MM-YYYY',
+      [items_per_page] INT DEFAULT 25,
+      [theme] NVARCHAR(20) DEFAULT N'light',
+      [dashboard_default_view] NVARCHAR(20) DEFAULT N'cards',
+      [created_at] DATETIME DEFAULT GETDATE(),
+      [updated_at] DATETIME DEFAULT GETDATE(),
       FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
     )`
   ];

@@ -18,7 +18,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Chip
+  Chip,
+  Checkbox,
+  ListItemText,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import {
   BarChart,
@@ -41,15 +45,16 @@ const MonthlyScorecard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [locationId, setLocationId] = useState('');
+  const [selectedMonths, setSelectedMonths] = useState([new Date().getMonth() + 1]);
+  const [selectedLocations, setSelectedLocations] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [compareMode, setCompareMode] = useState(false);
 
   useEffect(() => {
     fetchLocations();
     fetchScorecard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, month, locationId]);
+  }, [year, selectedMonths, selectedLocations, compareMode]);
 
   const fetchLocations = async () => {
     try {
@@ -63,8 +68,14 @@ const MonthlyScorecard = () => {
   const fetchScorecard = async () => {
     setLoading(true);
     try {
-      const params = { year, month };
-      if (locationId) params.location_id = locationId;
+      const params = { 
+        year, 
+        month: selectedMonths.join(','),
+        compare_mode: compareMode && selectedMonths.length > 1 ? 'true' : 'false'
+      };
+      if (selectedLocations.length > 0) {
+        params.location_id = selectedLocations.join(',');
+      }
       
       const response = await axios.get('/api/reports/monthly-scorecard', { params });
       setData(response.data);
@@ -76,10 +87,80 @@ const MonthlyScorecard = () => {
     }
   };
 
-  const handleExportPDF = () => {
-    const params = new URLSearchParams({ year, month });
-    if (locationId) params.append('location_id', locationId);
-    window.open(`/api/reports/monthly-scorecard/pdf?${params.toString()}`, '_blank');
+  const handleExportPDF = async () => {
+    try {
+      const params = new URLSearchParams({ 
+        year, 
+        month: selectedMonths.join(',')
+      });
+      if (selectedLocations.length > 0) {
+        params.append('location_id', selectedLocations.join(','));
+      }
+      
+      // Use axios to fetch the PDF as a blob to avoid React Router interception
+      const response = await axios.get(`/api/reports/monthly-scorecard/pdf?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      
+      // Create a blob URL and trigger download
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `monthly-scorecard-${year}-${selectedMonths.map(m => String(m).padStart(2, '0')).join('-')}.pdf`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      showError('Error exporting PDF');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const params = new URLSearchParams({ 
+        year, 
+        month: selectedMonths.join(','),
+        format: 'excel'
+      });
+      if (selectedLocations.length > 0) {
+        params.append('location_id', selectedLocations.join(','));
+      }
+      
+      const response = await axios.get(`/api/reports/monthly-scorecard?${params.toString()}`, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `monthly-scorecard-${year}-${selectedMonths.map(m => String(m).padStart(2, '0')).join('-')}.xlsx`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      showError('Error exporting Excel');
+    }
+  };
+
+  const handleMonthChange = (event) => {
+    const value = event.target.value;
+    setSelectedMonths(typeof value === 'string' ? value.split(',').map(Number) : value);
+  };
+
+  const handleLocationChange = (event) => {
+    const value = event.target.value;
+    setSelectedLocations(typeof value === 'string' ? value.split(',').map(Number) : value);
   };
 
   if (loading) {
@@ -102,29 +183,40 @@ const MonthlyScorecard = () => {
     );
   }
 
-  const { period, summary, byTemplate, byLocation, dailyBreakdown, audits } = data;
+  const { period, summary, byTemplate, byLocation, dailyBreakdown, audits, monthComparison } = data;
+  const isMultipleMonths = selectedMonths.length > 1;
+  const showComparison = compareMode && isMultipleMonths && monthComparison;
 
   return (
     <Layout>
-      <Container maxWidth="lg">
+      <Container maxWidth="xl">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
             Monthly Scorecard Report
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<FileDownloadIcon />}
-            onClick={handleExportPDF}
-          >
-            Export PDF
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportExcel}
+            >
+              Export Excel
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportPDF}
+            >
+              Export PDF
+            </Button>
+          </Box>
         </Box>
 
         {/* Filters */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth>
                   <InputLabel>Year</InputLabel>
                   <Select
@@ -138,42 +230,174 @@ const MonthlyScorecard = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth>
-                  <InputLabel>Month</InputLabel>
+                  <InputLabel>Month(s)</InputLabel>
                   <Select
-                    value={month}
-                    label="Month"
-                    onChange={(e) => setMonth(e.target.value)}
+                    multiple
+                    value={selectedMonths}
+                    label="Month(s)"
+                    onChange={handleMonthChange}
+                    renderValue={(selected) => 
+                      selected.map(m => new Date(2000, m - 1, 1).toLocaleString('default', { month: 'short' })).join(', ')
+                    }
                   >
                     {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                       <MenuItem key={m} value={m}>
-                        {new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })}
+                        <Checkbox checked={selectedMonths.indexOf(m) > -1} />
+                        <ListItemText primary={new Date(2000, m - 1, 1).toLocaleString('default', { month: 'long' })} />
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6} md={3}>
                 <FormControl fullWidth>
-                  <InputLabel>Store (Optional)</InputLabel>
+                  <InputLabel>Store(s) (Optional)</InputLabel>
                   <Select
-                    value={locationId}
-                    label="Store (Optional)"
-                    onChange={(e) => setLocationId(e.target.value)}
+                    multiple
+                    value={selectedLocations}
+                    label="Store(s) (Optional)"
+                    onChange={handleLocationChange}
+                    renderValue={(selected) => {
+                      if (selected.length === 0) return 'All Stores';
+                      return selected.map(id => {
+                        const loc = locations.find(l => l.id === id);
+                        return loc ? loc.name : id;
+                      }).join(', ');
+                    }}
                   >
-                    <MenuItem value="">All Stores</MenuItem>
                     {locations.map(location => (
                       <MenuItem key={location.id} value={location.id}>
-                        {location.name}
+                        <Checkbox checked={selectedLocations.indexOf(location.id) > -1} />
+                        <ListItemText primary={location.name} />
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={compareMode && isMultipleMonths}
+                      onChange={(e) => setCompareMode(e.target.checked)}
+                      disabled={!isMultipleMonths}
+                    />
+                  }
+                  label="Compare Months"
+                />
               </Grid>
             </Grid>
           </CardContent>
         </Card>
+
+        {/* Month Comparison View */}
+        {showComparison && (
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Month-wise Comparison
+              </Typography>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Metric</TableCell>
+                      {Object.keys(monthComparison).map(monthName => (
+                        <TableCell key={monthName} align="right">
+                          {monthName} {year}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell><strong>Total Audits</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">{month.totalAudits}</TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>Completed Audits</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">{month.completedAudits}</TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>In Progress</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">{month.inProgressAudits}</TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>Average Score</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">
+                          {month.avgScore > 0 ? `${month.avgScore}%` : 'N/A'}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>Min Score</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">
+                          {month.minScore > 0 ? `${month.minScore}%` : 'N/A'}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>Max Score</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">
+                          {month.maxScore > 0 ? `${month.maxScore}%` : 'N/A'}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow>
+                      <TableCell><strong>Completion Rate</strong></TableCell>
+                      {Object.values(monthComparison).map((month, idx) => (
+                        <TableCell key={idx} align="right">{month.completionRate}%</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Comparison Chart */}
+        {showComparison && (
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Month Comparison Chart
+              </Typography>
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart
+                  data={Object.values(monthComparison).map(month => ({
+                    name: month.monthName,
+                    'Total Audits': month.totalAudits,
+                    'Completed': month.completedAudits,
+                    'Average Score': month.avgScore,
+                    'Completion Rate': month.completionRate
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="Total Audits" fill="#1976d2" />
+                  <Bar dataKey="Completed" fill="#4caf50" />
+                  <Bar dataKey="Average Score" fill="#ff9800" />
+                  <Bar dataKey="Completion Rate" fill="#9c27b0" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Summary Cards */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -350,7 +574,13 @@ const MonthlyScorecard = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Audit Details ({period.monthName} {period.year})
+                Audit Details {
+                  period.monthName 
+                    ? `${period.monthName} ${period.year}`
+                    : period.months 
+                      ? period.months.map(m => m.monthName).join(', ') + ` ${period.year}`
+                      : `${year}`
+                }
               </Typography>
               <TableContainer>
                 <Table>
@@ -396,7 +626,13 @@ const MonthlyScorecard = () => {
           <Card>
             <CardContent>
               <Typography align="center" color="textSecondary">
-                No audits found for {period.monthName} {period.year}
+                No audits found {
+                  period.monthName 
+                    ? `for ${period.monthName} ${period.year}`
+                    : period.months 
+                      ? `for ${period.months.map(m => m.monthName).join(', ')} ${period.year}`
+                      : `for ${year}`
+                }
               </Typography>
             </CardContent>
           </Card>
@@ -407,4 +643,3 @@ const MonthlyScorecard = () => {
 };
 
 export default MonthlyScorecard;
-

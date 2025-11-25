@@ -185,28 +185,28 @@ const Analytics = () => {
             </Card>
           </Grid>
 
-          {/* Top Restaurants */}
+          {/* Top Users */}
           <Grid item xs={12}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Top Restaurants
+                  Top Users
                 </Typography>
-                {data.topRestaurants.length > 0 ? (
+                {data.topUsers && data.topUsers.length > 0 ? (
                   <Box sx={{ mt: 2 }}>
-                    {data.topRestaurants.map((restaurant, index) => (
+                    {data.topUsers.map((user, index) => (
                       <Paper key={index} sx={{ p: 2, mb: 1 }}>
                         <Box display="flex" justifyContent="space-between" alignItems="center">
                           <Box>
                             <Typography variant="subtitle1" fontWeight="bold">
-                              {restaurant.restaurant_name}
+                              {user.user_name || 'Unknown'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {restaurant.audit_count} audits
+                              {user.email && `${user.email} • `}{user.audit_count} audits
                             </Typography>
                           </Box>
                           <Typography variant="h6" color="primary">
-                            {restaurant.avg_score ? Math.round(restaurant.avg_score) : 'N/A'}%
+                            {user.avg_score ? Math.round(user.avg_score) : 'N/A'}%
                           </Typography>
                         </Box>
                       </Paper>

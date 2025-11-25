@@ -151,7 +151,7 @@ const AuditForm = () => {
     } finally {
       setLoading(false);
     }
-  }, [auditId, locations, navigate]);
+  }, [auditId, navigate]);
 
   const fetchTemplate = useCallback(async () => {
     try {
@@ -352,7 +352,7 @@ const AuditForm = () => {
           // Extract just the path if it's a full URL
           const photoUrl = photos[item.id];
           updateData.photo_url = photoUrl.startsWith('http') 
-            ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
+            ? photoUrl.replace(/^https?:\/\/[^/]+/, '') // Remove domain, keep path
             : photoUrl;
         }
 

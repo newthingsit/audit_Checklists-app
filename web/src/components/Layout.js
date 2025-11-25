@@ -34,6 +34,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import SecurityIcon from '@mui/icons-material/Security';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import TaskIcon from '@mui/icons-material/Task';
+import SettingsIcon from '@mui/icons-material/Settings';
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
@@ -76,6 +77,7 @@ const Layout = ({ children }) => {
       { text: 'Monthly Scorecard', icon: <AssessmentIcon />, path: '/scorecard' }
     ] : []),
     { text: 'Profile', icon: <PersonIcon />, path: '/profile' },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
     ...(isAdmin(user) || hasPermission(userPermissions, 'create_users') || hasPermission(userPermissions, 'manage_users') || hasPermission(userPermissions, 'view_users') ? [
       { text: 'Users', icon: <PeopleIcon />, path: '/users' }
     ] : []),
@@ -119,9 +121,9 @@ const Layout = ({ children }) => {
   };
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: themeConfig.background.sidebar }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: theme.palette.mode === 'dark' ? '#1e1e1e' : themeConfig.background.sidebar }}>
       {/* Logo/App Name */}
-      <Box sx={{ p: 2, bgcolor: '#fff', borderBottom: `1px solid ${themeConfig.border.default}` }}>
+      <Box sx={{ p: 2, bgcolor: theme.palette.background.paper, borderBottom: `1px solid ${theme.palette.divider}` }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <RestaurantIcon sx={{ mr: 1.5, color: themeConfig.primary.main, fontSize: 28 }} />
           <Typography variant="h6" sx={{ fontWeight: 600, color: themeConfig.primary.main }}>
@@ -157,7 +159,7 @@ const Layout = ({ children }) => {
             }}
           >
             <ListItemIcon sx={{ 
-              color: location.pathname === item.path ? 'white' : themeConfig.text.secondary,
+              color: location.pathname === item.path ? 'white' : theme.palette.text.secondary,
               minWidth: 40 
             }}>
               {item.icon}
@@ -166,7 +168,8 @@ const Layout = ({ children }) => {
               primary={item.text} 
               primaryTypographyProps={{
                 fontSize: '0.95rem',
-                fontWeight: location.pathname === item.path ? 600 : 400
+                fontWeight: location.pathname === item.path ? 600 : 400,
+                color: location.pathname === item.path ? 'white' : theme.palette.text.primary
               }}
             />
           </ListItem>
@@ -174,11 +177,11 @@ const Layout = ({ children }) => {
       </List>
 
       {/* User Info at Bottom */}
-      <Box sx={{ p: 2, bgcolor: '#fff', borderTop: `1px solid ${themeConfig.border.default}` }}>
-        <Typography variant="caption" sx={{ color: themeConfig.text.secondary, display: 'block', mb: 0.5 }}>
+      <Box sx={{ p: 2, bgcolor: theme.palette.background.paper, borderTop: `1px solid ${theme.palette.divider}` }}>
+        <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block', mb: 0.5 }}>
           {user?.role === 'admin' ? 'Administrator' : user?.role === 'manager' ? 'Manager' : 'User'}
         </Typography>
-        <Typography variant="body2" sx={{ color: themeConfig.text.primary, fontWeight: 500 }}>
+        <Typography variant="body2" sx={{ color: theme.palette.text.primary, fontWeight: 500 }}>
           {user?.email || 'user@example.com'}
         </Typography>
       </Box>
@@ -186,16 +189,16 @@ const Layout = ({ children }) => {
   );
 
   return (
-    <Box sx={{ display: 'flex', bgcolor: themeConfig.background.default, minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', bgcolor: theme.palette.background.default, minHeight: '100vh' }}>
       <AppBar
         position="fixed"
         elevation={0}
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
-          bgcolor: '#fff',
-          color: themeConfig.text.primary,
-          borderBottom: `1px solid ${themeConfig.border.default}`,
+          bgcolor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', px: 3 }}>
@@ -307,7 +310,7 @@ const Layout = ({ children }) => {
           p: 3,
           width: { md: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
-          bgcolor: themeConfig.background.default,
+          bgcolor: theme.palette.background.default,
           minHeight: 'calc(100vh - 64px)',
         }}
       >

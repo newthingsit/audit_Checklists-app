@@ -10,6 +10,7 @@ import {
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
+import GridOnIcon from '@mui/icons-material/GridOn';
 import axios from 'axios';
 import { showSuccess, showError } from '../utils/toast';
 
@@ -66,6 +67,22 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
           link.download = filename;
           link.click();
           window.URL.revokeObjectURL(downloadUrl);
+        } else if (format === 'excel') {
+          url = `/api/reports/audits/excel?ids=${auditId}`;
+          filename = `${auditName || 'audit'}.xlsx`;
+          response = await axios.get(url, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }
+          });
+          const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          link.click();
+          window.URL.revokeObjectURL(downloadUrl);
         }
       } else {
         // Multiple audits export - use filtered audits if provided
@@ -103,6 +120,22 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
             link.download = filename;
             link.click();
             window.URL.revokeObjectURL(downloadUrl);
+          } else if (format === 'excel') {
+            url = `/api/reports/audits/excel?ids=${auditIds}`;
+            filename = `audits-${new Date().toISOString().split('T')[0]}.xlsx`;
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
           }
         } else {
           // Export all audits
@@ -131,6 +164,22 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
               }
             });
             const blob = new Blob([response.data], { type: 'text/csv' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            link.click();
+            window.URL.revokeObjectURL(downloadUrl);
+          } else if (format === 'excel') {
+            url = '/api/reports/audits/excel';
+            filename = `audits-${new Date().toISOString().split('T')[0]}.xlsx`;
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              }
+            });
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const downloadUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = downloadUrl;
@@ -187,6 +236,12 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
             <TableChartIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Export as CSV</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleExport('excel')}>
+          <ListItemIcon>
+            <GridOnIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Export as Excel</ListItemText>
         </MenuItem>
       </Menu>
     </>

@@ -101,9 +101,13 @@ const createTables = () => {
         country VARCHAR(255),
         phone VARCHAR(50),
         email VARCHAR(255),
+        parent_id INTEGER,
+        region VARCHAR(255),
+        district VARCHAR(255),
         created_by INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (created_by) REFERENCES users(id)
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (parent_id) REFERENCES locations(id) ON DELETE SET NULL
       )`,
       
       // Audits table
@@ -180,6 +184,19 @@ const createTables = () => {
         FOREIGN KEY (location_id) REFERENCES locations(id),
         FOREIGN KEY (assigned_to) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
+      )`,
+      
+      // Reschedule Tracking table
+      `CREATE TABLE IF NOT EXISTS reschedule_tracking (
+        id SERIAL PRIMARY KEY,
+        scheduled_audit_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        old_date DATE NOT NULL,
+        new_date DATE NOT NULL,
+        reschedule_month VARCHAR(7) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (scheduled_audit_id) REFERENCES scheduled_audits(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       )`,
       
       // Ensure audits table has scheduled_audit_id column (for existing databases)
@@ -260,6 +277,25 @@ const createTables = () => {
         link TEXT,
         read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+      
+      // User preferences table
+      `CREATE TABLE IF NOT EXISTS user_preferences (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE,
+        email_notifications_enabled BOOLEAN DEFAULT TRUE,
+        email_audit_completed BOOLEAN DEFAULT TRUE,
+        email_action_assigned BOOLEAN DEFAULT TRUE,
+        email_task_reminder BOOLEAN DEFAULT TRUE,
+        email_overdue_items BOOLEAN DEFAULT TRUE,
+        email_scheduled_audit BOOLEAN DEFAULT TRUE,
+        date_format VARCHAR(20) DEFAULT 'DD-MM-YYYY',
+        items_per_page INTEGER DEFAULT 25,
+        theme VARCHAR(20) DEFAULT 'light',
+        dashboard_default_view VARCHAR(20) DEFAULT 'cards',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`
     ];

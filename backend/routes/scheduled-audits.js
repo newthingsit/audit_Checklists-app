@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
+const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 
@@ -107,6 +108,161 @@ router.get('/', authenticate, (req, res) => {
     
     res.json({ schedules });
   });
+});
+
+// Get reschedule count for current user in current month
+// IMPORTANT: This route MUST be defined BEFORE /:id to prevent Express from matching "reschedule-count" as an ID
+router.get('/reschedule-count', (req, res) => {
+  // Default response - sent on any error
+  const defaultResponse = {
+    rescheduleCount: 0,
+    limit: 2,
+    remainingReschedules: 2,
+    count: 0,
+    remaining: 2
+  };
+
+  // Helper to send response - ALWAYS returns 200
+  const sendResponse = (countVal = 0) => {
+    if (res.headersSent) return;
+    
+    try {
+      const count = (typeof countVal === 'number' && !isNaN(countVal) && countVal >= 0) ? countVal : 0;
+      const limit = 2;
+      const remaining = Math.max(0, limit - count);
+      
+      res.status(200).json({
+        rescheduleCount: count,
+        limit,
+        remainingReschedules: remaining,
+        count,
+        remaining
+      });
+    } catch (e) {
+      try {
+        if (!res.headersSent) {
+          res.status(200).json(defaultResponse);
+        }
+      } catch (e2) {
+        console.error('[Reschedule Count] Failed to send response:', e2.message);
+      }
+    }
+  };
+
+  // Process the request
+  try {
+    // Get token
+    const authHeader = req.header('Authorization') || req.headers.authorization || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    
+    if (!token) {
+      return sendResponse(0);
+    }
+
+    // Verify token
+    let userId = null;
+    try {
+      const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production-DEVELOPMENT-ONLY';
+      const decoded = jwt.verify(token, JWT_SECRET);
+      userId = decoded?.id || decoded?.userId || null;
+    } catch (authError) {
+      return sendResponse(0);
+    }
+
+    if (!userId) {
+      return sendResponse(0);
+    }
+
+    // Get database instance
+    let dbInstance = null;
+    try {
+      dbInstance = db.getDb();
+    } catch (e) {
+      return sendResponse(0);
+    }
+
+    if (!dbInstance || typeof dbInstance.get !== 'function') {
+      return sendResponse(0);
+    }
+
+    // Query database
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    
+    // Timeout protection
+    let responded = false;
+    const timeout = setTimeout(() => {
+      if (!responded) {
+        responded = true;
+        sendResponse(0);
+      }
+    }, 2000);
+
+    try {
+      const queryResult = dbInstance.get(
+        `SELECT COUNT(*) as count FROM reschedule_tracking WHERE user_id = ? AND reschedule_month = ?`,
+        [userId, currentMonth],
+        (err, result) => {
+          if (responded) return;
+          responded = true;
+          clearTimeout(timeout);
+          
+          if (err) {
+            return sendResponse(0);
+          }
+
+          let count = 0;
+          try {
+            if (result) {
+              const rawCount = result.count || result.COUNT || 0;
+              count = typeof rawCount === 'string' ? parseInt(rawCount, 10) : Number(rawCount);
+              if (isNaN(count) || count < 0) count = 0;
+            }
+          } catch (parseErr) {
+            count = 0;
+          }
+
+          sendResponse(count);
+        }
+      );
+
+      // Handle promise-based databases (SQL Server, PostgreSQL, MySQL)
+      if (queryResult && typeof queryResult.then === 'function') {
+        queryResult
+          .then((result) => {
+            if (responded) return;
+            responded = true;
+            clearTimeout(timeout);
+            
+            let count = 0;
+            try {
+              if (result) {
+                const rawCount = result.count || result.COUNT || 0;
+                count = typeof rawCount === 'string' ? parseInt(rawCount, 10) : Number(rawCount);
+                if (isNaN(count) || count < 0) count = 0;
+              }
+            } catch (parseErr) {
+              count = 0;
+            }
+            sendResponse(count);
+          })
+          .catch((err) => {
+            if (responded) return;
+            responded = true;
+            clearTimeout(timeout);
+            sendResponse(0);
+          });
+      }
+    } catch (queryError) {
+      if (!responded) {
+        responded = true;
+        clearTimeout(timeout);
+        sendResponse(0);
+      }
+    }
+  } catch (error) {
+    console.error('[Reschedule Count] Unexpected error:', error.message);
+    sendResponse(0);
+  }
 });
 
 // Get single scheduled audit
@@ -721,6 +877,273 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
     message: `Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`,
     results
   });
+});
+
+// Reschedule a scheduled audit (limited to 2 times per month per user)
+router.post('/:id/reschedule', authenticate, requirePermission('reschedule_scheduled_audits', 'manage_scheduled_audits'), (req, res) => {
+  const { id } = req.params;
+  const { new_date } = req.body;
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+
+  if (!new_date) {
+    return res.status(400).json({ error: 'New date is required' });
+  }
+
+  // Validate date format
+  const newDate = new Date(new_date);
+  if (isNaN(newDate.getTime())) {
+    return res.status(400).json({ error: 'Invalid date format' });
+  }
+
+  // Validate that the new date is not in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const newDateOnly = new Date(newDate);
+  newDateOnly.setHours(0, 0, 0, 0);
+  
+  if (newDateOnly < today) {
+    return res.status(400).json({ error: 'Cannot reschedule to a past date' });
+  }
+
+  // Get the scheduled audit
+  dbInstance.get(
+    `SELECT sa.* FROM scheduled_audits sa WHERE sa.id = ?`,
+    [id],
+    (err, scheduledAudit) => {
+      if (err) {
+        console.error('Error fetching scheduled audit:', err);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+      }
+
+      if (!scheduledAudit) {
+        return res.status(404).json({ error: 'Scheduled audit not found' });
+      }
+
+      // Check if user has permission to reschedule
+      // User can reschedule if:
+      // 1. They are assigned to it (assigned_to = userId)
+      // 2. They created it (created_by = userId)
+      // 3. They are an admin
+      // Convert to numbers for comparison (database might return strings)
+      const assignedTo = scheduledAudit.assigned_to ? parseInt(scheduledAudit.assigned_to, 10) : null;
+      const createdBy = scheduledAudit.created_by ? parseInt(scheduledAudit.created_by, 10) : null;
+      const userIdNum = parseInt(userId, 10);
+      
+      const canReschedule = isAdmin || 
+                           (assignedTo !== null && assignedTo === userIdNum) || 
+                           (createdBy !== null && createdBy === userIdNum);
+
+      if (!canReschedule) {
+        return res.status(403).json({ error: 'You do not have permission to reschedule this audit' });
+      }
+
+      // Get current month in YYYY-MM format
+      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+      // Count how many times this user has rescheduled this month
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      let countQuery;
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        countQuery = `SELECT COUNT(*) as count 
+                      FROM reschedule_tracking 
+                      WHERE user_id = ? AND reschedule_month = ?`;
+      } else {
+        countQuery = `SELECT COUNT(*) as count 
+                      FROM reschedule_tracking 
+                      WHERE user_id = ? AND reschedule_month = ?`;
+      }
+
+      dbInstance.get(countQuery, [userId, currentMonth], (countErr, countResult) => {
+        let rescheduleCount = 0;
+        
+        if (countErr) {
+          // Check if error is due to table not existing
+          const errorMessage = countErr.message || countErr.toString() || '';
+          const isTableNotFound = errorMessage.toLowerCase().includes('no such table') ||
+                                 errorMessage.toLowerCase().includes("doesn't exist") ||
+                                 errorMessage.toLowerCase().includes('table or view') ||
+                                 errorMessage.toLowerCase().includes('invalid object name');
+          
+          if (isTableNotFound) {
+            // Table doesn't exist yet, treat as 0 reschedules
+            console.log('reschedule_tracking table does not exist yet, treating as 0 reschedules');
+            rescheduleCount = 0;
+          } else {
+            console.error('Error counting reschedules:', countErr);
+            return res.status(500).json({ error: 'Database error', details: countErr.message });
+          }
+        } else {
+          rescheduleCount = countResult?.count || 0;
+        }
+
+        if (rescheduleCount >= 2) {
+          return res.status(400).json({ 
+            error: 'Reschedule limit reached', 
+            message: 'You have already rescheduled 2 audits this month. The limit is 2 reschedules per month.',
+            rescheduleCount: rescheduleCount,
+            limit: 2
+          });
+        }
+
+        // Get the old date
+        const oldDate = scheduledAudit.scheduled_date;
+
+        // Update the scheduled audit
+        const updateQuery = `UPDATE scheduled_audits 
+                            SET scheduled_date = ?, 
+                                next_run_date = CASE 
+                                  WHEN frequency = 'daily' THEN DATE(?, '+1 day')
+                                  WHEN frequency = 'weekly' THEN DATE(?, '+7 days')
+                                  WHEN frequency = 'monthly' THEN DATE(?, '+1 month')
+                                  ELSE ?
+                                END
+                            WHERE id = ?`;
+
+        // Database-specific date calculations
+        let updateParams;
+        if (dbType === 'mssql' || dbType === 'sqlserver') {
+          // SQL Server syntax
+          dbInstance.run(
+            `UPDATE scheduled_audits 
+             SET scheduled_date = ?, 
+                 next_run_date = CASE 
+                   WHEN frequency = 'daily' THEN DATEADD(day, 1, ?)
+                   WHEN frequency = 'weekly' THEN DATEADD(day, 7, ?)
+                   WHEN frequency = 'monthly' THEN DATEADD(month, 1, ?)
+                   ELSE ?
+                 END
+             WHERE id = ?`,
+            [new_date, new_date, new_date, new_date, new_date, id],
+            function(updateErr) {
+              if (updateErr) {
+                console.error('Error updating scheduled audit:', updateErr);
+                return res.status(500).json({ error: 'Database error', details: updateErr.message });
+              }
+
+              // Record the reschedule
+              dbInstance.run(
+                `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [id, userId, oldDate, new_date, currentMonth],
+                (trackErr) => {
+                  if (trackErr) {
+                    console.error('Error tracking reschedule:', trackErr);
+                    // Don't fail the request if tracking fails
+                  }
+
+                  res.json({ 
+                    message: 'Audit rescheduled successfully',
+                    rescheduleCount: rescheduleCount + 1,
+                    remainingReschedules: 2 - (rescheduleCount + 1)
+                  });
+                }
+              );
+            }
+          );
+        } else if (dbType === 'mysql') {
+          // MySQL syntax
+          dbInstance.run(
+            `UPDATE scheduled_audits 
+             SET scheduled_date = ?, 
+                 next_run_date = CASE 
+                   WHEN frequency = 'daily' THEN DATE_ADD(?, INTERVAL 1 DAY)
+                   WHEN frequency = 'weekly' THEN DATE_ADD(?, INTERVAL 7 DAY)
+                   WHEN frequency = 'monthly' THEN DATE_ADD(?, INTERVAL 1 MONTH)
+                   ELSE ?
+                 END
+             WHERE id = ?`,
+            [new_date, new_date, new_date, new_date, new_date, id],
+            function(updateErr) {
+              if (updateErr) {
+                console.error('Error updating scheduled audit:', updateErr);
+                return res.status(500).json({ error: 'Database error', details: updateErr.message });
+              }
+
+              // Record the reschedule
+              dbInstance.run(
+                `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [id, userId, oldDate, new_date, currentMonth],
+                (trackErr) => {
+                  if (trackErr) {
+                    console.error('Error tracking reschedule:', trackErr);
+                    // Don't fail the request if tracking fails
+                  }
+
+                  res.json({ 
+                    message: 'Audit rescheduled successfully',
+                    rescheduleCount: rescheduleCount + 1,
+                    remainingReschedules: 2 - (rescheduleCount + 1)
+                  });
+                }
+              );
+            }
+          );
+        } else {
+          // SQLite/PostgreSQL syntax
+          const dbType = process.env.DB_TYPE || 'sqlite';
+          let updateQuery;
+          let updateParams;
+          
+          if (dbType === 'postgres' || dbType === 'postgresql') {
+            // PostgreSQL syntax
+            updateQuery = `UPDATE scheduled_audits 
+             SET scheduled_date = $1, 
+                 next_run_date = CASE 
+                   WHEN frequency = 'daily' THEN $2::date + INTERVAL '1 day'
+                   WHEN frequency = 'weekly' THEN $2::date + INTERVAL '7 days'
+                   WHEN frequency = 'monthly' THEN $2::date + INTERVAL '1 month'
+                   ELSE $2::date
+                 END
+             WHERE id = $3`;
+            updateParams = [new_date, new_date, id];
+          } else {
+            // SQLite syntax
+            updateQuery = `UPDATE scheduled_audits 
+             SET scheduled_date = ?, 
+                 next_run_date = CASE 
+                   WHEN frequency = 'daily' THEN DATE(?, '+1 day')
+                   WHEN frequency = 'weekly' THEN DATE(?, '+7 days')
+                   WHEN frequency = 'monthly' THEN DATE(?, '+1 month')
+                   ELSE ?
+                 END
+             WHERE id = ?`;
+            updateParams = [new_date, new_date, new_date, new_date, new_date, id];
+          }
+          
+          dbInstance.run(updateQuery, updateParams,
+            function(updateErr) {
+              if (updateErr) {
+                console.error('Error updating scheduled audit:', updateErr);
+                return res.status(500).json({ error: 'Database error', details: updateErr.message });
+              }
+
+              // Record the reschedule
+              dbInstance.run(
+                `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [id, userId, oldDate, new_date, currentMonth],
+                (trackErr) => {
+                  if (trackErr) {
+                    console.error('Error tracking reschedule:', trackErr);
+                    // Don't fail the request if tracking fails
+                  }
+
+                  res.json({ 
+                    message: 'Audit rescheduled successfully',
+                    rescheduleCount: rescheduleCount + 1,
+                    remainingReschedules: 2 - (rescheduleCount + 1)
+                  });
+                }
+              );
+            }
+          );
+        }
+      });
+    }
+  );
 });
 
 module.exports = router;

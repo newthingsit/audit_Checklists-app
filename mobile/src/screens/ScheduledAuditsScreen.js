@@ -7,10 +7,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert
+  Alert,
+  Modal,
+  TextInput,
+  ScrollView,
+  Platform
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +37,13 @@ const ScheduledAuditsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [linkedAudits, setLinkedAudits] = useState({}); // Map of scheduleId -> auditId
+  const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
+  const [reschedulingSchedule, setReschedulingSchedule] = useState(null);
+  const [newRescheduleDate, setNewRescheduleDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [rescheduleCount, setRescheduleCount] = useState({ count: 0, limit: 2, remaining: 2 });
+  const [toastMessage, setToastMessage] = useState(null);
   const navigation = useNavigation();
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
@@ -39,8 +51,26 @@ const ScheduledAuditsScreen = () => {
   useEffect(() => {
     if (user) {
       fetchScheduledAudits();
+      fetchRescheduleCount();
     }
   }, [user]);
+
+  const fetchRescheduleCount = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits/reschedule-count`);
+      const data = response.data;
+      // Handle both web keys (rescheduleCount, remainingReschedules) and mobile keys (count, remaining)
+      setRescheduleCount({
+        count: data.count !== undefined ? data.count : (data.rescheduleCount || 0),
+        limit: data.limit || 2,
+        remaining: data.remaining !== undefined ? data.remaining : (data.remainingReschedules || 2)
+      });
+    } catch (error) {
+      console.error('[Mobile] Error fetching reschedule count:', error);
+      // Set default values on error instead of crashing
+      setRescheduleCount({ count: 0, limit: 2, remaining: 2 });
+    }
+  };
 
   const canStartSchedule = (schedule) => {
     if (!schedule) return false;
@@ -100,6 +130,189 @@ const ScheduledAuditsScreen = () => {
 
   const canContinueSchedule = (schedule) => {
     return getStatusValue(schedule.status) === 'in_progress' && linkedAudits[schedule.id];
+  };
+
+  const canReschedule = (schedule) => {
+    if (!schedule) return false;
+    
+    // Check permission to reschedule
+    const hasReschedulePermission = hasPermission(userPermissions, 'reschedule_scheduled_audits') || 
+                                    hasPermission(userPermissions, 'manage_scheduled_audits') || 
+                                    isAdmin(user);
+    
+    if (!hasReschedulePermission) return false;
+    
+    // User can reschedule if they are assigned to it or created it
+    const isCreator = schedule.created_by === user?.id;
+    const isAssignee = schedule.assigned_to ? schedule.assigned_to === user?.id : false;
+    const statusValue = getStatusValue(schedule.status);
+    const isPending = !schedule.status || statusValue === 'pending';
+    // Can only reschedule pending audits
+    return isPending && (isCreator || isAssignee || isAdmin(user));
+  };
+
+  const showToast = (message, duration = 3000) => {
+    setToastMessage(message);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, duration);
+  };
+
+  const handleOpenRescheduleModal = (schedule) => {
+    if (rescheduleCount.count >= rescheduleCount.limit) {
+      showToast(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
+      return;
+    }
+    setReschedulingSchedule(schedule);
+    // Set the initial date for the picker - use scheduled_date or default to today
+    let initialDate;
+    if (schedule.scheduled_date) {
+      initialDate = new Date(schedule.scheduled_date);
+      // Ensure it's not in the past - if it is, use today instead
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (initialDate < today) {
+        initialDate = new Date(today);
+      }
+    } else {
+      // Default to today's date if no scheduled date
+      initialDate = new Date();
+    }
+    
+    // Normalize the date to avoid timezone issues
+    initialDate.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+    
+    setSelectedDate(initialDate);
+    const year = initialDate.getFullYear();
+    const month = String(initialDate.getMonth() + 1).padStart(2, '0');
+    const day = String(initialDate.getDate()).padStart(2, '0');
+    setNewRescheduleDate(`${year}-${month}-${day}`);
+    setShowDatePicker(false); // Start with picker closed
+    setRescheduleModalVisible(true);
+  };
+
+  const handleCloseRescheduleModal = () => {
+    setRescheduleModalVisible(false);
+    setReschedulingSchedule(null);
+    setNewRescheduleDate('');
+    setShowDatePicker(false);
+  };
+
+  const handleDateChange = (event, date) => {
+    // Handle Android date picker
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      // On Android, event.type can be 'set' or 'dismissed'
+      if (event.type === 'set' && date) {
+        // Normalize the date to avoid timezone issues
+        const normalizedDate = new Date(date);
+        normalizedDate.setHours(12, 0, 0, 0);
+        setSelectedDate(normalizedDate);
+        const year = normalizedDate.getFullYear();
+        const month = String(normalizedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(normalizedDate.getDate()).padStart(2, '0');
+        setNewRescheduleDate(`${year}-${month}-${day}`);
+      }
+      // If dismissed, do nothing (keep current date)
+      return;
+    }
+    
+    // Handle iOS date picker - update in real-time as user scrolls
+    if (Platform.OS === 'ios') {
+      if (date) {
+        // Normalize the date to avoid timezone issues
+        const normalizedDate = new Date(date);
+        normalizedDate.setHours(12, 0, 0, 0);
+        setSelectedDate(normalizedDate);
+        const year = normalizedDate.getFullYear();
+        const month = String(normalizedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(normalizedDate.getDate()).padStart(2, '0');
+        setNewRescheduleDate(`${year}-${month}-${day}`);
+      }
+    }
+  };
+
+  const handleDoneDatePicker = () => {
+    // When Done is pressed on iOS, ensure the date is properly set
+    if (selectedDate) {
+      const normalizedDate = new Date(selectedDate);
+      normalizedDate.setHours(12, 0, 0, 0);
+      const year = normalizedDate.getFullYear();
+      const month = String(normalizedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(normalizedDate.getDate()).padStart(2, '0');
+      setNewRescheduleDate(`${year}-${month}-${day}`);
+    }
+    setShowDatePicker(false);
+  };
+
+  const handleReschedule = async () => {
+    if (!reschedulingSchedule || !newRescheduleDate) {
+      Alert.alert('Error', 'Please select a new date');
+      return;
+    }
+
+    if (rescheduleCount.count >= rescheduleCount.limit) {
+      showToast(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
+      return;
+    }
+
+    // Validate date format (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(newRescheduleDate)) {
+      Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format');
+      return;
+    }
+
+    // Validate date is not in the past
+    // Parse date in local timezone to match today comparison
+    const [year, month, day] = newRescheduleDate.split('-').map(Number);
+    const selectedDate = new Date(year, month - 1, day); // month is 0-indexed
+    selectedDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (selectedDate < today) {
+      Alert.alert('Invalid Date', 'Cannot reschedule to a past date');
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/scheduled-audits/${reschedulingSchedule.id}/reschedule`,
+        { new_date: newRescheduleDate }
+      );
+      Alert.alert('Success', response.data.message || 'Audit rescheduled successfully!');
+      handleCloseRescheduleModal();
+      fetchScheduledAudits();
+      fetchRescheduleCount();
+    } catch (error) {
+      console.error('[Mobile] Error rescheduling audit:', error);
+      
+      // Extract error message from various possible response formats
+      let errorMessage = 'Failed to reschedule audit';
+      if (error.response?.data) {
+        errorMessage = error.response.data.message || 
+                      error.response.data.error || 
+                      errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Check if it's a limit reached error - show as notification, not error
+      const errorLower = errorMessage.toLowerCase();
+      const isLimitError = error.response?.status === 400 && 
+                          (errorLower.includes('limit') || 
+                           errorLower.includes('rescheduled') ||
+                           errorLower.includes('already rescheduled') ||
+                           errorLower.includes('reschedule limit'));
+      
+      if (isLimitError) {
+        // Show as info notification (blue toast)
+        showToast(errorMessage);
+      } else {
+        // For other errors, show as alert
+        Alert.alert('Error', errorMessage);
+      }
+    }
   };
 
   const fetchScheduledAudits = async () => {
@@ -241,6 +454,15 @@ const ScheduledAuditsScreen = () => {
           <Text style={styles.startButtonText}>Continue Audit</Text>
         </TouchableOpacity>
       )}
+      {canReschedule(item) && (
+        <TouchableOpacity
+          style={styles.rescheduleButton}
+          onPress={() => handleOpenRescheduleModal(item)}
+        >
+          <Icon name="event-available" size={20} color="#fff" />
+          <Text style={styles.startButtonText}>Reschedule</Text>
+        </TouchableOpacity>
+      )}
       {canStartSchedule(item) && (
         <TouchableOpacity
           style={styles.startButton}
@@ -288,6 +510,159 @@ const ScheduledAuditsScreen = () => {
           </View>
         }
       />
+
+      {/* Reschedule Modal */}
+      <Modal
+        visible={rescheduleModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCloseRescheduleModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reschedule Audit</Text>
+              <TouchableOpacity onPress={handleCloseRescheduleModal}>
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {reschedulingSchedule && (
+                <>
+                  <View style={styles.scheduleInfoBox}>
+                    <Text style={styles.scheduleInfoLabel}>Template:</Text>
+                    <Text style={styles.scheduleInfoValue}>{reschedulingSchedule.template_name}</Text>
+                  </View>
+                  <View style={styles.scheduleInfoBox}>
+                    <Text style={styles.scheduleInfoLabel}>Current Date:</Text>
+                    <Text style={styles.scheduleInfoValue}>{formatDate(reschedulingSchedule.scheduled_date)}</Text>
+                  </View>
+                  {reschedulingSchedule.location_name && (
+                    <View style={styles.scheduleInfoBox}>
+                      <Text style={styles.scheduleInfoLabel}>Location:</Text>
+                      <Text style={styles.scheduleInfoValue}>{reschedulingSchedule.location_name}</Text>
+                    </View>
+                  )}
+                </>
+              )}
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>New Scheduled Date *</Text>
+                <TouchableOpacity
+                  style={styles.dateInput}
+                  onPress={() => {
+                    if (Platform.OS === 'android') {
+                      // For Android, show the picker immediately
+                      setShowDatePicker(true);
+                    } else {
+                      // For iOS, toggle the picker
+                      setShowDatePicker(!showDatePicker);
+                    }
+                  }}
+                >
+                  <View style={styles.dateInputContent}>
+                    <Text style={[styles.dateInputText, !newRescheduleDate && styles.dateInputPlaceholder]}>
+                      {newRescheduleDate || 'Select a date'}
+                    </Text>
+                    <Icon name="calendar-today" size={20} color="#1976d2" />
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.inputHint}>
+                  Tap to select a date. Date must be today or later.
+                </Text>
+                {newRescheduleDate && newRescheduleDate.length === 10 && (() => {
+                  const [year, month, day] = newRescheduleDate.split('-').map(Number);
+                  const selectedDateObj = new Date(year, month - 1, day);
+                  selectedDateObj.setHours(0, 0, 0, 0);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  if (selectedDateObj < today) {
+                    return (
+                      <Text style={styles.errorText}>
+                        ⚠️ Cannot reschedule to a past date
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
+                
+                {/* iOS Date Picker - shown inline */}
+                {showDatePicker && Platform.OS === 'ios' && (
+                  <View style={styles.iosPickerContainer}>
+                    <View style={styles.iosPickerHeader}>
+                      <TouchableOpacity
+                        onPress={handleDoneDatePicker}
+                        style={styles.iosPickerButton}
+                      >
+                        <Text style={styles.iosPickerButtonText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={selectedDate || new Date()}
+                      mode="date"
+                      display="spinner"
+                      onChange={handleDateChange}
+                      minimumDate={new Date()}
+                      style={styles.iosDatePicker}
+                    />
+                  </View>
+                )}
+                
+                {/* Android Date Picker - shown as modal */}
+                {showDatePicker && Platform.OS === 'android' && (
+                  <DateTimePicker
+                    value={selectedDate || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={handleDateChange}
+                    minimumDate={new Date()}
+                  />
+                )}
+              </View>
+
+              {rescheduleCount.count >= rescheduleCount.limit && (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>
+                    You have reached the monthly reschedule limit of {rescheduleCount.limit}. 
+                    You cannot reschedule more audits this month.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={handleCloseRescheduleModal}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.rescheduleModalButton,
+                  (!newRescheduleDate || rescheduleCount.count >= rescheduleCount.limit) && styles.disabledButton
+                ]}
+                onPress={handleReschedule}
+                disabled={!newRescheduleDate || rescheduleCount.count >= rescheduleCount.limit}
+              >
+                <Text style={styles.rescheduleButtonText}>Reschedule</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <View style={styles.toastContainer}>
+          <View style={styles.toastContent}>
+            <Icon name="info" size={20} color="#fff" style={styles.toastIcon} />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -317,6 +692,12 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#666',
+  },
+  rescheduleCountText: {
+    fontSize: 12,
+    color: '#1976d2',
+    marginTop: 4,
+    fontWeight: '500',
   },
   listContent: {
     padding: 15,
@@ -418,6 +799,215 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     backgroundColor: '#ff9800',
+  },
+  rescheduleButton: {
+    flexDirection: 'row',
+    backgroundColor: '#2196f3',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    ...themeConfig.shadows.small,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  infoBox: {
+    backgroundColor: '#e3f2fd',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#1976d2',
+    marginBottom: 6,
+  },
+  infoLabel: {
+    fontWeight: 'bold',
+  },
+  scheduleInfoBox: {
+    marginBottom: 15,
+  },
+  scheduleInfoLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  scheduleInfoValue: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#f9f9f9',
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  dateInputContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateInputText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dateInputPlaceholder: {
+    color: '#999',
+  },
+  iosPickerContainer: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+    overflow: 'hidden',
+  },
+  iosPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  iosPickerButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+  },
+  iosPickerButtonText: {
+    color: '#1976d2',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  iosDatePicker: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#fff',
+  },
+  inputHint: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  errorBox: {
+    backgroundColor: '#ffebee',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#c62828',
+    marginTop: 4,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  rescheduleModalButton: {
+    backgroundColor: '#2196f3',
+  },
+  rescheduleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
+    opacity: 0.6,
+  },
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 15,
+    right: 15,
+    zIndex: 9999,
+    alignItems: 'center',
+  },
+  toastContent: {
+    backgroundColor: '#1976d2',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    maxWidth: '100%',
+  },
+  toastIcon: {
+    marginRight: 8,
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    flex: 1,
+    fontWeight: '500',
+    flexWrap: 'wrap',
   },
   emptyContainer: {
     padding: 40,

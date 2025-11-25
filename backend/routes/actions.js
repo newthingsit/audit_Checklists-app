@@ -37,13 +37,20 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
       // Send notification to assigned user
       if (assigned_to) {
         try {
-          await createNotification(
-            assigned_to,
-            'action',
-            'New Action Item Assigned',
-            `Action item "${title}" has been assigned to you${due_date ? ` (Due: ${new Date(due_date).toLocaleDateString()})` : ''}`,
-            `/actions`
-          );
+          // Get user name for email
+          dbInstance.get('SELECT name FROM users WHERE id = ?', [assigned_to], async (err, user) => {
+            await createNotification(
+              assigned_to,
+              'action',
+              'New Action Item Assigned',
+              `Action item "${title}" has been assigned to you${due_date ? ` (Due: ${new Date(due_date).toLocaleDateString()})` : ''}`,
+              `/actions`,
+              {
+                template: 'actionItemAssigned',
+                data: [title, due_date, priority || 'medium']
+              }
+            );
+          });
         } catch (notifErr) {
           console.error('Error creating notification:', notifErr);
           // Don't fail the request if notification fails

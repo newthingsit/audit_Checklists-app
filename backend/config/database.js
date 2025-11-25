@@ -88,10 +88,19 @@ const createTables = () => {
         country TEXT,
         phone TEXT,
         email TEXT,
+        parent_id INTEGER,
+        region TEXT,
+        district TEXT,
         created_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (created_by) REFERENCES users(id)
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (parent_id) REFERENCES locations(id) ON DELETE SET NULL
       )`);
+      
+      // Add hierarchy columns if they don't exist (migration)
+      db.run(`ALTER TABLE locations ADD COLUMN parent_id INTEGER`, () => {});
+      db.run(`ALTER TABLE locations ADD COLUMN region TEXT`, () => {});
+      db.run(`ALTER TABLE locations ADD COLUMN district TEXT`, () => {});
 
       // Audits table
       db.run(`CREATE TABLE IF NOT EXISTS audits (
@@ -168,6 +177,26 @@ const createTables = () => {
         FOREIGN KEY (assigned_to) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )`);
+
+      // Reschedule Tracking table (tracks reschedules per user per month)
+      db.run(`CREATE TABLE IF NOT EXISTS reschedule_tracking (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scheduled_audit_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        old_date DATE NOT NULL,
+        new_date DATE NOT NULL,
+        reschedule_month TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (scheduled_audit_id) REFERENCES scheduled_audits(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      
+      // Add reschedule_tracking columns if they don't exist (migration)
+      db.run(`ALTER TABLE reschedule_tracking ADD COLUMN reschedule_month TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column')) {
+          console.log('Note: reschedule_month column may already exist');
+        }
+      });
 
       // Tasks table (for workflow management)
       db.run(`CREATE TABLE IF NOT EXISTS tasks (
@@ -259,6 +288,27 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
+
+      // User preferences table
+      db.run(`CREATE TABLE IF NOT EXISTS user_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        email_notifications_enabled BOOLEAN DEFAULT 1,
+        email_audit_completed BOOLEAN DEFAULT 1,
+        email_action_assigned BOOLEAN DEFAULT 1,
+        email_task_reminder BOOLEAN DEFAULT 1,
+        email_overdue_items BOOLEAN DEFAULT 1,
+        email_scheduled_audit BOOLEAN DEFAULT 1,
+        date_format TEXT DEFAULT 'DD-MM-YYYY',
+        items_per_page INTEGER DEFAULT 25,
+        theme TEXT DEFAULT 'light',
+        dashboard_default_view TEXT DEFAULT 'cards',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`);
+
+      db.run(`CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id)`);
       
       // Add columns to existing audit_items table if they don't exist
       db.all(`PRAGMA table_info(audit_items)`, (err, columns) => {
@@ -354,21 +404,21 @@ const seedDefaultRoles = () => {
         display_name: 'Manager', 
         description: 'Can manage audits, locations, and view reports. Cannot manage users or roles.',
         is_system_role: 1,
-        permissions: JSON.stringify(['manage_audits', 'view_audits', 'manage_locations', 'view_locations', 'manage_tasks', 'view_tasks', 'manage_actions', 'view_actions', 'display_templates', 'edit_templates', 'delete_templates', 'manage_templates', 'view_templates', 'manage_scheduled_audits', 'view_scheduled_audits', 'start_scheduled_audits', 'view_analytics', 'export_data'])
+        permissions: JSON.stringify(['manage_audits', 'view_audits', 'manage_locations', 'view_locations', 'manage_tasks', 'view_tasks', 'manage_actions', 'view_actions', 'display_templates', 'edit_templates', 'delete_templates', 'manage_templates', 'view_templates', 'manage_scheduled_audits', 'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits', 'view_analytics', 'export_data'])
       },
       { 
         name: 'auditor', 
         display_name: 'Auditor', 
         description: 'Can create and view audits, manage action items. Limited access to settings.',
         is_system_role: 1,
-        permissions: JSON.stringify(['create_audits', 'view_audits', 'manage_actions', 'view_actions', 'create_tasks', 'view_tasks', 'update_tasks', 'display_templates', 'view_templates', 'view_scheduled_audits', 'start_scheduled_audits'])
+        permissions: JSON.stringify(['create_audits', 'view_audits', 'manage_actions', 'view_actions', 'create_tasks', 'view_tasks', 'update_tasks', 'display_templates', 'view_templates', 'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits'])
       },
       { 
         name: 'user', 
         display_name: 'User', 
         description: 'Basic access. Can view own audits, create action items, and start scheduled audits.',
         is_system_role: 1,
-        permissions: JSON.stringify(['view_own_audits', 'create_actions', 'view_actions', 'view_tasks', 'update_tasks', 'display_templates', 'view_locations', 'start_scheduled_audits', 'view_scheduled_audits'])
+        permissions: JSON.stringify(['view_own_audits', 'create_actions', 'view_actions', 'view_tasks', 'update_tasks', 'display_templates', 'view_locations', 'start_scheduled_audits', 'view_scheduled_audits', 'reschedule_scheduled_audits'])
       }
     ];
 
