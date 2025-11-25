@@ -46,23 +46,24 @@ router.get('/', authenticate, (req, res) => {
     // 1. They created it (created_by = userId)
     // 2. They are assigned to it (assigned_to = userId)
     // 3. OR assigned user's email matches (for cases where assigned_to might be wrong but email matches)
+    // NOTE: The entire OR condition must be wrapped in parentheses so the AND status filter applies to all
     
     // Use different syntax for SQL Server vs others
     if (dbType === 'mssql' || dbType === 'sqlserver') {
-      // SQL Server syntax
-      query += ` WHERE sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
+      // SQL Server syntax - wrap OR conditions in parentheses
+      query += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
         SELECT id FROM users WHERE LOWER(email) = LOWER(?)
-      )`;
+      ))`;
     } else {
-      // SQLite/MySQL/PostgreSQL syntax
+      // SQLite/MySQL/PostgreSQL syntax - wrap OR conditions in parentheses
       // Check if assigned_to matches a user with the same email
-      query += ` WHERE sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
+      query += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
         SELECT 1 FROM users u2 
         WHERE u2.id = sa.assigned_to 
         AND LOWER(u2.email) = LOWER(?)
       ) OR sa.assigned_to IN (
         SELECT id FROM users WHERE LOWER(email) = LOWER(?)
-      )`;
+      ))`;
     }
     // For SQL Server, we only need 3 params, for others we need 4
     if (dbType === 'mssql' || dbType === 'sqlserver') {

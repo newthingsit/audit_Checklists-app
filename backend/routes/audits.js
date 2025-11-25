@@ -51,7 +51,7 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
 
       const scheduleId = auditRow.scheduled_audit_id;
       dbInstance.get(
-        'SELECT id, frequency, scheduled_date FROM scheduled_audits WHERE id = ?',
+        'SELECT id, frequency, scheduled_date, status FROM scheduled_audits WHERE id = ?',
         [scheduleId],
         (scheduleErr, schedule) => {
           if (scheduleErr) {
@@ -60,18 +60,26 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
           }
           if (!schedule) return;
 
+          console.log(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Status: ${schedule.status}`);
+
           if (!schedule.frequency || schedule.frequency === 'once') {
+            // One-time audit: mark as completed
             dbInstance.run(
               'UPDATE scheduled_audits SET status = ? WHERE id = ?',
               ['completed', scheduleId],
               (updateErr) => {
                 if (updateErr) {
                   console.error('Error marking scheduled audit as completed:', updateErr);
+                } else {
+                  console.log(`[Scheduled Audit Completion] Marked schedule ${scheduleId} as completed`);
                 }
               }
             );
-          } else if (schedule.status === 'in_progress') {
+          } else {
+            // Recurring audit: advance to next date and reset to pending
             const nextDate = getNextScheduledDate(schedule.scheduled_date, schedule.frequency);
+            console.log(`[Scheduled Audit Completion] Recurring audit - advancing to next date: ${nextDate}`);
+            
             if (!nextDate) {
               dbInstance.run(
                 'UPDATE scheduled_audits SET status = ? WHERE id = ?',
@@ -79,6 +87,8 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
                 (updateErr) => {
                   if (updateErr) {
                     console.error('Error resetting scheduled audit status:', updateErr);
+                  } else {
+                    console.log(`[Scheduled Audit Completion] Reset schedule ${scheduleId} to pending`);
                   }
                 }
               );
@@ -89,6 +99,8 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
                 (updateErr) => {
                   if (updateErr) {
                     console.error('Error advancing scheduled audit date:', updateErr);
+                  } else {
+                    console.log(`[Scheduled Audit Completion] Advanced schedule ${scheduleId} to ${nextDate} with pending status`);
                   }
                 }
               );
@@ -734,7 +746,15 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                     : 0;
 
                   const total = auditItems.length;
-                  const completed = auditItems.filter(item => item.mark !== null && item.mark !== undefined).length;
+                  // Count item as completed if it has a mark set (including 0), 
+                  // or if selected_option_id is set, or if status is 'completed'
+                  const completed = auditItems.filter(item => {
+                    // Check if mark is set (including 0, but not null/undefined)
+                    const hasMark = item.mark !== null && item.mark !== undefined && item.mark !== '';
+                    // Also count N/A as completed since user explicitly selected it
+                    const isNA = item.mark === 'NA' || String(item.mark).toUpperCase() === 'NA';
+                    return hasMark || isNA;
+                  }).length;
                   const auditStatus = completed === total ? 'completed' : 'in_progress';
 
                   dbInstance.run(
