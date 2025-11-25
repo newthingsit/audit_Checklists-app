@@ -23,24 +23,28 @@ router.get('/', authenticate, (req, res) => {
   const userId = req.user.id;
   const userEmail = req.user.email || '';
   const isAdmin = isAdminUser(req.user);
+  const { page, limit } = req.query;
+  
+  // Pagination settings
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50)); // Max 100 per page
+  const offset = (pageNum - 1) * limitNum;
   
   logger.debug('[Scheduled Audits] User ID:', userId, 'Is Admin:', isAdmin);
 
-  let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, l.store_number,
-               u.name as assigned_to_name, u.email as assigned_to_email,
-               creator.name as created_by_name, creator.email as created_by_email
-               FROM scheduled_audits sa
+  // Get database type for query compatibility
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  let baseQuery = `FROM scheduled_audits sa
                JOIN checklist_templates ct ON sa.template_id = ct.id
                LEFT JOIN locations l ON sa.location_id = l.id
                LEFT JOIN users u ON sa.assigned_to = u.id
                LEFT JOIN users creator ON sa.created_by = creator.id`;
-
-  // Get database type for query compatibility
-  const dbType = process.env.DB_TYPE || 'sqlite';
   
   let params = [];
   if (isAdmin) {
-    query += ` WHERE 1=1`;
+    baseQuery += ` WHERE 1=1`;
   } else {
     // For regular users, show audits where:
     // 1. They created it (created_by = userId)
@@ -49,15 +53,15 @@ router.get('/', authenticate, (req, res) => {
     // NOTE: The entire OR condition must be wrapped in parentheses so the AND status filter applies to all
     
     // Use different syntax for SQL Server vs others
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
+    if (isSqlServer) {
       // SQL Server syntax - wrap OR conditions in parentheses
-      query += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
+      baseQuery += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
         SELECT id FROM users WHERE LOWER(email) = LOWER(?)
       ))`;
     } else {
       // SQLite/MySQL/PostgreSQL syntax - wrap OR conditions in parentheses
       // Check if assigned_to matches a user with the same email
-      query += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
+      baseQuery += ` WHERE (sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
         SELECT 1 FROM users u2 
         WHERE u2.id = sa.assigned_to 
         AND LOWER(u2.email) = LOWER(?)
@@ -66,7 +70,7 @@ router.get('/', authenticate, (req, res) => {
       ))`;
     }
     // For SQL Server, we only need 3 params, for others we need 4
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
+    if (isSqlServer) {
       params = [userId, userId, userEmail];
     } else {
       params = [userId, userId, userEmail, userEmail];
@@ -76,27 +80,67 @@ router.get('/', authenticate, (req, res) => {
   // Exclude completed scheduled audits from the main list
   // Completed audits should be viewed in audit history, not in scheduled audits
   // Handle case-insensitive comparison and NULL values
-  if (dbType === 'mssql' || dbType === 'sqlserver') {
+  if (isSqlServer) {
     // SQL Server: Use LOWER and LTRIM/RTRIM for case-insensitive comparison
-    query += ` AND (sa.status IS NULL OR LOWER(LTRIM(RTRIM(CAST(sa.status AS VARCHAR(50))))) <> 'completed')`;
+    baseQuery += ` AND (sa.status IS NULL OR LOWER(LTRIM(RTRIM(CAST(sa.status AS VARCHAR(50))))) <> 'completed')`;
   } else {
     // SQLite/MySQL/PostgreSQL: Use LOWER() and TRIM() for case-insensitive comparison
-    query += ` AND (sa.status IS NULL OR LOWER(TRIM(COALESCE(sa.status, ''))) <> 'completed')`;
+    baseQuery += ` AND (sa.status IS NULL OR LOWER(TRIM(COALESCE(sa.status, ''))) <> 'completed')`;
   }
 
-  query += ` ORDER BY sa.scheduled_date ASC`;
+  // Count query for pagination metadata
+  const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+  
+  // Data query with pagination
+  let dataQuery = `SELECT sa.*, ct.name as template_name, l.name as location_name, l.store_number,
+               u.name as assigned_to_name, u.email as assigned_to_email,
+               creator.name as created_by_name, creator.email as created_by_email
+               ${baseQuery} ORDER BY sa.scheduled_date ASC`;
+  
+  // Add pagination
+  if (isSqlServer) {
+    dataQuery += ` OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`;
+  } else {
+    dataQuery += ` LIMIT ? OFFSET ?`;
+  }
 
-  dbInstance.all(query, params, (err, schedules) => {
-    if (err) {
-      logger.error('Error fetching scheduled audits:', err.message);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+  // Get total count first
+  dbInstance.get(countQuery, params, (countErr, countResult) => {
+    if (countErr) {
+      logger.error('Error counting scheduled audits:', countErr.message);
+      return res.status(500).json({ error: 'Database error', details: countErr.message });
     }
     
-    // Debug logging (only in development)
-    logger.debug(`[Scheduled Audits] User: ${req.user.name} (ID: ${userId})`);
-    logger.debug(`[Scheduled Audits] Found ${schedules.length} schedules`);
+    const total = countResult?.total || 0;
+    const totalPages = Math.ceil(total / limitNum);
     
-    res.json({ schedules });
+    // Add pagination params in the correct order for each DB
+    const dataParams = isSqlServer 
+      ? [...params, offset, limitNum]  // OFFSET, FETCH NEXT
+      : [...params, limitNum, offset]; // LIMIT, OFFSET
+    
+    dbInstance.all(dataQuery, dataParams, (err, schedules) => {
+      if (err) {
+        logger.error('Error fetching scheduled audits:', err.message);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+      }
+      
+      // Debug logging (only in development)
+      logger.debug(`[Scheduled Audits] User: ${req.user.name} (ID: ${userId})`);
+      logger.debug(`[Scheduled Audits] Found ${schedules.length} schedules`);
+      
+      res.json({ 
+        schedules,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages,
+          hasNext: pageNum < totalPages,
+          hasPrev: pageNum > 1
+        }
+      });
+    });
   });
 });
 

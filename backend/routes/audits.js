@@ -121,12 +121,16 @@ router.get('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
-  const { status, restaurant, template_id, date_from, date_to, min_score, max_score } = req.query;
+  const { status, restaurant, template_id, date_from, date_to, min_score, max_score, page, limit } = req.query;
+  
+  // Pagination settings
+  const pageNum = Math.max(1, parseInt(page) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50)); // Max 100 per page
+  const offset = (pageNum - 1) * limitNum;
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
 
-  let query = `SELECT a.*, ct.name as template_name, ct.category, 
-               l.name as location_name, l.store_number,
-               u.name as user_name, u.email as user_email
-               FROM audits a
+  let baseQuery = `FROM audits a
                JOIN checklist_templates ct ON a.template_id = ct.id
                LEFT JOIN locations l ON a.location_id = l.id
                LEFT JOIN users u ON a.user_id = u.id`;
@@ -134,59 +138,98 @@ router.get('/', authenticate, (req, res) => {
   // Admins see all audits, regular users only see their own
   let params = [];
   if (isAdmin) {
-    query += ` WHERE 1=1`;
+    baseQuery += ` WHERE 1=1`;
   } else {
-    query += ` WHERE a.user_id = ?`;
+    baseQuery += ` WHERE a.user_id = ?`;
     params = [userId];
   }
 
   // Apply filters
   if (status) {
-    query += ' AND a.status = ?';
+    baseQuery += ' AND a.status = ?';
     params.push(status);
   }
   if (restaurant) {
-    query += ' AND a.restaurant_name LIKE ?';
+    baseQuery += ' AND a.restaurant_name LIKE ?';
     params.push(`%${restaurant}%`);
   }
   if (template_id) {
-    query += ' AND a.template_id = ?';
+    baseQuery += ' AND a.template_id = ?';
     params.push(template_id);
   }
-  const dbType = process.env.DB_TYPE || 'sqlite';
   if (date_from) {
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
-      query += ' AND CAST(a.created_at AS DATE) >= CAST(? AS DATE)';
+    if (isSqlServer) {
+      baseQuery += ' AND CAST(a.created_at AS DATE) >= CAST(? AS DATE)';
     } else {
-      query += ' AND DATE(a.created_at) >= ?';
+      baseQuery += ' AND DATE(a.created_at) >= ?';
     }
     params.push(date_from);
   }
   if (date_to) {
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
-      query += ' AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
+    if (isSqlServer) {
+      baseQuery += ' AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
     } else {
-      query += ' AND DATE(a.created_at) <= ?';
+      baseQuery += ' AND DATE(a.created_at) <= ?';
     }
     params.push(date_to);
   }
   if (min_score !== undefined) {
-    query += ' AND a.score >= ?';
+    baseQuery += ' AND a.score >= ?';
     params.push(min_score);
   }
   if (max_score !== undefined) {
-    query += ' AND a.score <= ?';
+    baseQuery += ' AND a.score <= ?';
     params.push(max_score);
   }
 
-  query += ' ORDER BY a.created_at DESC';
+  // Count query for pagination metadata
+  const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+  
+  // Data query with pagination
+  let dataQuery = `SELECT a.*, ct.name as template_name, ct.category, 
+               l.name as location_name, l.store_number,
+               u.name as user_name, u.email as user_email
+               ${baseQuery} ORDER BY a.created_at DESC`;
+  
+  // Add pagination
+  if (isSqlServer) {
+    dataQuery += ` OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`;
+  } else {
+    dataQuery += ` LIMIT ? OFFSET ?`;
+  }
 
-  dbInstance.all(query, params, (err, audits) => {
-    if (err) {
-      logger.error('Error fetching audits:', err.message);
+  // Get total count first
+  dbInstance.get(countQuery, params, (countErr, countResult) => {
+    if (countErr) {
+      logger.error('Error counting audits:', countErr.message);
       return res.status(500).json({ error: 'Database error' });
     }
-    res.json({ audits: audits || [] });
+    
+    const total = countResult?.total || 0;
+    const totalPages = Math.ceil(total / limitNum);
+    
+    // Add pagination params in the correct order for each DB
+    const dataParams = isSqlServer 
+      ? [...params, offset, limitNum]  // OFFSET, FETCH NEXT
+      : [...params, limitNum, offset]; // LIMIT, OFFSET
+    
+    dbInstance.all(dataQuery, dataParams, (err, audits) => {
+      if (err) {
+        logger.error('Error fetching audits:', err.message);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ 
+        audits: audits || [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages,
+          hasNext: pageNum < totalPages,
+          hasPrev: pageNum > 1
+        }
+      });
+    });
   });
 });
 

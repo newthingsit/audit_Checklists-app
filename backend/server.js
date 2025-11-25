@@ -99,8 +99,32 @@ app.use('/api/', apiLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files statically with caching headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '1d', // Cache for 1 day
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Set cache control based on file type
+    if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day for images
+    }
+  }
+}));
+
+// Caching middleware for semi-static API data
+const cacheControl = (maxAge) => (req, res, next) => {
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+  }
+  next();
+};
+
+// Apply caching to read-only endpoints
+app.use('/api/checklists', cacheControl(300)); // 5 min cache for checklists
+app.use('/api/templates', cacheControl(300)); // 5 min cache for templates
+app.use('/api/roles', cacheControl(600)); // 10 min cache for roles (rarely change)
+app.use('/api/locations', cacheControl(300)); // 5 min cache for locations
 
 // Database - automatically selects SQLite, PostgreSQL, or MySQL based on environment
 const db = require('./config/database-loader');

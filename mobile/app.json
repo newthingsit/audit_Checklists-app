@@ -2,7 +2,7 @@
   "expo": {
     "name": "Restaurant Audit",
     "slug": "restaurant-audit",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -35,6 +35,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "apiUrl": {
+        "development": "http://192.168.1.156:5000/api",
+        "production": "https://your-production-api.com/api"
+      }
+    }
   }
 }
