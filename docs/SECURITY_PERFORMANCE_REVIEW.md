@@ -351,12 +351,15 @@ found 0 vulnerabilities
 ```
 Nodemailer updated to 7.0.10
 
-### Web (`npm audit`) ⚠️ Dev Dependencies Only
+### Web (`npm audit`) ✅ FIXED
 ```
-9 vulnerabilities (3 moderate, 6 high)
+found 0 vulnerabilities
 ```
-These are in react-scripts (development tooling) and don't affect production builds.
-**Note**: Would require major react-scripts upgrade to fix completely.
+Fixed using npm overrides for:
+- nth-check: ^2.1.1
+- postcss: ^8.4.31
+- svgo: ^3.0.0
+- webpack-dev-server: ^5.2.1
 
 ### Mobile (`npm audit`) ✅ FIXED
 ```
