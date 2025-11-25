@@ -3,6 +3,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -16,15 +17,14 @@ const isAdminUser = (user) => {
 // Get all scheduled audits (admins see all, regular users see their own)
 // Users can see their own scheduled audits - no permission check needed (similar to audits route)
 router.get('/', authenticate, (req, res) => {
-  console.log('[Scheduled Audits] Route hit - GET /api/scheduled-audits');
-  console.log('[Scheduled Audits] User object:', JSON.stringify(req.user, null, 2));
+  logger.debug('[Scheduled Audits] Route hit - GET /api/scheduled-audits');
   
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const userEmail = req.user.email || '';
   const isAdmin = isAdminUser(req.user);
   
-  console.log('[Scheduled Audits] User ID:', userId, 'Email:', userEmail, 'Is Admin:', isAdmin);
+  logger.debug('[Scheduled Audits] User ID:', userId, 'Is Admin:', isAdmin);
 
   let query = `SELECT sa.*, ct.name as template_name, l.name as location_name, l.store_number,
                u.name as assigned_to_name, u.email as assigned_to_email,
@@ -88,24 +88,13 @@ router.get('/', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, schedules) => {
     if (err) {
-      console.error('Error fetching scheduled audits:', err);
+      logger.error('Error fetching scheduled audits:', err.message);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
     
-    // Debug logging
-    console.log(`[Scheduled Audits] User: ${req.user.name} (ID: ${userId}, Email: ${userEmail})`);
-    console.log(`[Scheduled Audits] Query: ${query}`);
-    console.log(`[Scheduled Audits] Params:`, params);
-    console.log(`[Scheduled Audits] Found ${schedules.length} schedules`);
-    if (schedules.length > 0) {
-      console.log(`[Scheduled Audits] Sample schedule:`, {
-        id: schedules[0].id,
-        assigned_to: schedules[0].assigned_to,
-        assigned_to_name: schedules[0].assigned_to_name,
-        assigned_to_email: schedules[0].assigned_to_email,
-        created_by: schedules[0].created_by
-      });
-    }
+    // Debug logging (only in development)
+    logger.debug(`[Scheduled Audits] User: ${req.user.name} (ID: ${userId})`);
+    logger.debug(`[Scheduled Audits] Found ${schedules.length} schedules`);
     
     res.json({ schedules });
   });

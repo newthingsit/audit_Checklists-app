@@ -328,9 +328,80 @@ const createTables = async () => {
     
     // Add missing columns to existing tables (migration)
     await addMissingColumns();
+    
+    // Create performance indexes
+    await createIndexes();
   } catch (error) {
     console.error('Error creating SQL Server tables:', error);
     throw error;
+  }
+};
+
+// Create indexes for better query performance
+const createIndexes = async () => {
+  const indexes = [
+    // Audits table indexes
+    { table: 'audits', name: 'idx_audits_user_id', columns: 'user_id' },
+    { table: 'audits', name: 'idx_audits_status', columns: 'status' },
+    { table: 'audits', name: 'idx_audits_scheduled_id', columns: 'scheduled_audit_id' },
+    { table: 'audits', name: 'idx_audits_template_id', columns: 'template_id' },
+    { table: 'audits', name: 'idx_audits_location_id', columns: 'location_id' },
+    { table: 'audits', name: 'idx_audits_created_at', columns: 'created_at' },
+    
+    // Scheduled audits indexes
+    { table: 'scheduled_audits', name: 'idx_scheduled_assigned_to', columns: 'assigned_to' },
+    { table: 'scheduled_audits', name: 'idx_scheduled_status', columns: 'status' },
+    { table: 'scheduled_audits', name: 'idx_scheduled_date', columns: 'scheduled_date' },
+    { table: 'scheduled_audits', name: 'idx_scheduled_created_by', columns: 'created_by' },
+    
+    // Audit items indexes
+    { table: 'audit_items', name: 'idx_audit_items_audit_id', columns: 'audit_id' },
+    { table: 'audit_items', name: 'idx_audit_items_item_id', columns: 'item_id' },
+    
+    // Action items indexes
+    { table: 'action_items', name: 'idx_action_items_audit_id', columns: 'audit_id' },
+    { table: 'action_items', name: 'idx_action_items_assigned_to', columns: 'assigned_to' },
+    { table: 'action_items', name: 'idx_action_items_status', columns: 'status' },
+    
+    // Tasks indexes
+    { table: 'tasks', name: 'idx_tasks_assigned_to', columns: 'assigned_to' },
+    { table: 'tasks', name: 'idx_tasks_status', columns: 'status' },
+    { table: 'tasks', name: 'idx_tasks_created_by', columns: 'created_by' },
+    
+    // Notifications indexes
+    { table: 'notifications', name: 'idx_notifications_user_id', columns: 'user_id' },
+    { table: 'notifications', name: 'idx_notifications_read', columns: '[read]' },
+    
+    // Locations indexes
+    { table: 'locations', name: 'idx_locations_store_number', columns: 'store_number' },
+    
+    // Checklist items indexes
+    { table: 'checklist_items', name: 'idx_checklist_items_template', columns: 'template_id' },
+    
+    // Users index on email
+    { table: 'users', name: 'idx_users_email', columns: 'email' },
+    
+    // Reschedule tracking indexes
+    { table: 'reschedule_tracking', name: 'idx_reschedule_user_month', columns: 'user_id, reschedule_month' }
+  ];
+
+  for (const idx of indexes) {
+    try {
+      // Check if index already exists
+      const checkResult = await pool.request().query(`
+        SELECT COUNT(*) as count 
+        FROM sys.indexes 
+        WHERE name = '${idx.name}' AND object_id = OBJECT_ID('${idx.table}')
+      `);
+      
+      if (checkResult.recordset[0].count === 0) {
+        await pool.request().query(`
+          CREATE NONCLUSTERED INDEX [${idx.name}] ON [dbo].[${idx.table}] (${idx.columns})
+        `);
+      }
+    } catch (err) {
+      // Silently ignore index creation errors (table might not exist yet)
+    }
   }
 };
 

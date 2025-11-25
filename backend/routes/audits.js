@@ -3,6 +3,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { isAdminUser } = require('../middleware/permissions');
+const logger = require('../utils/logger');
 
 const getNextScheduledDate = (currentDate, frequency) => {
   if (!frequency) return null;
@@ -30,7 +31,7 @@ const markScheduledAuditInProgress = (dbInstance, scheduleId) => {
     ['in_progress', scheduleId],
     (err) => {
       if (err) {
-        console.error('Error updating scheduled audit status to in_progress:', err);
+        logger.error('Error updating scheduled audit status to in_progress:', err.message);
       }
     }
   );
@@ -42,7 +43,7 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
     [auditId],
     (err, auditRow) => {
       if (err) {
-        console.error('Error fetching audit for schedule completion:', err);
+        logger.error('Error fetching audit for schedule completion:', err.message);
         return;
       }
       if (!auditRow || !auditRow.scheduled_audit_id) {
@@ -55,12 +56,12 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
         [scheduleId],
         (scheduleErr, schedule) => {
           if (scheduleErr) {
-            console.error('Error fetching scheduled audit for completion:', scheduleErr);
+            logger.error('Error fetching scheduled audit for completion:', scheduleErr.message);
             return;
           }
           if (!schedule) return;
 
-          console.log(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Status: ${schedule.status}`);
+          logger.debug(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Status: ${schedule.status}`);
 
           if (!schedule.frequency || schedule.frequency === 'once') {
             // One-time audit: mark as completed
@@ -69,16 +70,16 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
               ['completed', scheduleId],
               (updateErr) => {
                 if (updateErr) {
-                  console.error('Error marking scheduled audit as completed:', updateErr);
+                  logger.error('Error marking scheduled audit as completed:', updateErr.message);
                 } else {
-                  console.log(`[Scheduled Audit Completion] Marked schedule ${scheduleId} as completed`);
+                  logger.debug(`[Scheduled Audit Completion] Marked schedule ${scheduleId} as completed`);
                 }
               }
             );
           } else {
             // Recurring audit: advance to next date and reset to pending
             const nextDate = getNextScheduledDate(schedule.scheduled_date, schedule.frequency);
-            console.log(`[Scheduled Audit Completion] Recurring audit - advancing to next date: ${nextDate}`);
+            logger.debug(`[Scheduled Audit Completion] Recurring audit - advancing to next date: ${nextDate}`);
             
             if (!nextDate) {
               dbInstance.run(
@@ -86,9 +87,9 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
                 ['pending', scheduleId],
                 (updateErr) => {
                   if (updateErr) {
-                    console.error('Error resetting scheduled audit status:', updateErr);
+                    logger.error('Error resetting scheduled audit status:', updateErr.message);
                   } else {
-                    console.log(`[Scheduled Audit Completion] Reset schedule ${scheduleId} to pending`);
+                    logger.debug(`[Scheduled Audit Completion] Reset schedule ${scheduleId} to pending`);
                   }
                 }
               );
@@ -98,9 +99,9 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
                 ['pending', nextDate, nextDate, scheduleId],
                 (updateErr) => {
                   if (updateErr) {
-                    console.error('Error advancing scheduled audit date:', updateErr);
+                    logger.error('Error advancing scheduled audit date:', updateErr.message);
                   } else {
-                    console.log(`[Scheduled Audit Completion] Advanced schedule ${scheduleId} to ${nextDate} with pending status`);
+                    logger.debug(`[Scheduled Audit Completion] Advanced schedule ${scheduleId} to ${nextDate} with pending status`);
                   }
                 }
               );
@@ -182,8 +183,7 @@ router.get('/', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, audits) => {
     if (err) {
-      console.error('Error fetching audits:', err);
-      console.error('Database error:', err);
+      logger.error('Error fetching audits:', err.message);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ audits: audits || [] });
@@ -225,8 +225,7 @@ router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
 
   dbInstance.get(query, params, (err, audit) => {
     if (err) {
-      console.error('Error fetching audit by scheduled_id:', err);
-      console.error('Database error:', err);
+      logger.error('Error fetching audit by scheduled_id:', err.message);
       return res.status(500).json({ error: 'Database error' });
     }
     if (!audit) {
@@ -338,7 +337,7 @@ router.post('/', authenticate, (req, res) => {
     // Check if user has permission to start scheduled audits
     getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
       if (permErr) {
-        console.error('Error fetching permissions:', permErr);
+        logger.error('Error fetching permissions:', permErr.message);
         return callback({ status: 500, message: 'Error checking permissions' });
       }
 
@@ -405,7 +404,7 @@ router.post('/', authenticate, (req, res) => {
               const auditId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
               
               if (!auditId || auditId === 0) {
-                console.error('Failed to get audit ID after insert');
+                logger.error('Failed to get audit ID after insert');
                 return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
               }
 
@@ -428,8 +427,7 @@ router.post('/', authenticate, (req, res) => {
                       
                       if (err) {
                         hasError = true;
-                        console.error('Error creating audit item:', err);
-                        console.error('Error creating audit items:', err);
+                        logger.error('Error creating audit item:', err.message);
                         return res.status(500).json({ error: 'Error creating audit items' });
                       }
 
@@ -480,7 +478,7 @@ router.put('/:id', authenticate, (req, res) => {
     if (!isOwnAudit && !isAdmin) {
       getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
         if (permErr) {
-          console.error('Error fetching permissions:', permErr);
+          logger.error('Error fetching permissions:', permErr.message);
           return res.status(500).json({ error: 'Error checking permissions' });
         }
 
@@ -577,7 +575,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
       dbInstance.get('SELECT mark FROM checklist_item_options WHERE id = ?', [selected_option_id], (err, option) => {
         if (err || !option) {
           // Option doesn't exist or error occurred - set to null to avoid foreign key violation
-          console.warn(`Selected option ${selected_option_id} not found, setting to null`);
+          logger.debug(`Selected option ${selected_option_id} not found, setting to null`);
           validSelectedOptionId = null;
         } else {
           finalMark = option.mark;
@@ -595,7 +593,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
         [auditId, itemId],
         (err, existingItem) => {
           if (err) {
-            console.error('Error checking for existing audit item:', err);
+            logger.error('Error checking for existing audit item:', err.message);
             return res.status(500).json({ error: 'Database error checking existing item' });
           }
 
@@ -615,10 +613,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
               insertValues,
               function(insertErr) {
                 if (insertErr) {
-                  console.error('Error creating audit item:', insertErr);
-                  console.error('Insert query:', `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`);
-                  console.error('Insert values:', insertValues);
-                  console.error('Audit ID:', auditId, 'Item ID:', itemId);
+                  logger.error('Error creating audit item:', insertErr.message);
                   return res.status(500).json({ error: 'Error creating audit item: ' + insertErr.message });
                 }
                 // After creating, continue with score calculation
@@ -654,9 +649,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
               updateValues,
               function(updateErr) {
                 if (updateErr) {
-                  console.error('Error updating audit item:', updateErr);
-                  console.error('Update query:', `UPDATE audit_items SET ${updateFields.join(', ')} WHERE audit_id = ? AND item_id = ?`);
-                  console.error('Update values:', updateValues);
+                  logger.error('Error updating audit item:', updateErr.message);
                   return res.status(500).json({ error: 'Error updating audit item: ' + updateErr.message });
                 }
                 // After updating, continue with score calculation
@@ -678,14 +671,14 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
           [auditId],
           (err, auditItems) => {
             if (err) {
-              console.error('Error fetching audit items:', err);
+              logger.error('Error fetching audit items:', err.message);
               return res.json({ message: 'Audit item updated successfully' });
             }
 
             // Get total possible score from template (sum of "Yes" option marks, excluding N/A items)
             dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (err, audit) => {
               if (err || !audit) {
-                console.error('Error fetching audit:', err);
+                logger.error('Error fetching audit:', err.message);
                 return res.json({ message: 'Audit item updated successfully' });
               }
 
@@ -717,7 +710,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                 [audit.template_id],
                 (err, templateItems) => {
                   if (err) {
-                    console.error('Error fetching template items:', err);
+                    logger.error('Error fetching template items:', err.message);
                     // Fallback to old calculation
                     return calculateScoreFallback();
                   }
@@ -765,7 +758,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                     [completed, score, auditStatus, completed, total, auditId],
                     function(updateErr) {
                       if (updateErr) {
-                        console.error('Error updating audit:', updateErr);
+                        logger.error('Error updating audit:', updateErr.message);
                       }
                       if (auditStatus === 'completed') {
                         handleScheduledAuditCompletion(dbInstance, auditId);
@@ -818,7 +811,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                               [completed, score, auditStatus, completed, total, auditId],
                               function(updateErr) {
                                 if (updateErr) {
-                                  console.error('Error updating audit:', updateErr);
+                                  logger.error('Error updating audit:', updateErr.message);
                                 }
                                 if (auditStatus === 'completed') {
                                   handleScheduledAuditCompletion(dbInstance, auditId);
@@ -895,7 +888,7 @@ router.put('/:id/complete', authenticate, (req, res) => {
                 }
               );
             } catch (notifErr) {
-              console.error('Error creating completion notification:', notifErr);
+              logger.error('Error creating completion notification:', notifErr.message);
             }
 
             res.json({ message: 'Audit completed successfully', score });

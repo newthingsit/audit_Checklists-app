@@ -186,10 +186,11 @@ const requirePermission = (...requiredPermissions) => {
         );
 
         if (!hasRequiredPermission) {
+          // Don't expose internal permissions in production
+          const isDev = process.env.NODE_ENV !== 'production';
           return res.status(403).json({ 
             error: 'Forbidden: Insufficient permissions',
-            required: requiredPermissions,
-            user_permissions: userPermissions
+            ...(isDev && { required: requiredPermissions, user_permissions: userPermissions })
           });
         }
 

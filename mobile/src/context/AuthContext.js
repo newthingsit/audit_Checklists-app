@@ -1,9 +1,12 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 
 const AuthContext = createContext();
+
+// Token storage key
+const TOKEN_KEY = 'auth_token';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -24,7 +27,8 @@ export const AuthProvider = ({ children }) => {
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('token');
+      // Use SecureStore for encrypted token storage
+      const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
       if (storedToken) {
         setToken(storedToken);
         axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
@@ -51,7 +55,6 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      console.log('Attempting login to:', `${API_BASE_URL}/auth/login`);
       const response = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
       
       if (!response.data || !response.data.token) {
@@ -59,27 +62,26 @@ export const AuthProvider = ({ children }) => {
       }
       
       const { token: newToken, user: userData } = response.data;
-      await AsyncStorage.setItem('token', newToken);
+      // Use SecureStore for encrypted token storage
+      await SecureStore.setItemAsync(TOKEN_KEY, newToken);
       setToken(newToken);
       setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      console.log('Login successful for user:', userData?.email);
       return response.data;
     } catch (error) {
-      console.error('Login error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        url: `${API_BASE_URL}/auth/login`
-      });
-      throw error; // Re-throw to be handled by LoginScreen
+      // Don't log sensitive data in production
+      if (__DEV__) {
+        console.error('Login error:', error.message);
+      }
+      throw error;
     }
   };
 
   const register = async (email, password, name) => {
     const response = await axios.post(`${API_BASE_URL}/auth/register`, { email, password, name });
     const { token: newToken, user: userData } = response.data;
-    await AsyncStorage.setItem('token', newToken);
+    // Use SecureStore for encrypted token storage
+    await SecureStore.setItemAsync(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -87,7 +89,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('token');
+    // Use SecureStore for token removal
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];

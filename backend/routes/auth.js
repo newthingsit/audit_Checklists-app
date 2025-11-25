@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database-loader');
 const { JWT_SECRET } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -94,19 +95,17 @@ router.post('/login', [
   // For case-insensitive comparison across all databases, we'll compare the normalized values
   dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], async (err, user) => {
     if (err) {
-      console.error('Login error:', err);
-      console.error('Email:', normalizedEmail);
-      console.error('Database error:', err);
+      logger.error('Login database error');
       return res.status(500).json({ error: 'Database error' });
     }
     if (!user) {
-      console.log(`Login failed: User not found for email: ${email} (normalized: ${normalizedEmail})`);
+      logger.security('login_failed', { reason: 'user_not_found' });
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log(`Login failed: Password mismatch for email: ${email}`);
+      logger.security('login_failed', { reason: 'password_mismatch', userId: user.id });
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
@@ -120,13 +119,14 @@ router.post('/login', [
     const { getUserPermissions } = require('../middleware/permissions');
     getUserPermissions(user.id, user.role, (permErr, permissions) => {
       if (permErr) {
-        console.error('Error fetching permissions:', permErr);
+        logger.error('Error fetching permissions:', permErr.message);
         // Return user without permissions if error
         return res.json({
           token,
           user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
         });
       }
+      logger.security('login_success', { userId: user.id });
       res.json({
         token,
         user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
@@ -141,8 +141,7 @@ router.get('/me', require('../middleware/auth').authenticate, (req, res) => {
   dbInstance.get('SELECT id, email, name, role, created_at FROM users WHERE id = ?', 
     [req.user.id], (err, user) => {
       if (err) {
-        console.error('Error fetching user:', err);
-        console.error('Error fetching user:', err);
+        logger.error('Error fetching user:', err.message);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!user) {
@@ -153,20 +152,19 @@ router.get('/me', require('../middleware/auth').authenticate, (req, res) => {
       try {
         const { getUserPermissions } = require('../middleware/permissions');
         if (!user.role) {
-          console.warn('User has no role:', user.id);
+          logger.warn('User has no role assigned', { userId: user.id });
           return res.json({ user: { ...user, permissions: [] } });
         }
         getUserPermissions(user.id, user.role, (permErr, permissions) => {
           if (permErr) {
-            console.error('Error fetching permissions:', permErr);
+            logger.error('Error fetching permissions:', permErr.message);
             // Return user without permissions if error
             return res.json({ user: { ...user, permissions: [] } });
           }
           res.json({ user: { ...user, permissions: permissions || [] } });
         });
       } catch (requireErr) {
-        console.error('Error requiring permissions module:', requireErr);
-        console.error('Error requiring permissions module:', requireErr);
+        logger.error('Error loading permissions module:', requireErr.message);
         return res.status(500).json({ error: 'Error loading permissions module' });
       }
     });
