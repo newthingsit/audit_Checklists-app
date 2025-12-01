@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: 'audit-app-backend'  # Change this to your Azure App Service name
+  AZURE_WEBAPP_NAME: 'audit-app-backend-2221'  # Your Azure App Service name
   AZURE_WEBAPP_PACKAGE_PATH: 'backend'
   NODE_VERSION: '18.x'
 
