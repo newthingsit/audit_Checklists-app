@@ -99,7 +99,7 @@ const Settings = () => {
       await fetchPreferences();
       // Trigger theme update immediately if theme was changed
       if (prefsToSave.theme) {
-        localStorage.setItem('theme', prefsToSave.theme);
+        sessionStorage.setItem('theme', prefsToSave.theme);
         window.dispatchEvent(new Event('themePreferenceChanged'));
         // Force a small delay to ensure the event is processed
         setTimeout(() => {

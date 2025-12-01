@@ -1,5 +1,6 @@
 const db = require('../config/database-loader');
 const { createNotification } = require('../routes/notifications');
+const logger = require('../utils/logger');
 
 const shouldAutoStartOnReminders =
   (process.env.AUTO_START_SCHEDULED_AUDITS_ON_REMINDER || 'true').toLowerCase() === 'true';
@@ -13,7 +14,7 @@ const processScheduledAudits = async () => {
     const dbInstance = db.getDb();
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
-    console.log(`[Scheduled Audits Job] Checking for audits due on ${today}...`);
+    logger.info(`[Scheduled Audits Job] Checking for audits due on ${today}...`);
 
     // Find scheduled audits that are due today
     dbInstance.all(
@@ -25,16 +26,16 @@ const processScheduledAudits = async () => {
       [today],
       async (err, scheduledAudits) => {
         if (err) {
-          console.error('[Scheduled Audits Job] Error fetching scheduled audits:', err);
+          logger.error('[Scheduled Audits Job] Error fetching scheduled audits:', err);
           return;
         }
 
         if (!scheduledAudits || scheduledAudits.length === 0) {
-          console.log('[Scheduled Audits Job] No scheduled audits due today');
+          logger.info('[Scheduled Audits Job] No scheduled audits due today');
           return;
         }
 
-        console.log(`[Scheduled Audits Job] Found ${scheduledAudits.length} scheduled audit(s) due today`);
+        logger.info(`[Scheduled Audits Job] Found ${scheduledAudits.length} scheduled audit(s) due today`);
 
         for (const scheduledAudit of scheduledAudits) {
           try {
@@ -54,7 +55,7 @@ const processScheduledAudits = async () => {
               [scheduledAudit.template_id],
               (err, items) => {
                 if (err) {
-                  console.error(`[Scheduled Audits Job] Error fetching template items for scheduled audit ${scheduledAudit.id}:`, err);
+                  logger.error(`[Scheduled Audits Job] Error fetching template items for scheduled audit ${scheduledAudit.id}:`, err);
                   return;
                 }
 
@@ -76,12 +77,12 @@ const processScheduledAudits = async () => {
                   ],
                   async function(err, result) {
                     if (err) {
-                      console.error(`[Scheduled Audits Job] Error creating audit from scheduled audit ${scheduledAudit.id}:`, err);
+                      logger.error(`[Scheduled Audits Job] Error creating audit from scheduled audit ${scheduledAudit.id}:`, err);
                       return;
                     }
 
                     const auditId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
-                    console.log(`[Scheduled Audits Job] Created audit ${auditId} from scheduled audit ${scheduledAudit.id}`);
+                    logger.info(`[Scheduled Audits Job] Created audit ${auditId} from scheduled audit ${scheduledAudit.id}`);
 
                     // Create audit items for each checklist item
                     items.forEach((item) => {
@@ -90,7 +91,7 @@ const processScheduledAudits = async () => {
                         [auditId, item.id, 'pending'],
                         (err) => {
                           if (err) {
-                            console.error(`[Scheduled Audits Job] Error creating audit item:`, err);
+                            logger.error(`[Scheduled Audits Job] Error creating audit item:`, err);
                           }
                         }
                       );
@@ -147,7 +148,7 @@ const processScheduledAudits = async () => {
                           }
                         );
                       } catch (notifErr) {
-                        console.error('[Scheduled Audits Job] Error creating notification:', notifErr);
+                        logger.error('[Scheduled Audits Job] Error creating notification:', notifErr);
                       }
                     }
                   }
@@ -155,13 +156,13 @@ const processScheduledAudits = async () => {
               }
             );
           } catch (error) {
-            console.error(`[Scheduled Audits Job] Error processing scheduled audit ${scheduledAudit.id}:`, error);
+            logger.error(`[Scheduled Audits Job] Error processing scheduled audit ${scheduledAudit.id}:`, error);
           }
         }
       }
     );
   } catch (error) {
-    console.error('[Scheduled Audits Job] Fatal error:', error);
+    logger.error('[Scheduled Audits Job] Fatal error:', error);
   }
 };
 
@@ -174,7 +175,7 @@ const sendReminders = async () => {
     const dbInstance = db.getDb();
     const today = new Date().toISOString().split('T')[0];
 
-    console.log(`[Reminders Job] Checking for reminders due on ${today}...`);
+    logger.info(`[Reminders Job] Checking for reminders due on ${today}...`);
 
     // Check tasks with reminder_date = today
     dbInstance.all(
@@ -185,12 +186,12 @@ const sendReminders = async () => {
       [today],
       async (err, tasks) => {
         if (!err && tasks && tasks.length > 0) {
-          console.log(`[Reminders Job] Found ${tasks.length} task reminder(s)`);
+          logger.info(`[Reminders Job] Found ${tasks.length} task reminder(s)`);
           for (const task of tasks) {
             // Get user info for email and send notification
             dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
               if (userErr) {
-                console.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
+                logger.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
                 return;
               }
               try {
@@ -206,7 +207,7 @@ const sendReminders = async () => {
                   }
                 );
               } catch (notifErr) {
-                console.error(`[Reminders Job] Error sending reminder for task ${task.id}:`, notifErr);
+                logger.error(`[Reminders Job] Error sending reminder for task ${task.id}:`, notifErr);
               }
             });
           }
@@ -223,11 +224,11 @@ const sendReminders = async () => {
       [today],
       async (err, tasks) => {
         if (!err && tasks && tasks.length > 0) {
-          console.log(`[Reminders Job] Found ${tasks.length} task(s) due today`);
+          logger.info(`[Reminders Job] Found ${tasks.length} task(s) due today`);
           for (const task of tasks) {
             dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
               if (userErr) {
-                console.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
+                logger.error(`[Reminders Job] Error fetching user for task ${task.id}:`, userErr);
                 return;
               }
               try {
@@ -243,7 +244,7 @@ const sendReminders = async () => {
                   }
                 );
               } catch (notifErr) {
-                console.error(`[Reminders Job] Error sending due date notification for task ${task.id}:`, notifErr);
+                logger.error(`[Reminders Job] Error sending due date notification for task ${task.id}:`, notifErr);
               }
             });
           }
@@ -260,7 +261,7 @@ const sendReminders = async () => {
       [today],
       async (err, actionItems) => {
         if (!err && actionItems && actionItems.length > 0) {
-          console.log(`[Reminders Job] Found ${actionItems.length} action item(s) due today`);
+          logger.info(`[Reminders Job] Found ${actionItems.length} action item(s) due today`);
           for (const actionItem of actionItems) {
             try {
               await createNotification(
@@ -271,7 +272,7 @@ const sendReminders = async () => {
                 `/actions`
               );
             } catch (notifErr) {
-              console.error(`[Reminders Job] Error sending due date notification for action item ${actionItem.id}:`, notifErr);
+              logger.error(`[Reminders Job] Error sending due date notification for action item ${actionItem.id}:`, notifErr);
             }
           }
         }
@@ -298,11 +299,11 @@ const sendReminders = async () => {
       [today],
       async (err, overdueTasks) => {
         if (!err && overdueTasks && overdueTasks.length > 0) {
-          console.log(`[Reminders Job] Found ${overdueTasks.length} overdue task(s)`);
+          logger.info(`[Reminders Job] Found ${overdueTasks.length} overdue task(s)`);
           for (const task of overdueTasks) {
             dbInstance.get('SELECT name, email FROM users WHERE id = ?', [task.assigned_to], async (userErr, user) => {
               if (userErr) {
-                console.error(`[Reminders Job] Error fetching user for overdue task ${task.id}:`, userErr);
+                logger.error(`[Reminders Job] Error fetching user for overdue task ${task.id}:`, userErr);
                 return;
               }
               try {
@@ -318,7 +319,7 @@ const sendReminders = async () => {
                   }
                 );
               } catch (notifErr) {
-                console.error(`[Reminders Job] Error sending overdue notification for task ${task.id}:`, notifErr);
+                logger.error(`[Reminders Job] Error sending overdue notification for task ${task.id}:`, notifErr);
               }
             });
           }
@@ -327,15 +328,15 @@ const sendReminders = async () => {
     );
 
     if (shouldAutoStartOnReminders) {
-      console.log('[Reminders Job] Auto-start flag enabled. Triggering scheduled audits job...');
+      logger.info('[Reminders Job] Auto-start flag enabled. Triggering scheduled audits job...');
       try {
         await processScheduledAudits();
       } catch (autoErr) {
-        console.error('[Reminders Job] Auto-start scheduled audits failed:', autoErr);
+        logger.error('[Reminders Job] Auto-start scheduled audits failed:', autoErr);
       }
     }
   } catch (error) {
-    console.error('[Reminders Job] Fatal error:', error);
+    logger.error('[Reminders Job] Fatal error:', error);
   }
 };
 

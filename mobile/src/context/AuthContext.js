@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
+import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
@@ -21,11 +22,42 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
 
-  useEffect(() => {
-    loadStoredAuth();
+  const appState = useRef(AppState.currentState);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/auth/me`);
+      setUser(response.data.user);
+      return response.data.user;
+    } catch (error) {
+      // Only clear auth if it's an authentication error (401/403)
+      // Don't clear on network errors or other issues
+      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['Authorization'];
+      }
+      throw error;
+    }
   }, []);
 
-  const loadStoredAuth = async () => {
+  // Public function to refresh user data (useful when role/permissions change)
+  const refreshUser = useCallback(async () => {
+    if (!token) {
+      return null;
+    }
+    try {
+      return await fetchUser();
+    } catch (error) {
+      if (__DEV__) {
+        console.error('Error refreshing user:', error.message);
+      }
+      return null;
+    }
+  }, [token, fetchUser]);
+
+  const loadStoredAuth = useCallback(async () => {
     try {
       // Use SecureStore for encrypted token storage
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -39,19 +71,28 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchUser]);
 
-  const fetchUser = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/auth/me`);
-      setUser(response.data.user);
-    } catch (error) {
-      await AsyncStorage.removeItem('token');
-      setToken(null);
-      setUser(null);
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  };
+  useEffect(() => {
+    loadStoredAuth();
+
+    // Listen for app state changes to refresh user data when app comes to foreground
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        token
+      ) {
+        // App has come to the foreground, refresh user data
+        refreshUser();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [token, loadStoredAuth, refreshUser]);
 
   const login = async (email, password) => {
     try {
@@ -96,12 +137,41 @@ export const AuthProvider = ({ children }) => {
     delete axios.defaults.headers.common['Authorization'];
   };
 
+  // Login with existing token (for biometric auth)
+  const loginWithToken = async (storedToken, email) => {
+    try {
+      // Validate token is still valid
+      axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+      
+      const response = await axios.get(`${API_BASE_URL}/auth/me`);
+      
+      if (response.data && response.data.user) {
+        await SecureStore.setItemAsync(TOKEN_KEY, storedToken);
+        setToken(storedToken);
+        setUser(response.data.user);
+        return { success: true, user: response.data.user };
+      } else {
+        throw new Error('Invalid token');
+      }
+    } catch (error) {
+      // Token is invalid, clean up
+      delete axios.defaults.headers.common['Authorization'];
+      if (__DEV__) {
+        console.error('Token login failed:', error.message);
+      }
+      throw error;
+    }
+  };
+
   const value = {
     user,
+    token,
     loading,
     login,
+    loginWithToken,
     register,
     logout,
+    refreshUser,
     isAuthenticated: !!user
   };
 

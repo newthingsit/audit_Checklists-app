@@ -30,10 +30,10 @@ export const ThemeProvider = ({ children }) => {
   // Fetch theme preference from API
   const fetchThemePreference = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('auth_token');
       if (!token) {
-        // Not logged in, use localStorage or default
-        const saved = localStorage.getItem('theme');
+        // Not logged in, use sessionStorage or default
+        const saved = sessionStorage.getItem('theme');
         const theme = saved || 'light';
         setThemeMode(theme);
         setDarkMode(getDarkMode(theme));
@@ -46,21 +46,21 @@ export const ThemeProvider = ({ children }) => {
         const theme = response.data.preferences.theme || 'light';
         setThemeMode(theme);
         setDarkMode(getDarkMode(theme));
-        // Also save to localStorage as fallback
-        localStorage.setItem('theme', theme);
+        // Also save to sessionStorage as fallback
+        sessionStorage.setItem('theme', theme);
       } else {
-        // No preferences, use localStorage or default
-        const saved = localStorage.getItem('theme');
+        // No preferences, use sessionStorage or default
+        const saved = sessionStorage.getItem('theme');
         const theme = saved || 'light';
         setThemeMode(theme);
         setDarkMode(getDarkMode(theme));
       }
     } catch (error) {
-      // Error fetching, use localStorage or default (suppress console errors for 401)
+      // Error fetching, use sessionStorage or default (suppress errors for 401)
       if (error.response?.status !== 401) {
         console.error('Error fetching theme preference:', error);
       }
-      const saved = localStorage.getItem('theme');
+      const saved = sessionStorage.getItem('theme');
       const theme = saved || 'light';
       setThemeMode(theme);
       setDarkMode(getDarkMode(theme));
@@ -86,8 +86,8 @@ export const ThemeProvider = ({ children }) => {
   // Listen for theme changes from Settings page
   useEffect(() => {
     const handleThemeChange = () => {
-      // Check localStorage first for immediate update
-      const savedTheme = localStorage.getItem('theme');
+      // Check sessionStorage first for immediate update
+      const savedTheme = sessionStorage.getItem('theme');
       if (savedTheme) {
         setThemeMode(savedTheme);
         setDarkMode(getDarkMode(savedTheme));
@@ -118,7 +118,7 @@ export const ThemeProvider = ({ children }) => {
   const updateTheme = (theme) => {
     setThemeMode(theme);
     setDarkMode(getDarkMode(theme));
-    localStorage.setItem('theme', theme);
+    sessionStorage.setItem('theme', theme);
   };
 
   const toggleDarkMode = () => {

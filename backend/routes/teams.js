@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/permissions');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ router.get('/', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, teams) => {
     if (err) {
-      console.error('Error fetching teams:', err);
+      logger.error('Error fetching teams:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -58,7 +59,7 @@ router.get('/', authenticate, (req, res) => {
       teamIds,
       (err, members) => {
         if (err) {
-          console.error('Error fetching team members:', err);
+          logger.error('Error fetching team members:', err);
           return res.json({ teams });
         }
 
@@ -160,7 +161,7 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
     [name, description || '', team_lead_id || null, req.user.id],
     function(err) {
       if (err) {
-        console.error('Error creating team:', err);
+        logger.error('Error creating team:', err);
         return res.status(500).json({ error: 'Error creating team', details: err.message });
       }
 
@@ -186,7 +187,7 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
             res.status(201).json({ id: teamId, message: 'Team created successfully' });
           })
           .catch((err) => {
-            console.error('Error adding team members:', err);
+            logger.error('Error adding team members:', err);
             res.status(201).json({ id: teamId, message: 'Team created but members failed', warning: true });
           });
       } else {
@@ -258,7 +259,7 @@ router.put('/:id', authenticate, (req, res) => {
           // Delete existing members
           dbInstance.run('DELETE FROM team_members WHERE team_id = ?', [id], (err) => {
             if (err) {
-              console.error('Error deleting team members:', err);
+              logger.error('Error deleting team members:', err);
             }
 
             // Add new members
@@ -281,7 +282,7 @@ router.put('/:id', authenticate, (req, res) => {
                   res.json({ message: 'Team updated successfully' });
                 })
                 .catch((err) => {
-                  console.error('Error adding team members:', err);
+                  logger.error('Error adding team members:', err);
                   res.json({ message: 'Team updated but members failed', warning: true });
                 });
             } else {
@@ -512,7 +513,7 @@ router.get('/:id/metrics', authenticate, (req, res) => {
                 });
               })
               .catch(err => {
-                console.error('Error fetching team metrics:', err);
+                logger.error('Error fetching team metrics:', err);
                 res.status(500).json({ error: 'Error fetching team metrics' });
               });
           }

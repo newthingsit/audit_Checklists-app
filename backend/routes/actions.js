@@ -3,6 +3,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission, isAdminUser } = require('../middleware/permissions');
 const { createNotification } = require('./notifications');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
     [audit_id || null, item_id || null, title, description || '', assigned_to || null, due_date || null, priority || 'medium'],
     async function(err, result) {
       if (err) {
-        console.error('Error creating action item:', err);
+        logger.error('Error creating action item:', err);
         return res.status(500).json({ error: 'Error creating action item', details: err.message });
       }
 
@@ -30,7 +31,7 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
       const actionItemId = (result && result.lastID !== undefined) ? result.lastID : (this.lastID || 0);
       
       if (!actionItemId || actionItemId === 0) {
-        console.error('Failed to get action item ID after insert');
+        logger.error('Failed to get action item ID after insert');
         return res.status(500).json({ error: 'Failed to create action item - no ID returned' });
       }
 
@@ -52,7 +53,7 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
             );
           });
         } catch (notifErr) {
-          console.error('Error creating notification:', notifErr);
+          logger.error('Error creating notification:', notifErr);
           // Don't fail the request if notification fails
         }
       }
@@ -71,12 +72,12 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
                   `/audits/${audit_id}`
                 );
               } catch (notifErr) {
-                console.error('Error creating notification to audit creator:', notifErr);
+                logger.error('Error creating notification to audit creator:', notifErr);
               }
             }
           });
         } catch (err) {
-          console.error('Error fetching audit:', err);
+          logger.error('Error fetching audit:', err);
         }
       }
 
@@ -99,7 +100,7 @@ router.get('/audit/:auditId', authenticate, (req, res) => {
     [auditId],
     (err, actions) => {
       if (err) {
-        console.error('Error fetching action items:', err);
+        logger.error('Error fetching action items:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
       res.json({ actions: actions || [] });
@@ -135,7 +136,7 @@ router.get('/', authenticate, requirePermission('view_actions', 'manage_actions'
 
   dbInstance.all(query, params, (err, actions) => {
     if (err) {
-      console.error('Error fetching action items:', err);
+      logger.error('Error fetching action items:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
     res.json({ actions: actions || [] });
@@ -213,7 +214,7 @@ router.put('/:id', authenticate, requirePermission('manage_actions', 'update_act
               `/actions`
             );
           } catch (notifErr) {
-            console.error('Error creating completion notification:', notifErr);
+            logger.error('Error creating completion notification:', notifErr);
           }
         }
 
@@ -228,7 +229,7 @@ router.put('/:id', authenticate, requirePermission('manage_actions', 'update_act
               `/actions`
             );
           } catch (notifErr) {
-            console.error('Error creating reassignment notification:', notifErr);
+            logger.error('Error creating reassignment notification:', notifErr);
           }
         }
 
@@ -269,14 +270,14 @@ router.put('/:id', authenticate, requirePermission('manage_actions', 'update_act
                         `/tasks`
                       );
                     } catch (notifErr) {
-                      console.error('Error creating task notification:', notifErr);
+                      logger.error('Error creating task notification:', notifErr);
                     }
                   }
                 }
               }
             );
           } catch (taskErr) {
-            console.error('Error creating task from action item:', taskErr);
+            logger.error('Error creating task from action item:', taskErr);
           }
         }
 
@@ -315,6 +316,328 @@ router.delete('/:id', authenticate, requirePermission('manage_actions', 'delete_
       return res.status(500).json({ error: 'Error deleting action item' });
     }
     res.json({ message: 'Action item deleted successfully' });
+  });
+});
+
+// ========================================
+// ENHANCED ACTION PLAN FEATURES
+// ========================================
+
+// Get action item details with comments and attachments
+router.get('/:id/details', authenticate, (req, res) => {
+  const { id } = req.params;
+  const dbInstance = db.getDb();
+  
+  dbInstance.get(
+    `SELECT a.*, 
+     u1.name as assigned_to_name, 
+     u2.name as escalated_to_name,
+     au.restaurant_name as audit_name,
+     ci.title as item_title
+     FROM action_items a
+     LEFT JOIN users u1 ON a.assigned_to = u1.id
+     LEFT JOIN users u2 ON a.escalated_to = u2.id
+     LEFT JOIN audits au ON a.audit_id = au.id
+     LEFT JOIN checklist_items ci ON a.item_id = ci.id
+     WHERE a.id = ?`,
+    [id],
+    (err, action) => {
+      if (err || !action) {
+        return res.status(404).json({ error: 'Action item not found' });
+      }
+      
+      // Get comments
+      dbInstance.all(
+        `SELECT ac.*, u.name as user_name 
+         FROM action_comments ac
+         LEFT JOIN users u ON ac.user_id = u.id
+         WHERE ac.action_id = ?
+         ORDER BY ac.created_at DESC`,
+        [id],
+        (err, comments) => {
+          // Get attachments
+          dbInstance.all(
+            `SELECT aa.*, u.name as uploaded_by_name
+             FROM action_attachments aa
+             LEFT JOIN users u ON aa.uploaded_by = u.id
+             WHERE aa.action_id = ?
+             ORDER BY aa.uploaded_at DESC`,
+            [id],
+            (err, attachments) => {
+              res.json({
+                action,
+                comments: comments || [],
+                attachments: attachments || []
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Add comment to action item
+router.post('/:id/comments', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { comment } = req.body;
+  const dbInstance = db.getDb();
+  
+  if (!comment || !comment.trim()) {
+    return res.status(400).json({ error: 'Comment is required' });
+  }
+  
+  dbInstance.run(
+    `INSERT INTO action_comments (action_id, user_id, comment) VALUES (?, ?, ?)`,
+    [id, req.user.id, comment.trim()],
+    function(err) {
+      if (err) {
+        logger.error('Error adding comment:', err);
+        return res.status(500).json({ error: 'Error adding comment' });
+      }
+      
+      // Notify action item owner
+      dbInstance.get('SELECT assigned_to, title FROM action_items WHERE id = ?', [id], async (err, action) => {
+        if (action && action.assigned_to && action.assigned_to !== req.user.id) {
+          try {
+            await createNotification(
+              action.assigned_to,
+              'action',
+              'New Comment on Action Item',
+              `${req.user.name} commented on "${action.title}"`,
+              `/actions`
+            );
+          } catch (e) {
+            // Ignore notification errors
+          }
+        }
+      });
+      
+      res.status(201).json({ 
+        id: this.lastID, 
+        message: 'Comment added successfully' 
+      });
+    }
+  );
+});
+
+// Delete comment
+router.delete('/:id/comments/:commentId', authenticate, (req, res) => {
+  const { id, commentId } = req.params;
+  const dbInstance = db.getDb();
+  
+  // Only comment author or admin can delete
+  dbInstance.get('SELECT * FROM action_comments WHERE id = ? AND action_id = ?', [commentId, id], (err, comment) => {
+    if (!comment) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+    
+    if (comment.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'You can only delete your own comments' });
+    }
+    
+    dbInstance.run('DELETE FROM action_comments WHERE id = ?', [commentId], (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error deleting comment' });
+      }
+      res.json({ message: 'Comment deleted successfully' });
+    });
+  });
+});
+
+// Escalate action item
+router.post('/:id/escalate', authenticate, requirePermission('manage_actions', 'update_actions'), (req, res) => {
+  const { id } = req.params;
+  const { escalate_to, reason } = req.body;
+  const dbInstance = db.getDb();
+  
+  if (!escalate_to) {
+    return res.status(400).json({ error: 'Escalation target is required' });
+  }
+  
+  dbInstance.run(
+    `UPDATE action_items SET escalated = 1, escalated_to = ?, escalated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [escalate_to, id],
+    async function(err) {
+      if (err) {
+        logger.error('Error escalating action:', err);
+        return res.status(500).json({ error: 'Error escalating action item' });
+      }
+      
+      // Add escalation comment
+      if (reason) {
+        dbInstance.run(
+          `INSERT INTO action_comments (action_id, user_id, comment) VALUES (?, ?, ?)`,
+          [id, req.user.id, `[ESCALATED] ${reason}`]
+        );
+      }
+      
+      // Notify the person being escalated to
+      dbInstance.get('SELECT title FROM action_items WHERE id = ?', [id], async (err, action) => {
+        if (action) {
+          try {
+            await createNotification(
+              escalate_to,
+              'action',
+              'Action Item Escalated to You',
+              `Action item "${action.title}" has been escalated to you${reason ? `: ${reason}` : ''}`,
+              `/actions`
+            );
+          } catch (e) {
+            // Ignore notification errors
+          }
+        }
+      });
+      
+      res.json({ message: 'Action item escalated successfully' });
+    }
+  );
+});
+
+// Update root cause and corrective action
+router.put('/:id/analysis', authenticate, requirePermission('manage_actions', 'update_actions'), (req, res) => {
+  const { id } = req.params;
+  const { root_cause, corrective_action, category } = req.body;
+  const dbInstance = db.getDb();
+  
+  const updates = [];
+  const params = [];
+  
+  if (root_cause !== undefined) {
+    updates.push('root_cause = ?');
+    params.push(root_cause);
+  }
+  if (corrective_action !== undefined) {
+    updates.push('corrective_action = ?');
+    params.push(corrective_action);
+  }
+  if (category !== undefined) {
+    updates.push('category = ?');
+    params.push(category);
+  }
+  
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  
+  params.push(id);
+  
+  dbInstance.run(
+    `UPDATE action_items SET ${updates.join(', ')} WHERE id = ?`,
+    params,
+    function(err) {
+      if (err) {
+        logger.error('Error updating analysis:', err);
+        return res.status(500).json({ error: 'Error updating analysis' });
+      }
+      res.json({ message: 'Analysis updated successfully' });
+    }
+  );
+});
+
+// Get action items analytics/report
+router.get('/analytics/summary', authenticate, requirePermission('view_analytics', 'manage_actions'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { start_date, end_date } = req.query;
+  
+  let dateFilter = '';
+  const params = [];
+  
+  if (start_date) {
+    dateFilter += ' AND a.created_at >= ?';
+    params.push(start_date);
+  }
+  if (end_date) {
+    dateFilter += ' AND a.created_at <= ?';
+    params.push(end_date);
+  }
+  
+  // Get summary stats
+  dbInstance.get(
+    `SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+      SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+      SUM(CASE WHEN escalated = 1 THEN 1 ELSE 0 END) as escalated,
+      SUM(CASE WHEN due_date < CURRENT_TIMESTAMP AND status != 'completed' THEN 1 ELSE 0 END) as overdue
+     FROM action_items a
+     WHERE 1=1 ${dateFilter}`,
+    params,
+    (err, summary) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Get by priority
+      dbInstance.all(
+        `SELECT priority, COUNT(*) as count 
+         FROM action_items a
+         WHERE 1=1 ${dateFilter}
+         GROUP BY priority`,
+        params,
+        (err, byPriority) => {
+          // Get by category
+          dbInstance.all(
+            `SELECT COALESCE(category, 'Uncategorized') as category, COUNT(*) as count 
+             FROM action_items a
+             WHERE 1=1 ${dateFilter}
+             GROUP BY category`,
+            params,
+            (err, byCategory) => {
+              // Get by assignee
+              dbInstance.all(
+                `SELECT u.name as assignee, COUNT(*) as count,
+                 SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed
+                 FROM action_items a
+                 LEFT JOIN users u ON a.assigned_to = u.id
+                 WHERE 1=1 ${dateFilter}
+                 GROUP BY a.assigned_to, u.name`,
+                params,
+                (err, byAssignee) => {
+                  res.json({
+                    summary: summary || {},
+                    byPriority: byPriority || [],
+                    byCategory: byCategory || [],
+                    byAssignee: byAssignee || []
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Get overdue action items
+router.get('/overdue', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+  
+  let query = `
+    SELECT a.*, u.name as assigned_to_name, au.restaurant_name as audit_name
+    FROM action_items a
+    LEFT JOIN users u ON a.assigned_to = u.id
+    LEFT JOIN audits au ON a.audit_id = au.id
+    WHERE a.due_date < CURRENT_TIMESTAMP 
+    AND a.status != 'completed'
+  `;
+  
+  const params = [];
+  if (req.user.role !== 'admin') {
+    query += ' AND a.assigned_to = ?';
+    params.push(userId);
+  }
+  
+  query += ' ORDER BY a.due_date ASC';
+  
+  dbInstance.all(query, params, (err, actions) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json({ actions: actions || [] });
   });
 });
 

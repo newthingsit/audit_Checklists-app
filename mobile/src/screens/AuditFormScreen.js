@@ -18,6 +18,8 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
+import { useLocation } from '../context/LocationContext';
+import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 
 const AuditFormScreen = () => {
   const route = useRoute();
@@ -41,6 +43,12 @@ const AuditFormScreen = () => {
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: checklist
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
+  
+  // GPS Location state
+  const { getCurrentLocation, permissionGranted, settings: locationSettings } = useLocation();
+  const [capturedLocation, setCapturedLocation] = useState(null);
+  const [locationVerified, setLocationVerified] = useState(false);
+  const [showLocationVerification, setShowLocationVerification] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -353,12 +361,23 @@ const AuditFormScreen = () => {
         // We have an explicit auditId, update existing audit
         currentAuditId = auditId;
         try {
-          await axios.put(`${API_BASE_URL}/audits/${auditId}`, {
+          const updateData = {
             restaurant_name: selectedLocation.name,
             location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
             location_id: parseInt(locationId),
             notes
-          });
+          };
+          
+          // Add GPS location data if captured
+          if (capturedLocation) {
+            updateData.gps_latitude = capturedLocation.latitude;
+            updateData.gps_longitude = capturedLocation.longitude;
+            updateData.gps_accuracy = capturedLocation.accuracy;
+            updateData.gps_timestamp = capturedLocation.timestamp;
+            updateData.location_verified = locationVerified;
+          }
+          
+          await axios.put(`${API_BASE_URL}/audits/${auditId}`, updateData);
         } catch (updateError) {
           // If update fails, log but continue with item updates
           console.warn('Failed to update audit info, continuing with items:', updateError);
@@ -370,12 +389,23 @@ const AuditFormScreen = () => {
           if (existingAuditResponse.data.audit) {
             // Audit exists, update it
             currentAuditId = existingAuditResponse.data.audit.id;
-            await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, {
+            const updateData = {
               restaurant_name: selectedLocation.name,
               location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
               location_id: parseInt(locationId),
               notes
-            });
+            };
+            
+            // Add GPS location data if captured
+            if (capturedLocation) {
+              updateData.gps_latitude = capturedLocation.latitude;
+              updateData.gps_longitude = capturedLocation.longitude;
+              updateData.gps_accuracy = capturedLocation.accuracy;
+              updateData.gps_timestamp = capturedLocation.timestamp;
+              updateData.location_verified = locationVerified;
+            }
+            
+            await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, updateData);
           }
         } catch (error) {
           // If audit doesn't exist (404) or other error, we'll create a new one below
@@ -396,6 +426,15 @@ const AuditFormScreen = () => {
         // Link to scheduled audit if provided
         if (scheduledAuditId) {
           auditData.scheduled_audit_id = parseInt(scheduledAuditId);
+        }
+        
+        // Add GPS location data if captured
+        if (capturedLocation) {
+          auditData.gps_latitude = capturedLocation.latitude;
+          auditData.gps_longitude = capturedLocation.longitude;
+          auditData.gps_accuracy = capturedLocation.accuracy;
+          auditData.gps_timestamp = capturedLocation.timestamp;
+          auditData.location_verified = locationVerified;
         }
         
         const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
@@ -501,6 +540,59 @@ const AuditFormScreen = () => {
               <Icon name="arrow-drop-down" size={24} color="#666" />
             </TouchableOpacity>
           </View>
+
+          {/* GPS Location Capture */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>📍 Your Location</Text>
+            <LocationCaptureButton
+              onCapture={(location) => {
+                setCapturedLocation(location);
+                // If store has coordinates, show verification option
+                if (selectedLocation?.latitude && selectedLocation?.longitude) {
+                  setShowLocationVerification(true);
+                }
+              }}
+              captured={!!capturedLocation}
+              location={capturedLocation}
+              label="Capture Your Location"
+              capturedLabel="Location Captured"
+            />
+            {capturedLocation && (
+              <View style={styles.locationInfoRow}>
+                <Icon name="check-circle" size={16} color={themeConfig.success.main} />
+                <Text style={styles.locationInfoText}>
+                  GPS coordinates recorded for this audit
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Location Verification (if store has coordinates) */}
+          {showLocationVerification && selectedLocation?.latitude && selectedLocation?.longitude && (
+            <View style={styles.inputGroup}>
+              <LocationVerification
+                expectedLocation={{
+                  latitude: parseFloat(selectedLocation.latitude),
+                  longitude: parseFloat(selectedLocation.longitude),
+                }}
+                maxDistance={500}
+                locationName={selectedLocation.name}
+                onVerificationComplete={(result) => {
+                  setLocationVerified(result.verified);
+                  if (!result.verified) {
+                    Alert.alert(
+                      'Location Mismatch',
+                      `You are ${result.distance}m from ${selectedLocation.name}. The maximum allowed distance is ${result.maxDistance}m.\n\nDo you want to continue anyway?`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Continue', onPress: () => setLocationVerified(true) },
+                      ]
+                    );
+                  }
+                }}
+              />
+            </View>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Notes</Text>
@@ -1014,6 +1106,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     flex: 1,
+  },
+  // GPS Location styles
+  locationInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  locationInfoText: {
+    fontSize: 13,
+    color: themeConfig.success.main,
+    marginLeft: 6,
+    fontWeight: '500',
   },
 });
 

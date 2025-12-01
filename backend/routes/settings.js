@@ -1,271 +1,346 @@
 const express = require('express');
-const db = require('../config/database-loader');
-const { authenticate } = require('../middleware/auth');
-
 const router = express.Router();
+const { authenticate } = require('../middleware/auth');
+const { requireRole } = require('../middleware/permissions');
+const db = require('../config/database-loader');
+const logger = require('../utils/logger');
+
+// Helper to determine database type
+const getDbType = () => {
+  const dbType = (process.env.DB_TYPE || '').toLowerCase();
+  if (dbType === 'mssql' || dbType === 'sqlserver' || process.env.MSSQL_SERVER) {
+    return 'mssql';
+  }
+  return 'sqlite';
+};
+
+const getDb = () => db.getDb();
+
+// ==================== USER PREFERENCES ====================
+// NOTE: These routes MUST come before /:key to avoid being caught by the wildcard
 
 // Get user preferences
-// Allow unauthenticated requests to return defaults (for theme loading, etc.)
-router.get('/preferences', (req, res) => {
-  // Try to authenticate, but don't fail if token is missing
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  
-  if (!token) {
-    // No token - return defaults
-    const defaults = {
-      email_notifications_enabled: true,
-      email_audit_completed: true,
-      email_action_assigned: true,
-      email_task_reminder: true,
-      email_overdue_items: true,
-      email_scheduled_audit: true,
-      date_format: 'DD-MM-YYYY',
-      items_per_page: 25,
-      theme: 'light',
-      dashboard_default_view: 'cards'
-    };
-    return res.json({ preferences: defaults });
-  }
-
-  // Try to verify token, but don't fail if invalid
+router.get('/preferences', authenticate, async (req, res) => {
   try {
-    const jwt = require('jsonwebtoken');
-    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production-DEVELOPMENT-ONLY';
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const query = `SELECT preference_key, preference_value FROM user_preferences WHERE user_id = ?`;
+
+    const prefs = await new Promise((resolve, reject) => {
+      database.all(query, [userId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // Default preferences
+    const defaultPreferences = {
+      email_notifications_enabled: true,
+      email_audit_completed: true,
+      email_action_assigned: true,
+      email_task_reminder: true,
+      email_overdue_items: true,
+      email_scheduled_audit: true,
+      date_format: 'MM/DD/YYYY',
+      items_per_page: 25,
+      theme: 'light',
+      dashboard_default_view: 'grid',
+    };
+
+    // Merge with database values
+    prefs.forEach(p => {
+      const key = p.preference_key;
+      try {
+        defaultPreferences[key] = JSON.parse(p.preference_value);
+      } catch {
+        defaultPreferences[key] = p.preference_value;
+      }
+    });
+
+    res.json({ preferences: defaultPreferences });
   } catch (error) {
-    // Token invalid - return defaults instead of error
-    const defaults = {
-      email_notifications_enabled: true,
-      email_audit_completed: true,
-      email_action_assigned: true,
-      email_task_reminder: true,
-      email_overdue_items: true,
-      email_scheduled_audit: true,
-      date_format: 'DD-MM-YYYY',
-      items_per_page: 25,
-      theme: 'light',
-      dashboard_default_view: 'cards'
-    };
-    return res.json({ preferences: defaults });
+    logger.error('Error fetching preferences:', error);
+    res.status(500).json({ error: 'Failed to fetch preferences' });
   }
-
-  // Check if user is authenticated
-  if (!req.user || !req.user.id) {
-    // Return defaults for unauthenticated requests (e.g., during theme loading)
-    const defaults = {
-      email_notifications_enabled: true,
-      email_audit_completed: true,
-      email_action_assigned: true,
-      email_task_reminder: true,
-      email_overdue_items: true,
-      email_scheduled_audit: true,
-      date_format: 'DD-MM-YYYY',
-      items_per_page: 25,
-      theme: 'light',
-      dashboard_default_view: 'cards'
-    };
-    return res.json({ preferences: defaults });
-  }
-  
-  const userId = req.user.id;
-  const dbInstance = db.getDb();
-
-  dbInstance.get(
-    'SELECT * FROM user_preferences WHERE user_id = ?',
-    [userId],
-    (err, preferences) => {
-      if (err) {
-        console.error('Error fetching preferences:', err);
-        return res.status(500).json({ error: 'Database error', details: err.message });
-      }
-
-      // If no preferences exist, return defaults
-      if (!preferences) {
-        const defaults = {
-          email_notifications_enabled: true,
-          email_audit_completed: true,
-          email_action_assigned: true,
-          email_task_reminder: true,
-          email_overdue_items: true,
-          email_scheduled_audit: true,
-          date_format: 'DD-MM-YYYY',
-          items_per_page: 25,
-          theme: 'light',
-          dashboard_default_view: 'cards'
-        };
-        return res.json({ preferences: defaults });
-      }
-
-      // Convert boolean values (SQLite returns 0/1) and ensure items_per_page is a number
-      const prefs = {
-        ...preferences,
-        email_notifications_enabled: Boolean(preferences.email_notifications_enabled),
-        email_audit_completed: Boolean(preferences.email_audit_completed),
-        email_action_assigned: Boolean(preferences.email_action_assigned),
-        email_task_reminder: Boolean(preferences.email_task_reminder),
-        email_overdue_items: Boolean(preferences.email_overdue_items),
-        email_scheduled_audit: Boolean(preferences.email_scheduled_audit),
-        items_per_page: preferences.items_per_page ? (typeof preferences.items_per_page === 'string' ? parseInt(preferences.items_per_page, 10) : preferences.items_per_page) : 25
-      };
-
-      res.json({ preferences: prefs });
-    }
-  );
 });
 
 // Update user preferences
-router.put('/preferences', authenticate, (req, res) => {
-  const userId = req.user.id;
-  const dbInstance = db.getDb();
-  
-  // Support both direct fields and nested preferences object
-  const preferences = req.body.preferences || req.body;
-  const {
-    email_notifications_enabled,
-    email_audit_completed,
-    email_action_assigned,
-    email_task_reminder,
-    email_overdue_items,
-    email_scheduled_audit,
-    date_format,
-    items_per_page,
-    theme,
-    dashboard_default_view
-  } = preferences;
+router.put('/preferences', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const preferences = req.body;
+    const database = getDb();
+    const dbType = getDbType();
 
-  // Validate date format
-  const validDateFormats = ['DD-MM-YYYY', 'MM-DD-YYYY', 'YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY'];
-  if (date_format && !validDateFormats.includes(date_format)) {
-    return res.status(400).json({ error: 'Invalid date format' });
-  }
+    // Update each preference
+    for (const [key, value] of Object.entries(preferences)) {
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
 
-  // Validate items per page (convert to number if string)
-  const itemsPerPageNum = items_per_page !== undefined ? (typeof items_per_page === 'string' ? parseInt(items_per_page, 10) : items_per_page) : undefined;
-  if (itemsPerPageNum !== undefined && (isNaN(itemsPerPageNum) || itemsPerPageNum < 10 || itemsPerPageNum > 100)) {
-    return res.status(400).json({ error: 'Items per page must be between 10 and 100' });
-  }
-
-  // Validate theme
-  const validThemes = ['light', 'dark', 'auto'];
-  if (theme && !validThemes.includes(theme)) {
-    return res.status(400).json({ error: 'Invalid theme' });
-  }
-
-  // Check if preferences exist
-  dbInstance.get(
-    'SELECT id FROM user_preferences WHERE user_id = ?',
-    [userId],
-    (err, existing) => {
-      if (err) {
-        console.error('Error checking preferences:', err);
-        return res.status(500).json({ error: 'Database error', details: err.message });
-      }
-
-      const dbType = process.env.DB_TYPE || 'sqlite';
-      const now = dbType === 'mssql' || dbType === 'sqlserver'
-        ? 'GETDATE()'
-        : dbType === 'mysql'
-        ? 'NOW()'
-        : "datetime('now')";
+      // Check if preference exists
+      const checkQuery = `SELECT id FROM user_preferences WHERE user_id = ? AND preference_key = ?`;
+      
+      const existing = await new Promise((resolve, reject) => {
+        database.get(checkQuery, [userId, key], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      });
 
       if (existing) {
-        // Update existing preferences
-        const updates = [];
-        const params = [];
+        // Update existing preference
+        const updateQuery = dbType === 'mssql'
+          ? `UPDATE user_preferences SET preference_value = ?, updated_at = GETDATE() WHERE user_id = ? AND preference_key = ?`
+          : `UPDATE user_preferences SET preference_value = ?, updated_at = datetime('now') WHERE user_id = ? AND preference_key = ?`;
 
-        if (email_notifications_enabled !== undefined) {
-          updates.push('email_notifications_enabled = ?');
-          params.push(email_notifications_enabled ? 1 : 0);
-        }
-        if (email_audit_completed !== undefined) {
-          updates.push('email_audit_completed = ?');
-          params.push(email_audit_completed ? 1 : 0);
-        }
-        if (email_action_assigned !== undefined) {
-          updates.push('email_action_assigned = ?');
-          params.push(email_action_assigned ? 1 : 0);
-        }
-        if (email_task_reminder !== undefined) {
-          updates.push('email_task_reminder = ?');
-          params.push(email_task_reminder ? 1 : 0);
-        }
-        if (email_overdue_items !== undefined) {
-          updates.push('email_overdue_items = ?');
-          params.push(email_overdue_items ? 1 : 0);
-        }
-        if (email_scheduled_audit !== undefined) {
-          updates.push('email_scheduled_audit = ?');
-          params.push(email_scheduled_audit ? 1 : 0);
-        }
-        if (date_format !== undefined) {
-          updates.push('date_format = ?');
-          params.push(date_format);
-        }
-        if (itemsPerPageNum !== undefined) {
-          updates.push('items_per_page = ?');
-          params.push(itemsPerPageNum);
-        }
-        if (theme !== undefined) {
-          updates.push('theme = ?');
-          params.push(theme);
-        }
-        if (dashboard_default_view !== undefined) {
-          updates.push('dashboard_default_view = ?');
-          params.push(dashboard_default_view);
-        }
-
-        if (updates.length === 0) {
-          return res.status(400).json({ error: 'No preferences to update' });
-        }
-
-        updates.push(`updated_at = ${now}`);
-        params.push(userId);
-
-        dbInstance.run(
-          `UPDATE user_preferences SET ${updates.join(', ')} WHERE user_id = ?`,
-          params,
-          function(updateErr) {
-            if (updateErr) {
-              console.error('Error updating preferences:', updateErr);
-              return res.status(500).json({ error: 'Database error', details: updateErr.message });
-            }
-            res.json({ message: 'Preferences updated successfully' });
-          }
-        );
+        await new Promise((resolve, reject) => {
+          database.run(updateQuery, [stringValue, userId, key], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
       } else {
-        // Create new preferences
-        dbInstance.run(
-          `INSERT INTO user_preferences (
-            user_id, email_notifications_enabled, email_audit_completed,
-            email_action_assigned, email_task_reminder, email_overdue_items,
-            email_scheduled_audit, date_format, items_per_page, theme, dashboard_default_view
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            userId,
-            email_notifications_enabled !== undefined ? (email_notifications_enabled ? 1 : 0) : 1,
-            email_audit_completed !== undefined ? (email_audit_completed ? 1 : 0) : 1,
-            email_action_assigned !== undefined ? (email_action_assigned ? 1 : 0) : 1,
-            email_task_reminder !== undefined ? (email_task_reminder ? 1 : 0) : 1,
-            email_overdue_items !== undefined ? (email_overdue_items ? 1 : 0) : 1,
-            email_scheduled_audit !== undefined ? (email_scheduled_audit ? 1 : 0) : 1,
-            date_format || 'DD-MM-YYYY',
-            itemsPerPageNum !== undefined ? itemsPerPageNum : 25,
-            theme || 'light',
-            dashboard_default_view || 'cards'
-          ],
-          function(insertErr) {
-            if (insertErr) {
-              console.error('Error creating preferences:', insertErr);
-              return res.status(500).json({ error: 'Database error', details: insertErr.message });
-            }
-            res.json({ message: 'Preferences created successfully' });
-          }
-        );
+        // Insert new preference
+        const insertQuery = dbType === 'mssql'
+          ? `INSERT INTO user_preferences (user_id, preference_key, preference_value, created_at, updated_at) VALUES (?, ?, ?, GETDATE(), GETDATE())`
+          : `INSERT INTO user_preferences (user_id, preference_key, preference_value, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))`;
+
+        await new Promise((resolve, reject) => {
+          database.run(insertQuery, [userId, key, stringValue], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
       }
     }
-  );
+
+    logger.info(`Preferences updated for user ${userId}`);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error updating preferences:', error);
+    res.status(500).json({ error: 'Failed to update preferences' });
+  }
+});
+
+// ==================== FEATURE FLAGS ====================
+// NOTE: These routes MUST come before /:key to avoid being caught by the wildcard
+
+// Get feature flags (Public - used by mobile app)
+router.get('/features/all', authenticate, async (req, res) => {
+  try {
+    const database = getDb();
+
+    // Get all feature flags
+    const query = `SELECT setting_key, setting_value FROM app_settings WHERE setting_key LIKE 'feature_%'`;
+
+    const features = await new Promise((resolve, reject) => {
+      database.all(query, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // Default feature flags
+    const defaultFeatures = {
+      feature_biometric_auth: true,
+      feature_push_notifications: true,
+      feature_offline_mode: true,
+      feature_gps_location: true,
+      feature_digital_signature: true,
+      feature_photo_capture: true,
+    };
+
+    // Merge with database values
+    features.forEach(f => {
+      const key = f.setting_key;
+      try {
+        defaultFeatures[key] = JSON.parse(f.setting_value);
+      } catch {
+        defaultFeatures[key] = f.setting_value === 'true';
+      }
+    });
+
+    res.json({ features: defaultFeatures });
+  } catch (error) {
+    logger.error('Error fetching feature flags:', error);
+    res.status(500).json({ error: 'Failed to fetch feature flags' });
+  }
+});
+
+// Toggle a feature flag (Admin only)
+router.post('/features/:feature/toggle', authenticate, requireRole(['admin']), async (req, res) => {
+  try {
+    const { feature } = req.params;
+    const { enabled } = req.body;
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const key = feature.startsWith('feature_') ? feature : `feature_${feature}`;
+    const value = enabled ? 'true' : 'false';
+
+    // Upsert the feature flag
+    const checkQuery = `SELECT id FROM app_settings WHERE setting_key = ?`;
+
+    const existing = await new Promise((resolve, reject) => {
+      database.get(checkQuery, [key], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (existing) {
+      const updateQuery = dbType === 'mssql'
+        ? `UPDATE app_settings SET setting_value = ?, updated_at = GETDATE(), updated_by = ? WHERE setting_key = ?`
+        : `UPDATE app_settings SET setting_value = ?, updated_at = datetime('now'), updated_by = ? WHERE setting_key = ?`;
+
+      await new Promise((resolve, reject) => {
+        database.run(updateQuery, [value, userId, key], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } else {
+      const insertQuery = dbType === 'mssql'
+        ? `INSERT INTO app_settings (setting_key, setting_value, description, updated_at, updated_by) VALUES (?, ?, ?, GETDATE(), ?)`
+        : `INSERT INTO app_settings (setting_key, setting_value, description, updated_at, updated_by) VALUES (?, ?, ?, datetime('now'), ?)`;
+
+      await new Promise((resolve, reject) => {
+        database.run(insertQuery, [key, value, `Feature flag for ${feature}`, userId], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    logger.info(`Feature '${feature}' ${enabled ? 'enabled' : 'disabled'} by admin ${userId}`);
+    res.json({ success: true, feature: key, enabled });
+  } catch (error) {
+    logger.error('Error toggling feature:', error);
+    res.status(500).json({ error: 'Failed to toggle feature' });
+  }
+});
+
+// ==================== APP SETTINGS (Admin Only) ====================
+
+// Get all app settings
+router.get('/', authenticate, async (req, res) => {
+  try {
+    const database = getDb();
+
+    const query = `SELECT setting_key, setting_value, description, updated_at, updated_by FROM app_settings`;
+
+    const settings = await new Promise((resolve, reject) => {
+      database.all(query, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    // Convert to key-value object
+    const settingsObj = {};
+    settings.forEach(s => {
+      try {
+        settingsObj[s.setting_key] = JSON.parse(s.setting_value);
+      } catch {
+        settingsObj[s.setting_key] = s.setting_value;
+      }
+    });
+
+    res.json({ settings: settingsObj });
+  } catch (error) {
+    logger.error('Error fetching app settings:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// Get a specific setting
+router.get('/:key', authenticate, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const database = getDb();
+
+    const query = `SELECT setting_value FROM app_settings WHERE setting_key = ?`;
+
+    const setting = await new Promise((resolve, reject) => {
+      database.get(query, [key], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!setting) {
+      return res.status(404).json({ error: 'Setting not found' });
+    }
+
+    let value;
+    try {
+      value = JSON.parse(setting.setting_value);
+    } catch {
+      value = setting.setting_value;
+    }
+
+    res.json({ key, value });
+  } catch (error) {
+    logger.error('Error fetching setting:', error);
+    res.status(500).json({ error: 'Failed to fetch setting' });
+  }
+});
+
+// Update a setting (Admin only)
+router.put('/:key', authenticate, requireRole(['admin']), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value, description } = req.body;
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+
+    // Check if setting exists
+    const checkQuery = `SELECT id FROM app_settings WHERE setting_key = ?`;
+
+    const existing = await new Promise((resolve, reject) => {
+      database.get(checkQuery, [key], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (existing) {
+      // Update existing setting
+      const updateQuery = dbType === 'mssql'
+        ? `UPDATE app_settings SET setting_value = ?, description = ?, updated_at = GETDATE(), updated_by = ? WHERE setting_key = ?`
+        : `UPDATE app_settings SET setting_value = ?, description = ?, updated_at = datetime('now'), updated_by = ? WHERE setting_key = ?`;
+
+      await new Promise((resolve, reject) => {
+        database.run(updateQuery, [stringValue, description || '', userId, key], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } else {
+      // Insert new setting
+      const insertQuery = dbType === 'mssql'
+        ? `INSERT INTO app_settings (setting_key, setting_value, description, updated_at, updated_by) VALUES (?, ?, ?, GETDATE(), ?)`
+        : `INSERT INTO app_settings (setting_key, setting_value, description, updated_at, updated_by) VALUES (?, ?, ?, datetime('now'), ?)`;
+
+      await new Promise((resolve, reject) => {
+        database.run(insertQuery, [key, stringValue, description || '', userId], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    logger.info(`Setting '${key}' updated by user ${userId}`);
+    res.json({ success: true, key, value });
+  } catch (error) {
+    logger.error('Error updating setting:', error);
+    res.status(500).json({ error: 'Failed to update setting' });
+  }
 });
 
 module.exports = router;
-

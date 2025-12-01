@@ -5,6 +5,343 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2025-12-01 - Role & Permission Sync Fix
+
+### Fixed - Mobile App
+- **Role & Permission Synchronization**: Fixed issue where role/permission changes made in web app weren't reflecting in mobile app
+  - Added automatic user data refresh when app comes to foreground
+  - Added screen focus refresh for Dashboard and Profile screens
+  - Enhanced pull-to-refresh to refresh user data before fetching dashboard data
+  - Permissions now recalculated on each fetch to ensure latest values
+  
+- **Notification Service Error**: Fixed `removeNotificationSubscription is not a function` error
+  - Updated to use subscription `.remove()` method (Expo Notifications API change)
+  - Proper cleanup of notification listeners
+
+- **Package Compatibility**: Updated packages to match Expo SDK 54 requirements
+  - `expo-device`: 7.0.3 → 8.0.9
+  - `expo-notifications`: 0.31.2 → 0.32.13
+  - `expo-local-authentication`: 15.0.2 → 17.0.7
+  - `expo-location`: 18.0.10 → 19.0.7
+  - `react-native-svg`: 15.11.2 → 15.12.1
+
+### Fixed - Backend
+- **Settings API 404 Error**: Fixed `/api/settings/preferences` returning 404
+  - Reordered routes so specific paths come before wildcard routes
+  - Fixed route priority for `/preferences` and `/features/all` endpoints
+
+### Changed - Mobile App
+- **AuthContext**: Added `refreshUser()` function for manual user data refresh
+- **Dashboard Screen**: Converted `fetchData` to `useCallback` with permission recalculation
+- **Profile Screen**: Added pull-to-refresh and screen focus refresh
+
+## [1.8.0] - 2025-11-26 - Dashboard Enhancements & Store Groups
+
+### Added - Web App
+- **🏆 Leaderboard Widget**: New dashboard section showing top stores and auditors
+  - Tab switching between Top Stores and Top Auditors
+  - Medal display (🥇🥈🥉) for top 3 performers
+  - Shows audit counts and average scores
+  - Beautiful gradient card design
+  
+- **📊 Trend Analysis Widget**: Period-based performance comparison
+  - Compare current vs previous period stats
+  - Selectable periods: Daily, Weekly, Monthly, Quarterly
+  - Displays total audits, completed, and avg score changes
+  - Visual change indicators with up/down arrows
+  
+- **🗂️ Store Groups Management**: New page to organize stores
+  - Create groups by Region, District, Brand, Franchise, or Custom
+  - Hierarchical tree view with expandable sections
+  - Assign stores to groups with multi-select dialog
+  - Group analytics (total audits, completed, avg score)
+  - Summary cards showing group/store counts
+  - Full CRUD operations for groups
+  
+- **📧 Email Reports**: Send audit reports via email
+  - Email button on Audit Detail page
+  - Send to custom email address
+  - Quick send to store manager option
+  - Professional email template with audit details
+
+### Added - Backend
+- **Leaderboard API**: 
+  - `GET /api/analytics/leaderboard/stores` - Top performing stores
+  - `GET /api/analytics/leaderboard/auditors` - Top auditors by audit count
+  
+- **Trend Analysis API**:
+  - `GET /api/analytics/trends/analysis` - Period comparison stats
+  - `GET /api/analytics/trends/weekly` - Weekly trend data
+  
+- **Store Groups API**:
+  - `GET /api/store-groups` - List all groups
+  - `GET /api/store-groups/tree` - Hierarchical tree structure
+  - `POST /api/store-groups` - Create new group
+  - `PUT /api/store-groups/:id` - Update group
+  - `DELETE /api/store-groups/:id` - Delete group
+  - `POST /api/store-groups/:id/stores` - Assign stores to group
+  - `GET /api/store-groups/:id/analytics` - Group-level analytics
+  
+- **Email Reports API**:
+  - `POST /api/reports/audit/:id/email` - Send audit report to email
+  - `POST /api/reports/audit/:id/email-store` - Send to store manager
+  - Professional HTML email template with audit details
+
+### Database Changes
+- New `store_groups` table for group management
+- Added `group_id` column to `locations` table
+- Added `brand` column to `locations` table
+- Created indexes for performance optimization
+
+### Navigation
+- Store Groups added to sidebar under Stores section
+- All new features integrated with existing permission system
+
+---
+
+## [1.11.0] - 2025-11-26 - Location Verification Report & GPS Fixes
+
+### Added - Web App
+- **Location Verification Report**: New report page comparing store location vs GPS location
+- GPS verification status: Verified (≤100m), Nearby (≤500m), Far (≤1km), Suspicious (>1km)
+- User-wise breakdown with expandable accordion view
+- Summary cards showing verification statistics
+- Distance calculation using Haversine formula
+- Filter by date range, user, and store
+- Export to CSV functionality
+- "View on Google Maps" button for GPS locations
+- Verification rate and average distance per user
+- Color-coded status chips for easy identification
+- Navigation link in sidebar under Analytics
+
+### Added - Backend
+- **Location Verification API**: `GET /api/reports/location-verification`
+- **CSV Export**: `GET /api/reports/location-verification/csv`
+- Distance calculation between store coordinates and audit GPS
+- User grouping with statistics (total, verified, suspicious, avg distance)
+- Support for date range and location filters
+
+### Fixed - Mobile App
+- **Platform Import Error**: Added missing `Platform` import in `LocationCapture.js`
+- **GPS Location Not Saving on Update**: Fixed audit update to include GPS location data
+- GPS coordinates now saved when updating existing audits
+- GPS coordinates saved when resuming scheduled audits
+
+### Fixed - Backend
+- **Audit Update API**: Extended PUT `/api/audits/:id` to accept GPS location fields
+- Now supports: `gps_latitude`, `gps_longitude`, `gps_accuracy`, `gps_timestamp`, `location_verified`
+
+### Already Supported (Verified)
+- Stores CSV Import: Latitude/Longitude columns fully supported
+- Stores CSV Export: Includes all GPS coordinates
+- Sample CSV template includes GPS coordinate examples
+- Backend import endpoint handles GPS coordinates
+
+---
+
+## [1.10.0] - 2025-11-25 - Biometric Authentication
+
+### Added - Mobile App
+- **Biometric Authentication**: Face ID / Touch ID / Fingerprint login
+- **BiometricService**: Core service using Expo LocalAuthentication
+- **BiometricContext**: React context for app-wide biometric state
+- **Admin Feature Control**: Admins can enable/disable biometric auth
+- **Quick Unlock**: Biometric login on app launch for faster access
+- **Profile Toggle**: Enable/disable biometric in user settings
+
+### Added - Backend
+- **Feature Flags API**: New `/api/settings/features` endpoints
+- **app_settings table**: Store admin-controlled feature toggles
+- **Admin Toggle**: POST `/api/settings/features/:feature/toggle`
+
+### Features
+- Face ID (iOS) and Fingerprint (Android) support
+- Automatic biometric prompt on login screen
+- Fallback to password if biometric fails
+- Secure credential storage with expo-secure-store
+- Admin can disable feature organization-wide
+- User can toggle on/off in Profile settings
+
+### Dependencies Added
+- `expo-local-authentication`: ~15.0.2
+
+---
+
+## [1.9.0] - 2025-11-25 - GPS Location Tagging
+
+### Added - Mobile App
+- **GPS Location Service**: Complete location service using Expo Location
+- **Location Context**: React context for app-wide location state management
+- **Location Capture Button**: One-tap GPS coordinate capture with display
+- **Location Display Card**: Rich display with address lookup and map link
+- **Location Verification**: Verify auditor is at expected location
+- **Permission Request UI**: User-friendly location permission handling
+- **Distance Calculation**: Haversine formula for accurate distance
+- **Geocoding**: Convert coordinates to addresses and vice versa
+- **Map Integration**: Open location in Google Maps or Apple Maps
+- **Location History**: Track location captures for audit trail
+- **Location Settings**: Configurable accuracy and verification distance
+
+### Features
+- Capture GPS coordinates when starting/completing audits
+- Verify auditor is within specified distance of store location
+- Display coordinates in decimal or DMS format
+- Reverse geocoding to show human-readable addresses
+- Open captured locations in native maps app
+- High/balanced accuracy toggle for battery optimization
+- Configurable maximum distance for location verification (default 500m)
+
+### Technical Details
+- `LocationService.js`: Core location functionality
+- `LocationContext.js`: React context provider
+- `LocationCapture.js`: UI components for location features
+- Haversine formula for Earth-surface distance calculation
+- AsyncStorage for location history and settings
+
+---
+
+## [1.8.0] - 2025-11-25 - Push Notifications & Digital Signatures
+
+### Added - Mobile App
+- **Push Notification Service**: Complete notification system using Expo Notifications
+- **Notification Preferences**: User-configurable notification settings
+- **Scheduled Audit Reminders**: Automatic reminders before scheduled audits
+- **Overdue Action Alerts**: Notifications for overdue action items
+- **Audit Completion Notices**: Confirmation notifications when audits complete
+- **Quiet Hours**: Configurable do-not-disturb time periods
+- **Digital Signature Capture**: SVG-based signature pad component
+- **Signature Modal**: Full-screen signature capture with save/clear
+- **Signature Display**: Component for viewing saved signatures
+- **Signature Button**: Quick-access button showing signature status
+- **Notification Settings Screen**: Full settings UI for notification preferences
+
+### Technical Details
+- `NotificationService.js`: Expo push notifications with channels
+- `NotificationContext.js`: React context for notification state
+- `SignatureCapture.js`: SVG-based signature components
+- `NotificationSettingsScreen.js`: Full notification preferences UI
+- Android notification channels for reminders and alerts
+- Signature data stored as SVG paths with timestamps
+
+---
+
+## [1.7.0] - 2025-11-25 - Mobile Offline Support
+
+### Added - Mobile App
+- **Network Connectivity Monitoring**: Real-time detection of online/offline status
+- **Offline Storage Service**: Cache templates, locations, and audits locally using AsyncStorage
+- **Sync Queue Manager**: Queue offline operations and auto-sync when connection returns
+- **Pending Audit Storage**: Create and save audits while offline
+- **Photo Upload Queue**: Queue photos for upload when back online
+- **Offline Indicators**: Visual feedback for connection status throughout the app
+- **Sync Status Badge**: Shows pending sync count with tap-to-sync functionality
+- **Auto-Sync**: Automatically syncs pending data when connection is restored
+- **Prefetch for Offline**: Downloads templates and locations for offline use
+- **Connection Status Dot**: Small indicator showing connection quality
+
+### Changed - Mobile App
+- Dashboard header now shows connection status and sync badge
+- Checklists screen uses cached templates when offline
+- Added offline mode card showing last sync time
+- Enhanced error handling for network failures
+
+### Technical Details
+- `NetworkContext.js`: Monitors connectivity using @react-native-community/netinfo
+- `OfflineStorage.js`: AsyncStorage-based caching with TTL support
+- `SyncManager.js`: Handles sync queue processing with retry logic
+- `OfflineContext.js`: Combines network state, storage, and sync management
+- `OfflineIndicator.js`: UI components for offline status display
+
+---
+
+## [1.6.0] - 2025-11-25 - UI/UX Refresh
+
+### Added - Web App
+- Modern theme system with teal/coral color palette
+- Global animations CSS with comprehensive keyframe animations
+- Password visibility toggle on login/register forms
+- Frosted glass effect app bar with backdrop blur
+- Staggered reveal animations for dashboard elements
+- Custom scrollbar styling across the application
+- Status badge styling improvements
+- Loading skeleton components with shimmer effects
+- Empty state components for better UX
+- Error state components with retry actions
+- Dark mode toggle with system preference detection
+
+### Added - Mobile App
+- Redesigned theme config matching web app aesthetic
+- Loading skeleton components for all screens
+- Empty state components (NoAudits, NoTemplates, NoTasks, etc.)
+- Error state components (NetworkError, ServerError, etc.)
+- Linear gradients for UI elements using expo-linear-gradient
+
+### Changed - Web App
+- Complete visual refresh of Login page with dark theme and floating shapes
+- Register page redesigned to match new login aesthetic
+- Sidebar redesigned with dark navy background and teal accents
+- Dashboard stat cards now use gradient backgrounds
+- Layout component enhanced with better navigation styling
+- Typography improvements across the application
+- Button hover effects with lift and shadow animations
+- Audit History page polished with new components
+
+### Changed - Mobile App
+- Login screen completely redesigned with gradient background and floating shapes
+- Register screen matches new login design with orange accent
+- Dashboard with new stat cards, better cards, and "View All" button
+- Profile screen with gradient header and modern settings layout
+- Audit History screen with skeleton loading and improved filters
+- Tab bar navigation with active indicator dots
+- Stack headers with consistent styling
+
+### Improved
+- Navigation menu items animate in with staggered delays
+- Active page indicator more visible with border accent
+- User profile section at sidebar bottom redesigned
+- Focus states consistent across all interactive elements
+- Selection highlighting uses brand colors
+- Mobile app now has consistent design language with web app
+
+---
+
+## [1.5.0] - 2025-11-25 - Security Hardening & Performance Optimization
+
+### Added
+- Secure logging system with data sanitization (passwords, tokens, emails redacted in production)
+- 40+ database indexes for improved query performance
+- 3-tier rate limiting (auth, sensitive ops, uploads, general API)
+- CORS security logging and preflight caching
+- Analytics API caching (2 min cache)
+
+### Changed
+- Web token storage: localStorage → memory + sessionStorage (XSS protection)
+- Mobile token storage: Consistently uses expo-secure-store
+- All route files use centralized logger utility
+- Theme storage uses sessionStorage for consistency
+
+### Fixed
+- Mobile AsyncStorage leak in AuthContext
+- Remaining console.log statements in production code
+
+### Security
+- Rate limiting for sensitive operations (users/roles): 10 req/hour
+- Rate limiting for file uploads: 20 req/15 min
+- Permission details only exposed in development mode
+- CORS blocked origins logged for security monitoring
+
+---
+
+## [1.4.0] - 2025-11-24 - Store Analytics & Enhanced Reporting
+
+### Added
+- Store Analytics page with card/list views
+- CSV export for store analytics
+- Date range filtering for analytics
+- Enhanced audit CSV export with India time format
+
+---
+
 ## [0.0.0] - Initial Release
 
 ### Added

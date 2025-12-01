@@ -13,6 +13,7 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
+import { LocationDisplay } from '../components/LocationCapture';
 
 const AuditDetailScreen = () => {
   const route = useRoute();
@@ -172,6 +173,32 @@ const AuditDetailScreen = () => {
         <View style={styles.notesContainer}>
           <Text style={styles.notesTitle}>Notes:</Text>
           <Text style={styles.notesText}>{audit.notes}</Text>
+        </View>
+      )}
+
+      {/* GPS Location Display */}
+      {audit.gps_latitude && audit.gps_longitude && (
+        <View style={styles.locationSection}>
+          <View style={styles.locationHeader}>
+            <Icon name="location-on" size={20} color={themeConfig.primary.main} />
+            <Text style={styles.locationTitle}>Audit Location</Text>
+            {audit.location_verified && (
+              <View style={styles.verifiedBadge}>
+                <Icon name="verified" size={14} color={themeConfig.success.main} />
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            )}
+          </View>
+          <LocationDisplay
+            location={{
+              latitude: audit.gps_latitude,
+              longitude: audit.gps_longitude,
+              accuracy: audit.gps_accuracy,
+              timestamp: audit.gps_timestamp,
+            }}
+            showOpenMaps={true}
+            showAccuracy={true}
+          />
         </View>
       )}
 
@@ -546,6 +573,36 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // GPS Location styles
+  locationSection: {
+    marginBottom: 15,
+  },
+  locationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  locationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginLeft: 8,
+    flex: 1,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.success.bg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  verifiedText: {
+    fontSize: 12,
+    color: themeConfig.success.dark,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });
 

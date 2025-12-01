@@ -17,10 +17,10 @@ import AuditForm from './pages/AuditForm';
 import AuditDetail from './pages/AuditDetail';
 import AuditHistory from './pages/AuditHistory';
 import Analytics from './pages/Analytics';
-import ActionPlans from './pages/ActionPlans';
+// import ActionPlans from './pages/ActionPlans'; // Feature disabled
 import Stores from './pages/Stores';
 import ScheduledAudits from './pages/ScheduledAudits';
-import Tasks from './pages/Tasks';
+// import Tasks from './pages/Tasks'; // Feature disabled
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -29,6 +29,8 @@ import RoleManagement from './pages/RoleManagement';
 import MonthlyScorecard from './pages/MonthlyScorecard';
 import ScheduledAuditsReport from './pages/ScheduledAuditsReport';
 import StoreAnalytics from './pages/StoreAnalytics';
+import LocationVerificationReport from './pages/LocationVerificationReport';
+import StoreGroups from './pages/StoreGroups';
 import { themeConfig } from './config/theme';
 
 const getTheme = (darkMode) => createTheme({
@@ -38,62 +40,93 @@ const getTheme = (darkMode) => createTheme({
       main: themeConfig.primary.main,
       light: themeConfig.primary.light,
       dark: themeConfig.primary.dark,
+      contrastText: themeConfig.primary.contrast,
     },
     secondary: {
-      main: '#dc004e',
-      light: '#ff5983',
-      dark: '#9a0036',
+      main: themeConfig.secondary.main,
+      light: themeConfig.secondary.light,
+      dark: themeConfig.secondary.dark,
     },
     success: {
-      main: '#4caf50',
-      light: '#81c784',
-      dark: '#388e3c',
+      main: themeConfig.success.main,
+      light: themeConfig.success.light,
+      dark: themeConfig.success.dark,
     },
     warning: {
-      main: '#ff9800',
-      light: '#ffb74d',
-      dark: '#f57c00',
+      main: themeConfig.warning.main,
+      light: themeConfig.warning.light,
+      dark: themeConfig.warning.dark,
     },
     error: {
-      main: '#f44336',
-      light: '#e57373',
-      dark: '#d32f2f',
+      main: themeConfig.error.main,
+      light: themeConfig.error.light,
+      dark: themeConfig.error.dark,
+    },
+    info: {
+      main: themeConfig.info.main,
+      light: themeConfig.info.light,
+      dark: themeConfig.info.dark,
     },
     background: {
-      default: darkMode ? '#121212' : themeConfig.background.default,
-      paper: darkMode ? '#1e1e1e' : themeConfig.background.paper,
+      default: darkMode ? '#0f172a' : themeConfig.background.default,
+      paper: darkMode ? '#1e293b' : themeConfig.background.paper,
     },
     text: {
-      primary: darkMode ? '#ffffff' : themeConfig.text.primary,
-      secondary: darkMode ? '#b0b0b0' : themeConfig.text.secondary,
+      primary: darkMode ? '#f8fafc' : themeConfig.text.primary,
+      secondary: darkMode ? '#94a3b8' : themeConfig.text.secondary,
     },
+    divider: darkMode ? 'rgba(255,255,255,0.08)' : themeConfig.border.light,
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
-    h5: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 600,
-    },
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h1: { fontWeight: 700, letterSpacing: '-0.02em' },
+    h2: { fontWeight: 700, letterSpacing: '-0.02em' },
+    h3: { fontWeight: 700, letterSpacing: '-0.01em' },
+    h4: { fontWeight: 600, letterSpacing: '-0.01em' },
+    h5: { fontWeight: 600 },
+    h6: { fontWeight: 600 },
+    button: { fontWeight: 500 },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: themeConfig.borderRadius.small,
   },
+  shadows: [
+    'none',
+    themeConfig.shadows.small,
+    themeConfig.shadows.small,
+    themeConfig.shadows.medium,
+    themeConfig.shadows.medium,
+    themeConfig.shadows.medium,
+    themeConfig.shadows.large,
+    themeConfig.shadows.large,
+    themeConfig.shadows.large,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+    themeConfig.shadows.xl,
+  ],
   components: {
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          transition: 'all 0.3s ease-in-out',
+          boxShadow: themeConfig.shadows.card,
+          transition: themeConfig.transitions.normal,
           borderRadius: themeConfig.borderRadius.medium,
-          border: `1px solid ${themeConfig.border.default}`,
+          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : themeConfig.border.light}`,
           '&:hover': {
-            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            transform: 'translateY(-2px)',
+            boxShadow: themeConfig.shadows.cardHover,
           },
         },
       },
@@ -102,14 +135,26 @@ const getTheme = (darkMode) => createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none',
-          borderRadius: 8,
-          padding: '8px 24px',
+          borderRadius: themeConfig.borderRadius.small,
+          padding: '8px 20px',
           fontWeight: 500,
+          transition: themeConfig.transitions.fast,
         },
         contained: {
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          boxShadow: 'none',
           '&:hover': {
-            boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
+            boxShadow: themeConfig.shadows.medium,
+            transform: 'translateY(-1px)',
+          },
+          '&:active': {
+            transform: 'translateY(0)',
+          },
+        },
+        outlined: {
+          borderColor: darkMode ? 'rgba(255,255,255,0.2)' : themeConfig.border.default,
+          '&:hover': {
+            borderColor: themeConfig.primary.main,
+            backgroundColor: darkMode ? 'rgba(13, 148, 136, 0.08)' : 'rgba(13, 148, 136, 0.04)',
           },
         },
       },
@@ -118,9 +163,93 @@ const getTheme = (darkMode) => createTheme({
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            borderRadius: 8,
-            backgroundColor: darkMode ? '#1e1e1e' : '#fff',
+            borderRadius: themeConfig.borderRadius.small,
+            transition: themeConfig.transitions.fast,
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: themeConfig.primary.light,
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: themeConfig.primary.main,
+              borderWidth: 2,
+            },
           },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: themeConfig.borderRadius.small,
+          fontWeight: 500,
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+        },
+        rounded: {
+          borderRadius: themeConfig.borderRadius.medium,
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          borderColor: darkMode ? 'rgba(255,255,255,0.08)' : themeConfig.border.light,
+        },
+        head: {
+          fontWeight: 600,
+          backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : themeConfig.background.default,
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: themeConfig.borderRadius.large,
+        },
+      },
+    },
+    MuiMenu: {
+      styleOverrides: {
+        paper: {
+          borderRadius: themeConfig.borderRadius.medium,
+          boxShadow: themeConfig.shadows.large,
+          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : themeConfig.border.light}`,
+        },
+      },
+    },
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          borderRadius: themeConfig.borderRadius.small,
+          backgroundColor: darkMode ? '#334155' : '#1e293b',
+          fontSize: '0.75rem',
+        },
+      },
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          borderRadius: themeConfig.borderRadius.medium,
+        },
+        standardSuccess: {
+          backgroundColor: themeConfig.success.bg,
+          color: themeConfig.success.dark,
+        },
+        standardError: {
+          backgroundColor: themeConfig.error.bg,
+          color: themeConfig.error.dark,
+        },
+        standardWarning: {
+          backgroundColor: themeConfig.warning.bg,
+          color: themeConfig.warning.dark,
+        },
+        standardInfo: {
+          backgroundColor: themeConfig.info.bg,
+          color: themeConfig.info.dark,
         },
       },
     },
@@ -227,6 +356,15 @@ function ThemeWrapper() {
               }
             />
             <Route
+              path="/location-verification"
+              element={
+                <PrivateRoute>
+                  <LocationVerificationReport />
+                </PrivateRoute>
+              }
+            />
+            {/* Action Plans route disabled
+            <Route
               path="/actions"
               element={
                 <PrivateRoute>
@@ -234,6 +372,7 @@ function ThemeWrapper() {
                 </PrivateRoute>
               }
             />
+            */}
             <Route
               path="/stores"
               element={
@@ -244,6 +383,14 @@ function ThemeWrapper() {
             />
             <Route path="/locations" element={<Navigate to="/stores" replace />} />
             <Route
+              path="/store-groups"
+              element={
+                <PrivateRoute>
+                  <StoreGroups />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/scheduled"
               element={
                 <PrivateRoute>
@@ -251,6 +398,7 @@ function ThemeWrapper() {
                 </PrivateRoute>
               }
             />
+            {/* Tasks route disabled
             <Route
               path="/tasks"
               element={
@@ -259,6 +407,7 @@ function ThemeWrapper() {
                 </PrivateRoute>
               }
             />
+            */}
             <Route
               path="/notifications"
               element={

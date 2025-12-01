@@ -178,7 +178,7 @@ router.get('/reschedule-count', (req, res) => {
           res.status(200).json(defaultResponse);
         }
       } catch (e2) {
-        console.error('[Reschedule Count] Failed to send response:', e2.message);
+        logger.error('[Reschedule Count] Failed to send response:', e2.message);
       }
     }
   };
@@ -294,7 +294,7 @@ router.get('/reschedule-count', (req, res) => {
       }
     }
   } catch (error) {
-    console.error('[Reschedule Count] Unexpected error:', error.message);
+    logger.error('[Reschedule Count] Unexpected error:', error.message);
     sendResponse(0);
   }
 });
@@ -488,7 +488,7 @@ router.get('/report', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, schedules) => {
     if (err) {
-      console.error('Scheduled audits report error:', err);
+      logger.error('Scheduled audits report error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -766,7 +766,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
         [templateId, locationId, assignedTo, scheduledDate, 'once', scheduledDate, 'pending', createdBy],
         function(err, result) {
           if (err) {
-            console.error('Error creating scheduled audit:', err);
+            logger.error('Error creating scheduled audit:', err);
             return reject(err);
           }
           // Handle different database types for lastID
@@ -786,7 +786,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
     const { employee, name, checklist, store, storeName, startDate, status } = schedule;
 
     try {
-      console.log(`[Import] Processing row ${i + 1}:`, { employee, name, checklist, store, storeName, startDate });
+      logger.debug(`[Import] Processing row ${i + 1}:`, { employee, name, checklist, store, storeName, startDate });
       
       if (!name || !checklist || !startDate) {
         const missing = [];
@@ -795,7 +795,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
         if (!startDate) missing.push('startDate');
         results.skipped++;
         results.errors.push(`Row ${i + 1}: Missing required fields: ${missing.join(', ')}`);
-        console.log(`[Import] Row ${i + 1} skipped: Missing fields`);
+        logger.debug(`[Import] Row ${i + 1} skipped: Missing fields`);
         continue;
       }
 
@@ -805,7 +805,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
       // Clean the date string
       const cleanDate = startDate.trim().replace(/['"]/g, '').replace(/\s+/g, ' ');
       
-      console.log(`[Import] Parsing date for row ${i + 1}: "${cleanDate}"`);
+      logger.debug(`[Import] Parsing date for row ${i + 1}: "${cleanDate}"`);
       
       // Try parsing different date formats
       try {
@@ -824,21 +824,21 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
             const month = String(part2).padStart(2, '0');
             const day = String(part1).padStart(2, '0');
             dateStr = `${year}-${month}-${day}`;
-            console.log(`[Import] Parsed as DD-MM-YYYY: ${dateStr}`);
+            logger.debug(`[Import] Parsed as DD-MM-YYYY: ${dateStr}`);
           } else if (part1 >= 1 && part1 <= 12 && part2 >= 1 && part2 <= 31 && part3 > 1000) {
             // MM-DD-YYYY format: month, day, year
             const year = part3;
             const month = String(part1).padStart(2, '0');
             const day = String(part2).padStart(2, '0');
             dateStr = `${year}-${month}-${day}`;
-            console.log(`[Import] Parsed as MM-DD-YYYY: ${dateStr}`);
+            logger.debug(`[Import] Parsed as MM-DD-YYYY: ${dateStr}`);
           } else if (part1 > 1000 && part2 >= 1 && part2 <= 12 && part3 >= 1 && part3 <= 31) {
             // YYYY-MM-DD format: year, month, day
             const year = part1;
             const month = String(part2).padStart(2, '0');
             const day = String(part3).padStart(2, '0');
             dateStr = `${year}-${month}-${day}`;
-            console.log(`[Import] Parsed as YYYY-MM-DD: ${dateStr}`);
+            logger.debug(`[Import] Parsed as YYYY-MM-DD: ${dateStr}`);
           }
         }
         
@@ -851,11 +851,11 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
             const month = String(scheduledDate.getMonth() + 1).padStart(2, '0');
             const day = String(scheduledDate.getDate()).padStart(2, '0');
             dateStr = `${year}-${month}-${day}`;
-            console.log(`[Import] Parsed using Date constructor: ${dateStr}`);
+            logger.debug(`[Import] Parsed using Date constructor: ${dateStr}`);
           }
         }
       } catch (error) {
-        console.error(`[Import] Date parsing error for row ${i + 1}:`, error);
+        logger.error(`[Import] Date parsing error for row ${i + 1}:`, error);
         dateStr = null;
       }
       
@@ -872,7 +872,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
         results.errors.push(`Row ${i + 1}: User not found: ${name}${employee ? ` (${employee})` : ''}`);
         continue;
       }
-      console.log(`[Import] Found user: ${user.name} (${user.email}) for row ${i + 1}`);
+      logger.debug(`[Import] Found user: ${user.name} (${user.email}) for row ${i + 1}`);
 
       // Find template
       const template = await findTemplate(checklist);
@@ -881,30 +881,30 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
         results.errors.push(`Row ${i + 1}: Template not found: ${checklist}`);
         continue;
       }
-      console.log(`[Import] Found template: ${template.name} for row ${i + 1}`);
+      logger.debug(`[Import] Found template: ${template.name} for row ${i + 1}`);
 
       // Find or create location
-      console.log(`[Import] Finding/creating location for row ${i + 1}: store="${store}", storeName="${storeName}"`);
+      logger.debug(`[Import] Finding/creating location for row ${i + 1}: store="${store}", storeName="${storeName}"`);
       const location = await findOrCreateLocation(store || '', storeName || '');
-      console.log(`[Import] Found/created location: ${location.name} (ID: ${location.id}) for row ${i + 1}`);
+      logger.debug(`[Import] Found/created location: ${location.name} (ID: ${location.id}) for row ${i + 1}`);
 
       // Create scheduled audit
-      console.log(`[Import] Creating scheduled audit for row ${i + 1}: templateId=${template.id}, locationId=${location.id}, userId=${user.id}, date=${dateStr}`);
+      logger.debug(`[Import] Creating scheduled audit for row ${i + 1}: templateId=${template.id}, locationId=${location.id}, userId=${user.id}, date=${dateStr}`);
       const scheduleId = await createScheduledAudit(template.id, location.id, user.id, dateStr);
-      console.log(`[Import] ✓ Successfully created scheduled audit ID: ${scheduleId} for row ${i + 1}`);
+      logger.debug(`[Import] ✓ Successfully created scheduled audit ID: ${scheduleId} for row ${i + 1}`);
 
       results.success++;
     } catch (error) {
-      console.error(`[Import] ✗ Error processing row ${i + 1}:`, error);
+      logger.error(`[Import] ✗ Error processing row ${i + 1}:`, error);
       results.failed++;
       const errorMsg = error.message || error.toString();
       results.errors.push(`Row ${i + 1}: ${errorMsg}`);
     }
   }
 
-  console.log(`[Import] Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`);
+  logger.debug(`[Import] Import completed: ${results.success} successful, ${results.failed} failed, ${results.skipped} skipped`);
   if (results.errors.length > 0) {
-    console.log(`[Import] Errors:`, results.errors);
+    logger.debug(`[Import] Errors:`, results.errors);
   }
   
   res.json({
@@ -947,7 +947,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
     [id],
     (err, scheduledAudit) => {
       if (err) {
-        console.error('Error fetching scheduled audit:', err);
+        logger.error('Error fetching scheduled audit:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
 
@@ -1002,10 +1002,10 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
           
           if (isTableNotFound) {
             // Table doesn't exist yet, treat as 0 reschedules
-            console.log('reschedule_tracking table does not exist yet, treating as 0 reschedules');
+            logger.debug('reschedule_tracking table does not exist yet, treating as 0 reschedules');
             rescheduleCount = 0;
           } else {
-            console.error('Error counting reschedules:', countErr);
+            logger.error('Error counting reschedules:', countErr);
             return res.status(500).json({ error: 'Database error', details: countErr.message });
           }
         } else {
@@ -1052,7 +1052,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
             [new_date, new_date, new_date, new_date, new_date, id],
             function(updateErr) {
               if (updateErr) {
-                console.error('Error updating scheduled audit:', updateErr);
+                logger.error('Error updating scheduled audit:', updateErr);
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
@@ -1063,7 +1063,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 [id, userId, oldDate, new_date, currentMonth],
                 (trackErr) => {
                   if (trackErr) {
-                    console.error('Error tracking reschedule:', trackErr);
+                    logger.error('Error tracking reschedule:', trackErr);
                     // Don't fail the request if tracking fails
                   }
 
@@ -1091,7 +1091,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
             [new_date, new_date, new_date, new_date, new_date, id],
             function(updateErr) {
               if (updateErr) {
-                console.error('Error updating scheduled audit:', updateErr);
+                logger.error('Error updating scheduled audit:', updateErr);
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
@@ -1102,7 +1102,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 [id, userId, oldDate, new_date, currentMonth],
                 (trackErr) => {
                   if (trackErr) {
-                    console.error('Error tracking reschedule:', trackErr);
+                    logger.error('Error tracking reschedule:', trackErr);
                     // Don't fail the request if tracking fails
                   }
 
@@ -1150,7 +1150,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
           dbInstance.run(updateQuery, updateParams,
             function(updateErr) {
               if (updateErr) {
-                console.error('Error updating scheduled audit:', updateErr);
+                logger.error('Error updating scheduled audit:', updateErr);
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
@@ -1161,7 +1161,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 [id, userId, oldDate, new_date, currentMonth],
                 (trackErr) => {
                   if (trackErr) {
-                    console.error('Error tracking reschedule:', trackErr);
+                    logger.error('Error tracking reschedule:', trackErr);
                     // Don't fail the request if tracking fails
                   }
 

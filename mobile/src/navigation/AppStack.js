@@ -2,23 +2,47 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
+import { View, StyleSheet, Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { themeConfig } from '../config/theme';
 import DashboardScreen from '../screens/DashboardScreen';
 import ChecklistsScreen from '../screens/ChecklistsScreen';
 import AuditHistoryScreen from '../screens/AuditHistoryScreen';
 import AuditFormScreen from '../screens/AuditFormScreen';
 import AuditDetailScreen from '../screens/AuditDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import ScheduledAuditsScreen from '../screens/ScheduledAuditsScreen';
 import TasksScreen from '../screens/TasksScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+// Shared stack header options
+const stackScreenOptions = {
+  headerStyle: {
+    backgroundColor: themeConfig.background.paper,
+    elevation: 0,
+    shadowOpacity: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: themeConfig.border.light,
+  },
+  headerTintColor: themeConfig.text.primary,
+  headerTitleStyle: {
+    fontWeight: '600',
+    fontSize: 17,
+    color: themeConfig.text.primary,
+  },
+  headerBackTitleVisible: false,
+  cardStyle: {
+    backgroundColor: themeConfig.background.default,
+  },
+};
+
 const ChecklistsStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen 
         name="ChecklistsList" 
         component={ChecklistsScreen}
@@ -35,7 +59,7 @@ const ChecklistsStack = () => {
 
 const HistoryStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen 
         name="HistoryList" 
         component={AuditHistoryScreen}
@@ -57,11 +81,16 @@ const HistoryStack = () => {
 
 const ProfileStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen 
         name="ProfileMain" 
         component={ProfileScreen}
         options={{ title: 'Profile' }}
+      />
+      <Stack.Screen 
+        name="NotificationSettings" 
+        component={NotificationSettingsScreen}
+        options={{ title: 'Notifications' }}
       />
     </Stack.Navigator>
   );
@@ -69,7 +98,7 @@ const ProfileStack = () => {
 
 const DashboardStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen 
         name="DashboardMain" 
         component={DashboardScreen}
@@ -94,11 +123,24 @@ const DashboardStack = () => {
   );
 };
 
+// Custom Tab Bar Icon with active indicator
+const TabIcon = ({ focused, iconName }) => {
+  return (
+    <View style={styles.tabIconContainer}>
+      <Icon 
+        name={iconName} 
+        size={24} 
+        color={focused ? themeConfig.primary.main : themeConfig.text.disabled} 
+      />
+      {focused && <View style={styles.tabActiveIndicator} />}
+    </View>
+  );
+};
+
 const AppStack = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
 
-  // Permission checks - permissions come from role only
   const canViewTemplates = hasPermission(userPermissions, 'display_templates') ||
                           hasPermission(userPermissions, 'view_templates') ||
                           hasPermission(userPermissions, 'manage_templates') ||
@@ -114,7 +156,7 @@ const AppStack = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused }) => {
           let iconName;
 
           if (route.name === 'Dashboard') {
@@ -129,10 +171,12 @@ const AppStack = () => {
             iconName = 'person';
           }
 
-          return <Icon name={iconName} size={size} color={color} />;
+          return <TabIcon focused={focused} iconName={iconName} />;
         },
-        tabBarActiveTintColor: '#1976d2',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: themeConfig.primary.main,
+        tabBarInactiveTintColor: themeConfig.text.disabled,
+        tabBarLabelStyle: styles.tabBarLabel,
+        tabBarStyle: styles.tabBar,
         headerShown: false,
       })}
     >
@@ -151,5 +195,33 @@ const AppStack = () => {
   );
 };
 
-export default AppStack;
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: themeConfig.background.paper,
+    borderTopWidth: 1,
+    borderTopColor: themeConfig.border.light,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+    height: Platform.OS === 'ios' ? 88 : 65,
+    ...themeConfig.shadows.small,
+  },
+  tabBarLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  tabIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabActiveIndicator: {
+    position: 'absolute',
+    top: -8,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: themeConfig.primary.main,
+  },
+});
 
+export default AppStack;

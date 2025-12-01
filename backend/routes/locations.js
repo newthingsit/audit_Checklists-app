@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -13,8 +14,8 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
     [],
     (err, locations) => {
       if (err) {
-        console.error('Error fetching locations:', err);
-        console.error('Database error:', err);
+        logger.error('Error fetching locations:', err);
+        logger.error('Database error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       res.json({ locations: locations || [] });
@@ -30,8 +31,8 @@ router.get('/:id', authenticate, (req, res) => {
     [req.params.id],
     (err, location) => {
       if (err) {
-        console.error('Error fetching location:', err);
-        console.error('Database error:', err);
+        logger.error('Error fetching location:', err);
+        logger.error('Database error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (!location) {
@@ -44,7 +45,7 @@ router.get('/:id', authenticate, (req, res) => {
 
 // Create location
 router.post('/', authenticate, requirePermission('manage_locations'), (req, res) => {
-  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district } = req.body;
+  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude } = req.body;
   const dbInstance = db.getDb();
 
   if (!name) {
@@ -52,12 +53,12 @@ router.post('/', authenticate, requirePermission('manage_locations'), (req, res)
   }
 
   dbInstance.run(
-    `INSERT INTO locations (store_number, name, address, city, state, country, phone, email, parent_id, region, district, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, req.user.id],
+    `INSERT INTO locations (store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, latitude || null, longitude || null, req.user.id],
     function(err) {
       if (err) {
-        console.error('Error creating location:', err);
+        logger.error('Error creating location:', err);
         return res.status(500).json({ error: 'Error creating location' });
       }
       res.status(201).json({ id: this.lastID, message: 'Location created successfully' });
@@ -68,7 +69,7 @@ router.post('/', authenticate, requirePermission('manage_locations'), (req, res)
 // Update location
 router.put('/:id', authenticate, requirePermission('manage_locations'), (req, res) => {
   const { id } = req.params;
-  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district } = req.body;
+  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude } = req.body;
   const dbInstance = db.getDb();
 
   // Prevent circular reference (location cannot be its own parent)
@@ -78,12 +79,12 @@ router.put('/:id', authenticate, requirePermission('manage_locations'), (req, re
 
   dbInstance.run(
     `UPDATE locations 
-     SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?, parent_id = ?, region = ?, district = ?
+     SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?, parent_id = ?, region = ?, district = ?, latitude = ?, longitude = ?
      WHERE id = ?`,
-    [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, id],
+    [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, latitude || null, longitude || null, id],
     function(err) {
       if (err) {
-        console.error('Error updating location:', err);
+        logger.error('Error updating location:', err);
         return res.status(500).json({ error: 'Error updating location' });
       }
       res.json({ message: 'Location updated successfully' });
@@ -134,7 +135,7 @@ router.post('/import', authenticate, async (req, res) => {
   // Helper function to create or update location
   const createOrUpdateLocation = (store) => {
     return new Promise((resolve, reject) => {
-      const { store: storeNumber, storeName, address, city, state, country, phone, email } = store;
+      const { store: storeNumber, storeName, address, city, state, country, phone, email, latitude, longitude } = store;
       
       if (!storeName && !storeNumber) {
         return reject(new Error('Store name or store number is required'));
@@ -142,6 +143,10 @@ router.post('/import', authenticate, async (req, res) => {
 
       const name = storeName || `Store ${storeNumber}`;
       const locationAddress = address || (storeNumber ? `Store ${storeNumber}` : '');
+      
+      // Parse latitude and longitude as floats
+      const lat = latitude && !isNaN(parseFloat(latitude)) ? parseFloat(latitude) : null;
+      const lng = longitude && !isNaN(parseFloat(longitude)) ? parseFloat(longitude) : null;
 
       // Check if location exists by store number, name, or address
       dbInstance.get(
@@ -154,24 +159,24 @@ router.post('/import', authenticate, async (req, res) => {
             // Update existing location
             dbInstance.run(
               `UPDATE locations 
-               SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?
+               SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?, latitude = ?, longitude = ?
                WHERE id = ?`,
-              [storeNumber || null, name, locationAddress, city || null, state || null, country || null, phone || null, email || null, existing.id],
+              [storeNumber || null, name, locationAddress, city || null, state || null, country || null, phone || null, email || null, lat, lng, existing.id],
               function(err) {
                 if (err) return reject(err);
-                resolve({ id: existing.id, name, store_number: storeNumber, updated: true });
+                resolve({ id: existing.id, name, store_number: storeNumber, updated: true, has_gps: !!(lat && lng) });
               }
             );
           } else {
             // Create new location
             dbInstance.run(
-              `INSERT INTO locations (store_number, name, address, city, state, country, phone, email, created_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [storeNumber || null, name, locationAddress, city || null, state || null, country || null, phone || null, email || null, createdBy],
+              `INSERT INTO locations (store_number, name, address, city, state, country, phone, email, latitude, longitude, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [storeNumber || null, name, locationAddress, city || null, state || null, country || null, phone || null, email || null, lat, lng, createdBy],
               function(err) {
                 if (err) return reject(err);
                 const locationId = (this && this.lastID) ? this.lastID : 0;
-                resolve({ id: locationId, name, store_number: storeNumber, updated: false });
+                resolve({ id: locationId, name, store_number: storeNumber, updated: false, has_gps: !!(lat && lng) });
               }
             );
           }
@@ -192,10 +197,10 @@ router.post('/import', authenticate, async (req, res) => {
       }
 
       const result = await createOrUpdateLocation(store);
-      console.log(`✓ Row ${i + 1}: ${result.updated ? 'Updated' : 'Created'} store "${result.name}" (ID: ${result.id})`);
+      logger.debug(`✓ Row ${i + 1}: ${result.updated ? 'Updated' : 'Created'} store "${result.name}" (ID: ${result.id})`);
       results.success++;
     } catch (error) {
-      console.error(`✗ Row ${i + 1}: Error - ${error.message}`);
+      logger.error(`✗ Row ${i + 1}: Error - ${error.message}`);
       results.failed++;
       results.errors.push(`Row ${i + 1}: ${error.message}`);
     }
@@ -221,7 +226,7 @@ router.get('/hierarchy/tree', authenticate, requirePermission('view_locations', 
     [],
     (err, locations) => {
       if (err) {
-        console.error('Error fetching location hierarchy:', err);
+        logger.error('Error fetching location hierarchy:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       
@@ -259,7 +264,7 @@ router.get('/hierarchy/regions', authenticate, requirePermission('view_locations
     [],
     (err, regions) => {
       if (err) {
-        console.error('Error fetching regions:', err);
+        logger.error('Error fetching regions:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       res.json({ regions: regions || [] });
@@ -286,7 +291,7 @@ router.get('/hierarchy/districts', authenticate, requirePermission('view_locatio
   
   dbInstance.all(query, params, (err, districts) => {
     if (err) {
-      console.error('Error fetching districts:', err);
+      logger.error('Error fetching districts:', err);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ districts: districts || [] });
@@ -327,7 +332,7 @@ router.get('/:id/performance', authenticate, requirePermission('view_locations',
   
   dbInstance.get(query, params, (err, metrics) => {
     if (err) {
-      console.error('Error fetching location performance:', err);
+      logger.error('Error fetching location performance:', err);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ metrics: metrics || {} });
@@ -387,7 +392,7 @@ router.post('/compare', authenticate, requirePermission('view_locations', 'view_
   
   dbInstance.all(query, params, (err, comparisons) => {
     if (err) {
-      console.error('Error comparing locations:', err);
+      logger.error('Error comparing locations:', err);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ comparisons: comparisons || [] });

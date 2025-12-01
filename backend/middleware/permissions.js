@@ -1,5 +1,6 @@
 const { authenticate } = require('./auth');
 const db = require('../config/database-loader');
+const logger = require('../utils/logger');
 
 // Helper function to check if user is admin
 const isAdminUser = (user) => {
@@ -43,13 +44,13 @@ const normalizePermissionList = (permissions = []) => {
 
 const getUserPermissions = (userId, role, callback) => {
   if (!role) {
-    console.warn('getUserPermissions called with null/undefined role for user:', userId);
+    logger.warn('getUserPermissions called with null/undefined role for user:', userId);
     return callback(null, []);
   }
 
   const dbInstance = db.getDb();
   if (!dbInstance) {
-    console.error('Database instance is null in getUserPermissions');
+    logger.error('Database instance is null in getUserPermissions');
     return callback(new Error('Database not initialized'), []);
   }
   
@@ -70,12 +71,12 @@ const getUserPermissions = (userId, role, callback) => {
   
   dbInstance.get(query, [role], (err, roleData) => {
     if (err) {
-      console.error('Error fetching role permissions:', err);
+      logger.error('Error fetching role permissions:', err);
       return callback(err, []);
     }
     
     if (!roleData || !roleData.permissions) {
-      console.warn('Role not found or has no permissions:', role);
+      logger.warn('Role not found or has no permissions:', role);
       return callback(null, []);
     }
 
@@ -84,7 +85,7 @@ const getUserPermissions = (userId, role, callback) => {
       const normalizedPermissions = normalizePermissionList(permissions || []);
       callback(null, normalizedPermissions);
     } catch (parseErr) {
-      console.error('Error parsing role permissions:', parseErr);
+      logger.error('Error parsing role permissions:', parseErr);
       callback(parseErr, []);
     }
   });
@@ -176,7 +177,7 @@ const requirePermission = (...requiredPermissions) => {
 
       getUserPermissions(req.user.id, req.user.role, (err, userPermissions) => {
         if (err) {
-          console.error('Error fetching user permissions:', err);
+          logger.error('Error fetching user permissions:', err);
           return res.status(500).json({ error: 'Error checking permissions' });
         }
 
@@ -230,7 +231,7 @@ const requireOwnershipOrPermission = (resourceUserIdField = 'user_id', ...requir
       // Otherwise check permissions
       getUserPermissions(req.user.id, req.user.role, (err, userPermissions) => {
         if (err) {
-          console.error('Error fetching user permissions:', err);
+          logger.error('Error fetching user permissions:', err);
           return res.status(500).json({ error: 'Error checking permissions' });
         }
 
@@ -269,7 +270,7 @@ const allowOwnOrPermission = (...requiredPermissions) => {
       // This allows users to see their own scheduled audits even without permission
       getUserPermissions(req.user.id, req.user.role, (err, userPermissions) => {
         if (err) {
-          console.error('Error fetching user permissions:', err);
+          logger.error('Error fetching user permissions:', err);
           // Allow access anyway - route will filter to own items
           return next();
         }

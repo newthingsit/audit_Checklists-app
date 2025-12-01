@@ -3,6 +3,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission, isAdminUser } = require('../middleware/permissions');
 const { createNotification } = require('./notifications');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.get('/', authenticate, requirePermission('view_tasks', 'manage_tasks'), (
 
   dbInstance.all(query, params, (err, tasks) => {
     if (err) {
-      console.error('Error fetching tasks:', err);
+      logger.error('Error fetching tasks:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -72,7 +73,7 @@ router.get('/', authenticate, requirePermission('view_tasks', 'manage_tasks'), (
       taskIds,
       (err, dependencies) => {
         if (err) {
-          console.error('Error fetching dependencies:', err);
+          logger.error('Error fetching dependencies:', err);
           return res.json({ tasks });
         }
 
@@ -149,14 +150,14 @@ router.get('/dependencies/options', authenticate, (req, res) => {
 
       dbInstance.all(query, params, (err, tasks) => {
         if (err) {
-          console.error('Error fetching dependency task options:', err);
+          logger.error('Error fetching dependency task options:', err);
           return res.status(500).json({ error: 'Database error', details: err.message });
         }
         res.json({ tasks: tasks || [] });
       });
     })
     .catch((error) => {
-      console.error('Error fetching dependency task options:', error);
+      logger.error('Error fetching dependency task options:', error);
       res.status(500).json({ error: 'Database error', details: error.message });
     });
 });
@@ -261,7 +262,7 @@ router.post('/', authenticate, requirePermission('manage_tasks', 'create_tasks')
     ],
     async function(err) {
       if (err) {
-        console.error('Error creating task:', err);
+        logger.error('Error creating task:', err);
         return res.status(500).json({ error: 'Error creating task', details: err.message });
       }
 
@@ -278,7 +279,7 @@ router.post('/', authenticate, requirePermission('manage_tasks', 'create_tasks')
             `/tasks`
           );
         } catch (notifErr) {
-          console.error('Error creating notification:', notifErr);
+          logger.error('Error creating notification:', notifErr);
         }
       }
 
@@ -311,7 +312,7 @@ router.post('/', authenticate, requirePermission('manage_tasks', 'create_tasks')
             res.status(201).json({ id: taskId, message: 'Task created successfully' });
           })
           .catch((err) => {
-            console.error('Error adding dependencies:', err);
+            logger.error('Error adding dependencies:', err);
             res.status(201).json({ id: taskId, message: 'Task created but dependencies failed', warning: true });
           });
       } else {
@@ -432,7 +433,7 @@ router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks
         params,
         async function(err) {
           if (err) {
-            console.error('Error updating task:', err);
+            logger.error('Error updating task:', err);
             return res.status(500).json({ error: 'Error updating task' });
           }
 
@@ -447,7 +448,7 @@ router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks
                 `/tasks`
               );
             } catch (notifErr) {
-              console.error('Error creating completion notification:', notifErr);
+              logger.error('Error creating completion notification:', notifErr);
             }
           }
 
@@ -462,7 +463,7 @@ router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks
                 `/tasks`
               );
             } catch (notifErr) {
-              console.error('Error creating reassignment notification:', notifErr);
+              logger.error('Error creating reassignment notification:', notifErr);
             }
           }
 
@@ -480,7 +481,7 @@ router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks
             // Delete existing dependencies
             dbInstance.run('DELETE FROM task_dependencies WHERE task_id = ?', [id], (err) => {
               if (err) {
-                console.error('Error deleting dependencies:', err);
+                logger.error('Error deleting dependencies:', err);
               }
 
               // Add new dependencies
@@ -503,7 +504,7 @@ router.put('/:id', authenticate, requirePermission('manage_tasks', 'update_tasks
                     res.json({ message: 'Task updated successfully' });
                   })
                   .catch((err) => {
-                    console.error('Error adding dependencies:', err);
+                    logger.error('Error adding dependencies:', err);
                     res.json({ message: 'Task updated but dependencies failed', warning: true });
                   });
               } else {
@@ -627,6 +628,521 @@ router.get('/ready/start', authenticate, (req, res) => {
           const readyTasks = tasks.filter(t => !pendingTaskIds.has(t.id));
 
           res.json({ tasks: readyTasks });
+        }
+      );
+    }
+  );
+});
+
+// ========================================
+// ENHANCED TASK FEATURES
+// ========================================
+
+// Get task with full details (subtasks, time entries)
+router.get('/:id/details', authenticate, (req, res) => {
+  const { id } = req.params;
+  const dbInstance = db.getDb();
+  
+  dbInstance.get(
+    `SELECT t.*, 
+     u1.name as assigned_to_name, 
+     u2.name as created_by_name,
+     l.name as location_name,
+     a.restaurant_name as audit_name
+     FROM tasks t
+     LEFT JOIN users u1 ON t.assigned_to = u1.id
+     LEFT JOIN users u2 ON t.created_by = u2.id
+     LEFT JOIN locations l ON t.location_id = l.id
+     LEFT JOIN audits a ON t.audit_id = a.id
+     WHERE t.id = ?`,
+    [id],
+    (err, task) => {
+      if (err || !task) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      
+      // Get subtasks
+      dbInstance.all(
+        `SELECT * FROM subtasks WHERE task_id = ? ORDER BY order_index, id`,
+        [id],
+        (err, subtasks) => {
+          // Get time entries
+          dbInstance.all(
+            `SELECT te.*, u.name as user_name 
+             FROM task_time_entries te
+             LEFT JOIN users u ON te.user_id = u.id
+             WHERE te.task_id = ?
+             ORDER BY te.start_time DESC`,
+            [id],
+            (err, timeEntries) => {
+              // Calculate total time
+              const totalMinutes = (timeEntries || []).reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
+              
+              // Calculate subtask progress
+              const completedSubtasks = (subtasks || []).filter(s => s.completed).length;
+              const subtaskProgress = subtasks && subtasks.length > 0 
+                ? Math.round((completedSubtasks / subtasks.length) * 100) 
+                : task.progress || 0;
+              
+              res.json({
+                task: {
+                  ...task,
+                  tags: task.tags ? task.tags.split(',').map(t => t.trim()) : []
+                },
+                subtasks: subtasks || [],
+                timeEntries: timeEntries || [],
+                stats: {
+                  totalSubtasks: (subtasks || []).length,
+                  completedSubtasks,
+                  subtaskProgress,
+                  totalTimeMinutes: totalMinutes,
+                  totalTimeHours: (totalMinutes / 60).toFixed(2)
+                }
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Add subtask
+router.post('/:id/subtasks', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { title, order_index } = req.body;
+  const dbInstance = db.getDb();
+  
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Subtask title is required' });
+  }
+  
+  dbInstance.run(
+    `INSERT INTO subtasks (task_id, title, order_index) VALUES (?, ?, ?)`,
+    [id, title.trim(), order_index || 0],
+    function(err) {
+      if (err) {
+        logger.error('Error adding subtask:', err);
+        return res.status(500).json({ error: 'Error adding subtask' });
+      }
+      
+      // Update task progress
+      updateTaskProgress(dbInstance, id);
+      
+      res.status(201).json({ 
+        id: this.lastID, 
+        message: 'Subtask added successfully' 
+      });
+    }
+  );
+});
+
+// Toggle subtask completion
+router.put('/:id/subtasks/:subtaskId', authenticate, (req, res) => {
+  const { id, subtaskId } = req.params;
+  const { completed, title } = req.body;
+  const dbInstance = db.getDb();
+  
+  const updates = [];
+  const params = [];
+  
+  if (completed !== undefined) {
+    updates.push('completed = ?');
+    params.push(completed ? 1 : 0);
+    if (completed) {
+      updates.push('completed_at = CURRENT_TIMESTAMP');
+    } else {
+      updates.push('completed_at = NULL');
+    }
+  }
+  
+  if (title !== undefined) {
+    updates.push('title = ?');
+    params.push(title);
+  }
+  
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  
+  params.push(subtaskId, id);
+  
+  dbInstance.run(
+    `UPDATE subtasks SET ${updates.join(', ')} WHERE id = ? AND task_id = ?`,
+    params,
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Error updating subtask' });
+      }
+      
+      // Update task progress
+      updateTaskProgress(dbInstance, id);
+      
+      res.json({ message: 'Subtask updated successfully' });
+    }
+  );
+});
+
+// Delete subtask
+router.delete('/:id/subtasks/:subtaskId', authenticate, (req, res) => {
+  const { id, subtaskId } = req.params;
+  const dbInstance = db.getDb();
+  
+  dbInstance.run(
+    'DELETE FROM subtasks WHERE id = ? AND task_id = ?',
+    [subtaskId, id],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Error deleting subtask' });
+      }
+      
+      // Update task progress
+      updateTaskProgress(dbInstance, id);
+      
+      res.json({ message: 'Subtask deleted successfully' });
+    }
+  );
+});
+
+// Helper function to update task progress based on subtasks
+function updateTaskProgress(dbInstance, taskId) {
+  dbInstance.all(
+    'SELECT completed FROM subtasks WHERE task_id = ?',
+    [taskId],
+    (err, subtasks) => {
+      if (err || !subtasks || subtasks.length === 0) return;
+      
+      const completed = subtasks.filter(s => s.completed).length;
+      const progress = Math.round((completed / subtasks.length) * 100);
+      
+      dbInstance.run(
+        'UPDATE tasks SET progress = ? WHERE id = ?',
+        [progress, taskId]
+      );
+    }
+  );
+}
+
+// Start time tracking
+router.post('/:id/time/start', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+  const dbInstance = db.getDb();
+  
+  // Check if there's already an active time entry
+  dbInstance.get(
+    'SELECT id FROM task_time_entries WHERE task_id = ? AND user_id = ? AND end_time IS NULL',
+    [id, req.user.id],
+    (err, activeEntry) => {
+      if (activeEntry) {
+        return res.status(400).json({ error: 'You already have an active time entry for this task' });
+      }
+      
+      dbInstance.run(
+        `INSERT INTO task_time_entries (task_id, user_id, start_time, notes) VALUES (?, ?, CURRENT_TIMESTAMP, ?)`,
+        [id, req.user.id, notes || ''],
+        function(err) {
+          if (err) {
+            logger.error('Error starting time:', err);
+            return res.status(500).json({ error: 'Error starting time tracking' });
+          }
+          
+          res.status(201).json({ 
+            id: this.lastID, 
+            message: 'Time tracking started' 
+          });
+        }
+      );
+    }
+  );
+});
+
+// Stop time tracking
+router.post('/:id/time/stop', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+  const dbInstance = db.getDb();
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Find active time entry
+  dbInstance.get(
+    'SELECT * FROM task_time_entries WHERE task_id = ? AND user_id = ? AND end_time IS NULL',
+    [id, req.user.id],
+    (err, activeEntry) => {
+      if (!activeEntry) {
+        return res.status(400).json({ error: 'No active time entry found' });
+      }
+      
+      // Calculate duration in minutes
+      let durationQuery;
+      if (isMssql) {
+        durationQuery = 'DATEDIFF(MINUTE, start_time, GETDATE())';
+      } else {
+        durationQuery = "(strftime('%s', 'now') - strftime('%s', start_time)) / 60";
+      }
+      
+      const notesUpdate = notes ? ', notes = ?' : '';
+      const params = notes 
+        ? [activeEntry.id, notes] 
+        : [activeEntry.id];
+      
+      dbInstance.run(
+        `UPDATE task_time_entries 
+         SET end_time = CURRENT_TIMESTAMP, 
+             duration_minutes = ${durationQuery}
+             ${notesUpdate}
+         WHERE id = ?`,
+        notes ? [notes, activeEntry.id] : [activeEntry.id],
+        function(err) {
+          if (err) {
+            logger.error('Error stopping time:', err);
+            return res.status(500).json({ error: 'Error stopping time tracking' });
+          }
+          
+          // Update task actual_hours
+          dbInstance.get(
+            'SELECT SUM(duration_minutes) as total FROM task_time_entries WHERE task_id = ?',
+            [id],
+            (err, result) => {
+              if (result && result.total) {
+                const hours = (result.total / 60).toFixed(2);
+                dbInstance.run(
+                  'UPDATE tasks SET actual_hours = ? WHERE id = ?',
+                  [hours, id]
+                );
+              }
+            }
+          );
+          
+          res.json({ message: 'Time tracking stopped' });
+        }
+      );
+    }
+  );
+});
+
+// Add manual time entry
+router.post('/:id/time', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { duration_minutes, notes, date } = req.body;
+  const dbInstance = db.getDb();
+  
+  if (!duration_minutes || duration_minutes <= 0) {
+    return res.status(400).json({ error: 'Duration is required' });
+  }
+  
+  const startTime = date ? new Date(date) : new Date();
+  const endTime = new Date(startTime.getTime() + duration_minutes * 60000);
+  
+  dbInstance.run(
+    `INSERT INTO task_time_entries (task_id, user_id, start_time, end_time, duration_minutes, notes) 
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, req.user.id, startTime.toISOString(), endTime.toISOString(), duration_minutes, notes || ''],
+    function(err) {
+      if (err) {
+        logger.error('Error adding time entry:', err);
+        return res.status(500).json({ error: 'Error adding time entry' });
+      }
+      
+      // Update task actual_hours
+      dbInstance.get(
+        'SELECT SUM(duration_minutes) as total FROM task_time_entries WHERE task_id = ?',
+        [id],
+        (err, result) => {
+          if (result && result.total) {
+            const hours = (result.total / 60).toFixed(2);
+            dbInstance.run('UPDATE tasks SET actual_hours = ? WHERE id = ?', [hours, id]);
+          }
+        }
+      );
+      
+      res.status(201).json({ 
+        id: this.lastID, 
+        message: 'Time entry added' 
+      });
+    }
+  );
+});
+
+// Get Kanban board view
+router.get('/board/kanban', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+  const { location_id, assigned_to } = req.query;
+  
+  let whereClause = req.user.role === 'admin' 
+    ? 'WHERE 1=1' 
+    : 'WHERE (t.assigned_to = ? OR t.created_by = ?)';
+  const params = req.user.role === 'admin' ? [] : [userId, userId];
+  
+  if (location_id) {
+    whereClause += ' AND t.location_id = ?';
+    params.push(location_id);
+  }
+  
+  if (assigned_to) {
+    whereClause += ' AND t.assigned_to = ?';
+    params.push(assigned_to);
+  }
+  
+  dbInstance.all(
+    `SELECT t.*, 
+     u1.name as assigned_to_name,
+     l.name as location_name,
+     (SELECT COUNT(*) FROM subtasks WHERE task_id = t.id) as subtask_count,
+     (SELECT COUNT(*) FROM subtasks WHERE task_id = t.id AND completed = 1) as completed_subtasks
+     FROM tasks t
+     LEFT JOIN users u1 ON t.assigned_to = u1.id
+     LEFT JOIN locations l ON t.location_id = l.id
+     ${whereClause}
+     ORDER BY t.priority DESC, t.due_date ASC`,
+    params,
+    (err, tasks) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Group tasks by board_column
+      const columns = {
+        backlog: [],
+        todo: [],
+        in_progress: [],
+        review: [],
+        done: []
+      };
+      
+      (tasks || []).forEach(task => {
+        const column = task.board_column || 'backlog';
+        if (columns[column]) {
+          columns[column].push({
+            ...task,
+            tags: task.tags ? task.tags.split(',').map(t => t.trim()) : []
+          });
+        } else {
+          columns.backlog.push(task);
+        }
+      });
+      
+      res.json({ 
+        columns,
+        columnOrder: ['backlog', 'todo', 'in_progress', 'review', 'done'],
+        columnLabels: {
+          backlog: 'Backlog',
+          todo: 'To Do',
+          in_progress: 'In Progress',
+          review: 'Review',
+          done: 'Done'
+        }
+      });
+    }
+  );
+});
+
+// Move task to different column (Kanban)
+router.put('/:id/board-column', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { board_column } = req.body;
+  const dbInstance = db.getDb();
+  
+  const validColumns = ['backlog', 'todo', 'in_progress', 'review', 'done'];
+  if (!validColumns.includes(board_column)) {
+    return res.status(400).json({ error: 'Invalid column' });
+  }
+  
+  // Map column to status
+  const statusMap = {
+    backlog: 'pending',
+    todo: 'pending',
+    in_progress: 'in_progress',
+    review: 'in_progress',
+    done: 'completed'
+  };
+  
+  const newStatus = statusMap[board_column];
+  const completedAt = board_column === 'done' ? ', completed_at = CURRENT_TIMESTAMP' : '';
+  
+  dbInstance.run(
+    `UPDATE tasks SET board_column = ?, status = ? ${completedAt} WHERE id = ?`,
+    [board_column, newStatus, id],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Error moving task' });
+      }
+      res.json({ message: 'Task moved successfully' });
+    }
+  );
+});
+
+// Get task analytics
+router.get('/analytics/summary', authenticate, requirePermission('view_analytics', 'manage_tasks'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { start_date, end_date } = req.query;
+  
+  let dateFilter = '';
+  const params = [];
+  
+  if (start_date) {
+    dateFilter += ' AND t.created_at >= ?';
+    params.push(start_date);
+  }
+  if (end_date) {
+    dateFilter += ' AND t.created_at <= ?';
+    params.push(end_date);
+  }
+  
+  dbInstance.get(
+    `SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+      SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+      SUM(CASE WHEN due_date < CURRENT_TIMESTAMP AND status != 'completed' THEN 1 ELSE 0 END) as overdue,
+      AVG(progress) as avg_progress,
+      SUM(actual_hours) as total_hours
+     FROM tasks t
+     WHERE 1=1 ${dateFilter}`,
+    params,
+    (err, summary) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Get by priority
+      dbInstance.all(
+        `SELECT priority, COUNT(*) as count 
+         FROM tasks t WHERE 1=1 ${dateFilter}
+         GROUP BY priority`,
+        params,
+        (err, byPriority) => {
+          // Get by type
+          dbInstance.all(
+            `SELECT type, COUNT(*) as count 
+             FROM tasks t WHERE 1=1 ${dateFilter}
+             GROUP BY type`,
+            params,
+            (err, byType) => {
+              // Get by assignee
+              dbInstance.all(
+                `SELECT u.name as assignee, COUNT(*) as count,
+                 SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed,
+                 SUM(t.actual_hours) as hours
+                 FROM tasks t
+                 LEFT JOIN users u ON t.assigned_to = u.id
+                 WHERE 1=1 ${dateFilter}
+                 GROUP BY t.assigned_to, u.name`,
+                params,
+                (err, byAssignee) => {
+                  res.json({
+                    summary: summary || {},
+                    byPriority: byPriority || [],
+                    byType: byType || [],
+                    byAssignee: byAssignee || []
+                  });
+                }
+              );
+            }
+          );
         }
       );
     }

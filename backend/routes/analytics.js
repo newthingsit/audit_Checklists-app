@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -312,7 +313,7 @@ router.get('/dashboard', authenticate, (req, res) => {
       });
     })
     .catch(err => {
-      console.error('Analytics error:', err);
+      logger.error('Analytics error:', err);
       res.status(500).json({ error: 'Error fetching analytics' });
     });
 });
@@ -410,6 +411,410 @@ router.get('/trends', authenticate, (req, res) => {
       res.json({ trends: rows || [] });
     }
   );
+});
+
+// ========================================
+// LEADERBOARD ENDPOINTS
+// ========================================
+
+// Get store leaderboard (top performing stores)
+router.get('/leaderboard/stores', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { period, limit: queryLimit } = req.query;
+  const resultLimit = parseInt(queryLimit) || 10;
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Date filter based on period
+  let dateFilter = '';
+  if (period === 'week') {
+    dateFilter = isMssql 
+      ? "AND a.created_at >= DATEADD(day, -7, GETDATE())"
+      : "AND a.created_at >= date('now', '-7 days')";
+  } else if (period === 'month') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -30, GETDATE())"
+      : "AND a.created_at >= date('now', '-30 days')";
+  } else if (period === 'quarter') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -90, GETDATE())"
+      : "AND a.created_at >= date('now', '-90 days')";
+  } else if (period === 'year') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -365, GETDATE())"
+      : "AND a.created_at >= date('now', '-365 days')";
+  }
+  
+  let query;
+  if (isMssql) {
+    query = `
+      SELECT TOP ${resultLimit}
+        l.id as store_id,
+        l.name as store_name,
+        l.store_number,
+        l.city,
+        l.region,
+        COUNT(a.id) as audit_count,
+        ROUND(AVG(CAST(COALESCE(a.score, 0) AS FLOAT)), 1) as avg_score,
+        MAX(a.score) as best_score,
+        MIN(a.score) as lowest_score,
+        SUM(CASE WHEN a.score >= 80 THEN 1 ELSE 0 END) as excellent_count,
+        MAX(a.created_at) as last_audit_date
+      FROM locations l
+      LEFT JOIN audits a ON a.location_id = l.id AND a.status = 'completed' AND a.score IS NOT NULL
+      WHERE 1=1 ${dateFilter.replace('AND a.created_at', 'AND (a.created_at IS NULL OR a.created_at')}${dateFilter ? ')' : ''}
+      GROUP BY l.id, l.name, l.store_number, l.city, l.region
+      HAVING COUNT(a.id) >= 1
+      ORDER BY avg_score DESC, audit_count DESC
+    `;
+  } else {
+    query = `
+      SELECT 
+        l.id as store_id,
+        l.name as store_name,
+        l.store_number,
+        l.city,
+        l.region,
+        COUNT(a.id) as audit_count,
+        ROUND(COALESCE(AVG(a.score), 0), 1) as avg_score,
+        MAX(a.score) as best_score,
+        MIN(a.score) as lowest_score,
+        SUM(CASE WHEN a.score >= 80 THEN 1 ELSE 0 END) as excellent_count,
+        MAX(a.created_at) as last_audit_date
+      FROM locations l
+      LEFT JOIN audits a ON a.location_id = l.id AND a.status = 'completed' AND a.score IS NOT NULL
+      WHERE 1=1 ${dateFilter}
+      GROUP BY l.id, l.name, l.store_number, l.city, l.region
+      HAVING COUNT(a.id) >= 1
+      ORDER BY avg_score DESC, audit_count DESC
+      LIMIT ${resultLimit}
+    `;
+  }
+  
+  dbInstance.all(query, [], (err, stores) => {
+    if (err) {
+      logger.error('Store leaderboard error:', err);
+      // Return empty array instead of 500 error for better UX
+      return res.json({ 
+        stores: [],
+        period: period || 'all',
+        generatedAt: new Date().toISOString(),
+        message: 'No completed audits with scores found'
+      });
+    }
+    
+    // Add rank
+    const rankedStores = (stores || []).map((store, index) => ({
+      rank: index + 1,
+      ...store,
+      trend: store.avg_score >= 80 ? 'up' : store.avg_score >= 60 ? 'stable' : 'down'
+    }));
+    
+    res.json({ 
+      stores: rankedStores,
+      period: period || 'all',
+      generatedAt: new Date().toISOString()
+    });
+  });
+});
+
+// Get auditor leaderboard (top performing auditors)
+router.get('/leaderboard/auditors', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { period, limit: queryLimit } = req.query;
+  const resultLimit = parseInt(queryLimit) || 10;
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Date filter based on period
+  let dateFilter = '';
+  if (period === 'week') {
+    dateFilter = isMssql 
+      ? "AND a.created_at >= DATEADD(day, -7, GETDATE())"
+      : "AND a.created_at >= date('now', '-7 days')";
+  } else if (period === 'month') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -30, GETDATE())"
+      : "AND a.created_at >= date('now', '-30 days')";
+  } else if (period === 'quarter') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -90, GETDATE())"
+      : "AND a.created_at >= date('now', '-90 days')";
+  } else if (period === 'year') {
+    dateFilter = isMssql
+      ? "AND a.created_at >= DATEADD(day, -365, GETDATE())"
+      : "AND a.created_at >= date('now', '-365 days')";
+  }
+  
+  const query = `
+    SELECT 
+      u.id as user_id,
+      u.name as auditor_name,
+      u.email,
+      COUNT(a.id) as audit_count,
+      ROUND(COALESCE(AVG(CAST(a.score AS FLOAT)), 0), 1) as avg_score,
+      SUM(CASE WHEN a.score >= 80 THEN 1 ELSE 0 END) as excellent_audits,
+      SUM(CASE WHEN a.score < 60 THEN 1 ELSE 0 END) as needs_improvement,
+      COUNT(DISTINCT a.location_id) as stores_audited,
+      MAX(a.created_at) as last_audit_date
+    FROM users u
+    INNER JOIN audits a ON a.user_id = u.id
+    WHERE a.status = 'completed' AND a.score IS NOT NULL ${dateFilter}
+    GROUP BY u.id, u.name, u.email
+    HAVING COUNT(a.id) >= 1
+    ORDER BY audit_count DESC, avg_score DESC
+    ${isMssql ? `OFFSET 0 ROWS FETCH NEXT ${resultLimit} ROWS ONLY` : `LIMIT ${resultLimit}`}
+  `;
+  
+  dbInstance.all(query, [], (err, auditors) => {
+    if (err) {
+      logger.error('Auditor leaderboard error:', err);
+      // Return empty array instead of 500 error for better UX
+      return res.json({ 
+        auditors: [],
+        period: period || 'all',
+        generatedAt: new Date().toISOString(),
+        message: 'No completed audits with scores found'
+      });
+    }
+    
+    // Add rank and badges
+    const rankedAuditors = (auditors || []).map((auditor, index) => {
+      const badges = [];
+      if (auditor.audit_count >= 50) badges.push('🏆 Top Auditor');
+      if (auditor.avg_score >= 85) badges.push('⭐ High Performer');
+      if (auditor.excellent_audits >= 10) badges.push('🎯 Excellence Champion');
+      if (auditor.stores_audited >= 10) badges.push('🌍 Multi-Store Expert');
+      
+      return {
+        rank: index + 1,
+        ...auditor,
+        badges,
+        performance: auditor.avg_score >= 80 ? 'excellent' : auditor.avg_score >= 60 ? 'good' : 'needs_improvement'
+      };
+    });
+    
+    res.json({ 
+      auditors: rankedAuditors,
+      period: period || 'all',
+      generatedAt: new Date().toISOString()
+    });
+  });
+});
+
+// Get combined leaderboard summary for dashboard
+router.get('/leaderboard/summary', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { period } = req.query;
+  
+  let dateFilter = '';
+  if (period === 'month') {
+    dateFilter = "AND a.created_at >= date('now', '-30 days')";
+  }
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  if (dbType === 'mssql' || dbType === 'sqlserver') {
+    dateFilter = dateFilter.replace("date('now', '-30 days')", "DATEADD(day, -30, GETDATE())");
+  }
+  
+  Promise.all([
+    // Top 5 stores
+    new Promise((resolve, reject) => {
+      dbInstance.all(`
+        SELECT l.name as store_name, l.store_number, 
+               COUNT(a.id) as audits, ROUND(AVG(CAST(a.score AS FLOAT)), 0) as score
+        FROM locations l
+        INNER JOIN audits a ON a.location_id = l.id
+        WHERE a.status = 'completed' AND a.score IS NOT NULL ${dateFilter}
+        GROUP BY l.id, l.name, l.store_number
+        ORDER BY score DESC, audits DESC
+        ${dbType === 'mssql' || dbType === 'sqlserver' ? 'OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY' : 'LIMIT 5'}
+      `, [], (err, rows) => err ? reject(err) : resolve(rows || []));
+    }),
+    // Top 5 auditors
+    new Promise((resolve, reject) => {
+      dbInstance.all(`
+        SELECT u.name as auditor_name, u.email,
+               COUNT(a.id) as audits, ROUND(AVG(CAST(a.score AS FLOAT)), 0) as score
+        FROM users u
+        INNER JOIN audits a ON a.user_id = u.id
+        WHERE a.status = 'completed' AND a.score IS NOT NULL ${dateFilter}
+        GROUP BY u.id, u.name, u.email
+        ORDER BY audits DESC, score DESC
+        ${dbType === 'mssql' || dbType === 'sqlserver' ? 'OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY' : 'LIMIT 5'}
+      `, [], (err, rows) => err ? reject(err) : resolve(rows || []));
+    }),
+    // Overall stats
+    new Promise((resolve, reject) => {
+      dbInstance.get(`
+        SELECT 
+          COUNT(DISTINCT a.location_id) as total_stores_audited,
+          COUNT(DISTINCT a.user_id) as total_auditors,
+          COUNT(a.id) as total_audits,
+          ROUND(AVG(CAST(a.score AS FLOAT)), 1) as overall_avg_score
+        FROM audits a
+        WHERE a.status = 'completed' AND a.score IS NOT NULL ${dateFilter}
+      `, [], (err, row) => err ? reject(err) : resolve(row || {}));
+    })
+  ])
+  .then(([topStores, topAuditors, stats]) => {
+    res.json({
+      topStores: topStores.map((s, i) => ({ rank: i + 1, ...s })),
+      topAuditors: topAuditors.map((a, i) => ({ rank: i + 1, ...a })),
+      stats,
+      period: period || 'all'
+    });
+  })
+  .catch(err => {
+    logger.error('Leaderboard summary error:', err);
+    res.status(500).json({ error: 'Database error' });
+  });
+});
+
+// ========================================
+// TREND ANALYSIS ENDPOINTS
+// ========================================
+
+// Get detailed trend analysis with comparisons
+router.get('/trends/analysis', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { compareWith } = req.query; // 'previous_period', 'last_year'
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Current period (last 30 days)
+  const currentPeriodFilter = isMssql 
+    ? "a.created_at >= DATEADD(day, -30, GETDATE())"
+    : "a.created_at >= date('now', '-30 days')";
+  
+  // Previous period (30-60 days ago)
+  const previousPeriodFilter = isMssql
+    ? "a.created_at >= DATEADD(day, -60, GETDATE()) AND a.created_at < DATEADD(day, -30, GETDATE())"
+    : "a.created_at >= date('now', '-60 days') AND a.created_at < date('now', '-30 days')";
+  
+  // Same period last year
+  const lastYearFilter = isMssql
+    ? "a.created_at >= DATEADD(day, -395, GETDATE()) AND a.created_at < DATEADD(day, -365, GETDATE())"
+    : "a.created_at >= date('now', '-395 days') AND a.created_at < date('now', '-365 days')";
+  
+  const getStats = (filter) => {
+    return new Promise((resolve, reject) => {
+      dbInstance.get(`
+        SELECT 
+          COUNT(*) as total_audits,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+          ROUND(AVG(CAST(score AS FLOAT)), 1) as avg_score,
+          SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as excellent,
+          SUM(CASE WHEN score < 60 THEN 1 ELSE 0 END) as poor,
+          COUNT(DISTINCT location_id) as stores
+        FROM audits a
+        WHERE ${filter} AND status = 'completed'
+      `, [], (err, row) => err ? reject(err) : resolve(row || {}));
+    });
+  };
+  
+  Promise.all([
+    getStats(currentPeriodFilter),
+    getStats(previousPeriodFilter),
+    getStats(lastYearFilter)
+  ])
+  .then(([current, previous, lastYear]) => {
+    // Calculate changes
+    const calculateChange = (current, previous) => {
+      if (!previous || previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+    
+    res.json({
+      current: {
+        period: 'Last 30 days',
+        ...current
+      },
+      previous: {
+        period: 'Previous 30 days',
+        ...previous
+      },
+      lastYear: {
+        period: 'Same period last year',
+        ...lastYear
+      },
+      changes: {
+        vsPrevious: {
+          audits: calculateChange(current.total_audits, previous.total_audits),
+          score: ((current.avg_score || 0) - (previous.avg_score || 0)).toFixed(1),
+          stores: calculateChange(current.stores, previous.stores)
+        },
+        vsLastYear: {
+          audits: calculateChange(current.total_audits, lastYear.total_audits),
+          score: ((current.avg_score || 0) - (lastYear.avg_score || 0)).toFixed(1),
+          stores: calculateChange(current.stores, lastYear.stores)
+        }
+      }
+    });
+  })
+  .catch(err => {
+    logger.error('Trend analysis error:', err);
+    res.status(500).json({ error: 'Database error' });
+  });
+});
+
+// Get weekly breakdown for the current month
+router.get('/trends/weekly', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { month, year } = req.query;
+  
+  const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+  const targetYear = parseInt(year) || new Date().getFullYear();
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  let weekQuery;
+  if (isMssql) {
+    weekQuery = `
+      SELECT 
+        DATEPART(week, created_at) as week_number,
+        COUNT(*) as audits,
+        ROUND(AVG(CAST(score AS FLOAT)), 1) as avg_score,
+        SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as excellent
+      FROM audits
+      WHERE MONTH(created_at) = ? AND YEAR(created_at) = ? AND status = 'completed'
+      GROUP BY DATEPART(week, created_at)
+      ORDER BY week_number
+    `;
+  } else {
+    weekQuery = `
+      SELECT 
+        strftime('%W', created_at) as week_number,
+        COUNT(*) as audits,
+        ROUND(AVG(score), 1) as avg_score,
+        SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as excellent
+      FROM audits
+      WHERE strftime('%m', created_at) = ? AND strftime('%Y', created_at) = ? AND status = 'completed'
+      GROUP BY strftime('%W', created_at)
+      ORDER BY week_number
+    `;
+  }
+  
+  const params = isMssql 
+    ? [targetMonth, targetYear] 
+    : [targetMonth.toString().padStart(2, '0'), targetYear.toString()];
+  
+  dbInstance.all(weekQuery, params, (err, weeks) => {
+    if (err) {
+      logger.error('Weekly trends error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({
+      weeks: weeks || [],
+      month: targetMonth,
+      year: targetYear
+    });
+  });
 });
 
 module.exports = router;

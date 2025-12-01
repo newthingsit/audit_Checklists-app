@@ -1,6 +1,6 @@
 {
   "name": "audit_checklists-app",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "description": "A comprehensive web and mobile application for conducting restaurant audits and checklists. This application helps restaurant managers and auditors track compliance, safety, and quality standards.",
   "main": "index.js",
   "directories": {
@@ -8,7 +8,11 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/run-all-tests.js",
+    "test:backend": "cd backend && npm test",
+    "test:web": "cd web && npm test -- --watchAll=false",
+    "test:setup": "cd backend && npm run test:setup",
+    "test:quick": "node scripts/run-all-tests.js --quick"
   },
   "keywords": [],
   "author": "",

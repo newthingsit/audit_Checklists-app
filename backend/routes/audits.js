@@ -363,7 +363,11 @@ router.get('/:id', authenticate, (req, res) => {
 
 // Create new audit
 router.post('/', authenticate, (req, res) => {
-  const { template_id, restaurant_name, location, location_id, team_id, notes, scheduled_audit_id } = req.body;
+  const { 
+    template_id, restaurant_name, location, location_id, team_id, notes, scheduled_audit_id,
+    // GPS location data
+    gps_latitude, gps_longitude, gps_accuracy, gps_timestamp, location_verified
+  } = req.body;
   const dbInstance = db.getDb();
   const { requirePermission, getUserPermissions, hasPermission } = require('../middleware/permissions');
 
@@ -433,13 +437,13 @@ router.post('/', authenticate, (req, res) => {
 
           // Create audit - use location_id if provided, otherwise use location text
           dbInstance.run(
-            `INSERT INTO audits (template_id, user_id, restaurant_name, location, location_id, team_id, notes, total_items, scheduled_audit_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null],
+            `INSERT INTO audits (template_id, user_id, restaurant_name, location, location_id, team_id, notes, total_items, scheduled_audit_id, gps_latitude, gps_longitude, gps_accuracy, gps_timestamp, location_verified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null, gps_latitude || null, gps_longitude || null, gps_accuracy || null, gps_timestamp || null, location_verified ? 1 : 0],
             function(err, result) {
               if (err) {
-                console.error('Error creating audit:', err);
-                console.error('Error creating audit:', err);
+                logger.error('Error creating audit:', err);
+                logger.error('Error creating audit:', err);
                 return res.status(500).json({ error: 'Error creating audit' });
               }
 
@@ -496,7 +500,18 @@ router.post('/', authenticate, (req, res) => {
 // Update audit details
 router.put('/:id', authenticate, (req, res) => {
   const auditId = req.params.id;
-  const { restaurant_name, location, location_id, notes } = req.body;
+  const { 
+    restaurant_name, 
+    location, 
+    location_id, 
+    notes,
+    // GPS location data
+    gps_latitude, 
+    gps_longitude, 
+    gps_accuracy, 
+    gps_timestamp, 
+    location_verified
+  } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const { getUserPermissions, hasPermission } = require('../middleware/permissions');
@@ -563,6 +578,27 @@ router.put('/:id', authenticate, (req, res) => {
     if (notes !== undefined) {
       updateFields.push('notes = ?');
       updateValues.push(notes);
+    }
+    // GPS location fields
+    if (gps_latitude !== undefined) {
+      updateFields.push('gps_latitude = ?');
+      updateValues.push(gps_latitude);
+    }
+    if (gps_longitude !== undefined) {
+      updateFields.push('gps_longitude = ?');
+      updateValues.push(gps_longitude);
+    }
+    if (gps_accuracy !== undefined) {
+      updateFields.push('gps_accuracy = ?');
+      updateValues.push(gps_accuracy);
+    }
+    if (gps_timestamp !== undefined) {
+      updateFields.push('gps_timestamp = ?');
+      updateValues.push(gps_timestamp);
+    }
+    if (location_verified !== undefined) {
+      updateFields.push('location_verified = ?');
+      updateValues.push(location_verified ? 1 : 0);
     }
 
     if (updateFields.length === 0) {
@@ -953,7 +989,7 @@ router.delete('/:id', authenticate, (req, res) => {
   // Check permissions first
   getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
     if (permErr) {
-      console.error('Error fetching permissions:', permErr);
+      logger.error('Error fetching permissions:', permErr);
       return res.status(500).json({ error: 'Error checking permissions' });
     }
 

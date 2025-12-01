@@ -19,7 +19,13 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  Tab,
+  Tabs,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import ChecklistIcon from '@mui/icons-material/Checklist';
@@ -32,6 +38,9 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import StoreIcon from '@mui/icons-material/Store';
 import PersonIcon from '@mui/icons-material/Person';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import {
   BarChart,
   Bar,
@@ -61,6 +70,10 @@ const Dashboard = () => {
   const [trends, setTrends] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [leaderboard, setLeaderboard] = useState({ stores: [], auditors: [] });
+  const [trendAnalysis, setTrendAnalysis] = useState(null);
+  const [leaderboardTab, setLeaderboardTab] = useState(0);
+  const [trendPeriod, setTrendPeriod] = useState('week');
   const navigate = useNavigate();
 
   // Permission checks
@@ -114,10 +127,22 @@ const Dashboard = () => {
         // Trends
         canViewAnalytics
           ? axios.get('/api/analytics/trends?period=month').catch(() => ({ data: { trends: [] } }))
-          : Promise.resolve({ data: { trends: [] } })
+          : Promise.resolve({ data: { trends: [] } }),
+        // Leaderboard - Stores
+        canViewAnalytics
+          ? axios.get('/api/analytics/leaderboard/stores?limit=5').catch(() => ({ data: { stores: [] } }))
+          : Promise.resolve({ data: { stores: [] } }),
+        // Leaderboard - Auditors
+        canViewAnalytics
+          ? axios.get('/api/analytics/leaderboard/auditors?limit=5').catch(() => ({ data: { auditors: [] } }))
+          : Promise.resolve({ data: { auditors: [] } }),
+        // Trend Analysis
+        canViewAnalytics
+          ? axios.get('/api/analytics/trends/analysis?period=week').catch(() => ({ data: {} }))
+          : Promise.resolve({ data: {} })
       ];
 
-      const [templatesRes, auditsRes, actionsRes, analyticsRes, trendsRes] = await Promise.all(fetchPromises);
+      const [templatesRes, auditsRes, actionsRes, analyticsRes, trendsRes, storesLeaderboardRes, auditorsLeaderboardRes, trendAnalysisRes] = await Promise.all(fetchPromises);
 
       const audits = auditsRes.data.audits || [];
       const completed = audits.filter(a => a.status === 'completed').length;
@@ -133,10 +158,48 @@ const Dashboard = () => {
       setAnalytics(analyticsRes.data);
       setTrends(trendsRes.data.trends || []);
       setRecentAudits(analyticsRes.data?.recent || audits.slice(0, 5));
+      setLeaderboard({
+        stores: storesLeaderboardRes.data.stores || [],
+        auditors: auditorsLeaderboardRes.data.auditors || []
+      });
+      setTrendAnalysis(trendAnalysisRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTrendAnalysis = async (period) => {
+    try {
+      const response = await axios.get(`/api/analytics/trends/analysis?period=${period}`);
+      setTrendAnalysis(response.data);
+    } catch (error) {
+      console.error('Error fetching trend analysis:', error);
+    }
+  };
+
+  const handleTrendPeriodChange = (e) => {
+    const period = e.target.value;
+    setTrendPeriod(period);
+    fetchTrendAnalysis(period);
+  };
+
+  const getMedalColor = (rank) => {
+    switch(rank) {
+      case 1: return '#FFD700'; // Gold
+      case 2: return '#C0C0C0'; // Silver
+      case 3: return '#CD7F32'; // Bronze
+      default: return '#9e9e9e';
+    }
+  };
+
+  const getMedalEmoji = (rank) => {
+    switch(rank) {
+      case 1: return '🥇';
+      case 2: return '🥈';
+      case 3: return '🥉';
+      default: return `#${rank}`;
     }
   };
 
@@ -506,6 +569,265 @@ const Dashboard = () => {
                 </Card>
               </Grid>
             )}
+          </Grid>
+        )}
+
+        {/* Leaderboard Section */}
+        {canViewAnalytics && (leaderboard.stores.length > 0 || leaderboard.auditors.length > 0) && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card sx={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white'
+              }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <EmojiEventsIcon sx={{ mr: 1, fontSize: 28 }} />
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      🏆 Leaderboard
+                    </Typography>
+                  </Box>
+                  <Tabs
+                    value={leaderboardTab}
+                    onChange={(e, newValue) => setLeaderboardTab(newValue)}
+                    sx={{
+                      mb: 2,
+                      '& .MuiTab-root': { color: 'rgba(255,255,255,0.7)' },
+                      '& .Mui-selected': { color: 'white' },
+                      '& .MuiTabs-indicator': { backgroundColor: 'white' }
+                    }}
+                  >
+                    <Tab label="Top Stores" icon={<StoreIcon />} iconPosition="start" />
+                    <Tab label="Top Auditors" icon={<PersonIcon />} iconPosition="start" />
+                  </Tabs>
+                  
+                  {leaderboardTab === 0 && leaderboard.stores.length > 0 && (
+                    <Grid container spacing={2}>
+                      {leaderboard.stores.map((store, index) => (
+                        <Grid item xs={12} sm={6} md={4} lg={2.4} key={store.location_id || index}>
+                          <Paper sx={{ 
+                            p: 2, 
+                            textAlign: 'center',
+                            background: index < 3 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+                            borderRadius: 2,
+                            border: index === 0 ? '2px solid #FFD700' : index === 1 ? '2px solid #C0C0C0' : index === 2 ? '2px solid #CD7F32' : 'none',
+                            transform: index === 0 ? 'scale(1.05)' : 'none',
+                            transition: 'all 0.3s'
+                          }}>
+                            <Typography variant="h3" sx={{ mb: 1 }}>
+                              {getMedalEmoji(index + 1)}
+                            </Typography>
+                            <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }} noWrap>
+                              {store.store_name || 'Unknown'}
+                            </Typography>
+                            {store.store_number && (
+                              <Typography variant="caption" sx={{ opacity: 0.8, color: 'white' }}>
+                                #{store.store_number}
+                              </Typography>
+                            )}
+                            <Box sx={{ mt: 1 }}>
+                              <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFD700' }}>
+                                {Math.round(store.avg_score || 0)}%
+                              </Typography>
+                              <Typography variant="caption" sx={{ opacity: 0.7, color: 'white' }}>
+                                {store.audit_count} audits
+                              </Typography>
+                            </Box>
+                          </Paper>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
+                  
+                  {leaderboardTab === 1 && leaderboard.auditors.length > 0 && (
+                    <Grid container spacing={2}>
+                      {leaderboard.auditors.map((auditor, index) => (
+                        <Grid item xs={12} sm={6} md={4} lg={2.4} key={auditor.user_id || index}>
+                          <Paper sx={{ 
+                            p: 2, 
+                            textAlign: 'center',
+                            background: index < 3 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+                            borderRadius: 2,
+                            border: index === 0 ? '2px solid #FFD700' : index === 1 ? '2px solid #C0C0C0' : index === 2 ? '2px solid #CD7F32' : 'none',
+                            transform: index === 0 ? 'scale(1.05)' : 'none',
+                            transition: 'all 0.3s'
+                          }}>
+                            <Typography variant="h3" sx={{ mb: 1 }}>
+                              {getMedalEmoji(index + 1)}
+                            </Typography>
+                            <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }} noWrap>
+                              {auditor.user_name || 'Unknown'}
+                            </Typography>
+                            <Box sx={{ mt: 1 }}>
+                              <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFD700' }}>
+                                {auditor.audit_count}
+                              </Typography>
+                              <Typography variant="caption" sx={{ opacity: 0.7, color: 'white' }}>
+                                audits completed
+                              </Typography>
+                              {auditor.avg_score && (
+                                <Typography variant="body2" sx={{ color: '#90EE90', mt: 0.5 }}>
+                                  Avg: {Math.round(auditor.avg_score)}%
+                                </Typography>
+                              )}
+                            </Box>
+                          </Paper>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
+                  
+                  {((leaderboardTab === 0 && leaderboard.stores.length === 0) || 
+                    (leaderboardTab === 1 && leaderboard.auditors.length === 0)) && (
+                    <Typography variant="body1" sx={{ textAlign: 'center', py: 3, opacity: 0.7 }}>
+                      No data available yet
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* Trend Analysis Section */}
+        {canViewAnalytics && trendAnalysis && (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <TimelineIcon sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        📊 Trend Analysis
+                      </Typography>
+                    </Box>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                      <InputLabel>Period</InputLabel>
+                      <Select value={trendPeriod} onChange={handleTrendPeriodChange} label="Period">
+                        <MenuItem value="day">Daily</MenuItem>
+                        <MenuItem value="week">Weekly</MenuItem>
+                        <MenuItem value="month">Monthly</MenuItem>
+                        <MenuItem value="quarter">Quarterly</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  
+                  <Grid container spacing={3}>
+                    {/* Current Period Stats */}
+                    <Grid item xs={12} md={6}>
+                      <Paper sx={{ p: 2, bgcolor: 'primary.light', color: 'white', borderRadius: 2 }}>
+                        <Typography variant="subtitle2" sx={{ opacity: 0.9, mb: 1 }}>
+                          Current Period
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                              {trendAnalysis.currentPeriod?.total || 0}
+                            </Typography>
+                            <Typography variant="caption">Total Audits</Typography>
+                          </Grid>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                              {trendAnalysis.currentPeriod?.completed || 0}
+                            </Typography>
+                            <Typography variant="caption">Completed</Typography>
+                          </Grid>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                              {Math.round(trendAnalysis.currentPeriod?.avgScore || 0)}%
+                            </Typography>
+                            <Typography variant="caption">Avg Score</Typography>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    </Grid>
+                    
+                    {/* Previous Period Stats */}
+                    <Grid item xs={12} md={6}>
+                      <Paper sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                          Previous Period
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                              {trendAnalysis.previousPeriod?.total || 0}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">Total Audits</Typography>
+                          </Grid>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                              {trendAnalysis.previousPeriod?.completed || 0}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">Completed</Typography>
+                          </Grid>
+                          <Grid item xs={4}>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                              {Math.round(trendAnalysis.previousPeriod?.avgScore || 0)}%
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">Avg Score</Typography>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    </Grid>
+                    
+                    {/* Change Indicators */}
+                    <Grid item xs={12}>
+                      <Paper sx={{ p: 2, borderRadius: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <CompareArrowsIcon sx={{ mr: 1, color: 'primary.main' }} />
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            Period Comparison
+                          </Typography>
+                        </Box>
+                        <Grid container spacing={3}>
+                          <Grid item xs={12} sm={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Chip
+                                icon={(trendAnalysis.changes?.totalChange || 0) >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                label={`${(trendAnalysis.changes?.totalChange || 0) >= 0 ? '+' : ''}${trendAnalysis.changes?.totalChange || 0}`}
+                                color={(trendAnalysis.changes?.totalChange || 0) >= 0 ? 'success' : 'error'}
+                                sx={{ fontSize: '1rem', py: 2, px: 1 }}
+                              />
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                Total Audits Change
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Chip
+                                icon={(trendAnalysis.changes?.completedChange || 0) >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                label={`${(trendAnalysis.changes?.completedChange || 0) >= 0 ? '+' : ''}${trendAnalysis.changes?.completedChange || 0}`}
+                                color={(trendAnalysis.changes?.completedChange || 0) >= 0 ? 'success' : 'error'}
+                                sx={{ fontSize: '1rem', py: 2, px: 1 }}
+                              />
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                Completed Change
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Chip
+                                icon={(trendAnalysis.changes?.scoreChange || 0) >= 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                                label={`${(trendAnalysis.changes?.scoreChange || 0) >= 0 ? '+' : ''}${Math.round(trendAnalysis.changes?.scoreChange || 0)}%`}
+                                color={(trendAnalysis.changes?.scoreChange || 0) >= 0 ? 'success' : 'error'}
+                                sx={{ fontSize: '1rem', py: 2, px: 1 }}
+                              />
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                Score Change
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
         )}
 

@@ -1,183 +1,157 @@
-# Deployment Checklist
+# ✅ Deployment Checklist
 
-## Pre-Deployment Preparation
-
-### 1. Environment Setup
-- [ ] Create production database (PostgreSQL/MySQL/SQL Server)
-- [ ] Set up database backups
-- [ ] Configure environment variables in hosting platform
-- [ ] Generate strong JWT secret
-- [ ] Set up file storage (S3/Cloudinary/DigitalOcean Spaces)
-- [ ] Configure email service (if using notifications)
-
-### 2. Code Preparation
-- [ ] Update API URLs in frontend (`.env.production`)
-- [ ] Update API URLs in mobile app (`mobile/src/config/api.js`)
-- [ ] Test all features in staging environment
-- [ ] Run security audit
-- [ ] Update dependencies (`npm audit fix`)
-- [ ] Remove console.logs from production code (optional)
-
-### 3. Database Migration
-- [ ] Backup existing database (if migrating)
-- [ ] Run database initialization script
-- [ ] Verify all tables are created
-- [ ] Test database connections
-- [ ] Set up database connection pooling
-
-## Backend Deployment
-
-### Railway / Heroku / DigitalOcean
-- [ ] Connect GitHub repository
-- [ ] Set root directory to `backend`
-- [ ] Configure build command: `npm install`
-- [ ] Set start command: `node server.js`
-- [ ] Add all environment variables
-- [ ] Configure persistent storage for `/uploads` (if not using cloud storage)
-- [ ] Set up process manager (PM2) if needed
-- [ ] Configure health check endpoint
-- [ ] Test API endpoints after deployment
-
-### AWS / VPS
-- [ ] Set up EC2 instance or VPS
-- [ ] Install Node.js 18+
-- [ ] Clone repository
-- [ ] Install dependencies: `npm install --production`
-- [ ] Set up PM2 or systemd service
-- [ ] Configure Nginx reverse proxy (if needed)
-- [ ] Set up SSL certificate (Let's Encrypt)
-- [ ] Configure firewall rules
-- [ ] Test API endpoints
-
-## Frontend Deployment
-
-### Vercel / Netlify
-- [ ] Connect GitHub repository
-- [ ] Set root directory to `web`
-- [ ] Set build command: `npm run build`
-- [ ] Set output directory: `build`
-- [ ] Add environment variables:
-  - `REACT_APP_API_URL=https://your-backend-api.com/api`
-- [ ] Configure custom domain (optional)
-- [ ] Test frontend after deployment
-
-### AWS S3 + CloudFront
-- [ ] Build frontend: `cd web && npm run build`
-- [ ] Create S3 bucket
-- [ ] Upload `build` folder contents to S3
-- [ ] Configure S3 bucket for static website hosting
-- [ ] Set up CloudFront distribution
-- [ ] Configure custom domain and SSL
-- [ ] Test frontend
-
-## Mobile App Deployment
-
-### Expo EAS Build
-- [ ] Install EAS CLI: `npm install -g eas-cli`
-- [ ] Login to Expo: `eas login`
-- [ ] Configure EAS: `eas build:configure`
-- [ ] Update API URL in `mobile/src/config/api.js`:
-  ```javascript
-  return 'https://your-backend-api.com/api';
-  ```
-- [ ] Build Android: `eas build --platform android`
-- [ ] Build iOS: `eas build --platform ios`
-- [ ] Test builds on devices
-- [ ] Submit to stores: `eas submit`
-
-### App Store Submission
-- [ ] Create Apple Developer account ($99/year)
-- [ ] Prepare app metadata
-- [ ] Create app icons and screenshots
-- [ ] Submit iOS build
-- [ ] Wait for review (1-7 days)
-
-### Google Play Submission
-- [ ] Create Google Play Developer account ($25 one-time)
-- [ ] Prepare app metadata
-- [ ] Create app icons and screenshots
-- [ ] Submit Android build
-- [ ] Wait for review (1-3 days)
-
-## Post-Deployment
-
-### Testing
-- [ ] Test user registration/login
-- [ ] Test checklist creation
-- [ ] Test audit creation and completion
-- [ ] Test file uploads (photos)
-- [ ] Test PDF/CSV exports
-- [ ] Test mobile app connection
-- [ ] Test scheduled audits (cron jobs)
-- [ ] Test notifications (if enabled)
-- [ ] Test admin features
-- [ ] Test on different devices/browsers
-
-### Monitoring Setup
-- [ ] Set up error tracking (Sentry/LogRocket)
-- [ ] Set up uptime monitoring (UptimeRobot)
-- [ ] Configure log aggregation
-- [ ] Set up performance monitoring
-- [ ] Configure alerts for critical errors
-
-### Security
-- [ ] Verify HTTPS is enabled
-- [ ] Test CORS configuration
-- [ ] Verify JWT tokens are working
-- [ ] Test rate limiting (if implemented)
-- [ ] Verify file upload validation
-- [ ] Check for exposed API keys/secrets
-- [ ] Run security scan
-
-### Backup & Recovery
-- [ ] Set up automated database backups
-- [ ] Set up file storage backups
-- [ ] Test backup restoration process
-- [ ] Document recovery procedures
-
-### Documentation
-- [ ] Update API documentation
-- [ ] Document deployment process
-- [ ] Create runbook for common issues
-- [ ] Document environment variables
-- [ ] Create user guide
-
-## Maintenance Schedule
-
-### Daily
-- [ ] Check error logs
-- [ ] Monitor uptime
-- [ ] Check database performance
-
-### Weekly
-- [ ] Review error reports
-- [ ] Check storage usage
-- [ ] Review user feedback
-
-### Monthly
-- [ ] Update dependencies
-- [ ] Review security patches
-- [ ] Check backup integrity
-- [ ] Review costs
-- [ ] Performance optimization
-
-## Rollback Plan
-
-If deployment fails:
-1. [ ] Revert to previous version
-2. [ ] Restore database backup if needed
-3. [ ] Check error logs
-4. [ ] Fix issues in staging
-5. [ ] Re-deploy after fixes
-
-## Emergency Contacts
-
-- **Backend Issues**: [Your contact]
-- **Database Issues**: [DBA contact]
-- **Hosting Issues**: [Hosting provider support]
-- **Mobile App Issues**: [Mobile developer contact]
+Use this checklist to deploy Audit Pro to production.
 
 ---
 
-**Last Updated**: Version 0.1
+## 📋 Pre-Deployment Checklist
 
+### Code & Configuration
+- [ ] All features tested and working
+- [ ] No console.log statements in production code
+- [ ] Environment variables configured
+- [ ] API URLs updated for production
+- [ ] Version numbers updated
+
+### Security
+- [ ] Strong JWT_SECRET generated (64+ characters)
+- [ ] Database passwords are secure
+- [ ] CORS configured for production domains only
+- [ ] HTTPS enabled
+
+---
+
+## ☁️ Azure Deployment
+
+### Step 1: Create Azure Account
+- [ ] Sign up at https://azure.microsoft.com/free/
+- [ ] Claim $200 free credit
+- [ ] Install Azure CLI
+
+### Step 2: Create Resources
+```bash
+# Login
+az login
+
+# Create Resource Group
+az group create --name audit-app-rg --location eastus
+```
+
+### Step 3: Deploy Database
+- [ ] Create Azure SQL Server
+- [ ] Create database `audit_checklists`
+- [ ] Configure firewall rules
+- [ ] Note connection string
+
+### Step 4: Deploy Backend
+- [ ] Create App Service (B1 plan)
+- [ ] Configure environment variables
+- [ ] Deploy code via GitHub Actions or ZIP
+- [ ] Test API endpoints
+
+### Step 5: Deploy Frontend
+- [ ] Create Static Web App
+- [ ] Connect to GitHub repository
+- [ ] Configure build settings
+- [ ] Test web app
+
+### Step 6: Configure Storage
+- [ ] Create Storage Account
+- [ ] Create blob container for photos
+- [ ] Update backend with storage credentials
+
+---
+
+## 📱 Mobile App Deployment
+
+### Step 1: Expo Setup
+- [ ] Create Expo account at https://expo.dev
+- [ ] Install EAS CLI: `npm install -g eas-cli`
+- [ ] Login: `eas login`
+- [ ] Configure project: `eas build:configure`
+
+### Step 2: Update Configuration
+Edit `mobile/app.json`:
+- [ ] Update `expo.extra.eas.projectId`
+- [ ] Update `expo.extra.apiUrl.production` to Azure URL
+- [ ] Update `expo.owner` to your Expo username
+
+### Step 3: Build Apps
+```bash
+# Preview build (for testing)
+eas build --platform android --profile preview
+
+# Production build
+eas build --platform all --profile production
+```
+
+### Step 4: App Store Accounts
+- [ ] Google Play Console ($25 one-time)
+- [ ] Apple Developer Program ($99/year)
+
+### Step 5: Submit to Stores
+```bash
+# Android
+eas submit --platform android
+
+# iOS
+eas submit --platform ios
+```
+
+---
+
+## 🔧 Post-Deployment
+
+### Monitoring
+- [ ] Set up Application Insights (Azure)
+- [ ] Configure error tracking (Sentry)
+- [ ] Set up uptime monitoring
+
+### Backup
+- [ ] Enable Azure SQL automated backups
+- [ ] Configure blob storage redundancy
+
+### Documentation
+- [ ] Update README with production URLs
+- [ ] Document admin credentials securely
+- [ ] Create user guide
+
+---
+
+## 🔗 Quick Links
+
+| Resource | URL |
+|----------|-----|
+| Azure Portal | https://portal.azure.com |
+| Expo Dashboard | https://expo.dev |
+| Google Play Console | https://play.google.com/console |
+| App Store Connect | https://appstoreconnect.apple.com |
+
+---
+
+## 📞 Support Contacts
+
+| Issue | Contact |
+|-------|---------|
+| Azure Support | Azure Portal → Help + Support |
+| Expo Support | https://expo.dev/support |
+| App Store Review | App Store Connect |
+| Play Store Review | Google Play Console |
+
+---
+
+## 🎉 Launch Checklist
+
+Final checks before going live:
+
+- [ ] All API endpoints working
+- [ ] User registration/login working
+- [ ] Audit creation working
+- [ ] Photo upload working
+- [ ] Offline mode working (mobile)
+- [ ] Push notifications working (mobile)
+- [ ] Admin dashboard accessible
+- [ ] Reports generating correctly
+- [ ] Email notifications working (if configured)
+
+**Ready to launch! 🚀**

@@ -276,18 +276,123 @@ const createTables = () => {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`);
 
+      // Push notification tokens table
+      db.run(`CREATE TABLE IF NOT EXISTS push_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL,
+        platform TEXT DEFAULT 'unknown',
+        device_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`);
+
+      // Notification history table (for sent push notifications)
+      db.run(`CREATE TABLE IF NOT EXISTS notification_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        data TEXT,
+        read BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`);
+
+      // Digital signatures table
+      db.run(`CREATE TABLE IF NOT EXISTS audit_signatures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        audit_id INTEGER NOT NULL,
+        signer_name TEXT NOT NULL,
+        signer_role TEXT,
+        signature_data TEXT NOT NULL,
+        signed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ip_address TEXT,
+        device_info TEXT,
+        FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE
+      )`);
+
+      // App settings table (for admin-controlled feature flags)
+      db.run(`CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        setting_key TEXT UNIQUE NOT NULL,
+        setting_value TEXT NOT NULL,
+        description TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_by INTEGER,
+        FOREIGN KEY (updated_by) REFERENCES users(id)
+      )`);
+
+      // Core audit indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_template ON audits(template_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_status ON audits(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_location ON audits(location_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_scheduled ON audits(scheduled_audit_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audit_items_audit ON audit_items(audit_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audit_items_item ON audit_items(item_id)`);
+      
+      // Checklist indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_checklist_items_template ON checklist_items(template_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_checklist_items_category ON checklist_items(category)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_checklist_item_options_item ON checklist_item_options(item_id)`);
+      
+      // Scheduled audit indexes (critical for performance)
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_date ON scheduled_audits(scheduled_date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_status ON scheduled_audits(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_assigned ON scheduled_audits(assigned_to)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_template ON scheduled_audits(template_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_location ON scheduled_audits(location_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_created_by ON scheduled_audits(created_by)`);
+      
+      // Reschedule tracking indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_reschedule_tracking_user ON reschedule_tracking(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_reschedule_tracking_month ON reschedule_tracking(reschedule_month)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_reschedule_tracking_audit ON reschedule_tracking(scheduled_audit_id)`);
+      
+      // Location indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_store_number ON locations(store_number)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_district ON locations(district)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_parent ON locations(parent_id)`);
+      
+      // Action items indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_audit ON action_items(audit_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_assigned ON action_items(assigned_to)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_due_date ON action_items(due_date)`);
+      
+      // Task indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_workflow ON tasks(workflow_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_location ON tasks(location_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_audit ON tasks(audit_id)`);
+      
+      // Team indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_teams_lead ON teams(team_lead_id)`);
+      
+      // Notification indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)`);
+
+      // Push token indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_push_tokens_token ON push_tokens(token)`);
+
+      // Notification history indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notification_history_user ON notification_history(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_notification_history_read ON notification_history(read)`);
+
+      // Signature indexes
+      db.run(`CREATE INDEX IF NOT EXISTS idx_audit_signatures_audit ON audit_signatures(audit_id)`);
 
       // User preferences table
       db.run(`CREATE TABLE IF NOT EXISTS user_preferences (
@@ -335,6 +440,35 @@ const createTables = () => {
             db.run(`ALTER TABLE audits ADD COLUMN scheduled_audit_id INTEGER`, (alterErr) => {
               if (alterErr) console.error('Error adding scheduled_audit_id column:', alterErr);
             });
+          }
+          // Add GPS location columns to audits table
+          if (!columnNames.includes('gps_latitude')) {
+            db.run(`ALTER TABLE audits ADD COLUMN gps_latitude REAL`, () => {});
+          }
+          if (!columnNames.includes('gps_longitude')) {
+            db.run(`ALTER TABLE audits ADD COLUMN gps_longitude REAL`, () => {});
+          }
+          if (!columnNames.includes('gps_accuracy')) {
+            db.run(`ALTER TABLE audits ADD COLUMN gps_accuracy REAL`, () => {});
+          }
+          if (!columnNames.includes('gps_timestamp')) {
+            db.run(`ALTER TABLE audits ADD COLUMN gps_timestamp DATETIME`, () => {});
+          }
+          if (!columnNames.includes('location_verified')) {
+            db.run(`ALTER TABLE audits ADD COLUMN location_verified BOOLEAN DEFAULT 0`, () => {});
+          }
+        }
+      });
+
+      // Add GPS coordinates to locations table for verification
+      db.all(`PRAGMA table_info(locations)`, (err, columns) => {
+        if (!err && columns) {
+          const columnNames = columns.map(col => col.name);
+          if (!columnNames.includes('latitude')) {
+            db.run(`ALTER TABLE locations ADD COLUMN latitude REAL`, () => {});
+          }
+          if (!columnNames.includes('longitude')) {
+            db.run(`ALTER TABLE locations ADD COLUMN longitude REAL`, () => {});
           }
         }
       });
@@ -402,23 +536,86 @@ const seedDefaultRoles = () => {
       { 
         name: 'manager', 
         display_name: 'Manager', 
-        description: 'Can manage audits, locations, and view reports. Cannot manage users or roles.',
+        description: 'Can manage audits, locations, templates, and view all reports. Cannot manage users or roles.',
         is_system_role: 1,
-        permissions: JSON.stringify(['manage_audits', 'view_audits', 'manage_locations', 'view_locations', 'manage_tasks', 'view_tasks', 'manage_actions', 'view_actions', 'display_templates', 'edit_templates', 'delete_templates', 'manage_templates', 'view_templates', 'manage_scheduled_audits', 'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits', 'view_analytics', 'export_data'])
+        permissions: JSON.stringify([
+          // Audit Management
+          'manage_audits', 'view_audits', 'create_audits', 'edit_audits',
+          // Scheduled Audits
+          'manage_scheduled_audits', 'view_scheduled_audits', 'create_scheduled_audits', 'update_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits',
+          // Templates
+          'manage_templates', 'display_templates', 'view_templates', 'create_templates', 'edit_templates', 'delete_templates',
+          // Locations
+          'manage_locations', 'view_locations', 'create_locations', 'edit_locations',
+          // Actions & Tasks
+          'manage_actions', 'view_actions', 'create_actions', 'update_actions',
+          'manage_tasks', 'view_tasks', 'create_tasks', 'update_tasks',
+          // Analytics & Reports
+          'view_analytics', 'view_store_analytics', 'view_location_verification', 'view_monthly_scorecard', 'export_data',
+          // View Users (for assignment)
+          'view_users'
+        ])
+      },
+      { 
+        name: 'supervisor', 
+        display_name: 'Supervisor', 
+        description: 'Can view team audits, manage scheduled audits for team, and view reports.',
+        is_system_role: 1,
+        permissions: JSON.stringify([
+          // Audits
+          'view_audits', 'create_audits',
+          // Scheduled Audits
+          'view_scheduled_audits', 'create_scheduled_audits', 'update_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits',
+          // Templates (read-only)
+          'display_templates', 'view_templates',
+          // Locations
+          'view_locations',
+          // Actions & Tasks
+          'view_actions', 'create_actions', 'update_actions',
+          'view_tasks', 'create_tasks', 'update_tasks',
+          // Analytics
+          'view_analytics', 'view_store_analytics', 'view_location_verification',
+          // View Users (for assignment)
+          'view_users'
+        ])
       },
       { 
         name: 'auditor', 
         display_name: 'Auditor', 
-        description: 'Can create and view audits, manage action items. Limited access to settings.',
+        description: 'Can create and complete audits, manage action items. View own data only.',
         is_system_role: 1,
-        permissions: JSON.stringify(['create_audits', 'view_audits', 'manage_actions', 'view_actions', 'create_tasks', 'view_tasks', 'update_tasks', 'display_templates', 'view_templates', 'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits'])
+        permissions: JSON.stringify([
+          // Audits
+          'create_audits', 'view_own_audits',
+          // Scheduled Audits
+          'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits',
+          // Templates (read-only)
+          'display_templates', 'view_templates',
+          // Locations
+          'view_locations',
+          // Actions & Tasks
+          'view_actions', 'create_actions', 'update_actions',
+          'view_tasks', 'create_tasks', 'update_tasks'
+        ])
       },
       { 
         name: 'user', 
         display_name: 'User', 
-        description: 'Basic access. Can view own audits, create action items, and start scheduled audits.',
+        description: 'Basic access. Can view own audits, start scheduled audits, and manage own action items.',
         is_system_role: 1,
-        permissions: JSON.stringify(['view_own_audits', 'create_actions', 'view_actions', 'view_tasks', 'update_tasks', 'display_templates', 'view_locations', 'start_scheduled_audits', 'view_scheduled_audits', 'reschedule_scheduled_audits'])
+        permissions: JSON.stringify([
+          // Audits
+          'view_own_audits',
+          // Scheduled Audits
+          'view_scheduled_audits', 'start_scheduled_audits', 'reschedule_scheduled_audits',
+          // Templates (read-only)
+          'display_templates',
+          // Locations
+          'view_locations',
+          // Actions & Tasks (own only)
+          'view_actions', 'create_actions',
+          'view_tasks', 'update_tasks'
+        ])
       }
     ];
 

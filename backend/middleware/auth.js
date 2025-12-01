@@ -1,15 +1,16 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database-loader');
+const logger = require('../utils/logger');
 
 // Require JWT_SECRET in production
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') {
-    console.error('ERROR: JWT_SECRET environment variable is required in production!');
+    logger.error('JWT_SECRET environment variable is required in production!');
     process.exit(1);
   } else {
-    console.warn('WARNING: JWT_SECRET not set. Using default (INSECURE - for development only)');
-    console.warn('Set JWT_SECRET environment variable for production use!');
+    logger.warn('JWT_SECRET not set. Using default (INSECURE - for development only)');
+    logger.debug('Set JWT_SECRET environment variable for production use!');
   }
 }
 const SECRET = JWT_SECRET || 'your-secret-key-change-in-production-DEVELOPMENT-ONLY';

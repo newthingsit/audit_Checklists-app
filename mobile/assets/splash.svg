@@ -1,0 +1,9 @@
+
+<svg width="1284" height="2778" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1284" height="2778" fill="#0d9488"/>
+  <circle cx="642" cy="1289" r="120" fill="white" opacity="0.2"/>
+  <circle cx="642" cy="1289" r="80" fill="white"/>
+  <text x="642" y="1309" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="#0d9488" text-anchor="middle">✓</text>
+  <text x="642" y="1439" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">Audit Pro</text>
+  <text x="642" y="1489" font-family="Arial, sans-serif" font-size="20" fill="white" opacity="0.8" text-anchor="middle">Restaurant Audit Management</text>
+</svg>

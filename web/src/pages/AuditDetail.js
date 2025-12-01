@@ -20,7 +20,10 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  Alert,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -30,6 +33,9 @@ import AddIcon from '@mui/icons-material/Add';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import EditIcon from '@mui/icons-material/Edit';
+import EmailIcon from '@mui/icons-material/Email';
+import SendIcon from '@mui/icons-material/Send';
+import StoreIcon from '@mui/icons-material/Store';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -57,6 +63,14 @@ const AuditDetail = () => {
     comment: '',
     status: 'pending'
   });
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    recipientEmail: '',
+    recipientName: ''
+  });
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   useEffect(() => {
     fetchAudit();
@@ -164,6 +178,66 @@ const AuditDetail = () => {
     }
   };
 
+  const handleOpenEmailDialog = () => {
+    setEmailForm({
+      recipientEmail: '',
+      recipientName: ''
+    });
+    setEmailSuccess('');
+    setEmailError('');
+    setShowEmailDialog(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailForm.recipientEmail) {
+      setEmailError('Please enter a recipient email');
+      return;
+    }
+
+    setEmailSending(true);
+    setEmailError('');
+    setEmailSuccess('');
+
+    try {
+      await axios.post(`/api/reports/audit/${id}/email`, {
+        recipientEmail: emailForm.recipientEmail,
+        recipientName: emailForm.recipientName || emailForm.recipientEmail.split('@')[0]
+      });
+      setEmailSuccess('Audit report sent successfully!');
+      showSuccess('Audit report sent successfully!');
+      setTimeout(() => {
+        setShowEmailDialog(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      setEmailError(error.response?.data?.error || 'Failed to send email');
+      showError('Failed to send email');
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const handleSendToStore = async () => {
+    setEmailSending(true);
+    setEmailError('');
+    setEmailSuccess('');
+
+    try {
+      const response = await axios.post(`/api/reports/audit/${id}/email-store`);
+      setEmailSuccess(`Report sent to ${response.data.recipientEmail}`);
+      showSuccess(`Report sent to store manager!`);
+      setTimeout(() => {
+        setShowEmailDialog(false);
+      }, 2000);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      setEmailError(error.response?.data?.error || 'Failed to send email to store');
+      showError('Failed to send email to store');
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -198,7 +272,17 @@ const AuditDetail = () => {
           >
             Back to Audits
           </Button>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Tooltip title="Email Report">
+              <Button
+                variant="outlined"
+                startIcon={<EmailIcon />}
+                onClick={handleOpenEmailDialog}
+                sx={{ minWidth: 'auto' }}
+              >
+                Email
+              </Button>
+            </Tooltip>
             <PrintButton audit={{ ...audit, items }} />
             <ExportMenu 
               auditId={audit.id} 
@@ -721,6 +805,103 @@ const AuditDetail = () => {
               }}
             >
               Create Action
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Email Report Dialog */}
+        <Dialog 
+          open={showEmailDialog} 
+          onClose={() => setShowEmailDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EmailIcon color="primary" />
+            Send Audit Report via Email
+          </DialogTitle>
+          <DialogContent>
+            {emailSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                {emailSuccess}
+              </Alert>
+            )}
+            {emailError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {emailError}
+              </Alert>
+            )}
+            
+            <Box sx={{ mb: 3, mt: 1 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Send this audit report to any email address or directly to the store manager.
+              </Typography>
+            </Box>
+
+            {/* Quick Send to Store */}
+            {audit?.location_id && (
+              <Paper 
+                sx={{ 
+                  p: 2, 
+                  mb: 3, 
+                  bgcolor: 'primary.light', 
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': { bgcolor: 'primary.main', color: 'white' }
+                }}
+                onClick={handleSendToStore}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <StoreIcon />
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Send to Store Manager
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      Automatically send to the registered store email
+                    </Typography>
+                  </Box>
+                  {emailSending && <CircularProgress size={24} />}
+                </Box>
+              </Paper>
+            )}
+
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+              Or send to a custom email:
+            </Typography>
+            
+            <TextField
+              fullWidth
+              label="Recipient Email"
+              type="email"
+              value={emailForm.recipientEmail}
+              onChange={(e) => setEmailForm({ ...emailForm, recipientEmail: e.target.value })}
+              sx={{ mb: 2 }}
+              placeholder="manager@example.com"
+            />
+            <TextField
+              fullWidth
+              label="Recipient Name (Optional)"
+              value={emailForm.recipientName}
+              onChange={(e) => setEmailForm({ ...emailForm, recipientName: e.target.value })}
+              placeholder="Store Manager"
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button 
+              onClick={() => setShowEmailDialog(false)}
+              variant="outlined"
+              disabled={emailSending}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendEmail}
+              variant="contained"
+              startIcon={emailSending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+              disabled={emailSending || !emailForm.recipientEmail}
+            >
+              {emailSending ? 'Sending...' : 'Send Report'}
             </Button>
           </DialogActions>
         </Dialog>

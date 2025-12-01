@@ -30,12 +30,16 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import AddIcon from '@mui/icons-material/Add';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
+import { CardSkeleton } from '../components/ui/LoadingSkeleton';
+import { NoAuditsState, NoSearchResultsState } from '../components/ui/EmptyState';
 import { showSuccess, showError } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { themeConfig } from '../config/theme';
 
 const AuditHistory = () => {
   const { user } = useAuth();
@@ -171,9 +175,22 @@ const AuditHistory = () => {
   if (loading) {
     return (
       <Layout>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-          <CircularProgress />
-        </Box>
+        <Container maxWidth="lg">
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+              <Box>
+                <Box sx={{ width: 200, height: 32, bgcolor: themeConfig.border.light, borderRadius: 1, mb: 1 }} />
+                <Box sx={{ width: 300, height: 20, bgcolor: themeConfig.border.light, borderRadius: 1 }} />
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <Box sx={{ flex: 1, height: 56, bgcolor: themeConfig.border.light, borderRadius: 1 }} />
+              <Box sx={{ width: 150, height: 56, bgcolor: themeConfig.border.light, borderRadius: 1 }} />
+              <Box sx={{ width: 150, height: 56, bgcolor: themeConfig.border.light, borderRadius: 1 }} />
+            </Box>
+          </Box>
+          <CardSkeleton count={6} />
+        </Container>
       </Layout>
     );
   }
@@ -184,10 +201,15 @@ const AuditHistory = () => {
   return (
     <Layout>
       <Container maxWidth="lg">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
-            Audit History
-          </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: themeConfig.text.primary, mb: 0.5 }}>
+              Audit History
+            </Typography>
+            <Typography variant="body2" sx={{ color: themeConfig.text.secondary }}>
+              View and manage all your completed and in-progress audits
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             {selectedAudits.size > 0 && (
               <>
@@ -217,15 +239,29 @@ const AuditHistory = () => {
         </Box>
 
         {selectedAudits.size > 0 && (
-          <Paper sx={{ mb: 2, p: 2, bgcolor: 'primary.light', color: 'white' }}>
+          <Paper sx={{ 
+            mb: 3, 
+            p: 2, 
+            background: themeConfig.dashboardCards.card1,
+            borderRadius: themeConfig.borderRadius.medium,
+            color: 'white' 
+          }}>
             <Toolbar sx={{ minHeight: '48px !important', px: '0 !important' }}>
-              <Typography sx={{ flexGrow: 1 }}>
+              <Typography sx={{ flexGrow: 1, fontWeight: 500 }}>
                 {selectedAudits.size} audit(s) selected
               </Typography>
               <Button
                 size="small"
                 onClick={() => setSelectedAudits(new Set())}
-                sx={{ color: 'white' }}
+                sx={{ 
+                  color: 'white',
+                  borderColor: 'rgba(255,255,255,0.5)',
+                  '&:hover': {
+                    borderColor: 'white',
+                    bgcolor: 'rgba(255,255,255,0.1)',
+                  },
+                }}
+                variant="outlined"
               >
                 Clear Selection
               </Button>
@@ -233,72 +269,96 @@ const AuditHistory = () => {
           </Paper>
         )}
 
-        <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-          <TextField
-            fullWidth
-            placeholder="Search audits by restaurant name, location, or template..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
-            sx={{ flex: 1, minWidth: 250 }}
-          />
-          <FormControl sx={{ minWidth: 150 }}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              value={statusFilter}
-              label="Status"
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="completed">Completed</MenuItem>
-              <MenuItem value="in_progress">In Progress</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl sx={{ minWidth: 150 }}>
-            <InputLabel>Template</InputLabel>
-            <Select
-              value={templateFilter}
-              label="Template"
-              onChange={(e) => setTemplateFilter(e.target.value)}
-            >
-              <MenuItem value="all">All</MenuItem>
-              {templates.map(template => (
-                <MenuItem key={template.id} value={template.id}>
-                  {template.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="Date From"
-            type="date"
-            value={dateRange.from}
-            onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 150 }}
-          />
-          <TextField
-            label="Date To"
-            type="date"
-            value={dateRange.to}
-            onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 150 }}
-          />
-        </Box>
+        <Paper sx={{ p: 2.5, mb: 3, borderRadius: themeConfig.borderRadius.medium }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              placeholder="Search audits by restaurant name, location, or template..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: themeConfig.text.secondary }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ 
+                flex: 1, 
+                minWidth: 250,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: themeConfig.borderRadius.medium,
+                },
+              }}
+              size="small"
+            />
+            <FormControl sx={{ minWidth: 140 }} size="small">
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                sx={{ borderRadius: themeConfig.borderRadius.small }}
+              >
+                <MenuItem value="all">All Status</MenuItem>
+                <MenuItem value="completed">Completed</MenuItem>
+                <MenuItem value="in_progress">In Progress</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 140 }} size="small">
+              <InputLabel>Template</InputLabel>
+              <Select
+                value={templateFilter}
+                label="Template"
+                onChange={(e) => setTemplateFilter(e.target.value)}
+                sx={{ borderRadius: themeConfig.borderRadius.small }}
+              >
+                <MenuItem value="all">All Templates</MenuItem>
+                {templates.map(template => (
+                  <MenuItem key={template.id} value={template.id}>
+                    {template.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="From"
+              type="date"
+              value={dateRange.from}
+              onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              sx={{ 
+                minWidth: 140,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: themeConfig.borderRadius.small,
+                },
+              }}
+              size="small"
+            />
+            <TextField
+              label="To"
+              type="date"
+              value={dateRange.to}
+              onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              sx={{ 
+                minWidth: 140,
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: themeConfig.borderRadius.small,
+                },
+              }}
+              size="small"
+            />
+          </Box>
+        </Paper>
 
         {filteredAudits.length === 0 ? (
-          <Card>
+          <Card sx={{ borderRadius: themeConfig.borderRadius.medium }}>
             <CardContent>
-              <Typography color="text.secondary" align="center">
-                {searchTerm ? 'No audits found matching your search' : 'No audits yet'}
-              </Typography>
+              {searchTerm || statusFilter !== 'all' || templateFilter !== 'all' || dateRange.from || dateRange.to ? (
+                <NoSearchResultsState searchTerm={searchTerm || 'your filters'} />
+              ) : (
+                <NoAuditsState onAction={() => navigate('/checklists')} />
+              )}
             </CardContent>
           </Card>
         ) : (

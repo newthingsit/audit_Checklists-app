@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -124,10 +125,10 @@ router.get('/', authenticate, requirePermission('display_templates', 'view_templ
   
   dbInstance.all(query, [], (err, templates) => {
     if (err) {
-      console.error('Checklists error:', err);
-      console.error('Query:', query);
-      console.error('DB Type:', dbType);
-      console.error('Database error:', err);
+      logger.error('Checklists error:', err);
+      logger.error('Query:', query);
+      logger.error('DB Type:', dbType);
+      logger.error('Database error:', err);
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ templates: templates || [] });
@@ -142,7 +143,7 @@ router.get('/:id', authenticate, (req, res) => {
   // Check permissions - allow if user has template permissions OR start_scheduled_audits permission
   getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
     if (permErr) {
-      console.error('Error fetching permissions:', permErr);
+      logger.error('Error fetching permissions:', permErr);
       return res.status(500).json({ error: 'Error checking permissions' });
     }
 
@@ -248,8 +249,8 @@ router.post('/', authenticate, requirePermission('manage_templates', 'create_tem
 
     res.status(201).json({ id: templateId, message: 'Template created successfully' });
   } catch (error) {
-    console.error('Error creating checklist template:', error);
-    console.error('Error creating template:', error);
+    logger.error('Error creating checklist template:', error);
+    logger.error('Error creating template:', error);
     res.status(500).json({ error: 'Error creating template' });
   }
 });
@@ -384,18 +385,18 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
           itemsCount: items.length
         });
       } catch (error) {
-        console.error('Error inserting items:', error);
-        console.error('Error inserting items:', error);
+        logger.error('Error inserting items:', error);
+        logger.error('Error inserting items:', error);
         res.status(500).json({ error: 'Error creating items' });
       }
     }).catch((err) => {
-      console.error('Error creating template:', err);
-      console.error('Error creating template:', err);
+      logger.error('Error creating template:', err);
+      logger.error('Error creating template:', err);
       res.status(500).json({ error: 'Error creating template' });
     });
   } catch (error) {
-    console.error('Error parsing CSV:', error);
-    console.error('Error parsing CSV:', error);
+    logger.error('Error parsing CSV:', error);
+    logger.error('Error parsing CSV:', error);
     res.status(400).json({ error: 'Error parsing CSV data' });
   }
 });
@@ -440,13 +441,13 @@ router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_tem
 
     res.json({ message: 'Template updated successfully' });
   } catch (error) {
-    console.error('Error updating checklist template:', error);
+    logger.error('Error updating checklist template:', error);
     if (error && error.message && error.message.includes('FOREIGN KEY')) {
       return res.status(400).json({
         error: 'Cannot update template because it is referenced by existing audits'
       });
     }
-    console.error('Error updating template:', error);
+    logger.error('Error updating template:', error);
     res.status(500).json({ error: 'Error updating template' });
   }
 });
@@ -479,7 +480,7 @@ router.delete('/:id', authenticate, requirePermission('manage_templates', 'delet
     );
 
     if (auditCount && auditCount.count > 0) {
-      console.log(`Deleting ${auditCount.count} audit(s) and related data for template ${templateId}...`);
+      logger.debug(`Deleting ${auditCount.count} audit(s) and related data for template ${templateId}...`);
 
       // Get all item IDs from this template
       const items = await getAllRows(
@@ -507,7 +508,7 @@ router.delete('/:id', authenticate, requirePermission('manage_templates', 'delet
             `DELETE FROM audit_items WHERE selected_option_id IN (${optionIds.map(() => '?').join(',')})`,
             optionIds
           );
-          console.log(`  Deleted audit_items referencing ${options.length} options`);
+          logger.debug(`  Deleted audit_items referencing ${options.length} options`);
         }
 
         // Delete audit_items that reference these items
@@ -516,7 +517,7 @@ router.delete('/:id', authenticate, requirePermission('manage_templates', 'delet
           `DELETE FROM audit_items WHERE item_id IN (${itemIds.map(() => '?').join(',')})`,
           itemIds
         );
-        console.log(`  Deleted audit_items referencing ${items.length} items`);
+        logger.debug(`  Deleted audit_items referencing ${items.length} items`);
       }
 
       // Delete action items for audits using this template
@@ -532,7 +533,7 @@ router.delete('/:id', authenticate, requirePermission('manage_templates', 'delet
         'DELETE FROM audits WHERE template_id = ?',
         [templateId]
       );
-      console.log(`  Deleted ${auditCount.count} audit(s)`);
+      logger.debug(`  Deleted ${auditCount.count} audit(s)`);
     }
 
     // Check for scheduled audits using this template
@@ -543,16 +544,273 @@ router.delete('/:id', authenticate, requirePermission('manage_templates', 'delet
       [templateId]
     );
     if (scheduledDeleteResult && scheduledDeleteResult.changes > 0) {
-      console.log(`  Deleted ${scheduledDeleteResult.changes} scheduled audit(s) for template ${templateId}`);
+      logger.debug(`  Deleted ${scheduledDeleteResult.changes} scheduled audit(s) for template ${templateId}`);
     }
 
     // Now delete the template (cascade will delete items and options)
     await runDb(dbInstance, 'DELETE FROM checklist_templates WHERE id = ?', [templateId]);
     res.json({ message: 'Template deleted successfully' });
   } catch (error) {
-    console.error('Error deleting checklist template:', error);
-    console.error('Error deleting template:', error);
+    logger.error('Error deleting checklist template:', error);
+    logger.error('Error deleting template:', error);
     res.status(500).json({ error: 'Error deleting template' });
+  }
+});
+
+// ========================================
+// ENHANCED TEMPLATE FEATURES
+// ========================================
+
+// Clone/Duplicate a template
+router.post('/:id/clone', authenticate, requirePermission('manage_templates', 'create_templates'), async (req, res) => {
+  const templateId = parseInt(req.params.id, 10);
+  const { name } = req.body;
+  
+  if (Number.isNaN(templateId)) {
+    return res.status(400).json({ error: 'Invalid template ID' });
+  }
+  
+  const dbInstance = db.getDb();
+  
+  try {
+    // Get original template
+    const template = await getDbRow(dbInstance, 'SELECT * FROM checklist_templates WHERE id = ?', [templateId]);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    // Create cloned template
+    const newName = name || `${template.name} (Copy)`;
+    const { lastID: newTemplateId } = await runDb(
+      dbInstance,
+      `INSERT INTO checklist_templates (name, category, description, created_by, version, tags) 
+       VALUES (?, ?, ?, ?, 1, ?)`,
+      [newName, template.category || '', template.description || '', req.user.id, template.tags || '']
+    );
+    
+    // Get and clone items
+    const items = await getAllRows(dbInstance, 'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index', [templateId]);
+    
+    for (const item of items) {
+      const { lastID: newItemId } = await runDb(
+        dbInstance,
+        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, weight, max_score, section) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.weight || 1, item.max_score || 100, item.section || '']
+      );
+      
+      // Clone item options
+      const options = await getAllRows(dbInstance, 'SELECT * FROM checklist_item_options WHERE item_id = ? ORDER BY order_index', [item.id]);
+      for (const opt of options) {
+        await runDb(
+          dbInstance,
+          `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index, score, is_passing) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [newItemId, opt.option_text, opt.mark || '', opt.order_index, opt.score || 0, opt.is_passing !== undefined ? opt.is_passing : 1]
+        );
+      }
+    }
+    
+    res.status(201).json({ 
+      id: newTemplateId, 
+      message: 'Template cloned successfully',
+      name: newName,
+      itemsCount: items.length
+    });
+  } catch (error) {
+    logger.error('Error cloning template:', error);
+    res.status(500).json({ error: 'Error cloning template' });
+  }
+});
+
+// Create new version of a template
+router.post('/:id/version', authenticate, requirePermission('manage_templates', 'edit_templates'), async (req, res) => {
+  const templateId = parseInt(req.params.id, 10);
+  
+  if (Number.isNaN(templateId)) {
+    return res.status(400).json({ error: 'Invalid template ID' });
+  }
+  
+  const dbInstance = db.getDb();
+  
+  try {
+    // Get original template
+    const template = await getDbRow(dbInstance, 'SELECT * FROM checklist_templates WHERE id = ?', [templateId]);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    // Mark old template as inactive
+    await runDb(dbInstance, 'UPDATE checklist_templates SET is_active = 0 WHERE id = ?', [templateId]);
+    
+    // Get the highest version for this template chain
+    const maxVersion = await getDbRow(
+      dbInstance,
+      `SELECT MAX(version) as max_ver FROM checklist_templates 
+       WHERE id = ? OR parent_template_id = ? OR parent_template_id = (SELECT parent_template_id FROM checklist_templates WHERE id = ?)`,
+      [templateId, templateId, templateId]
+    );
+    
+    const newVersion = (maxVersion?.max_ver || template.version || 1) + 1;
+    const parentId = template.parent_template_id || templateId;
+    
+    // Create new version
+    const { lastID: newTemplateId } = await runDb(
+      dbInstance,
+      `INSERT INTO checklist_templates (name, category, description, created_by, version, parent_template_id, is_active, tags) 
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+      [template.name, template.category || '', template.description || '', req.user.id, newVersion, parentId, template.tags || '']
+    );
+    
+    // Clone items to new version
+    const items = await getAllRows(dbInstance, 'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index', [templateId]);
+    
+    for (const item of items) {
+      const { lastID: newItemId } = await runDb(
+        dbInstance,
+        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, weight, max_score, section) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.weight || 1, item.max_score || 100, item.section || '']
+      );
+      
+      const options = await getAllRows(dbInstance, 'SELECT * FROM checklist_item_options WHERE item_id = ? ORDER BY order_index', [item.id]);
+      for (const opt of options) {
+        await runDb(
+          dbInstance,
+          `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index, score, is_passing) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [newItemId, opt.option_text, opt.mark || '', opt.order_index, opt.score || 0, opt.is_passing !== undefined ? opt.is_passing : 1]
+        );
+      }
+    }
+    
+    res.status(201).json({ 
+      id: newTemplateId, 
+      message: 'New version created successfully',
+      version: newVersion,
+      previousVersion: template.version || 1
+    });
+  } catch (error) {
+    logger.error('Error creating template version:', error);
+    res.status(500).json({ error: 'Error creating template version' });
+  }
+});
+
+// Get template version history
+router.get('/:id/versions', authenticate, requirePermission('display_templates', 'view_templates'), async (req, res) => {
+  const templateId = parseInt(req.params.id, 10);
+  
+  if (Number.isNaN(templateId)) {
+    return res.status(400).json({ error: 'Invalid template ID' });
+  }
+  
+  const dbInstance = db.getDb();
+  
+  try {
+    // Get the parent template ID to find all versions
+    const template = await getDbRow(dbInstance, 'SELECT * FROM checklist_templates WHERE id = ?', [templateId]);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    const parentId = template.parent_template_id || templateId;
+    
+    // Get all versions
+    const versions = await getAllRows(
+      dbInstance,
+      `SELECT ct.*, u.name as created_by_name,
+       (SELECT COUNT(*) FROM checklist_items WHERE template_id = ct.id) as item_count,
+       (SELECT COUNT(*) FROM audits WHERE template_id = ct.id) as audit_count
+       FROM checklist_templates ct
+       LEFT JOIN users u ON ct.created_by = u.id
+       WHERE ct.id = ? OR ct.parent_template_id = ?
+       ORDER BY ct.version DESC`,
+      [parentId, parentId]
+    );
+    
+    res.json({ 
+      versions,
+      currentVersion: template.version || 1,
+      totalVersions: versions.length
+    });
+  } catch (error) {
+    logger.error('Error fetching template versions:', error);
+    res.status(500).json({ error: 'Error fetching template versions' });
+  }
+});
+
+// Preview template (get full details without editing)
+router.get('/:id/preview', authenticate, async (req, res) => {
+  const templateId = parseInt(req.params.id, 10);
+  
+  if (Number.isNaN(templateId)) {
+    return res.status(400).json({ error: 'Invalid template ID' });
+  }
+  
+  const dbInstance = db.getDb();
+  
+  try {
+    const template = await getDbRow(
+      dbInstance,
+      `SELECT ct.*, u.name as created_by_name 
+       FROM checklist_templates ct 
+       LEFT JOIN users u ON ct.created_by = u.id 
+       WHERE ct.id = ?`,
+      [templateId]
+    );
+    
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    // Get items grouped by section
+    const items = await getAllRows(
+      dbInstance,
+      `SELECT * FROM checklist_items WHERE template_id = ? ORDER BY section, order_index`,
+      [templateId]
+    );
+    
+    // Get options for each item
+    for (const item of items) {
+      const options = await getAllRows(
+        dbInstance,
+        `SELECT * FROM checklist_item_options WHERE item_id = ? ORDER BY order_index`,
+        [item.id]
+      );
+      item.options = options;
+    }
+    
+    // Group items by section
+    const sections = {};
+    items.forEach(item => {
+      const sectionName = item.section || 'General';
+      if (!sections[sectionName]) {
+        sections[sectionName] = [];
+      }
+      sections[sectionName].push(item);
+    });
+    
+    // Calculate scoring info
+    const totalWeight = items.reduce((sum, item) => sum + (item.weight || 1), 0);
+    const maxPossibleScore = items.reduce((sum, item) => sum + (item.max_score || 100), 0);
+    
+    res.json({
+      template: {
+        ...template,
+        tags: template.tags ? template.tags.split(',').map(t => t.trim()) : []
+      },
+      items,
+      sections,
+      stats: {
+        totalItems: items.length,
+        totalWeight,
+        maxPossibleScore,
+        sectionCount: Object.keys(sections).length
+      }
+    });
+  } catch (error) {
+    logger.error('Error previewing template:', error);
+    res.status(500).json({ error: 'Error previewing template' });
   }
 });
 

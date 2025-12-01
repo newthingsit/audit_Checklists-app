@@ -1,122 +1,234 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
   Alert
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
+import { useNetwork } from '../context/NetworkContext';
+import { useOffline } from '../context/OfflineContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { themeConfig } from '../config/theme';
+import { ListSkeleton } from '../components/LoadingSkeleton';
+import { NoTemplates } from '../components/EmptyState';
+import { OfflineModeCard, PendingSyncSummary } from '../components/OfflineIndicator';
 
 const ChecklistsScreen = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isUsingCachedData, setIsUsingCachedData] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { isOnline } = useNetwork();
+  const { getCachedTemplates, prefetchForOffline, offlineStats } = useOffline();
+  
   const userPermissions = user?.permissions || [];
 
-  // Permission check - can view templates
   const canViewTemplates = hasPermission(userPermissions, 'display_templates') ||
                           hasPermission(userPermissions, 'view_templates') ||
                           hasPermission(userPermissions, 'manage_templates') ||
                           isAdmin(user);
   
-  // Permission check - can create audits
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') ||
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
 
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
-
-  const fetchTemplates = async () => {
+  // Fetch templates - tries online first, falls back to cache
+  const fetchTemplates = useCallback(async (forceOnline = false) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/templates`);
-      setTemplates(response.data.templates || []);
+      if (isOnline || forceOnline) {
+        // Try to fetch from server
+        try {
+          const response = await axios.get(`${API_BASE_URL}/templates`);
+          const serverTemplates = response.data.templates || [];
+          setTemplates(serverTemplates);
+          setIsUsingCachedData(false);
+          
+          // Prefetch for offline use in background
+          prefetchForOffline();
+          
+          return;
+        } catch (networkError) {
+          console.log('Network error, falling back to cache:', networkError.message);
+        }
+      }
+      
+      // Offline or network error - use cached data
+      const cached = await getCachedTemplates();
+      if (cached.templates.length > 0) {
+        setTemplates(cached.templates);
+        setIsUsingCachedData(true);
+        setLastSync(cached.cachedAt);
+      } else {
+        setTemplates([]);
+        setIsUsingCachedData(false);
+      }
     } catch (error) {
       console.error('Error fetching templates:', error);
+      setTemplates([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [isOnline, getCachedTemplates, prefetchForOffline]);
+
+  // Initial load
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  // Refresh when coming back online
+  useEffect(() => {
+    if (isOnline && isUsingCachedData) {
+      fetchTemplates(true);
+    }
+  }, [isOnline]);
+
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        fetchTemplates();
+      }
+    }, [isOnline])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTemplates();
+    fetchTemplates(true);
   };
 
-  const handleStartAudit = (templateId) => {
+  const handleStartAudit = (template) => {
     if (!canCreateAudit) {
       Alert.alert('Permission Denied', 'You do not have permission to create audits.');
       return;
     }
-    navigation.navigate('AuditForm', { templateId });
+    
+    // Pass template data for offline support
+    navigation.navigate('AuditForm', { 
+      templateId: template.id,
+      templateData: template, // Pass full template for offline use
+    });
   };
 
-  const renderTemplate = ({ item }) => (
+  const renderTemplate = ({ item, index }) => (
     <TouchableOpacity
       style={styles.templateCard}
-      onPress={() => handleStartAudit(item.id)}
+      onPress={() => handleStartAudit(item)}
+      activeOpacity={0.7}
     >
       <View style={styles.templateHeader}>
-        <Icon name="checklist" size={30} color="#1976d2" />
-        <View style={styles.templateInfo}>
-          <Text style={styles.templateName}>{item.name}</Text>
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{item.category}</Text>
-          </View>
+        <View style={styles.templateIconContainer}>
+          <LinearGradient
+            colors={themeConfig.dashboardCards.card1}
+            style={styles.templateIcon}
+          >
+            <Icon name="checklist" size={24} color="#fff" />
+          </LinearGradient>
         </View>
-        <Icon name="chevron-right" size={24} color="#999" />
+        <View style={styles.templateInfo}>
+          <Text style={styles.templateName} numberOfLines={2}>{item.name}</Text>
+          {item.category && (
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryText}>{item.category}</Text>
+            </View>
+          )}
+        </View>
+        <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
       </View>
+      
       {item.description && (
-        <Text style={styles.templateDescription}>{item.description}</Text>
+        <Text style={styles.templateDescription} numberOfLines={2}>
+          {item.description}
+        </Text>
       )}
+      
       <View style={styles.templateFooter}>
-        <Icon name="info" size={16} color="#666" />
-        <Text style={styles.itemCount}>{item.item_count || 0} items</Text>
+        <View style={styles.templateMeta}>
+          <Icon name="list-alt" size={16} color={themeConfig.text.secondary} />
+          <Text style={styles.itemCount}>{item.item_count || 0} items</Text>
+        </View>
+        {isUsingCachedData && (
+          <View style={styles.cachedBadge}>
+            <Icon name="cloud-off" size={12} color={themeConfig.warning.dark} />
+            <Text style={styles.cachedText}>Cached</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
 
+  // Loading state
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#1976d2" />
+      <View style={styles.container}>
+        <ListSkeleton count={4} />
       </View>
     );
   }
 
+  // No permission
   if (!canViewTemplates) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
-        <Text style={styles.emptyText}>You do not have permission to view templates</Text>
+      <View style={styles.centerContainer}>
+        <Icon name="lock" size={48} color={themeConfig.text.disabled} />
+        <Text style={styles.permissionText}>
+          You do not have permission to view templates
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Offline Mode Card */}
+      {!isOnline && <OfflineModeCard lastSync={lastSync} />}
+      
+      {/* Pending Sync Summary */}
+      {offlineStats.hasPendingSync && <PendingSyncSummary />}
+
       <FlatList
         data={templates}
         renderItem={renderTemplate}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={[themeConfig.primary.main]}
+            tintColor={themeConfig.primary.main}
+          />
+        }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No templates available</Text>
-          </View>
+          <NoTemplates 
+            onAction={isOnline ? onRefresh : undefined}
+          />
+        }
+        ListHeaderComponent={
+          templates.length > 0 ? (
+            <View style={styles.listHeader}>
+              <Text style={styles.listHeaderTitle}>
+                Available Templates
+              </Text>
+              <Text style={styles.listHeaderSubtitle}>
+                {templates.length} template{templates.length !== 1 ? 's' : ''} available
+              </Text>
+            </View>
+          ) : null
         }
       />
     </View>
@@ -126,75 +238,123 @@ const ChecklistsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: themeConfig.background.default,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
+    backgroundColor: themeConfig.background.default,
+  },
+  permissionText: {
+    fontSize: 16,
+    color: themeConfig.text.secondary,
+    textAlign: 'center',
+    marginTop: 16,
   },
   listContent: {
-    padding: 15,
+    padding: 16,
+  },
+  listHeader: {
+    marginBottom: 16,
+  },
+  listHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: themeConfig.text.primary,
+    letterSpacing: -0.3,
+  },
+  listHeaderSubtitle: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    marginTop: 2,
   },
   templateCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
+    backgroundColor: themeConfig.background.paper,
+    borderRadius: themeConfig.borderRadius.medium,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: themeConfig.border.light,
+    ...themeConfig.shadows.small,
   },
   templateHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+  },
+  templateIconContainer: {
+    marginRight: 14,
+  },
+  templateIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: themeConfig.borderRadius.medium,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   templateInfo: {
     flex: 1,
-    marginLeft: 15,
   },
   templateName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
+    fontSize: 16,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginBottom: 4,
   },
   categoryBadge: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: themeConfig.primary.main + '15',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: themeConfig.borderRadius.round,
     alignSelf: 'flex-start',
   },
   categoryText: {
-    fontSize: 12,
-    color: '#1976d2',
+    fontSize: 11,
+    color: themeConfig.primary.main,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   templateDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    marginTop: 12,
+    marginLeft: 62,
+    lineHeight: 18,
   },
   templateFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 5,
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: themeConfig.border.light,
   },
-  itemCount: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 5,
-  },
-  emptyContainer: {
-    padding: 40,
+  templateMeta: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
+  itemCount: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    marginLeft: 6,
+  },
+  cachedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.warning.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: themeConfig.borderRadius.small,
+  },
+  cachedText: {
+    fontSize: 11,
+    color: themeConfig.warning.dark,
+    fontWeight: '500',
+    marginLeft: 4,
   },
 });
 
 export default ChecklistsScreen;
-

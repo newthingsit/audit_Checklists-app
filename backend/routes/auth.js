@@ -71,7 +71,7 @@ router.post('/login', [
   const { email, password } = req.body;
   
   if (!db || !db.getDb) {
-    console.error('Database module not loaded correctly');
+    logger.error('Database module not loaded correctly');
     return res.status(500).json({ error: 'Database module error' });
   }
   
@@ -79,12 +79,12 @@ router.post('/login', [
   try {
     dbInstance = db.getDb();
   } catch (error) {
-    console.error('Error getting database instance:', error);
+    logger.error('Error getting database instance:', error);
     return res.status(500).json({ error: 'Database not initialized', details: error.message });
   }
   
   if (!dbInstance) {
-    console.error('Database instance is null. Database may not be initialized.');
+    logger.error('Database instance is null. Database may not be initialized.');
     return res.status(500).json({ error: 'Database not initialized' });
   }
 

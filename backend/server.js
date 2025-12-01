@@ -6,6 +6,7 @@ const compression = require('compression');
 const path = require('path');
 require('dotenv').config();
 
+const logger = require('./utils/logger');
 const app = express();
 
 // Response compression for better performance
@@ -46,13 +47,16 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
+      logger.security('cors_blocked', { origin });
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Type', 'Content-Length']
+  exposedHeaders: ['Content-Type', 'Content-Length'],
+  maxAge: 86400, // Cache preflight requests for 24 hours
+  optionsSuccessStatus: 204
 }));
 
 // Trust proxy if behind a reverse proxy (nginx, load balancer, etc.)
@@ -88,9 +92,40 @@ const apiLimiter = rateLimit({
   },
 });
 
+// Stricter rate limiter for sensitive operations
+const sensitiveOpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: isDevelopment ? 100 : 10, // 10 attempts per hour in production
+  message: 'Too many attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: isDevelopment ? false : true,
+  },
+});
+
+// File upload rate limiter
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isDevelopment ? 100 : 20, // 20 uploads per 15 min in production
+  message: 'Too many file uploads, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: isDevelopment ? false : true,
+  },
+});
+
 // Apply rate limiting to auth routes
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+
+// Apply stricter limits to sensitive operations
+app.use('/api/users', sensitiveOpLimiter); // User management
+app.use('/api/roles', sensitiveOpLimiter); // Role management
+
+// Apply upload limiter to file upload routes
+app.use('/api/upload', uploadLimiter);
 
 // Apply general rate limiting to all API routes
 app.use('/api/', apiLimiter);
@@ -125,6 +160,7 @@ app.use('/api/checklists', cacheControl(300)); // 5 min cache for checklists
 app.use('/api/templates', cacheControl(300)); // 5 min cache for templates
 app.use('/api/roles', cacheControl(600)); // 10 min cache for roles (rarely change)
 app.use('/api/locations', cacheControl(300)); // 5 min cache for locations
+app.use('/api/analytics', cacheControl(120)); // 2 min cache for analytics (balance freshness vs performance)
 
 // Database - automatically selects SQLite, PostgreSQL, or MySQL based on environment
 const db = require('./config/database-loader');
@@ -141,6 +177,7 @@ app.use('/api/reports', require('./routes/reports')); // Reports and exports
 app.use('/api/analytics', require('./routes/analytics')); // Analytics
 app.use('/api/actions', require('./routes/actions')); // Action plans and corrective actions
 app.use('/api/locations', require('./routes/locations')); // Location management
+app.use('/api/store-groups', require('./routes/store-groups')); // Store groups/regions
 app.use('/api/scheduled-audits', require('./routes/scheduled-audits')); // Scheduled audits
 app.use('/api/tasks', require('./routes/tasks')); // Tasks and workflows
 app.use('/api/teams', require('./routes/teams')); // Team collaboration
@@ -156,10 +193,9 @@ app.get('/api/health', (req, res) => {
 // This catches any unhandled errors and prevents 500 responses
 app.use((err, req, res, next) => {
   // For reschedule-count endpoint, ALWAYS return 200 (never 500)
-  const path = req.path || req.url || '';
-  if (path.includes('reschedule-count') || path.includes('/reschedule-count')) {
-    console.error('[Global Error Handler] Error in reschedule-count:', err.message);
-    console.error('[Global Error Handler] Error stack:', err.stack);
+  const reqPath = req.path || req.url || '';
+  if (reqPath.includes('reschedule-count') || reqPath.includes('/reschedule-count')) {
+    logger.error('Error in reschedule-count:', err.message);
     if (!res.headersSent) {
       try {
         return res.status(200).json({ 
@@ -172,15 +208,14 @@ app.use((err, req, res, next) => {
           remaining: 2
         });
       } catch (e) {
-        // Even this failed, but we tried
-        console.error('[Global Error Handler] Failed to send response:', e.message);
+        logger.error('Failed to send reschedule-count response:', e.message);
       }
     }
     return; // Don't continue to default error handling
   }
   
   // For other routes, use default error handling
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled request error:', { path: reqPath, method: req.method, error: err.message });
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -194,32 +229,33 @@ db.init().then(() => {
 
   // Schedule job to process scheduled audits daily at 9 AM
   cron.schedule('0 9 * * *', () => {
-    console.log('[Cron] Running scheduled audits job...');
+    logger.info('[Cron] Running scheduled audits job...');
     jobs.processScheduledAudits();
   });
 
   // Schedule job to send reminders daily at 8 AM
   cron.schedule('0 8 * * *', () => {
-    console.log('[Cron] Running reminders job...');
+    logger.info('[Cron] Running reminders job...');
     jobs.sendReminders();
   });
 
   // Run jobs immediately on startup (for testing)
   if (process.env.RUN_JOBS_ON_STARTUP === 'true') {
-    console.log('[Startup] Running scheduled audits job on startup...');
+    logger.info('[Startup] Running scheduled audits job on startup...');
     jobs.processScheduledAudits();
-    console.log('[Startup] Running reminders job on startup...');
+    logger.info('[Startup] Running reminders job on startup...');
     jobs.sendReminders();
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Access from network: http://YOUR_IP:${PORT}`);
-    console.log(`Local access: http://localhost:${PORT}`);
-    console.log('[Background Jobs] Scheduled audits job: Daily at 9:00 AM');
-    console.log('[Background Jobs] Reminders job: Daily at 8:00 AM');
+    logger.info(`Server running on port ${PORT}`);
+    logger.info(`Access from network: http://YOUR_IP:${PORT}`);
+    logger.info(`Local access: http://localhost:${PORT}`);
+    logger.info('[Background Jobs] Scheduled audits job: Daily at 9:00 AM');
+    logger.info('[Background Jobs] Reminders job: Daily at 8:00 AM');
   });
 }).catch(err => {
-  console.error('Database initialization failed:', err);
+  logger.error('Database initialization failed:', err);
+  process.exit(1);
 });
 

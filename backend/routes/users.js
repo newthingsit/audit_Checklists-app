@@ -4,6 +4,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requireAdmin, requirePermission } = require('../middleware/permissions');
 const { body, validationResult } = require('express-validator');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.get('/', authenticate, requirePermission('view_users', 'manage_users', 'c
 
   dbInstance.all(query, params, (err, users) => {
     if (err) {
-      console.error('Error fetching users:', err);
+      logger.error('Error fetching users:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
     res.json({ users: users || [] });
@@ -46,7 +47,7 @@ router.get('/:id', authenticate, requirePermission('view_users', 'manage_users',
     [userId],
     (err, user) => {
       if (err) {
-        console.error('Error fetching user:', err);
+        logger.error('Error fetching user:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
       if (!user) {
@@ -104,7 +105,7 @@ router.post('/', authenticate, requirePermission('create_users', 'manage_users')
         [email, hashedPassword, name, role || 'user'],
         function(err) {
           if (err) {
-            console.error('Error creating user:', err);
+            logger.error('Error creating user:', err);
             return res.status(500).json({ error: 'Error creating user', details: err.message });
           }
 
@@ -116,7 +117,7 @@ router.post('/', authenticate, requirePermission('create_users', 'manage_users')
         }
       );
     } catch (error) {
-      console.error('Error hashing password:', error);
+      logger.error('Error hashing password:', error);
       return res.status(500).json({ error: 'Error creating user' });
     }
   });
@@ -210,14 +211,14 @@ router.put('/:id', authenticate, requirePermission('manage_users'), [
           params,
           function(err) {
             if (err) {
-              console.error('Error updating user:', err);
+              logger.error('Error updating user:', err);
               return res.status(500).json({ error: 'Error updating user', details: err.message });
             }
             res.json({ message: 'User updated successfully' });
           }
         );
       } catch (error) {
-        console.error('Error updating user:', error);
+        logger.error('Error updating user:', error);
         return res.status(500).json({ error: 'Error updating user' });
       }
     }
@@ -247,7 +248,7 @@ router.delete('/:id', authenticate, requirePermission('manage_users'), (req, res
     // Delete user
     dbInstance.run('DELETE FROM users WHERE id = ?', [id], function(err) {
       if (err) {
-        console.error('Error deleting user:', err);
+        logger.error('Error deleting user:', err);
         return res.status(500).json({ error: 'Error deleting user', details: err.message });
       }
       res.json({ message: 'User deleted successfully' });

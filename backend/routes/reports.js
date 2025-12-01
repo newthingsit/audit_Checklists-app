@@ -2,7 +2,9 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 const { exportAuditsToExcel, exportStoreAnalyticsToExcel, exportMonthlyScorecardToExcel } = require('../utils/excelExport');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -187,13 +189,13 @@ router.get('/audits/csv', authenticate, (req, res) => {
   dbInstance.all(query, params,
     (err, audits) => {
       if (err) {
-        console.error('Database error in CSV export:', err);
+        logger.error('Database error in CSV export:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
 
       // Debug: Log first audit to check category field
       if (audits && audits.length > 0) {
-        console.log('Sample audit data:', {
+        logger.debug('Sample audit data:', {
           id: audits[0].id,
           template_name: audits[0].template_name,
           template_category: audits[0].template_category
@@ -220,7 +222,7 @@ router.get('/audits/csv', authenticate, (req, res) => {
             
             return `${day}-${month}-${year}`;
           } catch (error) {
-            console.error('Error formatting date:', error);
+            logger.error('Error formatting date:', error);
             return dateString;
           }
         };
@@ -294,7 +296,7 @@ router.get('/audits/csv', authenticate, (req, res) => {
         // Send CSV content
         res.send(csvContent);
       } catch (error) {
-        console.error('Error generating CSV:', error);
+        logger.error('Error generating CSV:', error);
         res.status(500).json({ error: 'Error generating CSV file', details: error.message });
       }
     }
@@ -426,7 +428,7 @@ router.get('/audits/excel', authenticate, async (req, res) => {
     
     dbInstance.all(query, params, async (err, audits) => {
       if (err) {
-        console.error('Error fetching audits for Excel export:', err);
+        logger.error('Error fetching audits for Excel export:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
       
@@ -447,12 +449,12 @@ router.get('/audits/excel', authenticate, async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename=audits-export.xlsx');
         res.send(buffer);
       } catch (excelErr) {
-        console.error('Error generating Excel file:', excelErr);
+        logger.error('Error generating Excel file:', excelErr);
         res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
       }
     });
   } catch (error) {
-    console.error('Error in Excel export:', error);
+    logger.error('Error in Excel export:', error);
     res.status(500).json({ error: 'Error exporting to Excel', details: error.message });
   }
   
@@ -656,7 +658,7 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
     params,
     async (err, audits) => {
       if (err) {
-        console.error('Monthly scorecard error:', err);
+        logger.error('Monthly scorecard error:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
 
@@ -853,7 +855,7 @@ router.get('/monthly-scorecard', authenticate, (req, res) => {
           res.send(buffer);
           return;
         } catch (excelErr) {
-          console.error('Error generating Excel file:', excelErr);
+          logger.error('Error generating Excel file:', excelErr);
           return res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
         }
       }
@@ -960,7 +962,7 @@ router.get('/monthly-scorecard/pdf', authenticate, (req, res) => {
     params,
     (err, audits) => {
       if (err) {
-        console.error('Monthly scorecard PDF error:', err);
+        logger.error('Monthly scorecard PDF error:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
       }
 
@@ -1060,7 +1062,7 @@ router.get('/scheduled-audits/pdf', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, schedules) => {
     if (err) {
-      console.error('Scheduled audits PDF error:', err);
+      logger.error('Scheduled audits PDF error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -1157,7 +1159,7 @@ router.get('/scheduled-audits/csv', authenticate, (req, res) => {
 
   dbInstance.all(query, params, (err, schedules) => {
     if (err) {
-      console.error('Scheduled audits CSV error:', err);
+      logger.error('Scheduled audits CSV error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -1204,7 +1206,7 @@ router.get('/scheduled-audits/csv', authenticate, (req, res) => {
       // Send CSV content
       res.send(csvContent);
     } catch (error) {
-      console.error('Error generating CSV:', error);
+      logger.error('Error generating CSV:', error);
       res.status(500).json({ error: 'Error generating CSV file', details: error.message });
     }
   });
@@ -1285,7 +1287,7 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
 
   dbInstance.all(query, params, async (err, audits) => {
     if (err) {
-      console.error('Store analytics error:', err);
+      logger.error('Store analytics error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
 
@@ -1499,7 +1501,7 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
         res.send(buffer);
         return;
       } catch (excelErr) {
-        console.error('Error generating Excel file:', excelErr);
+        logger.error('Error generating Excel file:', excelErr);
         return res.status(500).json({ error: 'Error generating Excel file', details: excelErr.message });
       }
     } else if (format === 'csv') {
@@ -1574,7 +1576,7 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
         // Send CSV content
         res.send(csvContent);
       } catch (error) {
-        console.error('Error generating CSV:', error);
+        logger.error('Error generating CSV:', error);
         res.status(500).json({ error: 'Error generating CSV file', details: error.message });
       }
     } else {
@@ -1591,6 +1593,540 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
         stores: storeAnalytics
       });
     }
+  });
+});
+
+// Location Verification Report - Compare Store Location vs GPS Location by User
+router.get('/location-verification', authenticate, requirePermission('view_location_verification', 'view_analytics', 'manage_analytics'), (req, res) => {
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { date_from, date_to, user_id, location_id } = req.query;
+  const dbInstance = db.getDb();
+
+  const dbType = process.env.DB_TYPE || 'sqlite';
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  let params = [];
+  let userFilter = '';
+  let dateFilter = '';
+  let locationFilter = '';
+  let specificUserFilter = '';
+
+  // Only admins can see all users' data
+  if (!isAdmin) {
+    userFilter = 'AND a.user_id = ?';
+    params.push(userId);
+  }
+
+  // Filter by specific user (admin only)
+  if (user_id && isAdmin) {
+    specificUserFilter = 'AND a.user_id = ?';
+    params.push(user_id);
+  }
+
+  // Date filters
+  if (date_from) {
+    if (isSqlServer) {
+      dateFilter += ' AND CAST(a.created_at AS DATE) >= CAST(? AS DATE)';
+    } else {
+      dateFilter += ' AND DATE(a.created_at) >= ?';
+    }
+    params.push(date_from);
+  }
+  if (date_to) {
+    if (isSqlServer) {
+      dateFilter += ' AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
+    } else {
+      dateFilter += ' AND DATE(a.created_at) <= ?';
+    }
+    params.push(date_to);
+  }
+
+  // Location filter
+  if (location_id) {
+    locationFilter = 'AND a.location_id = ?';
+    params.push(location_id);
+  }
+
+  // Query to get audits with GPS data and store locations
+  const query = `
+    SELECT 
+      a.id as audit_id,
+      a.restaurant_name,
+      a.status,
+      a.score,
+      a.created_at,
+      a.completed_at,
+      a.gps_latitude,
+      a.gps_longitude,
+      a.gps_accuracy,
+      a.gps_timestamp,
+      a.location_verified,
+      l.id as location_id,
+      l.name as location_name,
+      l.store_number,
+      l.address,
+      l.city,
+      l.state,
+      l.latitude as store_latitude,
+      l.longitude as store_longitude,
+      u.id as user_id,
+      u.name as user_name,
+      u.email as user_email,
+      ct.name as template_name
+    FROM audits a
+    LEFT JOIN locations l ON a.location_id = l.id
+    LEFT JOIN users u ON a.user_id = u.id
+    LEFT JOIN checklist_templates ct ON a.template_id = ct.id
+    WHERE a.gps_latitude IS NOT NULL 
+      AND a.gps_longitude IS NOT NULL
+      ${userFilter}
+      ${specificUserFilter}
+      ${dateFilter}
+      ${locationFilter}
+    ORDER BY u.name, a.created_at DESC
+  `;
+
+  dbInstance.all(query, params, (err, audits) => {
+    if (err) {
+      logger.error('Location verification report error:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+
+    // Calculate distance between store location and GPS location
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+      if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+      
+      const R = 6371; // Earth's radius in kilometers
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c * 1000; // Convert to meters
+      return Math.round(distance);
+    };
+
+    // Process audits and add distance calculation
+    const processedAudits = audits.map(audit => {
+      const distance = calculateDistance(
+        audit.store_latitude,
+        audit.store_longitude,
+        audit.gps_latitude,
+        audit.gps_longitude
+      );
+
+      // Determine verification status based on distance
+      let verification_status = 'unknown';
+      if (distance !== null) {
+        if (distance <= 100) verification_status = 'verified';
+        else if (distance <= 500) verification_status = 'nearby';
+        else if (distance <= 1000) verification_status = 'far';
+        else verification_status = 'suspicious';
+      } else if (!audit.store_latitude || !audit.store_longitude) {
+        verification_status = 'no_store_coords';
+      }
+
+      return {
+        ...audit,
+        distance_meters: distance,
+        verification_status,
+        distance_display: distance !== null ? 
+          (distance >= 1000 ? `${(distance/1000).toFixed(2)} km` : `${distance} m`) : 
+          'N/A'
+      };
+    });
+
+    // Group by user
+    const userGroups = {};
+    processedAudits.forEach(audit => {
+      const key = audit.user_id || 'unknown';
+      if (!userGroups[key]) {
+        userGroups[key] = {
+          user_id: audit.user_id,
+          user_name: audit.user_name || 'Unknown User',
+          user_email: audit.user_email,
+          audits: [],
+          stats: {
+            total: 0,
+            verified: 0,
+            nearby: 0,
+            far: 0,
+            suspicious: 0,
+            no_store_coords: 0,
+            unknown: 0,
+            avg_distance: 0
+          }
+        };
+      }
+      userGroups[key].audits.push(audit);
+      userGroups[key].stats.total++;
+      userGroups[key].stats[audit.verification_status]++;
+    });
+
+    // Calculate averages and format response
+    const userReports = Object.values(userGroups).map(group => {
+      const validDistances = group.audits
+        .filter(a => a.distance_meters !== null)
+        .map(a => a.distance_meters);
+      
+      if (validDistances.length > 0) {
+        group.stats.avg_distance = Math.round(
+          validDistances.reduce((a, b) => a + b, 0) / validDistances.length
+        );
+      }
+
+      // Calculate verification rate
+      group.stats.verification_rate = group.stats.total > 0 
+        ? Math.round(((group.stats.verified + group.stats.nearby) / group.stats.total) * 100)
+        : 0;
+
+      return group;
+    });
+
+    // Sort by user name
+    userReports.sort((a, b) => (a.user_name || '').localeCompare(b.user_name || ''));
+
+    // Calculate overall summary
+    const summary = {
+      total_audits: processedAudits.length,
+      total_users: userReports.length,
+      verification_breakdown: {
+        verified: processedAudits.filter(a => a.verification_status === 'verified').length,
+        nearby: processedAudits.filter(a => a.verification_status === 'nearby').length,
+        far: processedAudits.filter(a => a.verification_status === 'far').length,
+        suspicious: processedAudits.filter(a => a.verification_status === 'suspicious').length,
+        no_store_coords: processedAudits.filter(a => a.verification_status === 'no_store_coords').length
+      },
+      date_range: {
+        from: date_from || 'all',
+        to: date_to || 'all'
+      }
+    };
+
+    res.json({
+      summary,
+      users: userReports
+    });
+  });
+});
+
+// Export Location Verification Report to CSV
+router.get('/location-verification/csv', authenticate, requirePermission('view_location_verification', 'view_analytics', 'export_data'), (req, res) => {
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { date_from, date_to, user_id, location_id } = req.query;
+  const dbInstance = db.getDb();
+
+  const dbType = process.env.DB_TYPE || 'sqlite';
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  let params = [];
+  let userFilter = '';
+  let dateFilter = '';
+  let locationFilter = '';
+  let specificUserFilter = '';
+
+  if (!isAdmin) {
+    userFilter = 'AND a.user_id = ?';
+    params.push(userId);
+  }
+
+  if (user_id && isAdmin) {
+    specificUserFilter = 'AND a.user_id = ?';
+    params.push(user_id);
+  }
+
+  if (date_from) {
+    if (isSqlServer) {
+      dateFilter += ' AND CAST(a.created_at AS DATE) >= CAST(? AS DATE)';
+    } else {
+      dateFilter += ' AND DATE(a.created_at) >= ?';
+    }
+    params.push(date_from);
+  }
+  if (date_to) {
+    if (isSqlServer) {
+      dateFilter += ' AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
+    } else {
+      dateFilter += ' AND DATE(a.created_at) <= ?';
+    }
+    params.push(date_to);
+  }
+
+  if (location_id) {
+    locationFilter = 'AND a.location_id = ?';
+    params.push(location_id);
+  }
+
+  const query = `
+    SELECT 
+      a.id as audit_id,
+      a.restaurant_name,
+      a.status,
+      a.score,
+      a.created_at,
+      a.gps_latitude,
+      a.gps_longitude,
+      a.gps_accuracy,
+      a.location_verified,
+      l.name as location_name,
+      l.store_number,
+      l.address,
+      l.city,
+      l.latitude as store_latitude,
+      l.longitude as store_longitude,
+      u.name as user_name,
+      u.email as user_email,
+      ct.name as template_name
+    FROM audits a
+    LEFT JOIN locations l ON a.location_id = l.id
+    LEFT JOIN users u ON a.user_id = u.id
+    LEFT JOIN checklist_templates ct ON a.template_id = ct.id
+    WHERE a.gps_latitude IS NOT NULL 
+      AND a.gps_longitude IS NOT NULL
+      ${userFilter}
+      ${specificUserFilter}
+      ${dateFilter}
+      ${locationFilter}
+    ORDER BY u.name, a.created_at DESC
+  `;
+
+  dbInstance.all(query, params, (err, audits) => {
+    if (err) {
+      logger.error('Location verification CSV error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+      if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return Math.round(R * c * 1000);
+    };
+
+    // CSV Header
+    let csv = 'User Name,User Email,Audit ID,Store Name,Store Number,Store Address,Store Latitude,Store Longitude,GPS Latitude,GPS Longitude,GPS Accuracy (m),Distance (m),Verification Status,Audit Date,Score,Status\n';
+
+    audits.forEach(audit => {
+      const distance = calculateDistance(
+        audit.store_latitude, audit.store_longitude,
+        audit.gps_latitude, audit.gps_longitude
+      );
+
+      let status = 'Unknown';
+      if (distance !== null) {
+        if (distance <= 100) status = 'Verified';
+        else if (distance <= 500) status = 'Nearby';
+        else if (distance <= 1000) status = 'Far';
+        else status = 'Suspicious';
+      } else if (!audit.store_latitude) {
+        status = 'No Store Coordinates';
+      }
+
+      const escapeCsv = (val) => {
+        if (val === null || val === undefined) return '';
+        return `"${String(val).replace(/"/g, '""')}"`;
+      };
+
+      csv += [
+        escapeCsv(audit.user_name),
+        escapeCsv(audit.user_email),
+        audit.audit_id,
+        escapeCsv(audit.location_name || audit.restaurant_name),
+        escapeCsv(audit.store_number),
+        escapeCsv(audit.address),
+        audit.store_latitude || '',
+        audit.store_longitude || '',
+        audit.gps_latitude,
+        audit.gps_longitude,
+        audit.gps_accuracy || '',
+        distance || '',
+        status,
+        audit.created_at,
+        audit.score || '',
+        audit.status
+      ].join(',') + '\n';
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=location-verification-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csv);
+  });
+});
+
+// ========================================
+// EMAIL REPORT FUNCTIONALITY
+// ========================================
+
+const { sendEmail, emailTemplates, isConfigured } = require('../utils/emailService');
+
+// Send audit report via email
+router.post('/audit/:id/email', authenticate, async (req, res) => {
+  const auditId = req.params.id;
+  const { recipientEmail, recipientName } = req.body;
+  const dbInstance = db.getDb();
+  
+  if (!recipientEmail) {
+    return res.status(400).json({ error: 'Recipient email is required' });
+  }
+  
+  if (!isConfigured()) {
+    return res.status(503).json({ error: 'Email service not configured. Please set SMTP settings.' });
+  }
+  
+  try {
+    // Get audit details
+    const audit = await new Promise((resolve, reject) => {
+      dbInstance.get(
+        `SELECT a.*, ct.name as template_name, ct.category, 
+         u.name as auditor_name, l.name as store_name, l.store_number
+         FROM audits a
+         JOIN checklist_templates ct ON a.template_id = ct.id
+         LEFT JOIN users u ON a.user_id = u.id
+         LEFT JOIN locations l ON a.location_id = l.id
+         WHERE a.id = ?`,
+        [auditId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+    
+    // Get audit items for summary
+    const items = await new Promise((resolve, reject) => {
+      dbInstance.all(
+        `SELECT ai.status, ai.mark, ci.category
+         FROM audit_items ai
+         JOIN checklist_items ci ON ai.item_id = ci.id
+         WHERE ai.audit_id = ?`,
+        [auditId],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+    
+    // Calculate items summary
+    const itemsSummary = {
+      total: items.length,
+      passed: items.filter(i => i.status === 'pass' || i.status === 'yes' || i.mark === 'A').length,
+      failed: items.filter(i => i.status === 'fail' || i.status === 'no' || i.mark === 'C').length,
+      na: items.filter(i => i.status === 'na' || i.status === 'n/a').length
+    };
+    
+    // Calculate category scores
+    const categories = {};
+    items.forEach(item => {
+      const cat = item.category || 'General';
+      if (!categories[cat]) {
+        categories[cat] = { total: 0, passed: 0 };
+      }
+      categories[cat].total++;
+      if (item.status === 'pass' || item.status === 'yes' || item.mark === 'A' || item.mark === 'B') {
+        categories[cat].passed++;
+      }
+    });
+    
+    const categoryScores = Object.entries(categories).map(([category, data]) => ({
+      category,
+      total: data.total,
+      completed: data.passed,
+      score: data.total > 0 ? Math.round((data.passed / data.total) * 100) : 0
+    }));
+    
+    // Generate email
+    const storeName = audit.store_name || audit.restaurant_name || 'Unknown Store';
+    const { subject, html } = emailTemplates.auditReport(
+      storeName,
+      audit.template_name,
+      audit.score || 0,
+      audit.auditor_name || 'Unknown',
+      audit.completed_at || audit.created_at,
+      itemsSummary,
+      categoryScores
+    );
+    
+    // Send email
+    const sent = await sendEmail(recipientEmail, subject, html);
+    
+    if (sent) {
+      logger.info(`Audit report ${auditId} emailed to ${recipientEmail}`);
+      res.json({ success: true, message: `Report sent to ${recipientEmail}` });
+    } else {
+      res.status(500).json({ error: 'Failed to send email' });
+    }
+  } catch (error) {
+    logger.error('Error sending audit report email:', error);
+    res.status(500).json({ error: 'Error generating or sending report' });
+  }
+});
+
+// Send report to store manager (auto-lookup email from location)
+router.post('/audit/:id/email-store', authenticate, async (req, res) => {
+  const auditId = req.params.id;
+  const dbInstance = db.getDb();
+  
+  if (!isConfigured()) {
+    return res.status(503).json({ error: 'Email service not configured' });
+  }
+  
+  try {
+    // Get audit with store email
+    const audit = await new Promise((resolve, reject) => {
+      dbInstance.get(
+        `SELECT a.*, l.email as store_email, l.name as store_name
+         FROM audits a
+         LEFT JOIN locations l ON a.location_id = l.id
+         WHERE a.id = ?`,
+        [auditId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+    
+    if (!audit.store_email) {
+      return res.status(400).json({ error: 'Store does not have an email address configured' });
+    }
+    
+    // Forward to the regular email endpoint
+    req.body.recipientEmail = audit.store_email;
+    req.body.recipientName = audit.store_name;
+    
+    // Call the email sending logic (reuse from above)
+    return router.handle(req, res, () => {});
+  } catch (error) {
+    logger.error('Error sending store email:', error);
+    res.status(500).json({ error: 'Error sending report to store' });
+  }
+});
+
+// Get email configuration status
+router.get('/email/status', authenticate, (req, res) => {
+  res.json({
+    configured: isConfigured(),
+    message: isConfigured() 
+      ? 'Email service is configured and ready' 
+      : 'Email service not configured. Set SMTP_USER and SMTP_PASSWORD environment variables.'
   });
 });
 

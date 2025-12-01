@@ -3,6 +3,8 @@
  * Prevents information disclosure in production
  */
 
+const logger = require('../utils/logger');
+
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 /**
@@ -10,7 +12,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
  */
 const handleError = (err, req, res, statusCode = 500, customMessage = null) => {
   // Log full error details server-side
-  console.error(`[${new Date().toISOString()}] Error:`, {
+  logger.error('Request error:', {
     path: req.path,
     method: req.method,
     error: err.message,
@@ -29,7 +31,7 @@ const handleError = (err, req, res, statusCode = 500, customMessage = null) => {
  * Database error handler
  */
 const handleDatabaseError = (err, req, res, customMessage = 'Database error') => {
-  console.error('Database error:', {
+  logger.error('Database error:', {
     path: req.path,
     method: req.method,
     error: err.message,

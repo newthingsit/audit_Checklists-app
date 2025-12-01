@@ -266,6 +266,140 @@ const emailTemplates = {
   },
 
   /**
+   * Audit Report Email - Detailed audit results for store managers
+   */
+  auditReport: (storeName, auditTitle, score, auditorName, completedDate, itemsSummary, categoryScores) => {
+    const subject = `Audit Report: ${storeName} - ${auditTitle} (${score}%)`;
+    const scoreColor = score >= 80 ? '#4caf50' : score >= 60 ? '#ff9800' : '#f44336';
+    const scoreLabel = score >= 80 ? 'Excellent' : score >= 60 ? 'Satisfactory' : 'Needs Improvement';
+    
+    // Generate category scores HTML
+    const categoryRows = (categoryScores || []).map(cat => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #eee;">${cat.category}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${cat.completed}/${cat.total}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: ${cat.score >= 80 ? '#4caf50' : cat.score >= 60 ? '#ff9800' : '#f44336'}; font-weight: bold;">${cat.score}%</td>
+      </tr>
+    `).join('');
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 650px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #1a237e 0%, #283593 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .header p { margin: 5px 0 0; opacity: 0.9; }
+          .score-box { background: white; padding: 25px; margin: -20px 20px 0; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; position: relative; z-index: 1; }
+          .score { font-size: 48px; font-weight: bold; color: ${scoreColor}; }
+          .score-label { font-size: 14px; color: #666; text-transform: uppercase; }
+          .content { background: #f5f5f5; padding: 25px 20px; }
+          .info-grid { display: table; width: 100%; margin-bottom: 20px; }
+          .info-item { display: table-cell; padding: 15px; background: white; text-align: center; border-radius: 5px; margin: 5px; }
+          .info-label { font-size: 12px; color: #666; text-transform: uppercase; }
+          .info-value { font-size: 16px; font-weight: bold; color: #333; margin-top: 5px; }
+          .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px; }
+          .section h3 { margin: 0 0 15px; color: #1a237e; border-bottom: 2px solid #1a237e; padding-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #1a237e; color: white; padding: 10px; text-align: left; }
+          .summary-stats { display: flex; justify-content: space-around; text-align: center; margin-top: 15px; }
+          .stat { flex: 1; }
+          .stat-value { font-size: 24px; font-weight: bold; }
+          .stat-label { font-size: 12px; color: #666; }
+          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .button { display: inline-block; padding: 12px 30px; background: #1a237e; color: white; text-decoration: none; border-radius: 5px; margin-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📋 Audit Report</h1>
+            <p>${storeName}</p>
+          </div>
+          
+          <div class="score-box">
+            <div class="score-label">Overall Score</div>
+            <div class="score">${score}%</div>
+            <div style="color: ${scoreColor}; font-weight: bold;">${scoreLabel}</div>
+          </div>
+          
+          <div class="content">
+            <table style="width: 100%; background: white; border-radius: 5px; margin-bottom: 20px;">
+              <tr>
+                <td style="padding: 15px; text-align: center; border-right: 1px solid #eee;">
+                  <div style="font-size: 12px; color: #666;">AUDIT TYPE</div>
+                  <div style="font-weight: bold; margin-top: 5px;">${auditTitle}</div>
+                </td>
+                <td style="padding: 15px; text-align: center; border-right: 1px solid #eee;">
+                  <div style="font-size: 12px; color: #666;">AUDITOR</div>
+                  <div style="font-weight: bold; margin-top: 5px;">${auditorName}</div>
+                </td>
+                <td style="padding: 15px; text-align: center;">
+                  <div style="font-size: 12px; color: #666;">DATE</div>
+                  <div style="font-weight: bold; margin-top: 5px;">${new Date(completedDate).toLocaleDateString()}</div>
+                </td>
+              </tr>
+            </table>
+            
+            <div class="section">
+              <h3>📊 Items Summary</h3>
+              <div style="display: flex; justify-content: space-around; text-align: center;">
+                <div>
+                  <div style="font-size: 28px; font-weight: bold; color: #4caf50;">${itemsSummary?.passed || 0}</div>
+                  <div style="font-size: 12px; color: #666;">Passed</div>
+                </div>
+                <div>
+                  <div style="font-size: 28px; font-weight: bold; color: #f44336;">${itemsSummary?.failed || 0}</div>
+                  <div style="font-size: 12px; color: #666;">Failed</div>
+                </div>
+                <div>
+                  <div style="font-size: 28px; font-weight: bold; color: #9e9e9e;">${itemsSummary?.na || 0}</div>
+                  <div style="font-size: 12px; color: #666;">N/A</div>
+                </div>
+                <div>
+                  <div style="font-size: 28px; font-weight: bold; color: #1a237e;">${itemsSummary?.total || 0}</div>
+                  <div style="font-size: 12px; color: #666;">Total</div>
+                </div>
+              </div>
+            </div>
+            
+            ${categoryScores && categoryScores.length > 0 ? `
+            <div class="section">
+              <h3>📈 Category Breakdown</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th style="text-align: center;">Items</th>
+                    <th style="text-align: center;">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${categoryRows}
+                </tbody>
+              </table>
+            </div>
+            ` : ''}
+            
+            <div style="text-align: center;">
+              <a href="${process.env.APP_URL || 'http://localhost:3000'}/audits" class="button">View Full Report</a>
+            </div>
+          </div>
+          
+          <div class="footer">
+            <p>This report was automatically generated by the Audit Checklist System.</p>
+            <p>© ${new Date().getFullYear()} Audit Pro. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    return { subject, html };
+  },
+
+  /**
    * Overdue item notification
    */
   overdueItem: (userName, itemType, itemTitle, dueDate) => {

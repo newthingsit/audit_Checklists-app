@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,19 @@ import {
   Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useNetwork } from '../context/NetworkContext';
+import { useOffline } from '../context/OfflineContext';
 import { API_BASE_URL } from '../config/api';
-import { themeConfig } from '../config/theme';
+import { themeConfig, getScoreColor } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { SyncStatusBadge, PendingSyncSummary, ConnectionStatusDot } from '../components/OfflineIndicator';
 
 const { width } = Dimensions.get('window');
-const cardWidth = (width - 45) / 2; // 2 cards per row with padding
+const cardWidth = (width - 48) / 2;
 
 const DashboardScreen = () => {
   const [stats, setStats] = useState({ templates: 0, audits: 0, completed: 0, pendingActions: 0 });
@@ -27,10 +30,11 @@ const DashboardScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { isOnline } = useNetwork();
+  const { offlineStats, triggerSync, prefetchForOffline } = useOffline();
   const userPermissions = user?.permissions || [];
 
-  // Permission checks - permissions come from role only
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
@@ -46,24 +50,46 @@ const DashboardScreen = () => {
                            hasPermission(userPermissions, 'manage_templates') ||
                            isAdmin(user);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // Refresh user data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (refreshUser) {
+        refreshUser();
+      }
+    }, [refreshUser])
+  );
 
-  const fetchData = async () => {
+  // Fetch data when component mounts or when user/permissions change
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user?.id, user?.role, JSON.stringify(user?.permissions), fetchData]);
+
+  const fetchData = useCallback(async () => {
+    // Recalculate permissions inside fetchData to ensure we have the latest values
+    const currentPermissions = user?.permissions || [];
+    const canViewTemplatesNow = hasPermission(currentPermissions, 'display_templates') ||
+                               hasPermission(currentPermissions, 'view_templates') ||
+                               hasPermission(currentPermissions, 'manage_templates') ||
+                               isAdmin(user);
+    const canViewAuditsNow = hasPermission(currentPermissions, 'view_audits') ||
+                            hasPermission(currentPermissions, 'manage_audits') ||
+                            hasPermission(currentPermissions, 'view_own_audits') ||
+                            isAdmin(user);
+    const canViewActionsNow = hasPermission(currentPermissions, 'view_actions') ||
+                             hasPermission(currentPermissions, 'manage_actions') ||
+                             isAdmin(user);
+
     try {
-      // Only fetch data if user has permission
       const fetchPromises = [
-        // Templates - only if user can view templates
-        canViewTemplates
+        canViewTemplatesNow
           ? axios.get(`${API_BASE_URL}/templates`).catch(() => ({ data: { templates: [] } }))
           : Promise.resolve({ data: { templates: [] } }),
-        // Audits - only if user can view audits
-        canViewAudits
+        canViewAuditsNow
           ? axios.get(`${API_BASE_URL}/audits`).catch(() => ({ data: { audits: [] } }))
           : Promise.resolve({ data: { audits: [] } }),
-        // Actions - only if user can view actions
-        canViewActions 
+        canViewActionsNow 
           ? axios.get(`${API_BASE_URL}/actions`).catch(() => ({ data: { actions: [] } }))
           : Promise.resolve({ data: { actions: [] } })
       ];
@@ -88,17 +114,30 @@ const DashboardScreen = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user]);
 
-  const onRefresh = () => {
+  // Fetch data when component mounts or when user/permissions change
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user?.id, user?.role, JSON.stringify(user?.permissions), fetchData]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    fetchData();
+    // Refresh user data first to get updated permissions
+    if (refreshUser) {
+      await refreshUser();
+    }
+    // Then fetch dashboard data
+    await fetchData();
   };
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1976d2" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={themeConfig.primary.main} />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
       </View>
     );
   }
@@ -108,51 +147,98 @@ const DashboardScreen = () => {
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl 
+          refreshing={refreshing} 
+          onRefresh={onRefresh}
+          colors={[themeConfig.primary.main]}
+          tintColor={themeConfig.primary.main}
+        />
+      }
+      showsVerticalScrollIndicator={false}
     >
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome, {user?.name || 'User'}!</Text>
-        <Text style={styles.subtitle}>Restaurant Audit Dashboard</Text>
+        <View style={styles.headerContent}>
+          <View>
+            <View style={styles.greetingRow}>
+              <Text style={styles.greeting}>Welcome back,</Text>
+              <ConnectionStatusDot size={8} />
+            </View>
+            <Text style={styles.userName}>{user?.name || 'User'}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <SyncStatusBadge onPress={triggerSync} />
+            <View style={styles.avatarContainer}>
+              <LinearGradient
+                colors={themeConfig.dashboardCards.card1}
+                style={styles.avatar}
+              >
+                <Text style={styles.avatarText}>
+                  {(user?.name || 'U').substring(0, 2).toUpperCase()}
+                </Text>
+              </LinearGradient>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.subtitle}>
+          {isOnline 
+            ? "Here's an overview of your audit activities"
+            : "You're offline - showing cached data"
+          }
+        </Text>
       </View>
 
+      {/* Pending Sync Summary - shows when there's data to sync */}
+      {offlineStats.hasPendingSync && (
+        <View style={styles.syncSummaryContainer}>
+          <PendingSyncSummary onSyncPress={triggerSync} />
+        </View>
+      )}
+
+      {/* Stats Cards */}
       <View style={styles.statsContainer}>
         {canViewTemplates && (
-          <View style={styles.statCardWrapper}>
+          <TouchableOpacity 
+            style={styles.statCardWrapper}
+            onPress={() => navigation.navigate('Checklists')}
+            activeOpacity={0.8}
+          >
             <LinearGradient
               colors={themeConfig.dashboardCards.card1}
               style={styles.statCard}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <View style={styles.statCardContent}>
-                <View style={styles.statIconContainer}>
-                  <Icon name="checklist" size={32} color="#fff" />
-                </View>
-                <Text style={styles.statNumber}>{stats.templates}</Text>
-                <Text style={styles.statLabel}>Templates</Text>
+              <View style={styles.statIconBg}>
+                <Icon name="checklist" size={24} color="#fff" />
               </View>
+              <Text style={styles.statNumber}>{stats.templates}</Text>
+              <Text style={styles.statLabel}>Templates</Text>
             </LinearGradient>
-          </View>
+          </TouchableOpacity>
         )}
 
         {canViewAudits && (
           <>
-            <View style={styles.statCardWrapper}>
+            <TouchableOpacity 
+              style={styles.statCardWrapper}
+              onPress={() => navigation.navigate('History')}
+              activeOpacity={0.8}
+            >
               <LinearGradient
                 colors={themeConfig.dashboardCards.card2}
                 style={styles.statCard}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={styles.statCardContent}>
-                  <View style={styles.statIconContainer}>
-                    <Icon name="history" size={32} color="#fff" />
-                  </View>
-                  <Text style={styles.statNumber}>{stats.audits}</Text>
-                  <Text style={styles.statLabel}>Total Audits</Text>
+                <View style={styles.statIconBg}>
+                  <Icon name="history" size={24} color="#fff" />
                 </View>
+                <Text style={styles.statNumber}>{stats.audits}</Text>
+                <Text style={styles.statLabel}>Total Audits</Text>
               </LinearGradient>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.statCardWrapper}>
               <LinearGradient
@@ -161,13 +247,11 @@ const DashboardScreen = () => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={styles.statCardContent}>
-                  <View style={styles.statIconContainer}>
-                    <Icon name="check-circle" size={32} color="#fff" />
-                  </View>
-                  <Text style={styles.statNumber}>{stats.completed}</Text>
-                  <Text style={styles.statLabel}>Completed</Text>
+                <View style={styles.statIconBg}>
+                  <Icon name="check-circle" size={24} color="#fff" />
                 </View>
+                <Text style={styles.statNumber}>{stats.completed}</Text>
+                <Text style={styles.statLabel}>Completed</Text>
               </LinearGradient>
             </View>
 
@@ -178,76 +262,141 @@ const DashboardScreen = () => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={styles.statCardContent}>
-                  <View style={styles.statIconContainer}>
-                    <Icon name="trending-up" size={32} color="#fff" />
-                  </View>
-                  <Text style={styles.statNumber}>{completionRate}%</Text>
-                  <Text style={styles.statLabel}>Completion Rate</Text>
+                <View style={styles.statIconBg}>
+                  <Icon name="trending-up" size={24} color="#fff" />
                 </View>
+                <Text style={styles.statNumber}>{completionRate}%</Text>
+                <Text style={styles.statLabel}>Completion</Text>
               </LinearGradient>
             </View>
           </>
         )}
       </View>
 
+      {/* Recent Audits Section */}
       {canViewAudits && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionTitle}>Recent Audits</Text>
-              <Text style={styles.sectionSubtitle}>Your latest audit activities</Text>
+              <Text style={styles.sectionSubtitle}>Your latest activities</Text>
             </View>
             <View style={styles.actionButtons}>
               {(hasPermission(userPermissions, 'view_scheduled_audits') || isAdmin(user)) && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ScheduledAudits')}
-                  style={styles.scheduledButton}
+                  style={styles.outlineButton}
+                  activeOpacity={0.7}
                 >
-                  <Icon name="schedule" size={18} color={themeConfig.primary.main} />
-                  <Text style={styles.scheduledButtonText}>Scheduled</Text>
+                  <Icon name="schedule" size={16} color={themeConfig.primary.main} />
+                  <Text style={styles.outlineButtonText}>Scheduled</Text>
                 </TouchableOpacity>
               )}
               {canCreateAudit && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('Checklists')}
-                  style={styles.newButton}
+                  activeOpacity={0.7}
                 >
-                  <Icon name="add" size={20} color="#fff" />
-                  <Text style={styles.newButtonText}>New Audit</Text>
+                  <LinearGradient
+                    colors={themeConfig.dashboardCards.card1}
+                    style={styles.primaryButton}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Icon name="add" size={18} color="#fff" />
+                    <Text style={styles.primaryButtonText}>New</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
           {recentAudits.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No audits yet</Text>
-              <Text style={styles.emptySubtext}>Create your first audit!</Text>
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconBg}>
+                <Icon name="assignment" size={40} color={themeConfig.text.disabled} />
+              </View>
+              <Text style={styles.emptyTitle}>No audits yet</Text>
+              <Text style={styles.emptySubtitle}>Start your first audit to see it here</Text>
+              {canCreateAudit && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Checklists')}
+                  activeOpacity={0.7}
+                  style={styles.emptyButton}
+                >
+                  <LinearGradient
+                    colors={themeConfig.dashboardCards.card1}
+                    style={styles.emptyButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Icon name="add" size={18} color="#fff" />
+                    <Text style={styles.emptyButtonText}>Create First Audit</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
-            recentAudits.map((audit) => (
+            recentAudits.map((audit, index) => (
               <TouchableOpacity
                 key={audit.id}
-                style={styles.auditCard}
+                style={[styles.auditCard, index === 0 && styles.auditCardFirst]}
                 onPress={() => navigation.navigate('History', { screen: 'AuditDetail', params: { id: audit.id } })}
+                activeOpacity={0.7}
               >
-                <View style={styles.auditCardHeader}>
-                  <Text style={styles.auditName}>{audit.restaurant_name}</Text>
-                  <View style={[styles.statusBadge, audit.status === 'completed' && styles.statusCompleted]}>
-                    <Text style={styles.statusText}>{audit.status}</Text>
+                <View style={styles.auditCardLeft}>
+                  <View style={[
+                    styles.auditStatusDot,
+                    { backgroundColor: audit.status === 'completed' ? themeConfig.success.main : themeConfig.warning.main }
+                  ]} />
+                  <View style={styles.auditInfo}>
+                    <Text style={styles.auditName} numberOfLines={1}>
+                      {audit.restaurant_name}
+                    </Text>
+                    <Text style={styles.auditTemplate} numberOfLines={1}>
+                      {audit.template_name}
+                    </Text>
+                    <Text style={styles.auditDate}>
+                      {new Date(audit.created_at).toLocaleDateString()}
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.auditLocation}>{audit.location || 'No location'}</Text>
-                <Text style={styles.auditTemplate}>{audit.template_name}</Text>
-                {audit.score !== null && (
-                  <Text style={styles.auditScore}>Score: {audit.score}%</Text>
-                )}
+                <View style={styles.auditCardRight}>
+                  <View style={[
+                    styles.statusBadge,
+                    { backgroundColor: audit.status === 'completed' ? themeConfig.success.bg : themeConfig.warning.bg }
+                  ]}>
+                    <Text style={[
+                      styles.statusText,
+                      { color: audit.status === 'completed' ? themeConfig.success.dark : themeConfig.warning.dark }
+                    ]}>
+                      {audit.status === 'completed' ? 'Done' : 'In Progress'}
+                    </Text>
+                  </View>
+                  {audit.score !== null && (
+                    <Text style={[styles.auditScore, { color: getScoreColor(audit.score) }]}>
+                      {audit.score}%
+                    </Text>
+                  )}
+                </View>
               </TouchableOpacity>
             ))
           )}
+
+          {recentAudits.length > 0 && (
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => navigation.navigate('History')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>View All Audits</Text>
+              <Icon name="arrow-forward" size={18} color={themeConfig.primary.main} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
+
+      <View style={styles.bottomSpacing} />
     </ScrollView>
   );
 };
@@ -257,196 +406,292 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: themeConfig.background.default,
   },
-  centerContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: themeConfig.background.default,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: themeConfig.text.secondary,
+    fontSize: 14,
   },
   header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: themeConfig.border.default,
+    backgroundColor: themeConfig.background.paper,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: themeConfig.borderRadius.xl,
+    borderBottomRightRadius: themeConfig.borderRadius.xl,
+    ...themeConfig.shadows.small,
   },
-  welcomeText: {
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  greeting: {
+    fontSize: 14,
+    color: themeConfig.text.secondary,
+    marginBottom: 2,
+  },
+  syncSummaryContainer: {
+    marginTop: -8,
+  },
+  userName: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: themeConfig.text.primary,
+    letterSpacing: -0.5,
+  },
+  avatarContainer: {
+    ...themeConfig.shadows.small,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: themeConfig.borderRadius.medium,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: themeConfig.text.secondary,
-    marginTop: 5,
+    marginTop: 12,
   },
   statsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 15,
-    backgroundColor: '#fff',
-    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingTop: 20,
     justifyContent: 'space-between',
   },
   statCardWrapper: {
     width: cardWidth,
-    marginBottom: 15,
-    ...themeConfig.shadows.medium,
+    marginBottom: 16,
   },
   statCard: {
     borderRadius: themeConfig.borderRadius.large,
-    padding: 20,
-    minHeight: 120,
-    justifyContent: 'center',
+    padding: 16,
+    minHeight: 110,
+    ...themeConfig.shadows.medium,
   },
-  statCardContent: {
-    alignItems: 'center',
-  },
-  statIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  statIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#fff',
-    marginTop: 5,
+    letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 5,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 2,
     fontWeight: '500',
   },
   section: {
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 15,
-    flexWrap: 'wrap',
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: themeConfig.text.primary,
-    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   sectionSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: themeConfig.text.secondary,
+    marginTop: 2,
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
+    gap: 8,
   },
-  scheduledButton: {
+  outlineButton: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: themeConfig.primary.main,
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
-    alignItems: 'center',
+    borderRadius: themeConfig.borderRadius.medium,
+    borderWidth: 1.5,
+    borderColor: themeConfig.primary.main,
+    backgroundColor: themeConfig.background.paper,
   },
-  scheduledButtonText: {
+  outlineButtonText: {
     color: themeConfig.primary.main,
     fontWeight: '600',
-    marginLeft: 5,
-    fontSize: 14,
+    marginLeft: 4,
+    fontSize: 13,
   },
-  newButton: {
+  primaryButton: {
     flexDirection: 'row',
-    backgroundColor: themeConfig.primary.main,
-    paddingHorizontal: 15,
+    alignItems: 'center',
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: themeConfig.borderRadius.medium,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 4,
+    fontSize: 13,
+  },
+  emptyState: {
+    backgroundColor: themeConfig.background.paper,
+    borderRadius: themeConfig.borderRadius.large,
+    padding: 32,
     alignItems: 'center',
     ...themeConfig.shadows.small,
   },
-  newButtonText: {
+  emptyIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: themeConfig.background.default,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: themeConfig.text.secondary,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  emptyButton: {
+    borderRadius: themeConfig.borderRadius.medium,
+    overflow: 'hidden',
+  },
+  emptyButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  emptyButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 5,
+    fontWeight: '600',
+    marginLeft: 6,
     fontSize: 14,
   },
   auditCard: {
-    backgroundColor: '#fff',
+    backgroundColor: themeConfig.background.paper,
     borderRadius: themeConfig.borderRadius.medium,
-    padding: 15,
+    padding: 16,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: themeConfig.border.default,
-    ...themeConfig.shadows.small,
-  },
-  auditCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 5,
+    borderWidth: 1,
+    borderColor: themeConfig.border.light,
+    ...themeConfig.shadows.small,
   },
-  auditName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+  auditCardFirst: {
+    borderColor: themeConfig.primary.light,
+    borderWidth: 1.5,
+  },
+  auditCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
-  statusBadge: {
-    backgroundColor: '#ff9800',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
+  auditStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 12,
   },
-  statusCompleted: {
-    backgroundColor: '#4caf50',
+  auditInfo: {
+    flex: 1,
   },
-  statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'capitalize',
-  },
-  auditLocation: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
+  auditName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginBottom: 2,
   },
   auditTemplate: {
-    fontSize: 14,
-    color: '#999',
-    marginTop: 5,
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    marginBottom: 2,
+  },
+  auditDate: {
+    fontSize: 12,
+    color: themeConfig.text.muted,
+  },
+  auditCardRight: {
+    alignItems: 'flex-end',
+    marginLeft: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: themeConfig.borderRadius.small,
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   auditScore: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1976d2',
-    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '700',
   },
-  emptyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 30,
+  viewAllButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    marginTop: 6,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  emptySubtext: {
+  viewAllText: {
+    color: themeConfig.primary.main,
+    fontWeight: '600',
     fontSize: 14,
-    color: '#999',
-    marginTop: 5,
+    marginRight: 4,
+  },
+  bottomSpacing: {
+    height: 30,
   },
 });
 
 export default DashboardScreen;
-

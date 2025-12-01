@@ -1,0 +1,8 @@
+
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <circle cx="512" cy="460.8" r="307.2" fill="#0d9488"/>
+  <rect x="358.4" y="563.2" width="307.2" height="256" rx="20.48" fill="#0d9488"/>
+  <text x="512" y="491.52" font-family="Arial, sans-serif" font-size="153.6" font-weight="bold" fill="white" text-anchor="middle">✓</text>
+  <text x="512" y="737.28" font-family="Arial, sans-serif" font-size="61.44" font-weight="bold" fill="white" text-anchor="middle">AUDIT</text>
+</svg>

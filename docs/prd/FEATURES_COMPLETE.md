@@ -184,6 +184,30 @@ All major features are complete! The app now has:
 - ✅ Print functionality
 - ✅ Enhanced dashboard
 - ✅ Better UX/UI
+- ✅ Role & permission synchronization (v1.12.0)
+- ✅ Automatic user data refresh
+- ✅ Real-time permission updates
 
 The application is now feature-rich and production-ready!
+
+---
+
+## Version 1.12.0 Updates (December 1, 2025)
+
+### ✅ Role & Permission Synchronization
+- **Automatic Refresh**: User data automatically refreshes when app comes to foreground
+- **Screen Focus Refresh**: Dashboard and Profile screens refresh user data when focused
+- **Real-time Updates**: Permissions recalculated on each data fetch
+- **Pull-to-Refresh Enhancement**: Refreshes user data before fetching dashboard data
+
+### ✅ Bug Fixes
+- Fixed 404 error on `/api/settings/preferences` endpoint
+- Fixed notification subscription cleanup error
+- Fixed stale permission checks in dashboard
+
+### ✅ Package Updates
+- Updated to Expo SDK 54 compatible packages
+- Fixed notification service API compatibility
+
+**See:** `docs/prd/VERSION_1.12.0.md` for complete details
 

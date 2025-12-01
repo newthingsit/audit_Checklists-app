@@ -317,6 +317,44 @@ const createTables = async () => {
       [created_at] DATETIME DEFAULT GETDATE(),
       [updated_at] DATETIME DEFAULT GETDATE(),
       FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
+    )`,
+
+    // App settings table (for admin-controlled feature flags)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[app_settings]') AND type in (N'U'))
+    CREATE TABLE [dbo].[app_settings] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [setting_key] NVARCHAR(100) UNIQUE NOT NULL,
+      [setting_value] NTEXT NOT NULL,
+      [description] NTEXT,
+      [updated_at] DATETIME DEFAULT GETDATE(),
+      [updated_by] INT,
+      FOREIGN KEY ([updated_by]) REFERENCES [users]([id])
+    )`,
+
+    // Push tokens table (for push notifications)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[push_tokens]') AND type in (N'U'))
+    CREATE TABLE [dbo].[push_tokens] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL,
+      [token] NVARCHAR(500) NOT NULL,
+      [platform] NVARCHAR(50) DEFAULT 'unknown',
+      [device_name] NVARCHAR(255) DEFAULT 'Unknown Device',
+      [created_at] DATETIME DEFAULT GETDATE(),
+      [updated_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
+    )`,
+
+    // Notification history table
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[notification_history]') AND type in (N'U'))
+    CREATE TABLE [dbo].[notification_history] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL,
+      [title] NVARCHAR(255) NOT NULL,
+      [body] NTEXT NOT NULL,
+      [data] NTEXT,
+      [read] BIT DEFAULT 0,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
     )`
   ];
 
@@ -665,6 +703,116 @@ const addMissingColumns = async () => {
         console.log('created_by column added to locations table');
       } catch (err) {
         console.warn('Error adding created_by to locations:', err.message);
+      }
+    }
+    
+    // Add GPS coordinates to locations table for verification
+    if (!locationColumns.includes('latitude')) {
+      console.log('Adding latitude column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [latitude] DECIMAL(10, 8) NULL;
+        `);
+        console.log('latitude column added to locations table');
+      } catch (err) {
+        console.warn('Error adding latitude to locations:', err.message);
+      }
+    }
+    
+    if (!locationColumns.includes('longitude')) {
+      console.log('Adding longitude column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [longitude] DECIMAL(11, 8) NULL;
+        `);
+        console.log('longitude column added to locations table');
+      } catch (err) {
+        console.warn('Error adding longitude to locations:', err.message);
+      }
+    }
+    
+    // Add region column to locations table
+    if (!locationColumns.includes('region')) {
+      console.log('Adding region column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [region] NVARCHAR(255) NULL;
+        `);
+        console.log('region column added to locations table');
+      } catch (err) {
+        console.warn('Error adding region to locations:', err.message);
+      }
+    }
+    
+    // Add district column to locations table
+    if (!locationColumns.includes('district')) {
+      console.log('Adding district column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [district] NVARCHAR(255) NULL;
+        `);
+        console.log('district column added to locations table');
+      } catch (err) {
+        console.warn('Error adding district to locations:', err.message);
+      }
+    }
+    
+    // Add parent_id column to locations table for hierarchy
+    if (!locationColumns.includes('parent_id')) {
+      console.log('Adding parent_id column to locations table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[locations] 
+          ADD [parent_id] INT NULL;
+        `);
+        
+        // Add self-referencing foreign key for hierarchy
+        const constraintCheck = await pool.request().query(`
+          SELECT COUNT(*) as count 
+          FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS 
+          WHERE TABLE_NAME = 'locations' AND CONSTRAINT_NAME = 'FK_locations_parent'
+        `);
+        
+        if (constraintCheck.recordset[0].count === 0) {
+          await pool.request().query(`
+            ALTER TABLE [dbo].[locations]
+            ADD CONSTRAINT [FK_locations_parent] 
+            FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE NO ACTION;
+          `);
+        }
+        console.log('parent_id column added to locations table');
+      } catch (err) {
+        console.warn('Error adding parent_id to locations:', err.message);
+      }
+    }
+    
+    // Add GPS location columns to audits table
+    const checkAuditsGPS = await pool.request().query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'audits'
+    `);
+    
+    const auditsColumns = checkAuditsGPS.recordset.map(r => r.COLUMN_NAME);
+    
+    if (!auditsColumns.includes('gps_latitude')) {
+      console.log('Adding GPS columns to audits table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[audits] 
+          ADD [gps_latitude] DECIMAL(10, 8) NULL,
+              [gps_longitude] DECIMAL(11, 8) NULL,
+              [gps_accuracy] FLOAT NULL,
+              [gps_timestamp] DATETIME NULL,
+              [location_verified] BIT DEFAULT 0;
+        `);
+        console.log('GPS columns added to audits table');
+      } catch (err) {
+        console.warn('Error adding GPS columns to audits:', err.message);
       }
     }
     

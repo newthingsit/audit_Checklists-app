@@ -1,293 +1,425 @@
 const express = require('express');
-const db = require('../config/database-loader');
-const { authenticate } = require('../middleware/auth');
-
 const router = express.Router();
+const { authenticate } = require('../middleware/auth');
+const db = require('../config/database-loader');
+const logger = require('../utils/logger');
+
+// Helper to determine database type
+const getDbType = () => {
+  const dbType = (process.env.DB_TYPE || '').toLowerCase();
+  if (dbType === 'mssql' || dbType === 'sqlserver' || process.env.MSSQL_SERVER) {
+    return 'mssql';
+  }
+  return 'sqlite';
+};
+
+const getDb = () => db.getDb();
+const axios = require('axios');
+
+// Expo Push Notification API endpoint
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+
+// ==================== WEB APP NOTIFICATION ENDPOINTS ====================
 
 // Get all notifications for current user
-router.get('/', authenticate, (req, res) => {
-  const dbInstance = db.getDb();
-  const userId = req.user.id;
-  const { unread_only, limit } = req.query;
+router.get('/', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = parseInt(req.query.limit) || 50;
+    const database = getDb();
+    const dbType = getDbType();
 
-  const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
-  
-  // SQL Server uses BIT type and 'read' is a reserved word, so use brackets
-  let query;
-  if (dbType === 'mssql' || dbType === 'sqlserver') {
-    query = `SELECT * FROM notifications WHERE user_id = ?`;
-    if (unread_only === 'true') {
-      query += ' AND [read] = 0';
-    }
-  } else {
-    query = `SELECT * FROM notifications WHERE user_id = ?`;
-    if (unread_only === 'true') {
-      query += ' AND read = 0';
-    }
+    const query = dbType === 'mssql'
+      ? `SELECT TOP ${limit} * FROM notifications WHERE user_id = ? ORDER BY created_at DESC`
+      : `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`;
+
+    const params = dbType === 'mssql' ? [userId] : [userId, limit];
+
+    const notifications = await new Promise((resolve, reject) => {
+      database.all(query, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    res.json({ notifications });
+  } catch (error) {
+    logger.error('Error fetching notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications' });
   }
-  
-  const params = [userId];
-
-  if (limit) {
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
-      query = query.replace('SELECT *', `SELECT TOP ${parseInt(limit)} *`);
-    } else {
-      query += ` LIMIT ${parseInt(limit)}`;
-    }
-  }
-
-  query += ' ORDER BY created_at DESC';
-
-  dbInstance.all(query, params, (err, notifications) => {
-    if (err) {
-      console.error('Error fetching notifications:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
-    }
-    res.json({ notifications: notifications || [] });
-  });
 });
 
 // Get unread count
-router.get('/unread-count', authenticate, (req, res) => {
+router.get('/unread-count', authenticate, async (req, res) => {
   try {
-    const dbInstance = db.getDb();
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.json({ count: 0 });
-    }
-    
-    const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
 
-    // SQL Server uses BIT type, so we need to handle boolean comparison differently
-    let query;
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
-      query = 'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND [read] = 0';
-    } else {
-      query = 'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0';
-    }
+    const query = dbType === 'mssql'
+      ? `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND [read] = 0`
+      : `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0`;
 
-    dbInstance.get(
-      query,
-      [userId],
-      (err, row) => {
-        if (err) {
-          // Check if error is due to table not existing
-          const errorMessage = err.message || err.toString() || '';
-          const isTableNotFound = errorMessage.toLowerCase().includes('no such table') ||
-                                 errorMessage.toLowerCase().includes("doesn't exist") ||
-                                 errorMessage.toLowerCase().includes('table or view') ||
-                                 errorMessage.toLowerCase().includes('invalid object name');
-          
-          if (isTableNotFound) {
-            // Table doesn't exist yet, return 0
-            console.log('notifications table does not exist yet, returning 0');
-            return res.json({ count: 0 });
-          }
-          
-          console.error('Error fetching unread count:', err);
-          // Return 0 instead of 500 to prevent UI errors
-          return res.json({ count: 0 });
-        }
-        res.json({ count: (row && row.count) ? parseInt(row.count) : 0 });
-      }
-    );
+    const result = await new Promise((resolve, reject) => {
+      database.get(query, [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    res.json({ count: result?.count || 0 });
   } catch (error) {
-    console.error('Error in unread-count endpoint:', error);
-    // Always return 200 with count 0 to prevent UI errors
-    return res.json({ count: 0 });
+    logger.error('Error fetching unread count:', error);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+// Mark single notification as read
+router.put('/:id/read', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const updateQuery = dbType === 'mssql'
+      ? `UPDATE notifications SET [read] = 1 WHERE id = ? AND user_id = ?`
+      : `UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?`;
+
+    await new Promise((resolve, reject) => {
+      database.run(updateQuery, [id, userId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error marking notification as read:', error);
+    res.status(500).json({ error: 'Failed to mark notification as read' });
+  }
+});
+
+// Mark all notifications as read
+router.put('/read-all', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const updateQuery = dbType === 'mssql'
+      ? `UPDATE notifications SET [read] = 1 WHERE user_id = ?`
+      : `UPDATE notifications SET read = 1 WHERE user_id = ?`;
+
+    await new Promise((resolve, reject) => {
+      database.run(updateQuery, [userId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error marking all notifications as read:', error);
+    res.status(500).json({ error: 'Failed to mark all as read' });
+  }
+});
+
+// Delete single notification
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const database = getDb();
+
+    const deleteQuery = `DELETE FROM notifications WHERE id = ? AND user_id = ?`;
+
+    await new Promise((resolve, reject) => {
+      database.run(deleteQuery, [id, userId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting notification:', error);
+    res.status(500).json({ error: 'Failed to delete notification' });
+  }
+});
+
+// Delete all notifications
+router.delete('/', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const database = getDb();
+
+    const deleteQuery = `DELETE FROM notifications WHERE user_id = ?`;
+
+    await new Promise((resolve, reject) => {
+      database.run(deleteQuery, [userId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting all notifications:', error);
+    res.status(500).json({ error: 'Failed to delete all notifications' });
+  }
+});
+
+// ==================== MOBILE PUSH NOTIFICATION ENDPOINTS ====================
+
+// Register push token
+router.post('/register-token', authenticate, async (req, res) => {
+  try {
+    const { token, platform, deviceName } = req.body;
+    const userId = req.user.id;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const database = getDb();
+
+    // Check if token already exists for this user
+    const existingQuery = `SELECT id FROM push_tokens WHERE user_id = ? AND token = ?`;
+
+    const existing = await new Promise((resolve, reject) => {
+      database.get(existingQuery, [userId, token], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (existing) {
+      // Update existing token record
+      const dbType = getDbType();
+      const updateQuery = dbType === 'mssql'
+        ? `UPDATE push_tokens SET platform = ?, device_name = ?, updated_at = GETDATE() WHERE id = ?`
+        : `UPDATE push_tokens SET platform = ?, device_name = ?, updated_at = datetime('now') WHERE id = ?`;
+
+      await new Promise((resolve, reject) => {
+        database.run(updateQuery, [platform || 'unknown', deviceName || 'Unknown Device', existing.id], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      return res.json({ success: true, message: 'Token updated' });
+    }
+
+    // Insert new token
+    const dbType = getDbType();
+    const insertQuery = dbType === 'mssql'
+      ? `INSERT INTO push_tokens (user_id, token, platform, device_name, created_at) VALUES (?, ?, ?, ?, GETDATE())`
+      : `INSERT INTO push_tokens (user_id, token, platform, device_name, created_at) VALUES (?, ?, ?, ?, datetime('now'))`;
+
+    await new Promise((resolve, reject) => {
+      database.run(insertQuery, [userId, token, platform || 'unknown', deviceName || 'Unknown Device'], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    logger.info(`Push token registered for user ${userId}`);
+    res.json({ success: true, message: 'Token registered' });
+  } catch (error) {
+    logger.error('Error registering push token:', error);
+    res.status(500).json({ error: 'Failed to register token' });
+  }
+});
+
+// Unregister push token
+router.delete('/unregister-token', authenticate, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const userId = req.user.id;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const database = getDb();
+
+    const deleteQuery = `DELETE FROM push_tokens WHERE user_id = ? AND token = ?`;
+
+    await new Promise((resolve, reject) => {
+      database.run(deleteQuery, [userId, token], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    logger.info(`Push token unregistered for user ${userId}`);
+    res.json({ success: true, message: 'Token unregistered' });
+  } catch (error) {
+    logger.error('Error unregistering push token:', error);
+    res.status(500).json({ error: 'Failed to unregister token' });
+  }
+});
+
+// Send notification to a specific user
+router.post('/send', authenticate, async (req, res) => {
+  try {
+    const { userId, title, body, data } = req.body;
+
+    // Check if sender is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can send notifications' });
+    }
+
+    if (!userId || !title || !body) {
+      return res.status(400).json({ error: 'userId, title, and body are required' });
+    }
+
+    const result = await sendPushNotification(userId, title, body, data);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error sending notification:', error);
+    res.status(500).json({ error: 'Failed to send notification' });
+  }
+});
+
+// Send notification to multiple users
+router.post('/send-bulk', authenticate, async (req, res) => {
+  try {
+    const { userIds, title, body, data } = req.body;
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can send notifications' });
+    }
+
+    if (!userIds || !Array.isArray(userIds) || !title || !body) {
+      return res.status(400).json({ error: 'userIds (array), title, and body are required' });
+    }
+
+    const results = await Promise.all(
+      userIds.map(userId => sendPushNotification(userId, title, body, data))
+    );
+
+    const sent = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    res.json({ success: true, sent, failed, results });
+  } catch (error) {
+    logger.error('Error sending bulk notifications:', error);
+    res.status(500).json({ error: 'Failed to send notifications' });
+  }
+});
+
+// Get user's notification history
+router.get('/history', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
+
+    const query = dbType === 'mssql'
+      ? `SELECT TOP 50 * FROM notification_history WHERE user_id = ? ORDER BY created_at DESC`
+      : `SELECT * FROM notification_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`;
+
+    const notifications = await new Promise((resolve, reject) => {
+      database.all(query, [userId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+
+    res.json({ notifications });
+  } catch (error) {
+    logger.error('Error fetching notification history:', error);
+    res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
 
 // Mark notification as read
-router.put('/:id/read', authenticate, (req, res) => {
-  const { id } = req.params;
-  const dbInstance = db.getDb();
-  const userId = req.user.id;
-  const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
+router.put('/read/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const database = getDb();
+    const dbType = getDbType();
 
-  // SQL Server uses brackets for reserved word 'read'
-  const query = (dbType === 'mssql' || dbType === 'sqlserver')
-    ? 'UPDATE notifications SET [read] = 1 WHERE id = ? AND user_id = ?'
-    : 'UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?';
+    const updateQuery = dbType === 'mssql'
+      ? `UPDATE notification_history SET [read] = 1 WHERE id = ? AND user_id = ?`
+      : `UPDATE notification_history SET read = 1 WHERE id = ? AND user_id = ?`;
 
-  dbInstance.run(
-    query,
-    [id, userId],
-    function(err, result) {
-      if (err) {
-        console.error('Error marking notification as read:', err);
-        return res.status(500).json({ error: 'Database error', details: err.message });
-      }
-      const changes = (result && result.changes) ? result.changes : (this.changes || 0);
-      if (changes === 0) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      res.json({ message: 'Notification marked as read' });
-    }
-  );
-});
+    await new Promise((resolve, reject) => {
+      database.run(updateQuery, [id, userId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
 
-// Mark all notifications as read
-router.put('/read-all', authenticate, (req, res) => {
-  const dbInstance = db.getDb();
-  const userId = req.user.id;
-  const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
-
-  // SQL Server uses brackets for reserved word 'read'
-  const query = (dbType === 'mssql' || dbType === 'sqlserver')
-    ? 'UPDATE notifications SET [read] = 1 WHERE user_id = ? AND [read] = 0'
-    : 'UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0';
-
-  dbInstance.run(
-    query,
-    [userId],
-    function(err, result) {
-      if (err) {
-        console.error('Error marking all notifications as read:', err);
-        return res.status(500).json({ error: 'Database error', details: err.message });
-      }
-      const changes = (result && result.changes) ? result.changes : (this.changes || 0);
-      res.json({ message: 'All notifications marked as read', count: changes });
-    }
-  );
-});
-
-// Delete notification
-router.delete('/:id', authenticate, (req, res) => {
-  const { id } = req.params;
-  const dbInstance = db.getDb();
-  const userId = req.user.id;
-
-  dbInstance.run(
-    'DELETE FROM notifications WHERE id = ? AND user_id = ?',
-    [id, userId],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      res.json({ message: 'Notification deleted' });
-    }
-  );
-});
-
-// Delete all notifications
-router.delete('/', authenticate, (req, res) => {
-  const dbInstance = db.getDb();
-  const userId = req.user.id;
-  const { read_only } = req.query;
-
-  const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
-  
-  // SQL Server uses brackets for reserved word 'read'
-  let query = 'DELETE FROM notifications WHERE user_id = ?';
-  const params = [userId];
-
-  if (read_only === 'true') {
-    if (dbType === 'mssql' || dbType === 'sqlserver') {
-      query += ' AND [read] = 1';
-    } else {
-      query += ' AND read = 1';
-    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error marking notification as read:', error);
+    res.status(500).json({ error: 'Failed to update notification' });
   }
-
-  dbInstance.run(query, params, function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json({ message: 'Notifications deleted', count: this.changes });
-  });
 });
 
-// Helper function to create notification (can be used by other routes)
-// Now also sends email if user has email address and preferences allow it
-const createNotification = async (userId, type, title, message, link = null, emailData = null) => {
-  return new Promise((resolve, reject) => {
-    const dbInstance = db.getDb();
-    
-    // First, get user email and preferences if email notification is needed
-    if (emailData) {
-      const dbType = process.env.DB_TYPE || 'sqlite';
-      let coalesceFunc = 'COALESCE';
-      if (dbType === 'mssql' || dbType === 'sqlserver') {
-        coalesceFunc = 'ISNULL';
-      }
-      
-      dbInstance.get(
-        `SELECT u.email, u.name, 
-         ${coalesceFunc}(up.email_notifications_enabled, 1) as email_notifications_enabled,
-         ${coalesceFunc}(up.email_audit_completed, 1) as email_audit_completed,
-         ${coalesceFunc}(up.email_action_assigned, 1) as email_action_assigned,
-         ${coalesceFunc}(up.email_task_reminder, 1) as email_task_reminder,
-         ${coalesceFunc}(up.email_overdue_items, 1) as email_overdue_items,
-         ${coalesceFunc}(up.email_scheduled_audit, 1) as email_scheduled_audit
-         FROM users u
-         LEFT JOIN user_preferences up ON u.id = up.user_id
-         WHERE u.id = ?`,
-        [userId],
-        async (err, user) => {
-          if (err) {
-            console.error('Error fetching user for email notification:', err);
-            // Continue with in-app notification even if email fails
-          } else if (user && user.email) {
-            // Check if email notifications are enabled and specific type is allowed
-            // Convert to boolean (SQL Server returns BIT as 0/1, others return boolean)
-            const emailEnabled = Boolean(user.email_notifications_enabled);
-            const auditCompleted = Boolean(user.email_audit_completed);
-            const actionAssigned = Boolean(user.email_action_assigned);
-            const taskReminder = Boolean(user.email_task_reminder);
-            const overdueItems = Boolean(user.email_overdue_items);
-            const scheduledAudit = Boolean(user.email_scheduled_audit);
-            
-            let shouldSendEmail = false;
-            if (emailEnabled) {
-              // Check specific notification type preference
-              if (emailData.template === 'auditCompleted' && auditCompleted) {
-                shouldSendEmail = true;
-              } else if (emailData.template === 'actionItemAssigned' && actionAssigned) {
-                shouldSendEmail = true;
-              } else if (emailData.template === 'taskReminder' && taskReminder) {
-                shouldSendEmail = true;
-              } else if (emailData.template === 'overdueItem' && overdueItems) {
-                shouldSendEmail = true;
-              } else if (emailData.template === 'scheduledAuditReminder' && scheduledAudit) {
-                shouldSendEmail = true;
-              }
-            }
-            
-            if (shouldSendEmail) {
-              // Send email notification asynchronously (don't block notification creation)
-              const { sendNotificationEmail } = require('../utils/emailService');
-              sendNotificationEmail(user.email, user.name || 'User', emailData.template, emailData.data)
-                .catch(emailErr => {
-                  console.error('Error sending email notification:', emailErr);
-                  // Don't fail notification creation if email fails
-                });
-            }
-          }
-        }
-      );
+// Helper function to send push notification via Expo
+async function sendPushNotification(userId, title, body, data = {}) {
+  try {
+    const database = getDb();
+    const dbType = getDbType();
+
+    // Get user's push tokens
+    const tokenQuery = `SELECT token FROM push_tokens WHERE user_id = ?`;
+
+    const tokens = await new Promise((resolve, reject) => {
+      database.all(tokenQuery, [userId], (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(r => r.token));
+      });
+    });
+
+    if (tokens.length === 0) {
+      return { success: false, error: 'No push tokens found for user' };
     }
-    
-    // Create in-app notification
-    dbInstance.run(
-      'INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)',
-      [userId, type, title, message, link],
-      function(err) {
-        if (err) {
-          console.error('Error creating notification:', err);
-          reject(err);
-        } else {
-          resolve(this.lastID);
-        }
-      }
-    );
-  });
-};
+
+    // Build Expo push messages
+    const messages = tokens.map(token => ({
+      to: token,
+      sound: 'default',
+      title,
+      body,
+      data,
+    }));
+
+    // Send via Expo Push API
+    const response = await axios.post(EXPO_PUSH_URL, messages, {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Save to notification history
+    const insertQuery = dbType === 'mssql'
+      ? `INSERT INTO notification_history (user_id, title, body, data, created_at) VALUES (?, ?, ?, ?, GETDATE())`
+      : `INSERT INTO notification_history (user_id, title, body, data, created_at) VALUES (?, ?, ?, ?, datetime('now'))`;
+
+    await new Promise((resolve, reject) => {
+      database.run(insertQuery, [userId, title, body, JSON.stringify(data)], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    logger.info(`Notification sent to user ${userId}: ${title}`);
+    return { success: true, tickets: response.data.data };
+  } catch (error) {
+    logger.error('Error in sendPushNotification:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Export the helper function for use in other files
+router.sendPushNotification = sendPushNotification;
 
 module.exports = router;
-module.exports.createNotification = createNotification;
-

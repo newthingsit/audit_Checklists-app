@@ -32,6 +32,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import axios from 'axios';
@@ -60,7 +62,9 @@ const Stores = () => {
     email: '',
     parent_id: '',
     region: '',
-    district: ''
+    district: '',
+    latitude: '',
+    longitude: ''
   });
 
   useEffect(() => {
@@ -93,7 +97,9 @@ const Stores = () => {
         email: store.email || '',
         parent_id: store.parent_id || '',
         region: store.region || '',
-        district: store.district || ''
+        district: store.district || '',
+        latitude: store.latitude || '',
+        longitude: store.longitude || ''
       });
     } else {
       setEditingStore(null);
@@ -108,7 +114,9 @@ const Stores = () => {
         email: '',
         parent_id: '',
         region: '',
-        district: ''
+        district: '',
+        latitude: '',
+        longitude: ''
       });
     }
     setOpenDialog(true);
@@ -196,7 +204,9 @@ const Stores = () => {
         state: headers.findIndex(h => h === 'state'),
         country: headers.findIndex(h => h === 'country'),
         phone: headers.findIndex(h => h === 'phone' || h === 'phone number'),
-        email: headers.findIndex(h => h === 'email')
+        email: headers.findIndex(h => h === 'email'),
+        latitude: headers.findIndex(h => h === 'latitude' || h === 'lat'),
+        longitude: headers.findIndex(h => h === 'longitude' || h === 'lng' || h === 'long')
       };
 
       // Check for required fields
@@ -214,6 +224,9 @@ const Stores = () => {
         const store = headerMap.store >= 0 ? values[headerMap.store]?.replace(/^"|"$/g, '').trim() : '';
         
         if (storeName || store) {
+          const latValue = headerMap.latitude >= 0 ? values[headerMap.latitude]?.replace(/^"|"$/g, '').trim() : '';
+          const lngValue = headerMap.longitude >= 0 ? values[headerMap.longitude]?.replace(/^"|"$/g, '').trim() : '';
+          
           stores.push({
             store: store || '',
             storeName: storeName || '',
@@ -222,7 +235,9 @@ const Stores = () => {
             state: headerMap.state >= 0 ? (values[headerMap.state]?.replace(/^"|"$/g, '').trim() || '') : '',
             country: headerMap.country >= 0 ? (values[headerMap.country]?.replace(/^"|"$/g, '').trim() || '') : '',
             phone: headerMap.phone >= 0 ? (values[headerMap.phone]?.replace(/^"|"$/g, '').trim() || '') : '',
-            email: headerMap.email >= 0 ? (values[headerMap.email]?.replace(/^"|"$/g, '').trim() || '') : ''
+            email: headerMap.email >= 0 ? (values[headerMap.email]?.replace(/^"|"$/g, '').trim() || '') : '',
+            latitude: latValue && !isNaN(parseFloat(latValue)) ? parseFloat(latValue) : '',
+            longitude: lngValue && !isNaN(parseFloat(lngValue)) ? parseFloat(lngValue) : ''
           });
         }
       }
@@ -295,11 +310,11 @@ const Stores = () => {
   };
 
   const handleDownloadSampleCsv = () => {
-    const sampleCsv = `Store,Store Name,Brand Name,City,State,Country,Phone,Email
-5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store5438@example.com
-5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,India,+91-9876543210,store5046@example.com
-5040,PG Phoenix Pune,Punjab Grill,Pune,Maharashtra,India,+91-1122334455,store5040@example.com
-5025,PG Select City Saket,Punjab Grill,New Delhi,Delhi,India,+91-5566778899,store5025@example.com`;
+    const sampleCsv = `Store,Store Name,Brand Name,City,State,Country,Phone,Email,Latitude,Longitude
+5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store5438@example.com,28.4595,77.0266
+5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,India,+91-9876543210,store5046@example.com,19.0760,72.8777
+5040,PG Phoenix Pune,Punjab Grill,Pune,Maharashtra,India,+91-1122334455,store5040@example.com,18.5204,73.8567
+5025,PG Select City Saket,Punjab Grill,New Delhi,Delhi,India,+91-5566778899,store5025@example.com,28.5275,77.2186`;
     
     const blob = new Blob([sampleCsv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -339,12 +354,13 @@ const Stores = () => {
         'Store Number',
         'Store Name',
         'Brand Name',
-        'Address',
         'City',
         'State',
         'Country',
         'Phone',
-        'Email'
+        'Email',
+        'Latitude',
+        'Longitude'
       ];
 
       // CSV Rows
@@ -353,12 +369,13 @@ const Stores = () => {
           store.store_number || '',
           store.name || '',
           store.address || '',
-          store.address || '',
           store.city || '',
           store.state || '',
           store.country || '',
           store.phone || '',
-          store.email || ''
+          store.email || '',
+          store.latitude || '',
+          store.longitude || ''
         ];
         // Escape commas and quotes in CSV
         return row.map(cell => {
@@ -530,6 +547,14 @@ const Stores = () => {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                               {[store.region, store.district].filter(Boolean).join(' • ')}
                             </Typography>
+                          )}
+                          {store.latitude && store.longitude && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, gap: 0.5 }}>
+                              <LocationOnIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                              <Typography variant="caption" color="success.main" sx={{ fontWeight: 500 }}>
+                                GPS Verified
+                              </Typography>
+                            </Box>
                           )}
                         </Box>
                       </Box>
@@ -758,6 +783,89 @@ const Stores = () => {
                   </option>
                 ))}
             </TextField>
+            
+            {/* GPS Coordinates Section */}
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <LocationOnIcon sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  GPS Coordinates (for Location Verification)
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+                Add GPS coordinates to enable location verification when auditors start audits at this store.
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Latitude"
+                    type="number"
+                    value={formData.latitude}
+                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                    margin="normal"
+                    placeholder="e.g., 28.6139"
+                    inputProps={{ step: 'any' }}
+                    helperText="Decimal degrees (e.g., 28.6139)"
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Longitude"
+                    type="number"
+                    value={formData.longitude}
+                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                    margin="normal"
+                    placeholder="e.g., 77.2090"
+                    inputProps={{ step: 'any' }}
+                    helperText="Decimal degrees (e.g., 77.2090)"
+                  />
+                </Grid>
+              </Grid>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<MyLocationIcon />}
+                onClick={() => {
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                      (position) => {
+                        setFormData({
+                          ...formData,
+                          latitude: position.coords.latitude.toFixed(6),
+                          longitude: position.coords.longitude.toFixed(6)
+                        });
+                        showSuccess('Location captured successfully!');
+                      },
+                      (error) => {
+                        showError('Failed to get location. Please enter coordinates manually.');
+                        console.error('Geolocation error:', error);
+                      }
+                    );
+                  } else {
+                    showError('Geolocation is not supported by your browser.');
+                  }
+                }}
+                sx={{ mt: 1 }}
+              >
+                Use My Current Location
+              </Button>
+              {formData.latitude && formData.longitude && (
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="text"
+                    size="small"
+                    startIcon={<LocationOnIcon />}
+                    href={`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on Google Maps
+                  </Button>
+                </Box>
+              )}
+            </Box>
           </DialogContent>
           <DialogActions
             sx={{
@@ -862,8 +970,8 @@ const Stores = () => {
               margin="normal"
               multiline
               rows={4}
-              placeholder="Store,Store Name,Brand Name,City,State,Country,Phone,Email&#10;5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store@example.com"
-              helperText="Only 'Store Name' or 'Store' column is required. Other columns are optional."
+              placeholder="Store,Store Name,Brand Name,City,State,Country,Phone,Email,Latitude,Longitude&#10;5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store@example.com,28.4595,77.0266"
+              helperText="Only 'Store Name' column is required. Add Latitude/Longitude for GPS location verification."
             />
             
             {parseError && (
@@ -890,6 +998,8 @@ const Stores = () => {
                         <TableCell><strong>Country</strong></TableCell>
                         <TableCell><strong>Phone</strong></TableCell>
                         <TableCell><strong>Email</strong></TableCell>
+                        <TableCell><strong>Latitude</strong></TableCell>
+                        <TableCell><strong>Longitude</strong></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -908,6 +1018,12 @@ const Stores = () => {
                           <TableCell sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {store.email || '-'}
                           </TableCell>
+                          <TableCell sx={{ color: store.latitude ? 'success.main' : 'text.secondary' }}>
+                            {store.latitude || '-'}
+                          </TableCell>
+                          <TableCell sx={{ color: store.longitude ? 'success.main' : 'text.secondary' }}>
+                            {store.longitude || '-'}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -920,15 +1036,16 @@ const Stores = () => {
               <Typography variant="caption" color="text.secondary">
                 <strong>Simple CSV Format:</strong><br />
                 • <strong>Required:</strong> Store Name (or Store/Store Number column)<br />
-                • <strong>Optional:</strong> Store Number, Brand Name, City, State, Country, Phone, Email<br />
-                • <strong>Column names are flexible:</strong> "Store Name" or "Name", "Brand Name" or "Address", etc.<br />
+                • <strong>Optional:</strong> Store Number, Brand Name, City, State, Country, Phone, Email, Latitude, Longitude<br />
+                • <strong>GPS Coordinates:</strong> Add Latitude and Longitude columns for location verification<br />
+                • <strong>Column names are flexible:</strong> "Store Name" or "Name", "Latitude" or "Lat", "Longitude" or "Lng"<br />
                 • <strong>Quoted fields supported:</strong> Use quotes for values containing commas<br />
                 <br />
                 <strong>Example:</strong><br />
                 <code style={{ fontSize: '11px' }}>
-                  Store,Store Name,Brand Name,City,State,Country,Phone,Email<br />
-                  5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,India,+91-1234567890,store@example.com<br />
-                  5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,India,+91-9876543210,store2@example.com
+                  Store,Store Name,Brand Name,City,State,Latitude,Longitude<br />
+                  5438,PG Ambience Mall GGN,Punjab Grill,Gurugram,Haryana,28.4595,77.0266<br />
+                  5046,PG Palladium Mumbai,Punjab Grill,Mumbai,Maharashtra,19.0760,72.8777
                 </code>
               </Typography>
             </Paper>

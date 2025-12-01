@@ -1,46 +1,86 @@
 {
   "expo": {
-    "name": "Restaurant Audit",
-    "slug": "restaurant-audit",
-    "version": "1.0.0",
+    "name": "Audit Pro",
+    "slug": "audit-pro",
+    "version": "1.12.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0d9488"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.restaurantaudit.app",
+      "bundleIdentifier": "com.auditpro.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to take photos for audit items",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload images for audit items.",
-        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save photos to your library."
+        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save photos to your library.",
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to verify audit locations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to verify audit locations.",
+        "NSFaceIDUsageDescription": "Use Face ID for quick and secure login."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d9488"
       },
-      "package": "com.restaurantaudit.app",
+      "package": "com.auditpro.app",
+      "versionCode": 1,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
       ]
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-location",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0d9488"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Audit Pro to access your photos for audit evidence.",
+          "cameraPermission": "Allow Audit Pro to access your camera for audit photos."
+        }
+      ]
     ],
     "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      },
       "apiUrl": {
         "development": "http://192.168.1.156:5000/api",
-        "production": "https://your-production-api.com/api"
+        "production": "https://audit-app-backend.azurewebsites.net/api"
       }
+    },
+    "owner": "your-expo-username",
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     }
   }
 }

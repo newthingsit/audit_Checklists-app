@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -36,7 +37,7 @@ router.get('/', authenticate, (req, res) => {
   
   dbInstance.all(query, [], (err, templates) => {
     if (err) {
-      console.error('Templates error:', err);
+      logger.error('Templates error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
     res.json({ templates });

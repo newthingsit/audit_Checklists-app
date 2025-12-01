@@ -1,7 +1,61 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
+
+// Token storage key
+const TOKEN_KEY = 'auth_token';
+
+/**
+ * Secure token storage utilities
+ * Uses memory as primary storage with sessionStorage as fallback for page refreshes
+ * This is more secure than localStorage as:
+ * 1. Memory-first approach limits XSS exposure
+ * 2. sessionStorage clears on browser close
+ * 3. Token is not persisted across browser sessions
+ */
+class TokenStorage {
+  constructor() {
+    this.memoryToken = null;
+  }
+
+  get() {
+    // Prefer memory token (most secure)
+    if (this.memoryToken) {
+      return this.memoryToken;
+    }
+    // Fallback to sessionStorage for page refresh persistence
+    try {
+      return sessionStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  set(token) {
+    this.memoryToken = token;
+    try {
+      if (token) {
+        sessionStorage.setItem(TOKEN_KEY, token);
+      } else {
+        sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch {
+      // sessionStorage not available, memory-only mode
+    }
+  }
+
+  clear() {
+    this.memoryToken = null;
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // sessionStorage not available
+    }
+  }
+}
+
+const tokenStorage = new TokenStorage();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -14,14 +68,28 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => tokenStorage.get());
+  const initializedRef = useRef(false);
 
   useEffect(() => {
+    // Prevent double initialization in strict mode
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchUser();
     } else {
       setLoading(false);
+    }
+  }, []); // Only run once on mount
+
+  // Update axios header when token changes
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
     }
   }, [token]);
 
@@ -30,7 +98,7 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get('/api/auth/me');
       setUser(response.data.user);
     } catch (error) {
-      localStorage.removeItem('token');
+      tokenStorage.clear();
       setToken(null);
       delete axios.defaults.headers.common['Authorization'];
     } finally {
@@ -41,7 +109,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const response = await axios.post('/api/auth/login', { email, password });
     const { token: newToken, user: userData } = response.data;
-    localStorage.setItem('token', newToken);
+    tokenStorage.set(newToken);
     setToken(newToken);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -51,7 +119,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (email, password, name) => {
     const response = await axios.post('/api/auth/register', { email, password, name });
     const { token: newToken, user: userData } = response.data;
-    localStorage.setItem('token', newToken);
+    tokenStorage.set(newToken);
     setToken(newToken);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -59,7 +127,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    tokenStorage.clear();
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
@@ -83,4 +151,3 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
