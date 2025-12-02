@@ -4,6 +4,13 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Prevent iOS text size adjustment */
+  -webkit-text-size-adjust: 100%;
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -11,10 +18,140 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent pull-to-refresh on iOS */
+  overscroll-behavior-y: contain;
+  /* Support iOS safe areas */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* ===== PWA / Mobile Optimizations ===== */
+
+/* Touch-friendly tap targets */
+button, 
+a, 
+input[type="button"], 
+input[type="submit"],
+.MuiButton-root,
+.MuiIconButton-root {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Disable text selection on interactive elements */
+button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Improve touch scrolling */
+.MuiDrawer-paper,
+.MuiDialog-paper,
+.MuiMenu-paper {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbars on mobile for cleaner look */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  
+  body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  /* Larger touch targets on mobile */
+  .MuiListItem-root {
+    min-height: 56px;
+  }
+  
+  /* Full-width buttons on mobile */
+  .MuiButton-root {
+    width: 100%;
+  }
+  
+  /* Better spacing for cards */
+  .MuiCard-root {
+    margin-bottom: 12px;
+  }
+  
+  /* Adjust container padding */
+  .MuiContainer-root {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* Fix for iOS momentum scrolling */
+  .MuiDrawer-paper {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Fix input zoom on iOS */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Fix for iOS bottom safe area */
+  .MuiBottomNavigation-root {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .MuiDrawer-root,
+  .MuiAppBar-root,
+  .MuiBottomNavigation-root,
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    padding: 0;
+  }
+}
+
+/* Loading shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
 

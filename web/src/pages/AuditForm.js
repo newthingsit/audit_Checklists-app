@@ -333,33 +333,38 @@ const AuditForm = () => {
         currentAuditId = auditResponse.data.id;
       }
 
-      // Update all items (for both new and existing audits)
-      // Update items that have responses, and also ensure all items from template are in audit_items
-      const updatePromises = items.map(async (item) => {
-        const updateData = {
+      // Update all items in a single batch request (much faster!)
+      const batchItems = items.map((item) => {
+        const itemData = {
+          itemId: item.id,
           status: responses[item.id] || 'pending',
         };
         
         if (selectedOptions[item.id]) {
-          updateData.selected_option_id = parseInt(selectedOptions[item.id]);
+          itemData.selected_option_id = parseInt(selectedOptions[item.id]);
+          // Also include the mark from the selected option
+          const selectedOpt = item.options?.find(o => o.id === parseInt(selectedOptions[item.id]));
+          if (selectedOpt) {
+            itemData.mark = selectedOpt.mark;
+          }
         }
         
         if (comments[item.id]) {
-          updateData.comment = comments[item.id];
+          itemData.comment = comments[item.id];
         }
         
         if (photos[item.id]) {
-          // Extract just the path if it's a full URL
           const photoUrl = photos[item.id];
-          updateData.photo_url = photoUrl.startsWith('http') 
-            ? photoUrl.replace(/^https?:\/\/[^/]+/, '') // Remove domain, keep path
+          itemData.photo_url = photoUrl.startsWith('http') 
+            ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
             : photoUrl;
         }
 
-        return axios.put(`/api/audits/${currentAuditId}/items/${item.id}`, updateData);
+        return itemData;
       });
 
-      await Promise.all(updatePromises);
+      // Single batch API call instead of multiple individual calls
+      await axios.put(`/api/audits/${currentAuditId}/items/batch`, { items: batchItems });
 
       showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
       navigate(`/audit/${currentAuditId}`);
