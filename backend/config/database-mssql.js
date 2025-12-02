@@ -122,6 +122,19 @@ const createTables = async () => {
       FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE NO ACTION
     )`,
     
+    // Teams table (must be created before audits table)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[teams]') AND type in (N'U'))
+    CREATE TABLE [dbo].[teams] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [name] NVARCHAR(255) NOT NULL,
+      [description] NTEXT,
+      [team_lead_id] INT,
+      [created_by] INT NOT NULL,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([team_lead_id]) REFERENCES [users]([id]),
+      FOREIGN KEY ([created_by]) REFERENCES [users]([id])
+    )`,
+    
     // Audits table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND type in (N'U'))
     CREATE TABLE [dbo].[audits] (
@@ -260,19 +273,6 @@ const createTables = async () => {
       FOREIGN KEY ([task_id]) REFERENCES [tasks]([id]) ON DELETE CASCADE,
       FOREIGN KEY ([depends_on_task_id]) REFERENCES [tasks]([id]) ON DELETE NO ACTION,
       CONSTRAINT [unique_dependency] UNIQUE ([task_id], [depends_on_task_id])
-    )`,
-    
-    // Teams table (for team/department management)
-    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[teams]') AND type in (N'U'))
-    CREATE TABLE [dbo].[teams] (
-      [id] INT IDENTITY(1,1) PRIMARY KEY,
-      [name] NVARCHAR(255) NOT NULL,
-      [description] NTEXT,
-      [team_lead_id] INT,
-      [created_by] INT NOT NULL,
-      [created_at] DATETIME DEFAULT GETDATE(),
-      FOREIGN KEY ([team_lead_id]) REFERENCES [users]([id]),
-      FOREIGN KEY ([created_by]) REFERENCES [users]([id])
     )`,
     
     // Team Members junction table
