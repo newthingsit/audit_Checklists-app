@@ -84,7 +84,7 @@ const DashboardScreen = () => {
     try {
       const fetchPromises = [
         canViewTemplatesNow
-          ? axios.get(`${API_BASE_URL}/templates`).catch(() => ({ data: { templates: [] } }))
+          ? axios.get(`${API_BASE_URL}/templates`, { params: { _t: Date.now() } }).catch(() => ({ data: { templates: [] } }))
           : Promise.resolve({ data: { templates: [] } }),
         canViewAuditsNow
           ? axios.get(`${API_BASE_URL}/audits`).catch(() => ({ data: { audits: [] } }))

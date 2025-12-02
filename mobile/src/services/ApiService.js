@@ -12,8 +12,10 @@ const memoryCache = new Map();
 const pendingRequests = new Map();
 
 // Cache durations (in milliseconds)
+// Note: Templates/checklists have short cache to ensure immediate reflection of changes
 const CACHE_DURATIONS = {
-  templates: 5 * 60 * 1000,      // 5 minutes
+  templates: 30 * 1000,          // 30 seconds (short cache for immediate updates)
+  checklists: 30 * 1000,         // 30 seconds (short cache for immediate updates)
   locations: 5 * 60 * 1000,      // 5 minutes
   roles: 10 * 60 * 1000,         // 10 minutes
   user: 2 * 60 * 1000,           // 2 minutes

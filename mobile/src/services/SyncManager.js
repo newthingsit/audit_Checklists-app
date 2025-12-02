@@ -288,8 +288,10 @@ class SyncManagerService {
   
   async refreshCachedData() {
     try {
-      // Refresh templates
-      const templatesResponse = await axios.get(`${API_BASE_URL}/templates`);
+      // Refresh templates with cache-busting parameter
+      const templatesResponse = await axios.get(`${API_BASE_URL}/templates`, {
+        params: { _t: Date.now() }
+      });
       if (templatesResponse.data && templatesResponse.data.templates) {
         await offlineStorage.saveTemplates(templatesResponse.data.templates);
       }
@@ -332,8 +334,10 @@ class SyncManagerService {
     try {
       this.notifyListeners('prefetch_started', {});
       
-      // Fetch and cache templates
-      const templatesResponse = await axios.get(`${API_BASE_URL}/templates`);
+      // Fetch and cache templates with cache-busting parameter
+      const templatesResponse = await axios.get(`${API_BASE_URL}/templates`, {
+        params: { _t: Date.now() }
+      });
       if (templatesResponse.data && templatesResponse.data.templates) {
         await offlineStorage.saveTemplates(templatesResponse.data.templates);
       }

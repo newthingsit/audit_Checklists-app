@@ -43,7 +43,10 @@ const AuditHistoryScreen = () => {
 
   const fetchTemplates = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/templates`);
+      // Add cache-busting parameter to ensure fresh data
+      const response = await axios.get(`${API_BASE_URL}/templates`, {
+        params: { _t: Date.now() }
+      });
       setTemplates(response.data.templates || []);
     } catch (error) {
       console.error('Error fetching templates:', error);

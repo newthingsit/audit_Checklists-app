@@ -49,9 +49,11 @@ const ChecklistsScreen = () => {
   const fetchTemplates = useCallback(async (forceOnline = false) => {
     try {
       if (isOnline || forceOnline) {
-        // Try to fetch from server
+        // Try to fetch from server with cache-busting parameter
         try {
-          const response = await axios.get(`${API_BASE_URL}/templates`);
+          const response = await axios.get(`${API_BASE_URL}/templates`, {
+            params: { _t: Date.now() }
+          });
           const serverTemplates = response.data.templates || [];
           setTemplates(serverTemplates);
           setIsUsingCachedData(false);
