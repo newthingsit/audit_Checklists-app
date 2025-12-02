@@ -116,8 +116,7 @@ const Checklists = () => {
     try {
       // Add cache-busting parameter to ensure fresh data after create/update
       const response = await axios.get('/api/templates', {
-        params: { _t: Date.now() },
-        headers: { 'Cache-Control': 'no-cache' }
+        params: { _t: Date.now() }
       });
       setTemplates(response.data.templates || []);
     } catch (error) {
