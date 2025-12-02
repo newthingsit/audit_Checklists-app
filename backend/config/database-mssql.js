@@ -451,6 +451,37 @@ const addMissingColumns = async () => {
   const request = pool.request();
   
   try {
+    // Fix locations parent_id foreign key constraint (SQL Server doesn't allow CASCADE on self-referencing FKs)
+    try {
+      // Find and drop any problematic FK constraints on parent_id that have CASCADE
+      const fkResult = await pool.request().query(`
+        SELECT fk.name AS constraint_name, fk.delete_referential_action_desc as delete_action
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+        INNER JOIN sys.columns c ON fkc.parent_column_id = c.column_id AND fkc.parent_object_id = c.object_id
+        WHERE OBJECT_NAME(fk.parent_object_id) = 'locations'
+        AND c.name = 'parent_id'
+      `);
+
+      for (const row of fkResult.recordset) {
+        if (row.delete_action !== 'NO_ACTION') {
+          console.log(`Fixing locations parent_id FK constraint: ${row.constraint_name} (${row.delete_action} -> NO_ACTION)`);
+          await pool.request().query(`ALTER TABLE [dbo].[locations] DROP CONSTRAINT [${row.constraint_name}]`);
+          await pool.request().query(`
+            ALTER TABLE [dbo].[locations]
+            ADD CONSTRAINT [FK_locations_parent_id_fixed] 
+            FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE NO ACTION
+          `);
+          console.log('Fixed locations parent_id FK constraint');
+        }
+      }
+    } catch (fkError) {
+      // Ignore errors - constraint might not exist or already fixed
+      if (!fkError.message.includes('already exists')) {
+        console.warn('Note: Could not check/fix locations FK:', fkError.message);
+      }
+    }
+
     // Check and add team_id to audits table
     const checkTeamId = await request.query(`
       SELECT COUNT(*) as count 
