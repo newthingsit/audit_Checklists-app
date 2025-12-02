@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd web
-          npm ci
+          npm install
 
       - name: Build React App
         run: |

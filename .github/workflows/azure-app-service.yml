@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          npm ci
+          npm install
 
       - name: Create deployment package
         run: |
