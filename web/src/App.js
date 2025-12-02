@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -9,29 +9,44 @@ import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import PermissionRoute from './components/PermissionRoute';
 import Toast from './components/Toast';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Checklists from './pages/Checklists';
-import AuditForm from './pages/AuditForm';
-import AuditDetail from './pages/AuditDetail';
-import AuditHistory from './pages/AuditHistory';
-import Analytics from './pages/Analytics';
-// import ActionPlans from './pages/ActionPlans'; // Feature disabled
-import Stores from './pages/Stores';
-import ScheduledAudits from './pages/ScheduledAudits';
-// import Tasks from './pages/Tasks'; // Feature disabled
-import Notifications from './pages/Notifications';
-import Profile from './pages/Profile';
-import Settings from './pages/Settings';
-import UserManagement from './pages/UserManagement';
-import RoleManagement from './pages/RoleManagement';
-import MonthlyScorecard from './pages/MonthlyScorecard';
-import ScheduledAuditsReport from './pages/ScheduledAuditsReport';
-import StoreAnalytics from './pages/StoreAnalytics';
-import LocationVerificationReport from './pages/LocationVerificationReport';
-import StoreGroups from './pages/StoreGroups';
 import { themeConfig } from './config/theme';
+
+// Lazy load all pages for better performance
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Checklists = lazy(() => import('./pages/Checklists'));
+const AuditForm = lazy(() => import('./pages/AuditForm'));
+const AuditDetail = lazy(() => import('./pages/AuditDetail'));
+const AuditHistory = lazy(() => import('./pages/AuditHistory'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Stores = lazy(() => import('./pages/Stores'));
+const ScheduledAudits = lazy(() => import('./pages/ScheduledAudits'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Settings = lazy(() => import('./pages/Settings'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const RoleManagement = lazy(() => import('./pages/RoleManagement'));
+const MonthlyScorecard = lazy(() => import('./pages/MonthlyScorecard'));
+const ScheduledAuditsReport = lazy(() => import('./pages/ScheduledAuditsReport'));
+const StoreAnalytics = lazy(() => import('./pages/StoreAnalytics'));
+const LocationVerificationReport = lazy(() => import('./pages/LocationVerificationReport'));
+const StoreGroups = lazy(() => import('./pages/StoreGroups'));
+
+// Loading fallback component
+const PageLoader = () => (
+  <Box
+    sx={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '60vh',
+      width: '100%',
+    }}
+  >
+    <CircularProgress size={40} />
+  </Box>
+);
 
 const getTheme = (darkMode) => createTheme({
   palette: {
@@ -266,12 +281,11 @@ function AppContent() {
 
 function ThemeWrapper() {
   const { darkMode, loading } = useThemeMode();
-  const theme = getTheme(darkMode);
+  const theme = React.useMemo(() => getTheme(darkMode), [darkMode]);
 
   // Show loading state while theme is being determined
-  // Use a default light theme for the loading spinner to prevent unmounting
   if (loading) {
-    const defaultTheme = getTheme(false); // Use light theme as default
+    const defaultTheme = getTheme(false);
     return (
       <ThemeProvider theme={defaultTheme}>
         <CssBaseline />
@@ -296,176 +310,158 @@ function ThemeWrapper() {
       <CssBaseline />
       <AuthProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route
-              path="/dashboard"
-              element={
-                <PrivateRoute>
-                  <Dashboard />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/checklists"
-              element={
-                <PrivateRoute>
-                  <Checklists />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/audit/new/:templateId"
-              element={
-                <PrivateRoute>
-                  <AuditForm />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/audit/:id"
-              element={
-                <PrivateRoute>
-                  <AuditDetail />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/audits"
-              element={
-                <PrivateRoute>
-                  <AuditHistory />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/analytics"
-              element={
-                <PrivateRoute>
-                  <Analytics />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/store-analytics"
-              element={
-                <PrivateRoute>
-                  <StoreAnalytics />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/location-verification"
-              element={
-                <PrivateRoute>
-                  <LocationVerificationReport />
-                </PrivateRoute>
-              }
-            />
-            {/* Action Plans route disabled
-            <Route
-              path="/actions"
-              element={
-                <PrivateRoute>
-                  <ActionPlans />
-                </PrivateRoute>
-              }
-            />
-            */}
-            <Route
-              path="/stores"
-              element={
-                <PrivateRoute>
-                  <Stores />
-                </PrivateRoute>
-              }
-            />
-            <Route path="/locations" element={<Navigate to="/stores" replace />} />
-            <Route
-              path="/store-groups"
-              element={
-                <PrivateRoute>
-                  <StoreGroups />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/scheduled"
-              element={
-                <PrivateRoute>
-                  <ScheduledAudits />
-                </PrivateRoute>
-              }
-            />
-            {/* Tasks route disabled
-            <Route
-              path="/tasks"
-              element={
-                <PrivateRoute>
-                  <Tasks />
-                </PrivateRoute>
-              }
-            />
-            */}
-            <Route
-              path="/notifications"
-              element={
-                <PrivateRoute>
-                  <Notifications />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <Profile />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <PrivateRoute>
-                  <Settings />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/scorecard"
-              element={
-                <PrivateRoute>
-                  <MonthlyScorecard />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/scheduled-report"
-              element={
-                <PrivateRoute>
-                  <ScheduledAuditsReport />
-                </PrivateRoute>
-              }
-            />
-                <Route
-                  path="/users"
-                  element={
-                    <PermissionRoute requiredPermissions={['create_users', 'manage_users', 'view_users']}>
-                      <UserManagement />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/roles"
-                  element={
-                    <AdminRoute>
-                      <RoleManagement />
-                    </AdminRoute>
-                  }
-                />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/checklists"
+                element={
+                  <PrivateRoute>
+                    <Checklists />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/audit/new/:templateId"
+                element={
+                  <PrivateRoute>
+                    <AuditForm />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/audit/:id"
+                element={
+                  <PrivateRoute>
+                    <AuditDetail />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/audits"
+                element={
+                  <PrivateRoute>
+                    <AuditHistory />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <PrivateRoute>
+                    <Analytics />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/store-analytics"
+                element={
+                  <PrivateRoute>
+                    <StoreAnalytics />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/location-verification"
+                element={
+                  <PrivateRoute>
+                    <LocationVerificationReport />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/stores"
+                element={
+                  <PrivateRoute>
+                    <Stores />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/locations" element={<Navigate to="/stores" replace />} />
+              <Route
+                path="/store-groups"
+                element={
+                  <PrivateRoute>
+                    <StoreGroups />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/scheduled"
+                element={
+                  <PrivateRoute>
+                    <ScheduledAudits />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <PrivateRoute>
+                    <Notifications />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <PrivateRoute>
+                    <Profile />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <PrivateRoute>
+                    <Settings />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/scorecard"
+                element={
+                  <PrivateRoute>
+                    <MonthlyScorecard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/scheduled-report"
+                element={
+                  <PrivateRoute>
+                    <ScheduledAuditsReport />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <PermissionRoute requiredPermissions={['create_users', 'manage_users', 'view_users']}>
+                    <UserManagement />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="/roles"
+                element={
+                  <AdminRoute>
+                    <RoleManagement />
+                  </AdminRoute>
+                }
+              />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </Suspense>
         </Router>
       </AuthProvider>
       <Toast />
@@ -478,4 +474,3 @@ function App() {
 }
 
 export default App;
-
