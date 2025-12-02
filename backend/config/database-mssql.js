@@ -6,6 +6,9 @@ let pool = null;
 const init = () => {
   return new Promise(async (resolve, reject) => {
     try {
+      // Default encrypt to true for Azure SQL Database (required for cloud connections)
+      const shouldEncrypt = process.env.MSSQL_ENCRYPT !== 'false';
+      
       const config = {
         server: process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS',
         port: parseInt(process.env.DB_PORT || process.env.MSSQL_PORT || '1433'),
@@ -13,8 +16,8 @@ const init = () => {
         user: process.env.DB_USER || process.env.MSSQL_USER || 'sa',
         password: process.env.DB_PASSWORD || process.env.MSSQL_PASSWORD,
         options: {
-          encrypt: process.env.MSSQL_ENCRYPT === 'true',
-          trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || true,
+          encrypt: shouldEncrypt,
+          trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
           enableArithAbort: true,
           connectionTimeout: 30000,
           requestTimeout: 30000
