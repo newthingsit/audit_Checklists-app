@@ -119,7 +119,7 @@ const createTables = async () => {
       [created_by] INT,
       [created_at] DATETIME DEFAULT GETDATE(),
       FOREIGN KEY ([created_by]) REFERENCES [users]([id]),
-      FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE SET NULL
+      FOREIGN KEY ([parent_id]) REFERENCES [locations]([id]) ON DELETE NO ACTION
     )`,
     
     // Audits table
