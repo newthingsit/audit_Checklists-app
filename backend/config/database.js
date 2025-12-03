@@ -470,8 +470,36 @@ const createTables = () => {
           if (!columnNames.includes('longitude')) {
             db.run(`ALTER TABLE locations ADD COLUMN longitude REAL`, () => {});
           }
+          if (!columnNames.includes('group_id')) {
+            db.run(`ALTER TABLE locations ADD COLUMN group_id INTEGER`, () => {});
+          }
+          if (!columnNames.includes('brand')) {
+            db.run(`ALTER TABLE locations ADD COLUMN brand TEXT`, () => {});
+          }
         }
       });
+
+      // Create store_groups table if it doesn't exist
+      db.run(`CREATE TABLE IF NOT EXISTS store_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        code TEXT,
+        type TEXT DEFAULT 'region',
+        description TEXT,
+        parent_group_id INTEGER,
+        color TEXT,
+        icon TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (parent_group_id) REFERENCES store_groups(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_group ON locations(group_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_parent ON store_groups(parent_group_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_type ON store_groups(type)`);
 
       // Check if roles table exists, if not create it (for existing databases)
       db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'", (err, row) => {

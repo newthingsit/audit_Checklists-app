@@ -358,7 +358,45 @@ const createTables = async () => {
       [read] BIT DEFAULT 0,
       [created_at] DATETIME DEFAULT GETDATE(),
       FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE
-    )`
+    )`,
+
+    // Store Groups table
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[store_groups]') AND type in (N'U'))
+    CREATE TABLE [dbo].[store_groups] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [name] NVARCHAR(255) NOT NULL,
+      [code] NVARCHAR(50),
+      [type] NVARCHAR(50) DEFAULT 'region',
+      [description] NTEXT,
+      [parent_group_id] INT,
+      [color] NVARCHAR(20),
+      [icon] NVARCHAR(50),
+      [is_active] BIT DEFAULT 1,
+      [sort_order] INT DEFAULT 0,
+      [created_by] INT,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      [updated_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([created_by]) REFERENCES [users]([id])
+    )`,
+
+    // Add group_id column to locations if not exists
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('locations') AND name = 'group_id')
+    ALTER TABLE locations ADD group_id INT`,
+
+    // Add brand column to locations if not exists
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('locations') AND name = 'brand')
+    ALTER TABLE locations ADD brand NVARCHAR(100)`,
+
+    // Index on locations.group_id
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_locations_group')
+    CREATE INDEX idx_locations_group ON locations(group_id)`,
+
+    // Index on store_groups
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_store_groups_parent')
+    CREATE INDEX idx_store_groups_parent ON store_groups(parent_group_id)`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_store_groups_type')
+    CREATE INDEX idx_store_groups_type ON store_groups(type)`
   ];
 
   try {
