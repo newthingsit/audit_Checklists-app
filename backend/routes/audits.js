@@ -965,7 +965,14 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       // Process all items in parallel using Promise.all
       const updatePromises = items.map(item => {
         return new Promise((resolve, reject) => {
-          const { itemId, status, comment, photo_url, selected_option_id, mark } = item;
+          const { status, comment, photo_url, mark } = item;
+          // Parse itemId and selected_option_id to integer for MSSQL compatibility
+          const itemId = parseInt(item.itemId, 10);
+          const selected_option_id = item.selected_option_id ? parseInt(item.selected_option_id, 10) : null;
+          
+          if (isNaN(itemId)) {
+            return reject(new Error(`Invalid item ID: ${item.itemId}`));
+          }
           
           // Check if item exists
           dbInstance.get(
@@ -979,7 +986,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 dbInstance.run(
                   `INSERT INTO audit_items (audit_id, item_id, status, comment, photo_url, selected_option_id, mark) 
                    VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                  [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id || null, mark || null],
+                  [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null],
                   function(err) {
                     if (err) return reject(err);
                     resolve({ itemId, action: 'inserted' });
