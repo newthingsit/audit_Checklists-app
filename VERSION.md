@@ -1,5 +1,34 @@
 # Project Version Information
 
+## Version 1.13.0 - Mobile App Profile & Navigation Enhancements
+
+**Date:** 2025-12-03
+
+### What's New in This Version
+
+#### Mobile App Profile Settings
+- ✅ **Security Modal**: Full-featured password change functionality with visibility toggles
+- ✅ **Appearance Modal**: Theme options display (Light Mode active, Dark Mode/System Default coming soon)
+- ✅ **About Modal**: App information with version, SDK version, platform, and website link
+- ✅ **Password Change API**: New `/api/auth/change-password` endpoint for secure password updates
+
+#### Audit History Improvements
+- ✅ **In Progress Filter**: Added "In Progress" status to filter options
+- ✅ **Distinct Styling**: In Progress has blue/info color scheme, separate from Pending (yellow)
+- ✅ **Complete Filter List**: All, Completed, In Progress, Pending, Failed
+
+#### Navigation & UX Enhancements
+- ✅ **Logout Button Relocated**: Moved to top-right corner of profile header for better accessibility
+- ✅ **Dashboard Default**: App now opens to Dashboard after login (not Profile)
+- ✅ **Navigation Reset**: Proper navigation state reset on logout/login cycle
+
+### Components Version
+- **Backend:** 1.7.2
+- **Web App:** 1.8.1
+- **Mobile App:** 1.13.0
+
+---
+
 ## Version 1.12.0 - Role & Permission Sync Fix
 
 **Date:** 2025-12-01

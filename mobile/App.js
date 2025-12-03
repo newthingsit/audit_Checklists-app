@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -19,6 +19,23 @@ const Stack = createStackNavigator();
 
 function AppNavigator() {
   const { isAuthenticated, loading } = useAuth();
+  const navigationRef = useRef(null);
+  const prevAuthRef = useRef(isAuthenticated);
+
+  // Reset to Dashboard when user becomes authenticated (after login)
+  useEffect(() => {
+    if (isAuthenticated && !prevAuthRef.current && navigationRef.current) {
+      // User just logged in, ensure we're on Dashboard
+      const state = navigationRef.current.getRootState();
+      if (state) {
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      }
+    }
+    prevAuthRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   if (loading) {
     return (
@@ -33,7 +50,7 @@ function AppNavigator() {
       {/* Offline Banner - Shows when offline */}
       {isAuthenticated && <OfflineBanner />}
       
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         {isAuthenticated ? <AppStack /> : <AuthStack />}
       </NavigationContainer>
     </View>

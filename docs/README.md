@@ -6,9 +6,11 @@ This directory contains all project documentation organized by category.
 
 ### [PRD (Product Requirements Document)](./prd/)
 Product requirements, feature specifications, and planning documents:
+- `VERSION_1.13.0.md` - **Latest** - Mobile Profile & Navigation Enhancements
+- `VERSION_1.12.0.md` - Role & Permission Sync Fix
+- `FEATURES_COMPLETE.md` - Completed features documentation
 - `FEATURE_COMPARISON.md` - Feature comparison with GoAudits platform
 - `NEW_FEATURES.md` - New features specification
-- `FEATURES_COMPLETE.md` - Completed features documentation
 - `IMPLEMENTATION_SUMMARY.md` - Implementation summary
 - `NEXT_STEPS_FEATURES.md` - Future features roadmap
 - `NEW_FEATURES_STEP2.md` - Additional feature specifications
@@ -67,4 +69,17 @@ Mobile-specific documentation remains in the `mobile/` directory:
 - **Product Requirements**: See [PRD/FEATURE_COMPARISON.md](./prd/FEATURE_COMPARISON.md)
 - **API Documentation**: See [Technical/API_FIXES.md](./technical/API_FIXES.md)
 - **Main README**: See [../README.md](../README.md)
+
+## 📋 Version History
+
+| Version | Date | Description |
+|---------|------|-------------|
+| **1.13.0** | Dec 3, 2025 | Mobile Profile Settings, Password Change, In Progress Filter, Navigation Fix |
+| 1.12.0 | Dec 1, 2025 | Role & Permission Sync, Settings API Fix, Notification Fix |
+| 1.11.0 | Nov 26, 2025 | Location Verification Report, GPS Fixes |
+| 1.10.0 | Nov 25, 2025 | Biometric Authentication |
+| 1.9.0 | Nov 25, 2025 | GPS Location Tagging |
+| 1.8.0 | Nov 25, 2025 | Push Notifications, Digital Signatures, Dashboard Enhancements |
+
+See [VERSION.md](../VERSION.md) for complete version history.
 

@@ -57,11 +57,49 @@ const AuditForm = () => {
   const auditId = searchParams.get('audit_id'); // Support resuming existing audit
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null);
+  
+  // Scheduled audit restrictions
+  const [scheduledAudit, setScheduledAudit] = useState(null);
+  const [isLocationLocked, setIsLocationLocked] = useState(false);
+  const [isBeforeScheduledDate, setIsBeforeScheduledDate] = useState(false);
 
   useEffect(() => {
     fetchLocations();
+    // Fetch scheduled audit data if coming from scheduled audits
+    if (scheduledId) {
+      fetchScheduledAudit();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchScheduledAudit = async () => {
+    try {
+      const response = await axios.get(`/api/scheduled-audits/${scheduledId}`);
+      const schedule = response.data.schedule;
+      setScheduledAudit(schedule);
+      
+      // Check if location is pre-assigned - lock the store selection
+      if (schedule.location_id) {
+        setIsLocationLocked(true);
+        setLocationId(schedule.location_id.toString());
+      }
+      
+      // Check if current date is before scheduled date
+      if (schedule.scheduled_date) {
+        const scheduledDate = new Date(schedule.scheduled_date);
+        scheduledDate.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (today < scheduledDate) {
+          setIsBeforeScheduledDate(true);
+          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. You cannot start it before the scheduled date.`);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching scheduled audit:', error);
+    }
+  };
 
   useEffect(() => {
     if (auditId) {
@@ -445,6 +483,22 @@ const AuditForm = () => {
             <Typography variant="h6" gutterBottom>
               Store Information
             </Typography>
+            
+            {/* Warning for scheduled date restriction */}
+            {isBeforeScheduledDate && scheduledAudit && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                ⚠️ This audit is scheduled for {new Date(scheduledAudit.scheduled_date).toLocaleDateString()}. 
+                You cannot start the audit before the scheduled date.
+              </Alert>
+            )}
+            
+            {/* Info about locked location */}
+            {isLocationLocked && scheduledAudit && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                📍 This scheduled audit has a pre-assigned store. The store selection cannot be changed.
+              </Alert>
+            )}
+            
             <Autocomplete
               fullWidth
               options={locations}
@@ -456,12 +510,14 @@ const AuditForm = () => {
               }}
               value={selectedLocation}
               onChange={(event, newValue) => {
+                if (isLocationLocked) return; // Prevent changes if location is locked
                 setSelectedLocation(newValue);
                 setLocationId(newValue ? newValue.id.toString() : '');
                 if (newValue) {
                   setErrors({ ...errors, locationId: '' });
                 }
               }}
+              disabled={isLocationLocked}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -469,8 +525,12 @@ const AuditForm = () => {
                   required
                   margin="normal"
                   error={touched[0] && !!errors.locationId}
-                  helperText={touched[0] && errors.locationId}
+                  helperText={touched[0] ? errors.locationId : (isLocationLocked ? 'Store is locked for this scheduled audit' : '')}
                   placeholder="Search and select a store..."
+                  InputProps={{
+                    ...params.InputProps,
+                    readOnly: isLocationLocked
+                  }}
                 />
               )}
               isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -486,7 +546,11 @@ const AuditForm = () => {
               margin="normal"
             />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-              <Button onClick={handleNext} variant="contained">
+              <Button 
+                onClick={handleNext} 
+                variant="contained"
+                disabled={isBeforeScheduledDate}
+              >
                 Next
               </Button>
             </Box>

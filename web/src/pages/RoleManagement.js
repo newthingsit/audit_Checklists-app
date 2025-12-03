@@ -64,6 +64,7 @@ const RoleManagement = () => {
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -179,6 +180,7 @@ const RoleManagement = () => {
   const handleSave = async () => {
     if (!validateForm()) return;
 
+    setSaving(true);
     try {
       if (editingRole) {
         await axios.put(`/api/roles/${editingRole.id}`, formData);
@@ -193,8 +195,13 @@ const RoleManagement = () => {
         await axios.post('/api/roles', formData);
         showSuccess('Role created successfully');
       }
+      
+      // Close dialog first
       handleCloseDialog();
-      fetchRoles();
+      
+      // Force refresh the roles list with loading state
+      setLoading(true);
+      await fetchRoles();
     } catch (error) {
       console.error('Error saving role:', error);
       showError(error.response?.data?.error || 'Failed to save role');
@@ -204,6 +211,8 @@ const RoleManagement = () => {
           return acc;
         }, {}));
       }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -617,6 +626,7 @@ const RoleManagement = () => {
           }}>
             <Button 
               onClick={handleCloseDialog}
+              disabled={saving}
               sx={{
                 borderRadius: 2,
                 textTransform: 'none',
@@ -635,6 +645,7 @@ const RoleManagement = () => {
             <Button 
               onClick={handleSave} 
               variant="contained"
+              disabled={saving}
               sx={{
                 borderRadius: 2,
                 textTransform: 'none',
@@ -645,7 +656,7 @@ const RoleManagement = () => {
                 },
               }}
             >
-              {editingRole ? 'Update' : 'Create'}
+              {saving ? <CircularProgress size={20} color="inherit" /> : (editingRole ? 'Update' : 'Create')}
             </Button>
           </DialogActions>
         </Dialog>

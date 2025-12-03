@@ -551,7 +551,7 @@ router.get('/leaderboard/auditors', authenticate, (req, res) => {
   const query = `
     SELECT 
       u.id as user_id,
-      u.name as auditor_name,
+      u.name as user_name,
       u.email,
       COUNT(a.id) as audit_count,
       ROUND(COALESCE(AVG(CAST(a.score AS FLOAT)), 0), 1) as avg_score,
@@ -680,79 +680,98 @@ router.get('/leaderboard/summary', authenticate, (req, res) => {
 // Get detailed trend analysis with comparisons
 router.get('/trends/analysis', authenticate, (req, res) => {
   const dbInstance = db.getDb();
-  const { compareWith } = req.query; // 'previous_period', 'last_year'
+  const { period = 'week' } = req.query; // 'day', 'week', 'month', 'quarter'
   
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
   
-  // Current period (last 30 days)
-  const currentPeriodFilter = isMssql 
-    ? "a.created_at >= DATEADD(day, -30, GETDATE())"
-    : "a.created_at >= date('now', '-30 days')";
-  
-  // Previous period (30-60 days ago)
-  const previousPeriodFilter = isMssql
-    ? "a.created_at >= DATEADD(day, -60, GETDATE()) AND a.created_at < DATEADD(day, -30, GETDATE())"
-    : "a.created_at >= date('now', '-60 days') AND a.created_at < date('now', '-30 days')";
-  
-  // Same period last year
-  const lastYearFilter = isMssql
-    ? "a.created_at >= DATEADD(day, -395, GETDATE()) AND a.created_at < DATEADD(day, -365, GETDATE())"
-    : "a.created_at >= date('now', '-395 days') AND a.created_at < date('now', '-365 days')";
+  // Calculate date ranges based on period
+  let currentFilter, previousFilter;
+  switch (period) {
+    case 'day':
+      currentFilter = isMssql 
+        ? "a.created_at >= DATEADD(day, -1, GETDATE())"
+        : "a.created_at >= date('now', '-1 day')";
+      previousFilter = isMssql
+        ? "a.created_at >= DATEADD(day, -2, GETDATE()) AND a.created_at < DATEADD(day, -1, GETDATE())"
+        : "a.created_at >= date('now', '-2 days') AND a.created_at < date('now', '-1 day')";
+      break;
+    case 'week':
+      currentFilter = isMssql 
+        ? "a.created_at >= DATEADD(day, -7, GETDATE())"
+        : "a.created_at >= date('now', '-7 days')";
+      previousFilter = isMssql
+        ? "a.created_at >= DATEADD(day, -14, GETDATE()) AND a.created_at < DATEADD(day, -7, GETDATE())"
+        : "a.created_at >= date('now', '-14 days') AND a.created_at < date('now', '-7 days')";
+      break;
+    case 'month':
+      currentFilter = isMssql 
+        ? "a.created_at >= DATEADD(day, -30, GETDATE())"
+        : "a.created_at >= date('now', '-30 days')";
+      previousFilter = isMssql
+        ? "a.created_at >= DATEADD(day, -60, GETDATE()) AND a.created_at < DATEADD(day, -30, GETDATE())"
+        : "a.created_at >= date('now', '-60 days') AND a.created_at < date('now', '-30 days')";
+      break;
+    case 'quarter':
+      currentFilter = isMssql 
+        ? "a.created_at >= DATEADD(day, -90, GETDATE())"
+        : "a.created_at >= date('now', '-90 days')";
+      previousFilter = isMssql
+        ? "a.created_at >= DATEADD(day, -180, GETDATE()) AND a.created_at < DATEADD(day, -90, GETDATE())"
+        : "a.created_at >= date('now', '-180 days') AND a.created_at < date('now', '-90 days')";
+      break;
+    default:
+      currentFilter = isMssql 
+        ? "a.created_at >= DATEADD(day, -7, GETDATE())"
+        : "a.created_at >= date('now', '-7 days')";
+      previousFilter = isMssql
+        ? "a.created_at >= DATEADD(day, -14, GETDATE()) AND a.created_at < DATEADD(day, -7, GETDATE())"
+        : "a.created_at >= date('now', '-14 days') AND a.created_at < date('now', '-7 days')";
+  }
   
   const getStats = (filter) => {
     return new Promise((resolve, reject) => {
       dbInstance.get(`
         SELECT 
-          COUNT(*) as total_audits,
+          COUNT(*) as total,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-          ROUND(AVG(CAST(score AS FLOAT)), 1) as avg_score,
+          ROUND(AVG(CAST(score AS FLOAT)), 1) as avgScore,
           SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as excellent,
           SUM(CASE WHEN score < 60 THEN 1 ELSE 0 END) as poor,
           COUNT(DISTINCT location_id) as stores
         FROM audits a
-        WHERE ${filter} AND status = 'completed'
-      `, [], (err, row) => err ? reject(err) : resolve(row || {}));
+        WHERE ${filter}
+      `, [], (err, row) => err ? reject(err) : resolve(row || { total: 0, completed: 0, avgScore: 0 }));
     });
   };
   
   Promise.all([
-    getStats(currentPeriodFilter),
-    getStats(previousPeriodFilter),
-    getStats(lastYearFilter)
+    getStats(currentFilter),
+    getStats(previousFilter)
   ])
-  .then(([current, previous, lastYear]) => {
-    // Calculate changes
-    const calculateChange = (current, previous) => {
-      if (!previous || previous === 0) return current > 0 ? 100 : 0;
-      return Math.round(((current - previous) / previous) * 100);
-    };
+  .then(([current, previous]) => {
+    // Calculate changes in the format frontend expects
+    const totalChange = (current.total || 0) - (previous.total || 0);
+    const completedChange = (current.completed || 0) - (previous.completed || 0);
+    const scoreChange = (current.avgScore || 0) - (previous.avgScore || 0);
     
     res.json({
-      current: {
-        period: 'Last 30 days',
-        ...current
+      currentPeriod: {
+        total: current.total || 0,
+        completed: current.completed || 0,
+        avgScore: current.avgScore || 0
       },
-      previous: {
-        period: 'Previous 30 days',
-        ...previous
-      },
-      lastYear: {
-        period: 'Same period last year',
-        ...lastYear
+      previousPeriod: {
+        total: previous.total || 0,
+        completed: previous.completed || 0,
+        avgScore: previous.avgScore || 0
       },
       changes: {
-        vsPrevious: {
-          audits: calculateChange(current.total_audits, previous.total_audits),
-          score: ((current.avg_score || 0) - (previous.avg_score || 0)).toFixed(1),
-          stores: calculateChange(current.stores, previous.stores)
-        },
-        vsLastYear: {
-          audits: calculateChange(current.total_audits, lastYear.total_audits),
-          score: ((current.avg_score || 0) - (lastYear.avg_score || 0)).toFixed(1),
-          stores: calculateChange(current.stores, lastYear.stores)
-        }
-      }
+        totalChange,
+        completedChange,
+        scoreChange
+      },
+      period
     });
   })
   .catch(err => {

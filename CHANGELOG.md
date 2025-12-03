@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2025-12-03 - Mobile App Profile & Navigation Enhancements
+
+### Added - Mobile App
+- **Security Modal**: Password change functionality with current password verification, new password validation (min 6 chars), and confirmation matching
+- **Appearance Modal**: Theme selection UI showing Light Mode (active), Dark Mode (coming soon), System Default (coming soon)
+- **About Modal**: App information display with version, SDK version, platform detection, and website link
+- **In Progress Filter**: New filter option in Audit History for "In Progress" status
+- **Logout in Header**: Logout button relocated to top-right corner of profile header
+
+### Added - Backend
+- **Password Change API**: `PUT /api/auth/change-password` endpoint with bcrypt password hashing and validation
+
+### Changed - Mobile App
+- **Navigation Reset**: App now opens to Dashboard after login instead of staying on Profile
+- **Initial Route**: Tab Navigator now explicitly sets Dashboard as initial route
+- **Filter Styling**: In Progress status has distinct blue/info styling (separate from Pending's yellow)
+
+### Fixed - Mobile App
+- **Security Not Working**: Security option now opens functional password change modal
+- **Appearance Not Working**: Appearance option now opens theme selection modal
+- **About Not Working**: About option now displays app information
+- **Missing In Progress Filter**: Audit History filter now includes "In Progress" option
+- **Navigation After Login**: Fixed issue where app opened to Profile instead of Dashboard after logout/login cycle
+
+---
+
 ## [1.12.0] - 2025-12-01 - Role & Permission Sync Fix
 
 ### Fixed - Mobile App

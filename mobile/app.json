@@ -2,7 +2,7 @@
   "expo": {
     "name": "Audit Pro",
     "slug": "audit-pro",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",

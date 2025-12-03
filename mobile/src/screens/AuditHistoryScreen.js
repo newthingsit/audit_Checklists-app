@@ -109,11 +109,16 @@ const AuditHistoryScreen = () => {
           text: 'Completed'
         };
       case 'in_progress':
+        return {
+          bg: themeConfig.info.bg || themeConfig.primary.light + '20',
+          color: themeConfig.info.dark || themeConfig.primary.dark,
+          text: 'In Progress'
+        };
       case 'pending':
         return {
           bg: themeConfig.warning.bg,
           color: themeConfig.warning.dark,
-          text: 'In Progress'
+          text: 'Pending'
         };
       case 'failed':
         return {
@@ -313,7 +318,7 @@ const AuditHistoryScreen = () => {
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>Status</Text>
               <View style={styles.filterOptions}>
-                {['all', 'completed', 'pending', 'failed'].map((status) => (
+                {['all', 'completed', 'in_progress', 'pending', 'failed'].map((status) => (
                   <TouchableOpacity
                     key={status}
                     style={[
@@ -329,7 +334,9 @@ const AuditHistoryScreen = () => {
                         statusFilter === status && styles.filterChipTextActive
                       ]}
                     >
-                      {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                      {status === 'all' ? 'All' : 
+                       status === 'in_progress' ? 'In Progress' : 
+                       status.charAt(0).toUpperCase() + status.slice(1)}
                     </Text>
                   </TouchableOpacity>
                 ))}

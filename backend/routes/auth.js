@@ -244,5 +244,56 @@ router.put('/profile', require('../middleware/auth').authenticate, async (req, r
   });
 });
 
+// Change password only
+router.put('/change-password', require('../middleware/auth').authenticate, [
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array(), error: errors.array()[0]?.msg });
+  }
+
+  const { currentPassword, newPassword } = req.body;
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+
+  // Get current user
+  dbInstance.get('SELECT * FROM users WHERE id = ?', [userId], async (err, user) => {
+    if (err) {
+      logger.error('Error fetching user for password change:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    try {
+      // Verify current password
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        logger.security('password_change_failed', { userId, reason: 'incorrect_current_password' });
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update password
+      dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId], function(err) {
+        if (err) {
+          logger.error('Error updating password:', err);
+          return res.status(500).json({ error: 'Error updating password' });
+        }
+        logger.security('password_changed', { userId });
+        res.json({ message: 'Password changed successfully' });
+      });
+    } catch (error) {
+      logger.error('Error in password change:', error);
+      return res.status(500).json({ error: 'Error updating password' });
+    }
+  });
+});
+
 module.exports = router;
 

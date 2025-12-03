@@ -26,7 +26,8 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Alert
+  Alert,
+  Tooltip
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -289,12 +290,34 @@ const ScheduledAudits = () => {
     const statusValue = getStatusValue(schedule.status);
     const isPending = !schedule.status || statusValue === 'pending';
     if (!isPending) return false;
+    
+    // Check if scheduled date has arrived (cannot start before scheduled date)
+    if (schedule.scheduled_date) {
+      const scheduledDate = new Date(schedule.scheduled_date);
+      scheduledDate.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (today < scheduledDate) {
+        return false; // Cannot start before scheduled date
+      }
+    }
+    
     const isCreator = schedule.created_by === user?.id;
     const isAssignee = schedule.assigned_to ? schedule.assigned_to === user?.id : false;
     if (schedule.assigned_to) {
       return isCreator || isAssignee;
     }
     return isCreator;
+  };
+  
+  // Helper to check if schedule date hasn't arrived yet
+  const isScheduleDatePending = (schedule) => {
+    if (!schedule?.scheduled_date) return false;
+    const scheduledDate = new Date(schedule.scheduled_date);
+    scheduledDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today < scheduledDate;
   };
 
   const canReschedule = (schedule) => {
@@ -762,6 +785,17 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                             <PlayArrowIcon />
                           </IconButton>
                         )}
+                        {isScheduleDatePending(schedule) && !canContinueSchedule(schedule) && (
+                          <Tooltip title={`Scheduled for ${new Date(schedule.scheduled_date).toLocaleDateString()}`}>
+                            <Chip 
+                              label="Not Yet" 
+                              size="small" 
+                              color="warning" 
+                              variant="outlined"
+                              sx={{ ml: 0.5 }}
+                            />
+                          </Tooltip>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -914,6 +948,12 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                         >
                           Start Audit
                         </Button>
+                      )}
+                      {/* Show message when schedule date hasn't arrived */}
+                      {isScheduleDatePending(schedule) && !canContinueSchedule(schedule) && (
+                        <Alert severity="info" sx={{ mt: 1, py: 0.5 }}>
+                          Scheduled for {new Date(schedule.scheduled_date).toLocaleDateString()}
+                        </Alert>
                       )}
                       {schedule.status === 'completed' && (
                         <Chip

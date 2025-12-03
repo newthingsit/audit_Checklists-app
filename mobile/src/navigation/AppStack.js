@@ -155,6 +155,7 @@ const AppStack = () => {
 
   return (
     <Tab.Navigator
+      initialRouteName="Dashboard"
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused }) => {
           let iconName;

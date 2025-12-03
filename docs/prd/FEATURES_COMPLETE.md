@@ -187,8 +187,34 @@ All major features are complete! The app now has:
 - ✅ Role & permission synchronization (v1.12.0)
 - ✅ Automatic user data refresh
 - ✅ Real-time permission updates
+- ✅ Mobile Security/Appearance/About modals (v1.13.0)
+- ✅ Password change from mobile app (v1.13.0)
+- ✅ In Progress filter in Audit History (v1.13.0)
+- ✅ Improved navigation flow (v1.13.0)
 
 The application is now feature-rich and production-ready!
+
+---
+
+## Version 1.13.0 Updates (December 3, 2025)
+
+### ✅ Mobile App Profile Settings
+- **Security Modal**: Full-featured password change functionality with visibility toggles
+- **Appearance Modal**: Theme options display (Light Mode active, Dark Mode/System Default coming soon)
+- **About Modal**: App information with version, SDK version, platform, and website link
+- **Password Change API**: New `/api/auth/change-password` endpoint for secure password updates
+
+### ✅ Audit History Improvements
+- **In Progress Filter**: Added "In Progress" status to filter options
+- **Distinct Styling**: In Progress has blue/info color scheme, separate from Pending (yellow)
+- **Complete Filter List**: All, Completed, In Progress, Pending, Failed
+
+### ✅ Navigation & UX Enhancements
+- **Logout Button Relocated**: Moved to top-right corner of profile header for better accessibility
+- **Dashboard Default**: App now opens to Dashboard after login (not Profile)
+- **Navigation Reset**: Proper navigation state reset on logout/login cycle
+
+**See:** `docs/prd/VERSION_1.13.0.md` for complete details
 
 ---
 

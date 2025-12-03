@@ -10,7 +10,8 @@ import {
   Alert,
   Image,
   Modal,
-  FlatList
+  FlatList,
+  Platform
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -274,23 +275,56 @@ const AuditFormScreen = () => {
 
       if (!result.canceled && result.assets[0]) {
         setUploading({ ...uploading, [itemId]: true });
+        
+        // Get the image URI - handle Android content:// URIs
+        let imageUri = result.assets[0].uri;
+        
+        // On Android, content:// URIs need special handling
+        // Expo ImagePicker already provides a file:// URI that works cross-platform
+        // But we need to ensure it's in the correct format for FormData
+        if (Platform.OS === 'android' && !imageUri.startsWith('file://')) {
+          // If it's a content:// URI, it should still work with FormData
+          // but we need to make sure the URI is properly encoded
+          imageUri = imageUri;
+        }
+        
         const formData = new FormData();
         formData.append('photo', {
-          uri: result.assets[0].uri,
+          uri: imageUri,
           type: 'image/jpeg',
           name: `photo_${itemId}_${Date.now()}.jpg`,
         });
 
-        // Use /photo endpoint (not /upload) and ensure auth token is included
-        // Note: Don't set Content-Type manually for FormData - axios will set it with boundary
-        const uploadResponse = await axios.post(`${API_BASE_URL}/photo`, formData, {
-          // Authorization header is automatically added by axios defaults from AuthContext
-          // Content-Type will be set automatically by axios for FormData
+        // Get the auth token from axios defaults
+        const authToken = axios.defaults.headers.common['Authorization'];
+        
+        // Use fetch instead of axios for file uploads (more reliable on Android)
+        const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            // Don't set Content-Type - fetch will set it with the correct boundary for FormData
+            ...(authToken ? { 'Authorization': authToken } : {}),
+          },
+          body: formData,
         });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          if (uploadResponse.status === 401) {
+            throw { type: 'auth', message: 'Authentication required. Please login again.' };
+          } else if (uploadResponse.status === 404) {
+            throw { type: 'notfound', message: 'Upload endpoint not found. Please check backend server.' };
+          } else {
+            throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
+          }
+        }
+
+        const responseData = await uploadResponse.json();
 
         // The backend returns photo_url like "/uploads/filename.jpg"
         // Construct full URL: http://IP:PORT/uploads/filename.jpg
-        const photoUrl = uploadResponse.data.photo_url;
+        const photoUrl = responseData.photo_url;
         const baseUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
         const fullPhotoUrl = photoUrl.startsWith('http') 
           ? photoUrl 
@@ -304,16 +338,16 @@ const AuditFormScreen = () => {
       console.error('Error uploading photo:', error);
       let errorMessage = 'Failed to upload photo';
       
-      if (error.response) {
-        if (error.response.status === 401) {
-          errorMessage = 'Authentication required. Please login again.';
-        } else if (error.response.status === 404) {
-          errorMessage = 'Upload endpoint not found. Please check backend server.';
+      if (error.type) {
+        // Custom error from our fetch handling
+        errorMessage = error.message;
+      } else if (error.message) {
+        // Network error or other error
+        if (error.message.includes('Network request failed')) {
+          errorMessage = 'Cannot connect to server. Please check your connection.';
         } else {
-          errorMessage = error.response.data?.error || `Server error: ${error.response.status}`;
+          errorMessage = error.message;
         }
-      } else if (error.request) {
-        errorMessage = 'Cannot connect to server. Please check your connection.';
       }
       
       Alert.alert('Upload Failed', errorMessage);
