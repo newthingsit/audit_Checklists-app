@@ -70,7 +70,7 @@
     ],
     "extra": {
       "apiUrl": {
-        "development": "http://192.168.1.156:5000/api",
+        "development": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api",
         "production": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api"
       },
       "eas": {

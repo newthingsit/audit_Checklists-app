@@ -24,9 +24,8 @@ const getApiBaseUrl = () => {
     if (appConfig?.development) {
       return appConfig.development;
     }
-    // Fallback: Use your computer's IP address for physical devices
-    // Update this if the IP changes
-    return 'http://192.168.1.156:5000/api';
+    // Fallback: Use production backend for Expo Go testing
+    return 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api';
   }
   
   // Production mode
