@@ -237,7 +237,10 @@ router.get('/', authenticate, (req, res) => {
 router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
-  const scheduledId = req.params.scheduledId;
+  const scheduledId = parseInt(req.params.scheduledId, 10);
+  if (isNaN(scheduledId)) {
+    return res.status(400).json({ error: 'Invalid scheduled audit ID' });
+  }
   const isAdmin = isAdminUser(req.user);
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
@@ -281,7 +284,10 @@ router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
 // Get single audit with items (admins can view any audit)
 router.get('/:id', authenticate, (req, res) => {
   const dbInstance = db.getDb();
-  const auditId = req.params.id;
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
 
@@ -499,7 +505,10 @@ router.post('/', authenticate, (req, res) => {
 
 // Update audit details
 router.put('/:id', authenticate, (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
   const { 
     restaurant_name, 
     location, 
@@ -623,7 +632,15 @@ router.put('/:id', authenticate, (req, res) => {
 
 // Update audit item
 router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
-  const { auditId, itemId } = req.params;
+  // Convert params to integers to prevent MSSQL type conversion issues
+  const auditId = parseInt(req.params.auditId, 10);
+  const itemId = parseInt(req.params.itemId, 10);
+  
+  // Validate params are valid numbers
+  if (isNaN(auditId) || isNaN(itemId)) {
+    return res.status(400).json({ error: 'Invalid audit ID or item ID' });
+  }
+  
   const { status, comment, photo_url, selected_option_id, mark } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
@@ -915,7 +932,10 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
 
 // Batch update audit items - OPTIMIZED for faster saves
 router.put('/:id/items/batch', authenticate, async (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
   const { items } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
@@ -1100,7 +1120,10 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
 
 // Complete audit
 router.put('/:id/complete', authenticate, (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
   const dbInstance = db.getDb();
   const userId = req.user.id;
 
@@ -1165,7 +1188,10 @@ router.put('/:id/complete', authenticate, (req, res) => {
 
 // Delete single audit
 router.delete('/:id', authenticate, (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const { requirePermission, getUserPermissions, hasPermission } = require('../middleware/permissions');
