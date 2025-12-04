@@ -1,7 +1,7 @@
 {
-  "short_name": "Audit Pro",
-  "name": "Audit Pro - Restaurant Audit App",
-  "description": "Professional restaurant audit and quality control application",
+  "short_name": "LBF Audit Pro",
+  "name": "Lite Bite Foods Audit Pro",
+  "description": "Lite Bite Foods - Professional restaurant audit and quality control application",
   "icons": [
     {
       "src": "logo192.svg",
@@ -19,7 +19,7 @@
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0d9488",
+  "theme_color": "#8B0000",
   "background_color": "#f8fafc",
   "scope": "/",
   "prefer_related_applications": false,

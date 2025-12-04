@@ -577,6 +577,125 @@ router.get('/report', authenticate, (req, res) => {
   });
 });
 
+// Get reschedule tracking report
+router.get('/reschedule-report', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const isAdmin = isAdminUser(req.user);
+  const { date_from, date_to, user_id } = req.query;
+  const dbType = process.env.DB_TYPE || 'sqlite';
+
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  let query = `
+    SELECT rt.*, 
+           sa.template_id, ct.name as template_name,
+           sa.location_id, l.name as location_name, l.store_number,
+           u.name as user_name, u.email as user_email
+    FROM reschedule_tracking rt
+    LEFT JOIN scheduled_audits sa ON rt.scheduled_audit_id = sa.id
+    LEFT JOIN checklist_templates ct ON sa.template_id = ct.id
+    LEFT JOIN locations l ON sa.location_id = l.id
+    LEFT JOIN users u ON rt.user_id = u.id
+    WHERE 1=1
+  `;
+  let params = [];
+
+  // Apply filters
+  if (date_from) {
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      query += ' AND CAST(rt.created_at AS DATE) >= CAST(? AS DATE)';
+    } else {
+      query += ' AND DATE(rt.created_at) >= ?';
+    }
+    params.push(date_from);
+  }
+  if (date_to) {
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      query += ' AND CAST(rt.created_at AS DATE) <= CAST(? AS DATE)';
+    } else {
+      query += ' AND DATE(rt.created_at) <= ?';
+    }
+    params.push(date_to);
+  }
+  if (user_id) {
+    query += ' AND rt.user_id = ?';
+    params.push(user_id);
+  }
+
+  query += ' ORDER BY rt.created_at DESC';
+
+  dbInstance.all(query, params, (err, reschedules) => {
+    if (err) {
+      logger.error('Error fetching reschedule report:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Calculate summary statistics
+    const byUser = {};
+    const byMonth = {};
+    const byTemplate = {};
+    
+    reschedules.forEach(r => {
+      // By user
+      const userName = r.user_name || 'Unknown';
+      if (!byUser[userName]) {
+        byUser[userName] = { count: 0, user_id: r.user_id, email: r.user_email };
+      }
+      byUser[userName].count++;
+
+      // By month
+      const month = r.reschedule_month || 'Unknown';
+      if (!byMonth[month]) {
+        byMonth[month] = 0;
+      }
+      byMonth[month]++;
+
+      // By template
+      const templateName = r.template_name || 'Unknown';
+      if (!byTemplate[templateName]) {
+        byTemplate[templateName] = 0;
+      }
+      byTemplate[templateName]++;
+    });
+
+    res.json({
+      summary: {
+        totalReschedules: reschedules.length,
+        byUser: Object.entries(byUser).map(([name, data]) => ({
+          user_name: name,
+          user_id: data.user_id,
+          email: data.email,
+          reschedule_count: data.count
+        })).sort((a, b) => b.reschedule_count - a.reschedule_count),
+        byMonth: Object.entries(byMonth).map(([month, count]) => ({
+          month,
+          count
+        })).sort((a, b) => b.month.localeCompare(a.month)),
+        byTemplate: Object.entries(byTemplate).map(([template, count]) => ({
+          template,
+          count
+        })).sort((a, b) => b.count - a.count)
+      },
+      reschedules: reschedules.map(r => ({
+        id: r.id,
+        scheduled_audit_id: r.scheduled_audit_id,
+        user_id: r.user_id,
+        user_name: r.user_name,
+        user_email: r.user_email,
+        template_name: r.template_name,
+        location_name: r.location_name,
+        store_number: r.store_number,
+        old_date: r.old_date,
+        new_date: r.new_date,
+        reschedule_month: r.reschedule_month,
+        created_at: r.created_at
+      }))
+    });
+  });
+});
+
 // Bulk import scheduled audits from CSV
 router.post('/import', authenticate, requirePermission('manage_scheduled_audits', 'create_scheduled_audits'), async (req, res) => {
   const dbInstance = db.getDb();

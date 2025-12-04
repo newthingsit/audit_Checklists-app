@@ -1,5 +1,5 @@
 // Version should be updated on each deployment to invalidate cache
-const CACHE_VERSION = '2';
+const CACHE_VERSION = '3';
 const CACHE_NAME = `audit-pro-v${CACHE_VERSION}`;
 const STATIC_CACHE = `audit-pro-static-v${CACHE_VERSION}`;
 const API_CACHE = `audit-pro-api-v${CACHE_VERSION}`;

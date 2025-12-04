@@ -20,8 +20,8 @@ import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError, ServerError } from '../components/ErrorState';
 
-// Auto-refresh interval in milliseconds (15 seconds - balanced for battery/freshness)
-const AUTO_REFRESH_INTERVAL = 15000;
+// Auto-refresh interval in milliseconds (5 seconds for real-time updates)
+const AUTO_REFRESH_INTERVAL = 5000;
 
 const AuditHistoryScreen = () => {
   const [audits, setAudits] = useState([]);

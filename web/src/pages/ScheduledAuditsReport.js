@@ -38,6 +38,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import WarningIcon from '@mui/icons-material/Warning';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import EventRepeatIcon from '@mui/icons-material/EventRepeat';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showError } from '../utils/toast';
@@ -55,11 +56,13 @@ const ScheduledAuditsReport = () => {
   const [frequency, setFrequency] = useState('');
   const [locations, setLocations] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [rescheduleData, setRescheduleData] = useState(null);
 
   useEffect(() => {
     fetchLocations();
     fetchTemplates();
     fetchReport();
+    fetchRescheduleReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo, locationId, templateId, status, frequency]);
 
@@ -99,6 +102,20 @@ const ScheduledAuditsReport = () => {
       showError('Error loading scheduled audits report');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRescheduleReport = async () => {
+    try {
+      const params = {};
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      
+      const response = await axios.get('/api/scheduled-audits/reschedule-report', { params });
+      setRescheduleData(response.data);
+    } catch (error) {
+      console.error('Error fetching reschedule report:', error);
+      // Non-critical, don't show error
     }
   };
 
@@ -408,6 +425,99 @@ const ScheduledAuditsReport = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Reschedule Tracking Report */}
+        {rescheduleData && rescheduleData.summary && rescheduleData.summary.totalReschedules > 0 && (
+          <Card sx={{ mb: 3, bgcolor: 'warning.light', border: '1px solid', borderColor: 'warning.main' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <EventRepeatIcon sx={{ color: 'warning.dark', mr: 1, fontSize: 28 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600, color: 'warning.dark' }}>
+                  Reschedule Tracking ({rescheduleData.summary.totalReschedules} Total)
+                </Typography>
+              </Box>
+              
+              {/* Summary by User */}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, mt: 2 }}>
+                Reschedules by User (This Month)
+              </Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>User</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell align="center">Reschedule Count</TableCell>
+                      <TableCell align="center">Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rescheduleData.summary.byUser.map((user) => (
+                      <TableRow key={user.user_id}>
+                        <TableCell>{user.user_name}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell align="center">
+                          <Typography 
+                            sx={{ 
+                              fontWeight: 700, 
+                              color: user.reschedule_count >= 2 ? 'error.main' : 'warning.dark' 
+                            }}
+                          >
+                            {user.reschedule_count}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip 
+                            label={user.reschedule_count >= 2 ? 'Limit Reached' : `${2 - user.reschedule_count} remaining`}
+                            size="small"
+                            color={user.reschedule_count >= 2 ? 'error' : 'warning'}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* Detailed Reschedule History */}
+              {rescheduleData.reschedules && rescheduleData.reschedules.length > 0 && (
+                <>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, mt: 3 }}>
+                    Recent Reschedule History
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>User</TableCell>
+                          <TableCell>Template</TableCell>
+                          <TableCell>Store</TableCell>
+                          <TableCell>Original Date</TableCell>
+                          <TableCell>New Date</TableCell>
+                          <TableCell>Month</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {rescheduleData.reschedules.slice(0, 20).map((r) => (
+                          <TableRow key={r.id}>
+                            <TableCell>{r.user_name}</TableCell>
+                            <TableCell>{r.template_name}</TableCell>
+                            <TableCell>{r.store_number ? `Store ${r.store_number}` : r.location_name || 'N/A'}</TableCell>
+                            <TableCell>{r.old_date ? new Date(r.old_date).toLocaleDateString() : 'N/A'}</TableCell>
+                            <TableCell>{r.new_date ? new Date(r.new_date).toLocaleDateString() : 'N/A'}</TableCell>
+                            <TableCell>
+                              <Chip label={r.reschedule_month || 'N/A'} size="small" variant="outlined" />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
             </CardContent>
           </Card>
         )}

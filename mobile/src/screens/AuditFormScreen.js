@@ -560,19 +560,38 @@ const AuditFormScreen = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Store *</Text>
-            <TouchableOpacity
-              style={styles.input}
-              onPress={() => setShowStorePicker(true)}
-            >
-              <Text style={selectedLocation ? styles.inputText : styles.placeholderText}>
-                {selectedLocation
-                  ? (selectedLocation.store_number
-                      ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
-                      : selectedLocation.name)
-                  : 'Select a store'}
+            {/* Lock store selection if scheduled audit has pre-assigned location */}
+            {scheduledAuditId && initialLocationId ? (
+              <View style={[styles.input, styles.lockedInput]}>
+                <Text style={styles.inputText}>
+                  {selectedLocation
+                    ? (selectedLocation.store_number
+                        ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
+                        : selectedLocation.name)
+                    : 'Loading store...'}
+                </Text>
+                <Icon name="lock" size={20} color="#999" />
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.input}
+                onPress={() => setShowStorePicker(true)}
+              >
+                <Text style={selectedLocation ? styles.inputText : styles.placeholderText}>
+                  {selectedLocation
+                    ? (selectedLocation.store_number
+                        ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
+                        : selectedLocation.name)
+                    : 'Select a store'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color="#666" />
+              </TouchableOpacity>
+            )}
+            {scheduledAuditId && initialLocationId && (
+              <Text style={styles.lockedHint}>
+                📍 Store is locked for this scheduled audit
               </Text>
-              <Icon name="arrow-drop-down" size={24} color="#666" />
-            </TouchableOpacity>
+            )}
           </View>
 
           {/* GPS Location Capture */}
@@ -1091,6 +1110,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     flex: 1,
+  },
+  lockedInput: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#ddd',
+  },
+  lockedHint: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,

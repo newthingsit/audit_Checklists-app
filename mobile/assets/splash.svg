@@ -1,9 +1,33 @@
-
-<svg width="1284" height="2778" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1284" height="2778" fill="#0d9488"/>
-  <circle cx="642" cy="1289" r="120" fill="white" opacity="0.2"/>
-  <circle cx="642" cy="1289" r="80" fill="white"/>
-  <text x="642" y="1309" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="#0d9488" text-anchor="middle">✓</text>
-  <text x="642" y="1439" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">Audit Pro</text>
-  <text x="642" y="1489" font-family="Arial, sans-serif" font-size="20" fill="white" opacity="0.8" text-anchor="middle">Restaurant Audit Management</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1284 2778" width="1284" height="2778">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B0000;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6B0000;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1284" height="2778" fill="url(#bgGradient)"/>
+  
+  <!-- Chef Hat (white version for dark background) -->
+  <g transform="translate(642, 1200)">
+    <!-- Hat top (puffy part) -->
+    <ellipse cx="0" cy="-200" rx="280" ry="150" fill="#ffffff"/>
+    <ellipse cx="-150" cy="-230" rx="112" ry="130" fill="#ffffff"/>
+    <ellipse cx="150" cy="-230" rx="112" ry="130" fill="#ffffff"/>
+    <ellipse cx="0" cy="-250" rx="130" ry="112" fill="#ffffff"/>
+    
+    <!-- Hat band -->
+    <rect x="-260" y="-100" width="520" height="160" rx="12" fill="#ffffff"/>
+    
+    <!-- LBF Text inside hat -->
+    <text x="0" y="30" font-family="Georgia, serif" font-size="150" font-weight="bold" 
+          fill="#8B0000" text-anchor="middle" font-style="italic">LBF</text>
+  </g>
+  
+  <!-- Company Name -->
+  <text x="642" y="1550" font-family="Georgia, serif" font-size="90" font-weight="bold" 
+        fill="#ffffff" text-anchor="middle">Lite Bite Foods</text>
+  <text x="642" y="1680" font-family="Arial, sans-serif" font-size="70" 
+        fill="rgba(255,255,255,0.9)" text-anchor="middle" letter-spacing="8">AUDIT PRO</text>
 </svg>

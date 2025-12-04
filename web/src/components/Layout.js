@@ -172,8 +172,8 @@ const Layout = ({ children }) => {
         }}>
           <RestaurantIcon sx={{ fontSize: 24, color: 'white' }} />
         </Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: 'white', letterSpacing: '-0.02em' }}>
-          Audit Pro
+        <Typography variant="h6" sx={{ fontWeight: 700, color: 'white', letterSpacing: '-0.02em', fontSize: '0.95rem' }}>
+          LBF Audit Pro
         </Typography>
       </Box>
 
