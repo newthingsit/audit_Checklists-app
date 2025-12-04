@@ -191,6 +191,36 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
+// Warmup endpoint - tests database connection (useful for Azure cold starts)
+app.get('/api/warmup', async (req, res) => {
+  try {
+    const dbInstance = db.getDb();
+    // Simple query to test database connection
+    dbInstance.get('SELECT 1 as test', [], (err, result) => {
+      if (err) {
+        logger.error('Warmup database test failed:', err.message);
+        return res.status(503).json({ 
+          status: 'ERROR', 
+          message: 'Database connection failed',
+          error: err.message 
+        });
+      }
+      res.json({ 
+        status: 'OK', 
+        message: 'Server and database are ready',
+        timestamp: new Date().toISOString()
+      });
+    });
+  } catch (error) {
+    logger.error('Warmup endpoint error:', error.message);
+    res.status(503).json({ 
+      status: 'ERROR', 
+      message: 'Service unavailable',
+      error: error.message 
+    });
+  }
+});
+
 // Global error handler - MUST be after all routes but before listen
 // This catches any unhandled errors and prevents 500 responses
 app.use((err, req, res, next) => {

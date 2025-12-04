@@ -2,6 +2,8 @@
 const sql = require('mssql');
 
 let pool = null;
+let isConnecting = false;
+let connectionPromise = null;
 
 const init = () => {
   return new Promise(async (resolve, reject) => {
@@ -24,8 +26,9 @@ const init = () => {
         },
         pool: {
           max: 10,
-          min: 0,
-          idleTimeoutMillis: 30000
+          min: 2, // Keep minimum connections alive to prevent cold start issues
+          idleTimeoutMillis: 60000, // Increase idle timeout for Azure
+          acquireTimeoutMillis: 30000 // Timeout for acquiring a connection
         }
       };
 
@@ -38,6 +41,70 @@ const init = () => {
       reject(error);
     }
   });
+};
+
+// Ensure connection is ready (with retry logic for cold starts)
+const ensureConnection = async () => {
+  if (pool && pool.connected) {
+    return pool;
+  }
+  
+  // If already connecting, wait for that to complete
+  if (isConnecting && connectionPromise) {
+    return connectionPromise;
+  }
+  
+  console.log('Database pool not connected, attempting reconnection...');
+  isConnecting = true;
+  
+  connectionPromise = new Promise(async (resolve, reject) => {
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const shouldEncrypt = process.env.MSSQL_ENCRYPT !== 'false';
+        
+        const config = {
+          server: process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS',
+          port: parseInt(process.env.DB_PORT || process.env.MSSQL_PORT || '1433'),
+          database: process.env.DB_NAME || process.env.MSSQL_DATABASE || 'audit_checklists',
+          user: process.env.DB_USER || process.env.MSSQL_USER || 'sa',
+          password: process.env.DB_PASSWORD || process.env.MSSQL_PASSWORD,
+          options: {
+            encrypt: shouldEncrypt,
+            trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
+            enableArithAbort: true,
+            connectionTimeout: 30000,
+            requestTimeout: 30000
+          },
+          pool: {
+            max: 10,
+            min: 2,
+            idleTimeoutMillis: 60000,
+            acquireTimeoutMillis: 30000
+          }
+        };
+        
+        pool = await sql.connect(config);
+        console.log(`Database reconnected successfully (attempt ${attempt})`);
+        isConnecting = false;
+        resolve(pool);
+        return;
+      } catch (error) {
+        lastError = error;
+        console.error(`Database reconnection attempt ${attempt} failed:`, error.message);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+        }
+      }
+    }
+    
+    isConnecting = false;
+    reject(lastError);
+  });
+  
+  return connectionPromise;
 };
 
 const createTables = async () => {
@@ -958,155 +1025,116 @@ const addMissingColumns = async () => {
 
 // Database query methods (compatible with SQLite interface)
 const getDb = () => {
-  if (!pool) {
-    throw new Error('Database pool not initialized. Call db.init() first.');
-  }
+  // Helper to prepare query and parameters
+  const prepareQuery = (query, params, request) => {
+    params.forEach((param, index) => {
+      request.input(`param${index}`, param);
+    });
+    
+    let paramIndex = 0;
+    return query.replace(/\?/g, () => {
+      const replacement = `@param${paramIndex}`;
+      paramIndex++;
+      return replacement;
+    });
+  };
+  
   return {
     // Run a query (for INSERT, UPDATE, DELETE)
     run: (query, params = [], callback) => {
-      const request = pool.request();
-      
-      // Check if it's an INSERT statement and add SCOPE_IDENTITY() to get last inserted ID
-      const isInsert = query.trim().toUpperCase().startsWith('INSERT');
-      let processedQuery = query;
-      
-      if (isInsert && !query.includes('OUTPUT') && !query.includes('SCOPE_IDENTITY')) {
-        // For INSERT, append SELECT SCOPE_IDENTITY() to get the last inserted ID
-        processedQuery = query + '; SELECT SCOPE_IDENTITY() AS id;';
-      }
-      
-      // Add parameters
-      params.forEach((param, index) => {
-        request.input(`param${index}`, param);
-      });
-      
-      // Replace ? with @param0, @param1, etc. (replace all occurrences in order)
-      let paramIndex = 0;
-      processedQuery = processedQuery.replace(/\?/g, () => {
-        const replacement = `@param${paramIndex}`;
-        paramIndex++;
-        return replacement;
-      });
+      const executeRun = async () => {
+        try {
+          await ensureConnection();
+          const request = pool.request();
+          
+          const isInsert = query.trim().toUpperCase().startsWith('INSERT');
+          let processedQuery = prepareQuery(query, params, request);
+          
+          if (isInsert && !query.includes('OUTPUT') && !query.includes('SCOPE_IDENTITY')) {
+            processedQuery = processedQuery + '; SELECT SCOPE_IDENTITY() AS id;';
+          }
+          
+          const result = await request.query(processedQuery);
+          let lastID = 0;
+          if (isInsert && result.recordset && result.recordset.length > 0) {
+            const idResult = result.recordset.find(r => r.id !== undefined);
+            if (idResult) {
+              lastID = parseInt(idResult.id) || 0;
+            }
+          }
+          return { lastID, changes: result.rowsAffected[0] || 0 };
+        } catch (error) {
+          throw error;
+        }
+      };
       
       if (callback) {
-        request.query(processedQuery)
-          .then(result => {
-            let lastID = 0;
-            if (isInsert && result.recordset && result.recordset.length > 0) {
-              // Get the ID from the SCOPE_IDENTITY() result
-              const idResult = result.recordset.find(r => r.id !== undefined);
-              if (idResult) {
-                lastID = parseInt(idResult.id) || 0;
-              }
-            }
-            callback(null, {
-              lastID: lastID,
-              changes: result.rowsAffected[0] || 0
-            });
-          })
-          .catch(callback);
+        executeRun().then(result => callback(null, result)).catch(callback);
       } else {
-        return request.query(processedQuery)
-          .then(result => {
-            let lastID = 0;
-            if (isInsert && result.recordset && result.recordset.length > 0) {
-              const idResult = result.recordset.find(r => r.id !== undefined);
-              if (idResult) {
-                lastID = parseInt(idResult.id) || 0;
-              }
-            }
-            return {
-              lastID: lastID,
-              changes: result.rowsAffected[0] || 0
-            };
-          });
+        return executeRun();
       }
     },
 
     // Get a single row
     get: (query, params = [], callback) => {
-      const request = pool.request();
-      
-      params.forEach((param, index) => {
-        request.input(`param${index}`, param);
-      });
-      
-      let processedQuery = query;
-      // Replace ? with @param0, @param1, etc. (replace all occurrences in order)
-      let paramIndex = 0;
-      processedQuery = processedQuery.replace(/\?/g, () => {
-        const replacement = `@param${paramIndex}`;
-        paramIndex++;
-        return replacement;
-      });
+      const executeGet = async () => {
+        try {
+          await ensureConnection();
+          const request = pool.request();
+          const processedQuery = prepareQuery(query, params, request);
+          const result = await request.query(processedQuery);
+          return result.recordset[0] || null;
+        } catch (error) {
+          throw error;
+        }
+      };
       
       if (callback) {
-        request.query(processedQuery)
-          .then(result => {
-            callback(null, result.recordset[0] || null);
-          })
-          .catch(callback);
+        executeGet().then(result => callback(null, result)).catch(callback);
       } else {
-        return request.query(processedQuery)
-          .then(result => result.recordset[0] || null);
+        return executeGet();
       }
     },
 
     // Get all rows
     all: (query, params = [], callback) => {
-      const request = pool.request();
-      
-      params.forEach((param, index) => {
-        request.input(`param${index}`, param);
-      });
-      
-      let processedQuery = query;
-      // Replace ? with @param0, @param1, etc. (replace all occurrences in order)
-      let paramIndex = 0;
-      processedQuery = processedQuery.replace(/\?/g, () => {
-        const replacement = `@param${paramIndex}`;
-        paramIndex++;
-        return replacement;
-      });
+      const executeAll = async () => {
+        try {
+          await ensureConnection();
+          const request = pool.request();
+          const processedQuery = prepareQuery(query, params, request);
+          const result = await request.query(processedQuery);
+          return result.recordset || [];
+        } catch (error) {
+          throw error;
+        }
+      };
       
       if (callback) {
-        request.query(processedQuery)
-          .then(result => {
-            callback(null, result.recordset || []);
-          })
-          .catch(callback);
+        executeAll().then(result => callback(null, result)).catch(callback);
       } else {
-        return request.query(processedQuery)
-          .then(result => result.recordset || []);
+        return executeAll();
       }
     },
 
     // Execute a query (returns result object)
     query: (query, params = [], callback) => {
-      const request = pool.request();
-      
-      params.forEach((param, index) => {
-        request.input(`param${index}`, param);
-      });
-      
-      let processedQuery = query;
-      // Replace ? with @param0, @param1, etc. (replace all occurrences in order)
-      let paramIndex = 0;
-      processedQuery = processedQuery.replace(/\?/g, () => {
-        const replacement = `@param${paramIndex}`;
-        paramIndex++;
-        return replacement;
-      });
+      const executeQuery = async () => {
+        try {
+          await ensureConnection();
+          const request = pool.request();
+          const processedQuery = prepareQuery(query, params, request);
+          const result = await request.query(processedQuery);
+          return { rows: result.recordset, fields: result.columns };
+        } catch (error) {
+          throw error;
+        }
+      };
       
       if (callback) {
-        request.query(processedQuery)
-          .then(result => {
-            callback(null, { rows: result.recordset, fields: result.columns });
-          })
-          .catch(callback);
+        executeQuery().then(result => callback(null, result)).catch(callback);
       } else {
-        return request.query(processedQuery)
-          .then(result => ({ rows: result.recordset, fields: result.columns }));
+        return executeQuery();
       }
     }
   };

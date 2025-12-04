@@ -107,13 +107,35 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
-    const response = await axios.post('/api/auth/login', { email, password });
-    const { token: newToken, user: userData } = response.data;
-    tokenStorage.set(newToken);
-    setToken(newToken);
-    setUser(userData);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-    return response.data;
+    // Retry logic for cold start issues (Azure App Service may need warmup)
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await axios.post('/api/auth/login', { email, password });
+        const { token: newToken, user: userData } = response.data;
+        tokenStorage.set(newToken);
+        setToken(newToken);
+        setUser(userData);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        // Only retry on 500 errors (server errors) or network issues
+        const status = error.response?.status;
+        const isRetryable = status === 500 || status === 502 || status === 503 || !status;
+        
+        if (attempt < maxRetries && isRetryable) {
+          console.log(`Login attempt ${attempt} failed, retrying in ${attempt * 1000}ms...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+          continue;
+        }
+        break;
+      }
+    }
+    
+    throw lastError;
   };
 
   const register = async (email, password, name) => {
