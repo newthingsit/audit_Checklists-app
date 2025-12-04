@@ -312,6 +312,7 @@ router.get('/:id', authenticate, (req, res) => {
 
       dbInstance.all(
         `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
+                COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
                 cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
          FROM audit_items ai
          JOIN checklist_items ci ON ai.item_id = ci.id
@@ -326,7 +327,7 @@ router.get('/:id', authenticate, (req, res) => {
           
           // Fetch all options for items
           if (items.length === 0) {
-            return res.json({ audit, items: [] });
+            return res.json({ audit, items: [], categoryScores: {} });
           }
           
           const itemIds = items.map(item => item.item_id);
@@ -349,6 +350,63 @@ router.get('/:id', authenticate, (req, res) => {
                 optionsByItem[option.item_id].push(option);
               });
               
+              // Calculate category-wise scores
+              const categoryScores = {};
+              items.forEach(item => {
+                const category = item.category || 'Uncategorized';
+                if (!categoryScores[category]) {
+                  categoryScores[category] = {
+                    totalItems: 0,
+                    completedItems: 0,
+                    totalPossibleScore: 0,
+                    actualScore: 0,
+                    weightedPossible: 0,
+                    weightedActual: 0,
+                    hasCriticalFailure: false
+                  };
+                }
+                
+                const catData = categoryScores[category];
+                catData.totalItems++;
+                
+                // Get max score for this item (from "Yes" option or highest mark)
+                const itemOptions = optionsByItem[item.item_id] || [];
+                const yesOption = itemOptions.find(o => o.option_text === 'Yes' || o.option_text === 'Pass');
+                const maxScore = yesOption 
+                  ? parseFloat(yesOption.mark) || 0 
+                  : Math.max(...itemOptions.map(o => parseFloat(o.mark) || 0), 0);
+                
+                const weight = parseInt(item.weight) || 1;
+                catData.totalPossibleScore += maxScore;
+                catData.weightedPossible += maxScore * weight;
+                
+                // Check if item is completed and calculate actual score
+                if (item.mark !== null && item.mark !== undefined && item.mark !== '') {
+                  catData.completedItems++;
+                  if (item.mark !== 'NA') {
+                    const mark = parseFloat(item.mark) || 0;
+                    catData.actualScore += mark;
+                    catData.weightedActual += mark * weight;
+                    
+                    // Check for critical failure
+                    if (item.is_critical && mark === 0) {
+                      catData.hasCriticalFailure = true;
+                    }
+                  }
+                }
+              });
+              
+              // Calculate percentage scores for each category
+              Object.keys(categoryScores).forEach(category => {
+                const cat = categoryScores[category];
+                cat.score = cat.totalPossibleScore > 0 
+                  ? Math.round((cat.actualScore / cat.totalPossibleScore) * 100) 
+                  : 0;
+                cat.weightedScore = cat.weightedPossible > 0 
+                  ? Math.round((cat.weightedActual / cat.weightedPossible) * 100) 
+                  : 0;
+              });
+              
               // Attach options to items, normalize option_text to text for compatibility
               const itemsWithOptions = items.map(item => ({
                 ...item,
@@ -358,7 +416,7 @@ router.get('/:id', authenticate, (req, res) => {
                 }))
               }));
               
-              res.json({ audit, items: itemsWithOptions });
+              res.json({ audit, items: itemsWithOptions, categoryScores });
             }
           );
         }
@@ -757,10 +815,11 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
       );
 
       function calculateScoreAndUpdate() {
-        // Update audit progress - calculate score based on marks
-        // First, get the actual marks from audit items (excluding N/A)
+        // Update audit progress - calculate score based on marks with weighted scoring support
+        // Get audit items with their checklist item details including weight and critical flag
         dbInstance.all(
-          `SELECT ai.item_id, ai.mark, ci.id as checklist_item_id
+          `SELECT ai.item_id, ai.mark, ci.id as checklist_item_id, 
+                  COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical
            FROM audit_items ai
            JOIN checklist_items ci ON ai.item_id = ci.id
            WHERE ai.audit_id = ?`,
@@ -778,21 +837,18 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                 return res.json({ message: 'Audit item updated successfully' });
               }
 
-              // Get all checklist items for this template with their "Yes" option marks
-              // Use database-agnostic query
+              // Get all checklist items for this template with their "Yes" option marks, weight, and critical flag
               const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
               let query;
               if (dbType === 'mssql' || dbType === 'sqlserver') {
-                // SQL Server: Use TOP in subquery
-                query = `SELECT ci.id, 
+                query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
                          (SELECT TOP 1 CAST(cio.mark AS FLOAT)
                           FROM checklist_item_options cio 
                           WHERE cio.item_id = ci.id AND cio.option_text = 'Yes') as max_score
                          FROM checklist_items ci
                          WHERE ci.template_id = ?`;
               } else {
-                // SQLite, PostgreSQL, MySQL: Use LIMIT
-                query = `SELECT ci.id, 
+                query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
                          (SELECT CAST(cio.mark AS REAL)
                           FROM checklist_item_options cio 
                           WHERE cio.item_id = ci.id AND cio.option_text = 'Yes' 
@@ -807,40 +863,59 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                 (err, templateItems) => {
                   if (err) {
                     logger.error('Error fetching template items:', err.message);
-                    // Fallback to old calculation
                     return calculateScoreFallback();
                   }
 
-                  // Calculate total possible score (sum of max scores from template)
+                  // Build lookup map for template items
+                  const templateItemMap = {};
+                  templateItems.forEach(item => {
+                    templateItemMap[item.id] = item;
+                  });
+
+                  // Calculate weighted total possible score
                   let totalPossibleScore = 0;
+                  let weightedTotalPossible = 0;
                   templateItems.forEach(item => {
                     if (item.max_score !== null) {
-                      totalPossibleScore += parseFloat(item.max_score) || 0;
+                      const maxScore = parseFloat(item.max_score) || 0;
+                      const weight = parseInt(item.weight) || 1;
+                      totalPossibleScore += maxScore;
+                      weightedTotalPossible += maxScore * weight;
                     }
                   });
 
-                  // Calculate actual score (sum of marks, excluding N/A)
+                  // Calculate actual scores (weighted and unweighted) and check for critical failures
                   let actualScore = 0;
-                  let itemsWithMarks = 0;
+                  let weightedActualScore = 0;
+                  let hasCriticalFailure = false;
+                  
                   auditItems.forEach(item => {
                     if (item.mark && item.mark !== 'NA') {
-                      actualScore += parseFloat(item.mark) || 0;
-                      itemsWithMarks++;
+                      const mark = parseFloat(item.mark) || 0;
+                      const weight = parseInt(item.weight) || 1;
+                      actualScore += mark;
+                      weightedActualScore += mark * weight;
+                      
+                      // Check for critical item failure (mark is 0 or very low on critical item)
+                      if (item.is_critical && mark === 0) {
+                        hasCriticalFailure = true;
+                      }
                     }
                   });
 
-                  // Calculate percentage: (actual / total possible) * 100
+                  // Calculate regular percentage score
                   const score = totalPossibleScore > 0 
                     ? Math.round((actualScore / totalPossibleScore) * 100) 
                     : 0;
+                    
+                  // Calculate weighted percentage score
+                  const weightedScore = weightedTotalPossible > 0 
+                    ? Math.round((weightedActualScore / weightedTotalPossible) * 100) 
+                    : 0;
 
                   const total = auditItems.length;
-                  // Count item as completed if it has a mark set (including 0), 
-                  // or if selected_option_id is set, or if status is 'completed'
                   const completed = auditItems.filter(item => {
-                    // Check if mark is set (including 0, but not null/undefined)
                     const hasMark = item.mark !== null && item.mark !== undefined && item.mark !== '';
-                    // Also count N/A as completed since user explicitly selected it
                     const isNA = item.mark === 'NA' || String(item.mark).toUpperCase() === 'NA';
                     return hasMark || isNA;
                   }).length;
@@ -848,10 +923,10 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
 
                   dbInstance.run(
                     `UPDATE audits 
-                     SET completed_items = ?, score = ?, status = ?, 
+                     SET completed_items = ?, score = ?, weighted_score = ?, has_critical_failure = ?, status = ?, 
                          completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
                      WHERE id = ?`,
-                    [completed, score, auditStatus, completed, total, auditId],
+                    [completed, score, weightedScore, hasCriticalFailure ? 1 : 0, auditStatus, completed, total, auditId],
                     function(updateErr) {
                       if (updateErr) {
                         logger.error('Error updating audit:', updateErr.message);
@@ -859,7 +934,12 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                       if (auditStatus === 'completed') {
                         handleScheduledAuditCompletion(dbInstance, auditId);
                       }
-                      res.json({ message: 'Audit item updated successfully' });
+                      res.json({ 
+                        message: 'Audit item updated successfully',
+                        score,
+                        weightedScore,
+                        hasCriticalFailure
+                      });
                     }
                   );
                 }

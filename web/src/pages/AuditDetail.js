@@ -48,6 +48,7 @@ const AuditDetail = () => {
   const [audit, setAudit] = useState(null);
   const [items, setItems] = useState([]);
   const [actions, setActions] = useState([]);
+  const [categoryScores, setCategoryScores] = useState({});
   const [loading, setLoading] = useState(true);
   const [showActionDialog, setShowActionDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -84,6 +85,7 @@ const AuditDetail = () => {
       ]);
       setAudit(auditResponse.data.audit);
       setItems(auditResponse.data.items || []);
+      setCategoryScores(auditResponse.data.categoryScores || {});
       setActions(actionsResponse.data.actions || []);
     } catch (error) {
       console.error('Error fetching audit:', error);
@@ -384,7 +386,84 @@ const AuditDetail = () => {
             Created: {new Date(audit.created_at).toLocaleString()}
             {audit.completed_at && ` | Completed: ${new Date(audit.completed_at).toLocaleString()}`}
           </Typography>
+          
+          {/* Critical Failure Warning */}
+          {audit.has_critical_failure === 1 && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                ⚠️ Critical Failure Detected
+              </Typography>
+              <Typography variant="body2">
+                One or more critical items have failed. This audit requires immediate attention.
+              </Typography>
+            </Alert>
+          )}
+          
+          {/* Weighted Score Display */}
+          {audit.weighted_score !== null && audit.weighted_score !== audit.score && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Weighted Score (accounts for item importance)
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: audit.weighted_score >= 80 ? 'success.main' : audit.weighted_score >= 60 ? 'warning.main' : 'error.main' }}>
+                {audit.weighted_score}%
+              </Typography>
+            </Box>
+          )}
         </Paper>
+        
+        {/* Category-wise Scores */}
+        {Object.keys(categoryScores).length > 0 && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+              📊 Category Scores
+            </Typography>
+            <Grid container spacing={2}>
+              {Object.entries(categoryScores).map(([category, data]) => (
+                <Grid item xs={12} sm={6} md={4} key={category}>
+                  <Box sx={{ 
+                    p: 2, 
+                    borderRadius: 2, 
+                    bgcolor: data.score >= 80 ? 'success.light' : data.score >= 60 ? 'warning.light' : 'error.light',
+                    border: data.hasCriticalFailure ? '2px solid' : '1px solid',
+                    borderColor: data.hasCriticalFailure ? 'error.main' : 'transparent'
+                  }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {category}
+                      </Typography>
+                      {data.hasCriticalFailure && (
+                        <Chip label="Critical Failure" size="small" color="error" sx={{ fontSize: '0.7rem' }} />
+                      )}
+                    </Box>
+                    <Typography variant="h4" sx={{ 
+                      fontWeight: 700,
+                      color: data.score >= 80 ? 'success.dark' : data.score >= 60 ? 'warning.dark' : 'error.dark'
+                    }}>
+                      {data.score}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {data.completedItems} / {data.totalItems} items completed
+                    </Typography>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={data.score} 
+                      sx={{ 
+                        mt: 1, 
+                        height: 6, 
+                        borderRadius: 1,
+                        bgcolor: 'rgba(255,255,255,0.5)',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: data.score >= 80 ? 'success.main' : data.score >= 60 ? 'warning.main' : 'error.main'
+                        }
+                      }} 
+                    />
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+        )}
 
         {audit.status === 'in_progress' && (
           <Paper sx={{ p: 3, mb: 3, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>

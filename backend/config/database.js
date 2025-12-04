@@ -101,6 +101,14 @@ const createTables = () => {
       db.run(`ALTER TABLE locations ADD COLUMN parent_id INTEGER`, () => {});
       db.run(`ALTER TABLE locations ADD COLUMN region TEXT`, () => {});
       db.run(`ALTER TABLE locations ADD COLUMN district TEXT`, () => {});
+      
+      // Add weight and critical flag columns to checklist_items (migration)
+      db.run(`ALTER TABLE checklist_items ADD COLUMN weight INTEGER DEFAULT 1`, () => {});
+      db.run(`ALTER TABLE checklist_items ADD COLUMN is_critical BOOLEAN DEFAULT 0`, () => {});
+      
+      // Add critical failure tracking to audits (migration)
+      db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});
+      db.run(`ALTER TABLE audits ADD COLUMN weighted_score REAL`, () => {});
 
       // Audits table
       db.run(`CREATE TABLE IF NOT EXISTS audits (

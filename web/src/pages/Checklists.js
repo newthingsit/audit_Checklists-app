@@ -28,7 +28,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Alert
+  Alert,
+  FormControlLabel,
+  Checkbox,
+  Tooltip,
+  ButtonGroup
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -39,6 +43,8 @@ import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import ScaleIcon from '@mui/icons-material/Scale';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -62,11 +68,83 @@ const defaultOptions = [
   { option_text: 'N/A', mark: 'NA' }
 ];
 
+// Scoring Presets for quick selection
+const scoringPresets = {
+  'yes_no_na': {
+    name: 'Yes / No / N/A',
+    description: 'Standard compliance check',
+    options: [
+      { option_text: 'Yes', mark: '3' },
+      { option_text: 'No', mark: '0' },
+      { option_text: 'N/A', mark: 'NA' }
+    ]
+  },
+  'pass_fail': {
+    name: 'Pass / Fail',
+    description: 'Binary pass/fail assessment',
+    options: [
+      { option_text: 'Pass', mark: '100' },
+      { option_text: 'Fail', mark: '0' }
+    ]
+  },
+  'rating_5': {
+    name: 'Rating 1-5',
+    description: '5-point rating scale',
+    options: [
+      { option_text: '5 - Excellent', mark: '100' },
+      { option_text: '4 - Good', mark: '80' },
+      { option_text: '3 - Satisfactory', mark: '60' },
+      { option_text: '2 - Needs Improvement', mark: '40' },
+      { option_text: '1 - Poor', mark: '20' }
+    ]
+  },
+  'compliance': {
+    name: 'Compliance Level',
+    description: 'Regulatory compliance assessment',
+    options: [
+      { option_text: 'Fully Compliant', mark: '100' },
+      { option_text: 'Partially Compliant', mark: '50' },
+      { option_text: 'Non-Compliant', mark: '0' },
+      { option_text: 'N/A', mark: 'NA' }
+    ]
+  },
+  'quality': {
+    name: 'Quality Rating',
+    description: 'Quality assessment scale',
+    options: [
+      { option_text: 'Excellent', mark: '100' },
+      { option_text: 'Good', mark: '75' },
+      { option_text: 'Average', mark: '50' },
+      { option_text: 'Below Average', mark: '25' },
+      { option_text: 'Poor', mark: '0' }
+    ]
+  },
+  'temperature': {
+    name: 'Temperature Check',
+    description: 'Food safety temperature compliance',
+    options: [
+      { option_text: 'Within Range', mark: '100' },
+      { option_text: 'Slightly Out', mark: '50' },
+      { option_text: 'Out of Range', mark: '0' },
+      { option_text: 'Not Measured', mark: 'NA' }
+    ]
+  }
+};
+
+// Weight options for item importance
+const weightOptions = [
+  { value: 1, label: 'Normal', description: 'Standard weight' },
+  { value: 2, label: 'Important', description: '2x weight' },
+  { value: 3, label: 'Critical', description: '3x weight' }
+];
+
 const createEmptyItem = (category = '') => ({
   title: '',
   description: '',
   category,
   required: true,
+  weight: 1, // Default weight
+  is_critical: false, // Critical items can auto-fail the audit
   options: defaultOptions.map(option => ({ ...option }))
 });
 
@@ -212,6 +290,16 @@ const Checklists = () => {
     setItems(newItems);
   };
 
+  // Apply a scoring preset to an item
+  const handleApplyPreset = (itemIndex, presetKey) => {
+    const preset = scoringPresets[presetKey];
+    if (preset) {
+      const newItems = [...items];
+      newItems[itemIndex].options = preset.options.map(option => ({ ...option }));
+      setItems(newItems);
+    }
+  };
+
   const handleSaveTemplate = async () => {
     if (!templateForm.name) {
       showError('Template name is required');
@@ -234,6 +322,8 @@ const Checklists = () => {
         description: item.description || '',
         category: item.category || '',
         required: item.required !== false,
+        weight: item.weight || 1,
+        is_critical: item.is_critical || false,
         order_index: index,
         options: (item.options || []).map((option, optionIndex) => ({
           option_text: option.option_text || '',
@@ -276,6 +366,8 @@ const Checklists = () => {
         description: item.description,
         category: item.category,
         required: item.required !== 0,
+        weight: item.weight || 1,
+        is_critical: item.is_critical === 1 || item.is_critical === true,
         options: (item.options || []).map(option => ({
           option_text: option.option_text || option.title || '',
           mark: option.mark ?? ''
@@ -727,28 +819,86 @@ const Checklists = () => {
                   margin="dense"
                   placeholder="Item category (optional)"
                 />
-                <FormControl fullWidth margin="dense">
-                  <InputLabel>Required</InputLabel>
-                  <Select
-                    value={item.required ? 'yes' : 'no'}
-                    label="Required"
-                    onChange={(e) => handleItemChange(index, 'required', e.target.value === 'yes')}
-                  >
-                    <MenuItem value="yes">Yes</MenuItem>
-                    <MenuItem value="no">No</MenuItem>
-                  </Select>
-                </FormControl>
-                <Box sx={{ mt: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                    <Typography variant="subtitle2">Scoring Options</Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => handleAddDefaultOptions(index)}
+                <Grid container spacing={2} sx={{ mt: 0 }}>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Required</InputLabel>
+                      <Select
+                        value={item.required ? 'yes' : 'no'}
+                        label="Required"
+                        onChange={(e) => handleItemChange(index, 'required', e.target.value === 'yes')}
                       >
-                        Add Yes/No/NA
-                      </Button>
+                        <MenuItem value="yes">Yes</MenuItem>
+                        <MenuItem value="no">No</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Weight</InputLabel>
+                      <Select
+                        value={item.weight || 1}
+                        label="Weight"
+                        onChange={(e) => handleItemChange(index, 'weight', e.target.value)}
+                        startAdornment={<ScaleIcon sx={{ mr: 1, color: 'action.active', fontSize: 18 }} />}
+                      >
+                        {weightOptions.map((opt) => (
+                          <MenuItem key={opt.value} value={opt.value}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <span>{opt.label}</span>
+                              <Typography variant="caption" color="text.secondary">
+                                ({opt.value}x)
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Tooltip title="If a critical item fails, the entire audit may be flagged for immediate attention">
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={item.is_critical || false}
+                            onChange={(e) => handleItemChange(index, 'is_critical', e.target.checked)}
+                            color="error"
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <WarningAmberIcon sx={{ fontSize: 18, color: item.is_critical ? 'error.main' : 'action.active' }} />
+                            <span>Critical Item</span>
+                          </Box>
+                        }
+                      />
+                    </Tooltip>
+                  </Grid>
+                </Grid>
+                
+                <Box sx={{ mt: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+                    <Typography variant="subtitle2">Scoring Options</Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <InputLabel>Apply Preset</InputLabel>
+                        <Select
+                          value=""
+                          label="Apply Preset"
+                          onChange={(e) => handleApplyPreset(index, e.target.value)}
+                        >
+                          {Object.entries(scoringPresets).map(([key, preset]) => (
+                            <MenuItem key={key} value={key}>
+                              <Box>
+                                <Typography variant="body2">{preset.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {preset.description}
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                       <Button
                         size="small"
                         variant="outlined"

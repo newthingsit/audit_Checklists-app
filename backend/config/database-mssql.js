@@ -888,6 +888,68 @@ const addMissingColumns = async () => {
       }
     }
     
+    // Add weight and critical flag columns to checklist_items table
+    const checkItemsCols = await pool.request().query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'checklist_items'
+    `);
+    
+    const itemsColumns = checkItemsCols.recordset.map(r => r.COLUMN_NAME);
+    
+    if (!itemsColumns.includes('weight')) {
+      console.log('Adding weight column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [weight] INT DEFAULT 1;
+        `);
+        console.log('weight column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding weight to checklist_items:', err.message);
+      }
+    }
+    
+    if (!itemsColumns.includes('is_critical')) {
+      console.log('Adding is_critical column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [is_critical] BIT DEFAULT 0;
+        `);
+        console.log('is_critical column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding is_critical to checklist_items:', err.message);
+      }
+    }
+    
+    // Add critical failure tracking to audits table
+    if (!auditsColumns.includes('has_critical_failure')) {
+      console.log('Adding has_critical_failure column to audits table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[audits] 
+          ADD [has_critical_failure] BIT DEFAULT 0;
+        `);
+        console.log('has_critical_failure column added to audits table');
+      } catch (err) {
+        console.warn('Error adding has_critical_failure to audits:', err.message);
+      }
+    }
+    
+    if (!auditsColumns.includes('weighted_score')) {
+      console.log('Adding weighted_score column to audits table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[audits] 
+          ADD [weighted_score] FLOAT NULL;
+        `);
+        console.log('weighted_score column added to audits table');
+      } catch (err) {
+        console.warn('Error adding weighted_score to audits:', err.message);
+      }
+    }
+    
   } catch (error) {
     // Don't throw error for migration issues, just log them
     console.warn('Warning: Some column migrations may have failed:', error.message);
