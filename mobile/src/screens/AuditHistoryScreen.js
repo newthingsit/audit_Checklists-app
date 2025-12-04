@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,10 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  ScrollView
+  ScrollView,
+  AppState
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
@@ -18,6 +19,9 @@ import { themeConfig, getScoreColor } from '../config/theme';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError } from '../components/ErrorState';
+
+// Auto-refresh interval in milliseconds (5 seconds for faster sync)
+const AUTO_REFRESH_INTERVAL = 5000;
 
 const AuditHistoryScreen = () => {
   const [audits, setAudits] = useState([]);
@@ -31,11 +35,52 @@ const AuditHistoryScreen = () => {
   const [templates, setTemplates] = useState([]);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
+  const intervalRef = useRef(null);
+  const appState = useRef(AppState.currentState);
 
+  // Initial fetch
   useEffect(() => {
     fetchAudits();
     fetchTemplates();
   }, []);
+
+  // Auto-refresh when screen is focused
+  useEffect(() => {
+    if (isFocused) {
+      // Fetch immediately when screen comes into focus
+      fetchAudits(true);
+      
+      // Set up auto-refresh interval
+      intervalRef.current = setInterval(() => {
+        fetchAudits(true);
+      }, AUTO_REFRESH_INTERVAL);
+    } else {
+      // Clear interval when screen loses focus
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isFocused]);
+
+  // Refresh when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active' && isFocused) {
+        fetchAudits(true);
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => subscription?.remove();
+  }, [isFocused]);
 
   useEffect(() => {
     applyFilters();
@@ -75,29 +120,40 @@ const AuditHistoryScreen = () => {
     setFilteredAudits(filtered);
   };
 
-  const fetchAudits = async () => {
+  const fetchAudits = useCallback(async (silent = false) => {
     try {
-      setError(null);
-      const response = await axios.get(`${API_BASE_URL}/audits`);
+      if (!silent) {
+        setError(null);
+      }
+      // Add cache-busting parameter to ensure fresh data
+      const response = await axios.get(`${API_BASE_URL}/audits`, {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       const auditsData = response.data.audits || [];
       setAudits(auditsData);
       setFilteredAudits(auditsData);
+      if (!silent) {
+        setError(null);
+      }
     } catch (error) {
       console.error('Error fetching audits:', error);
-      if (!error.response || error.message === 'Network Error') {
-        setError('network');
+      if (!silent) {
+        if (!error.response || error.message === 'Network Error') {
+          setError('network');
+        }
       }
-      setAudits([]);
-      setFilteredAudits([]);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchAudits();
+    fetchAudits(false);
   };
 
   const getStatusStyles = (status) => {

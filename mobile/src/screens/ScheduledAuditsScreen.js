@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,10 @@ import {
   Modal,
   TextInput,
   ScrollView,
-  Platform
+  Platform,
+  AppState
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
@@ -21,6 +22,9 @@ import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
+
+// Auto-refresh interval in milliseconds (5 seconds for faster sync)
+const AUTO_REFRESH_INTERVAL = 5000;
 
 const getStatusValue = (status) => {
   if (!status) return 'pending';
@@ -45,15 +49,93 @@ const ScheduledAuditsScreen = () => {
   const [rescheduleCount, setRescheduleCount] = useState({ count: 0, limit: 2, remaining: 2 });
   const [toastMessage, setToastMessage] = useState(null);
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
+  const intervalRef = useRef(null);
+  const appState = useRef(AppState.currentState);
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
 
+  // Initial fetch
   useEffect(() => {
     if (user) {
       fetchScheduledAudits();
       fetchRescheduleCount();
     }
   }, [user]);
+
+  // Auto-refresh when screen is focused
+  useEffect(() => {
+    if (isFocused && user) {
+      // Fetch immediately when screen comes into focus
+      fetchScheduledAuditsSilent();
+      
+      // Set up auto-refresh interval
+      intervalRef.current = setInterval(() => {
+        fetchScheduledAuditsSilent();
+      }, AUTO_REFRESH_INTERVAL);
+    } else {
+      // Clear interval when screen loses focus
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isFocused, user]);
+
+  // Refresh when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active' && isFocused && user) {
+        fetchScheduledAuditsSilent();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => subscription?.remove();
+  }, [isFocused, user]);
+
+  // Silent fetch for auto-refresh (no loading spinners)
+  const fetchScheduledAuditsSilent = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      let schedulesData = response.data.schedules || [];
+      schedulesData = schedulesData.filter(schedule => {
+        const status = getStatusValue(schedule.status);
+        return status !== 'completed';
+      });
+      setSchedules(schedulesData);
+
+      // Fetch linked audits for in_progress scheduled audits
+      const inProgressSchedules = schedulesData.filter(s => getStatusValue(s.status) === 'in_progress');
+      if (inProgressSchedules.length > 0) {
+        const auditPromises = inProgressSchedules.map(schedule =>
+          axios.get(`${API_BASE_URL}/audits/by-scheduled/${schedule.id}`)
+            .then(response => ({ scheduleId: schedule.id, auditId: response.data.audit.id }))
+            .catch(() => ({ scheduleId: schedule.id, auditId: null }))
+        );
+        const auditResults = await Promise.all(auditPromises);
+        const auditsMap = {};
+        auditResults.forEach(({ scheduleId, auditId }) => {
+          if (auditId) {
+            auditsMap[scheduleId] = auditId;
+          }
+        });
+        setLinkedAudits(auditsMap);
+      }
+    } catch (error) {
+      // Silent fail for background refresh
+      console.error('[Mobile] Silent refresh error:', error.message);
+    }
+  };
 
   const fetchRescheduleCount = async () => {
     try {
