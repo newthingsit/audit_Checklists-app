@@ -1,110 +1,111 @@
 // Theme Configuration - Lite Bite Foods Professional Design System
-// Mobile app theme - matches web for brand consistency
+// Mobile app theme - RICH, VIBRANT colors matching web
 
 export const themeConfig = {
-  // Primary Colors - Deep Crimson (Brand Identity)
+  // Primary Colors - Deep Ruby Red (Luxurious Brand Identity)
   primary: {
-    main: '#C41E3A',      // Cardinal red - elegant, professional
-    light: '#E63950',     // Lighter accent
-    dark: '#9B1B30',      // Deep burgundy
+    main: '#B91C1C',      // Rich ruby red - bold, luxurious
+    light: '#DC2626',     // Vibrant red accent
+    dark: '#7F1D1D',      // Deep wine red
     contrast: '#ffffff',
   },
 
-  // Secondary Colors - Slate Blue for professional contrast
+  // Secondary Colors - Deep Indigo for rich contrast
   secondary: {
-    main: '#475569',      // Slate gray-blue
-    light: '#64748B',     // Lighter slate
-    dark: '#334155',      // Deep slate
+    main: '#4338CA',      // Rich indigo
+    light: '#6366F1',     // Vibrant indigo
+    dark: '#3730A3',      // Deep indigo
   },
 
-  // Accent Color - Gold for highlights
+  // Accent Color - Rich Gold for luxury highlights
   accent: {
-    main: '#D97706',      // Warm amber
-    light: '#F59E0B',     // Bright gold
-    dark: '#B45309',      // Deep amber
+    main: '#B45309',      // Deep gold
+    light: '#D97706',     // Rich amber
+    dark: '#92400E',      // Bronze
   },
 
-  // Background Colors - Clean & Professional
+  // Background Colors - Clean with depth
   background: {
     default: '#F8FAFC',   // Subtle cool white
     paper: '#ffffff',      // Pure white cards
-    sidebar: '#0F172A',    // Deep navy
+    sidebar: '#0C0A09',    // Rich charcoal black
     elevated: '#ffffff',
     subtle: '#F1F5F9',     // Very light slate for sections
-    dark: '#0F172A',       // For dark mode / auth screens
+    dark: '#0C0A09',       // For dark mode / auth screens
+    darkSecondary: '#1C1917',
   },
 
   // Text Colors
   text: {
-    primary: '#0F172A',    // Deep navy for strong contrast
-    secondary: '#475569',   // Slate for secondary text
-    disabled: '#94A3B8',    // Muted slate
-    inverse: '#F8FAFC',     // For dark backgrounds
-    muted: '#64748B',       // Subtle text
+    primary: '#0C0A09',    // Rich black for strong contrast
+    secondary: '#44403C',   // Warm gray for secondary text
+    disabled: '#A8A29E',    // Muted warm gray
+    inverse: '#FAFAF9',     // For dark backgrounds
+    muted: '#78716C',       // Subtle text
   },
 
   // Border Colors
   border: {
-    default: '#E2E8F0',    // Light slate border
-    light: '#F1F5F9',      // Very subtle border
-    dark: '#CBD5E1',       // Emphasized border
-    focus: '#C41E3A',      // Primary focus ring
+    default: '#E7E5E4',    // Warm gray border
+    light: '#F5F5F4',      // Very subtle border
+    dark: '#D6D3D1',       // Emphasized border
+    focus: '#B91C1C',      // Primary focus ring
   },
 
-  // Status Colors - Clear, professional signals
+  // Status Colors - Rich, saturated signals
   success: {
-    main: '#059669',       // Emerald green
-    light: '#10B981',
-    dark: '#047857',
+    main: '#047857',       // Rich emerald green
+    light: '#059669',
+    dark: '#065F46',
     bg: '#ECFDF5',
-    text: '#065F46',
+    text: '#064E3B',
   },
   warning: {
-    main: '#D97706',       // Amber
-    light: '#F59E0B',
-    dark: '#B45309',
+    main: '#B45309',       // Rich amber
+    light: '#D97706',
+    dark: '#92400E',
     bg: '#FFFBEB',
-    text: '#92400E',
+    text: '#78350F',
   },
   error: {
-    main: '#DC2626',       // Red
-    light: '#EF4444',
-    dark: '#B91C1C',
+    main: '#B91C1C',       // Rich red
+    light: '#DC2626',
+    dark: '#991B1B',
     bg: '#FEF2F2',
-    text: '#991B1B',
+    text: '#7F1D1D',
   },
   info: {
-    main: '#0284C7',       // Sky blue
-    light: '#0EA5E9',
-    dark: '#0369A1',
+    main: '#0369A1',       // Rich sky blue
+    light: '#0284C7',
+    dark: '#075985',
     bg: '#F0F9FF',
-    text: '#075985',
+    text: '#0C4A6E',
   },
 
-  // Dashboard Card Gradients (as color arrays for LinearGradient)
+  // Dashboard Card Gradients - RICH, VIBRANT, LUXURIOUS
   dashboardCards: {
-    card1: ['#C41E3A', '#E63950'],  // Primary crimson
-    card2: ['#7C3AED', '#A78BFA'],  // Rich purple
-    card3: ['#059669', '#34D399'],  // Success green
-    card4: ['#0284C7', '#38BDF8'],  // Sky blue
-    card5: ['#D97706', '#FCD34D'],  // Golden amber
+    card1: ['#B91C1C', '#EF4444'],  // Rich ruby red
+    card2: ['#4338CA', '#818CF8'],  // Deep indigo to violet
+    card3: ['#047857', '#10B981'],  // Rich emerald
+    card4: ['#7C3AED', '#C084FC'],  // Rich purple to orchid
+    card5: ['#B45309', '#FBBF24'],  // Rich gold
   },
 
-  // Chart Colors - Professional palette
+  // Chart Colors - Rich, saturated palette
   chartColors: [
-    '#C41E3A', // Primary crimson
-    '#7C3AED', // Purple
-    '#059669', // Emerald
-    '#0284C7', // Sky blue
-    '#D97706', // Amber
-    '#EC4899', // Pink
-    '#06B6D4', // Cyan
-    '#84CC16', // Lime
+    '#B91C1C', // Rich ruby
+    '#4338CA', // Deep indigo
+    '#047857', // Rich emerald
+    '#7C3AED', // Rich purple
+    '#B45309', // Rich amber
+    '#BE185D', // Rich rose
+    '#0369A1', // Rich blue
+    '#4D7C0F', // Rich olive
   ],
 
-  // Auth screen gradient
+  // Auth screen gradient - Deep, luxurious
   auth: {
-    gradientColors: ['#0F172A', '#1E293B', '#334155'],
+    gradientColors: ['#0C0A09', '#1C1917', '#292524'],
     gradientLocations: [0, 0.5, 1],
   },
 
@@ -218,34 +219,34 @@ export const themeConfig = {
     // Button styles
     button: {
       primary: {
-        backgroundColor: '#C41E3A',
+        backgroundColor: '#B91C1C',
         textColor: '#ffffff',
       },
       secondary: {
-        backgroundColor: '#F1F5F9',
-        textColor: '#475569',
+        backgroundColor: '#F5F5F4',
+        textColor: '#44403C',
       },
       success: {
-        backgroundColor: '#059669',
+        backgroundColor: '#047857',
         textColor: '#ffffff',
       },
       danger: {
-        backgroundColor: '#DC2626',
+        backgroundColor: '#B91C1C',
         textColor: '#ffffff',
       },
     },
     // Input styles
     input: {
       backgroundColor: '#ffffff',
-      borderColor: '#E2E8F0',
-      focusBorderColor: '#C41E3A',
-      placeholderColor: '#94A3B8',
+      borderColor: '#E7E5E4',
+      focusBorderColor: '#B91C1C',
+      placeholderColor: '#A8A29E',
     },
     // Navigation
     navigation: {
       tabBarBackground: '#ffffff',
-      tabBarActiveColor: '#C41E3A',
-      tabBarInactiveColor: '#64748B',
+      tabBarActiveColor: '#B91C1C',
+      tabBarInactiveColor: '#78716C',
       headerBackground: '#ffffff',
     },
   },

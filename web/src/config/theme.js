@@ -1,128 +1,128 @@
 // Theme Configuration - Lite Bite Foods Professional Design System
-// Enterprise-grade aesthetic for restaurant audit excellence
+// Enterprise-grade aesthetic with RICH, VIBRANT colors
 
 export const themeConfig = {
-  // Primary Colors - Deep Crimson (Brand Identity)
+  // Primary Colors - Deep Ruby Red (Luxurious Brand Identity)
   primary: {
-    main: '#C41E3A',      // Cardinal red - elegant, professional
-    light: '#E63950',     // Lighter accent
-    dark: '#9B1B30',      // Deep burgundy
+    main: '#B91C1C',      // Rich ruby red - bold, luxurious
+    light: '#DC2626',     // Vibrant red accent
+    dark: '#7F1D1D',      // Deep wine red
     contrast: '#ffffff',
-    50: '#FDF2F4',
-    100: '#FCE4E8',
-    200: '#FACDD5',
-    300: '#F6A5B4',
-    400: '#EF6D89',
-    500: '#C41E3A',
+    50: '#FEF2F2',
+    100: '#FEE2E2',
+    200: '#FECACA',
+    300: '#FCA5A5',
+    400: '#F87171',
+    500: '#B91C1C',
   },
 
-  // Secondary Colors - Slate Blue for professional contrast
+  // Secondary Colors - Deep Indigo for rich contrast
   secondary: {
-    main: '#475569',      // Slate gray-blue
-    light: '#64748B',     // Lighter slate
-    dark: '#334155',      // Deep slate
+    main: '#4338CA',      // Rich indigo
+    light: '#6366F1',     // Vibrant indigo
+    dark: '#3730A3',      // Deep indigo
   },
 
-  // Accent Color - Gold for highlights
+  // Accent Color - Rich Gold for luxury highlights
   accent: {
-    main: '#D97706',      // Warm amber
-    light: '#F59E0B',     // Bright gold
-    dark: '#B45309',      // Deep amber
+    main: '#B45309',      // Deep gold
+    light: '#D97706',     // Rich amber
+    dark: '#92400E',      // Bronze
   },
 
-  // Background Colors - Clean & Professional
+  // Background Colors - Clean with depth
   background: {
     default: '#F8FAFC',   // Subtle cool white
     paper: '#ffffff',      // Pure white cards
-    sidebar: '#0F172A',    // Deep navy (rich & professional)
-    sidebarHover: '#1E293B',
+    sidebar: '#0C0A09',    // Rich charcoal black
+    sidebarHover: '#1C1917',
     elevated: '#ffffff',
     subtle: '#F1F5F9',     // Very light slate for sections
   },
 
   // Text Colors
   text: {
-    primary: '#0F172A',    // Deep navy for strong contrast
-    secondary: '#475569',   // Slate for secondary text
-    disabled: '#94A3B8',    // Muted slate
-    inverse: '#F8FAFC',     // For dark backgrounds
-    muted: '#64748B',       // Subtle text
+    primary: '#0C0A09',    // Rich black for strong contrast
+    secondary: '#44403C',   // Warm gray for secondary text
+    disabled: '#A8A29E',    // Muted warm gray
+    inverse: '#FAFAF9',     // For dark backgrounds
+    muted: '#78716C',       // Subtle text
   },
 
   // Border Colors
   border: {
-    default: '#E2E8F0',    // Light slate border
-    light: '#F1F5F9',      // Very subtle border
-    dark: '#CBD5E1',       // Emphasized border
-    focus: '#C41E3A',      // Primary focus ring
+    default: '#E7E5E4',    // Warm gray border
+    light: '#F5F5F4',      // Very subtle border
+    dark: '#D6D3D1',       // Emphasized border
+    focus: '#B91C1C',      // Primary focus ring
   },
 
-  // Status Colors - Clear, professional signals
+  // Status Colors - Rich, saturated signals
   success: {
-    main: '#059669',       // Emerald green
-    light: '#10B981',
-    dark: '#047857',
+    main: '#047857',       // Rich emerald green
+    light: '#059669',
+    dark: '#065F46',
     bg: '#ECFDF5',
-    text: '#065F46',
+    text: '#064E3B',
   },
   warning: {
-    main: '#D97706',       // Amber
-    light: '#F59E0B',
-    dark: '#B45309',
+    main: '#B45309',       // Rich amber
+    light: '#D97706',
+    dark: '#92400E',
     bg: '#FFFBEB',
-    text: '#92400E',
+    text: '#78350F',
   },
   error: {
-    main: '#DC2626',       // Red
-    light: '#EF4444',
-    dark: '#B91C1C',
+    main: '#B91C1C',       // Rich red
+    light: '#DC2626',
+    dark: '#991B1B',
     bg: '#FEF2F2',
-    text: '#991B1B',
+    text: '#7F1D1D',
   },
   info: {
-    main: '#0284C7',       // Sky blue
-    light: '#0EA5E9',
-    dark: '#0369A1',
+    main: '#0369A1',       // Rich sky blue
+    light: '#0284C7',
+    dark: '#075985',
     bg: '#F0F9FF',
-    text: '#075985',
+    text: '#0C4A6E',
   },
 
-  // Dashboard Card Gradients - Professional, distinctive palette
+  // Dashboard Card Gradients - RICH, VIBRANT, LUXURIOUS
   dashboardCards: {
-    card1: 'linear-gradient(135deg, #C41E3A 0%, #E63950 100%)',  // Primary crimson
-    card2: 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)',  // Rich purple
-    card3: 'linear-gradient(135deg, #059669 0%, #34D399 100%)',  // Success green
-    card4: 'linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)',  // Sky blue
-    card5: 'linear-gradient(135deg, #D97706 0%, #FCD34D 100%)',  // Golden amber
+    card1: 'linear-gradient(135deg, #B91C1C 0%, #EF4444 100%)',  // Rich ruby red
+    card2: 'linear-gradient(135deg, #4338CA 0%, #818CF8 100%)',  // Deep indigo to violet
+    card3: 'linear-gradient(135deg, #047857 0%, #10B981 100%)',  // Rich emerald
+    card4: 'linear-gradient(135deg, #7C3AED 0%, #C084FC 100%)',  // Rich purple to orchid
+    card5: 'linear-gradient(135deg, #B45309 0%, #FBBF24 100%)',  // Rich gold
   },
 
-  // Chart Colors - Professional analytics palette
+  // Chart Colors - Rich, saturated palette
   chartColors: [
-    '#C41E3A', // Primary crimson
-    '#7C3AED', // Purple
-    '#059669', // Emerald
-    '#0284C7', // Sky blue
-    '#D97706', // Amber
-    '#EC4899', // Pink
-    '#06B6D4', // Cyan
-    '#84CC16', // Lime
+    '#B91C1C', // Rich ruby
+    '#4338CA', // Deep indigo
+    '#047857', // Rich emerald
+    '#7C3AED', // Rich purple
+    '#B45309', // Rich amber
+    '#BE185D', // Rich rose
+    '#0369A1', // Rich blue
+    '#4D7C0F', // Rich olive
   ],
 
-  // Pie chart specific (good contrast between slices)
+  // Pie chart specific (rich contrast between slices)
   pieColors: [
-    '#059669', // Green - for "Completed" / positive
-    '#D97706', // Amber - for "In Progress" / neutral
-    '#94A3B8', // Gray - for "Pending"
-    '#DC2626', // Red - for "Overdue" / negative
-    '#7C3AED', // Purple - additional
-    '#0284C7', // Blue - additional
+    '#047857', // Rich emerald - for "Completed" / positive
+    '#B45309', // Rich amber - for "In Progress" / neutral
+    '#78716C', // Warm gray - for "Pending"
+    '#B91C1C', // Rich red - for "Overdue" / negative
+    '#7C3AED', // Rich purple - additional
+    '#0369A1', // Rich blue - additional
   ],
 
-  // Login/Auth Page - Sophisticated dark gradient
+  // Login/Auth Page - Deep, luxurious gradient
   auth: {
-    gradient: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%)',
-    gradientAnimated: `linear-gradient(-45deg, #0F172A, #1E293B, #334155, #1E293B)`,
-    accentGlow: 'rgba(196, 30, 58, 0.15)',
+    gradient: 'linear-gradient(135deg, #0C0A09 0%, #1C1917 50%, #292524 100%)',
+    gradientAnimated: `linear-gradient(-45deg, #0C0A09, #1C1917, #292524, #1C1917)`,
+    accentGlow: 'rgba(185, 28, 28, 0.2)',
   },
 
   // Glass morphism effect
@@ -145,15 +145,15 @@ export const themeConfig = {
 
   // Shadows - Refined depth
   shadows: {
-    xs: '0 1px 2px rgba(0, 0, 0, 0.03)',
-    small: '0 1px 2px rgba(0, 0, 0, 0.05)',
+    xs: '0 1px 2px rgba(0, 0, 0, 0.04)',
+    small: '0 1px 3px rgba(0, 0, 0, 0.06)',
     medium: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-    large: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-    xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-    card: '0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04)',
-    cardHover: '0 10px 40px rgba(0, 0, 0, 0.12)',
-    glow: '0 0 30px rgba(196, 30, 58, 0.2)',
-    innerSoft: 'inset 0 2px 4px rgba(0, 0, 0, 0.05)',
+    large: '0 10px 15px -3px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.06)',
+    xl: '0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 10px 10px -5px rgba(0, 0, 0, 0.05)',
+    card: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+    cardHover: '0 12px 40px rgba(0, 0, 0, 0.15)',
+    glow: '0 0 30px rgba(185, 28, 28, 0.25)',
+    innerSoft: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)',
   },
 
   // Transitions - Smooth animations
@@ -164,54 +164,54 @@ export const themeConfig = {
     bounce: '500ms cubic-bezier(0.68, -0.55, 0.265, 1.55)',
   },
 
-  // Sidebar specific
+  // Sidebar specific - Rich charcoal
   sidebar: {
     width: 260,
     collapsedWidth: 72,
-    background: '#0F172A',
-    activeBackground: 'rgba(196, 30, 58, 0.12)',
-    activeBorder: '#C41E3A',
-    hoverBackground: 'rgba(255, 255, 255, 0.05)',
-    divider: 'rgba(255, 255, 255, 0.08)',
+    background: '#0C0A09',
+    activeBackground: 'rgba(185, 28, 28, 0.15)',
+    activeBorder: '#B91C1C',
+    hoverBackground: 'rgba(255, 255, 255, 0.08)',
+    divider: 'rgba(255, 255, 255, 0.1)',
   },
 
   // Table styles
   table: {
-    headerBg: '#F8FAFC',
-    rowHover: '#F1F5F9',
-    stripedBg: '#FAFBFC',
-    border: '#E2E8F0',
+    headerBg: '#FAFAF9',
+    rowHover: '#F5F5F4',
+    stripedBg: '#FAFAF9',
+    border: '#E7E5E4',
   },
 
-  // Button variants
+  // Button variants - Rich colors
   button: {
     primary: {
-      bg: '#C41E3A',
-      hoverBg: '#9B1B30',
-      activeBg: '#7F1728',
+      bg: '#B91C1C',
+      hoverBg: '#991B1B',
+      activeBg: '#7F1D1D',
     },
     secondary: {
-      bg: '#F1F5F9',
-      hoverBg: '#E2E8F0',
-      text: '#475569',
+      bg: '#F5F5F4',
+      hoverBg: '#E7E5E4',
+      text: '#44403C',
     },
     success: {
-      bg: '#059669',
-      hoverBg: '#047857',
+      bg: '#047857',
+      hoverBg: '#065F46',
     },
     danger: {
-      bg: '#DC2626',
-      hoverBg: '#B91C1C',
+      bg: '#B91C1C',
+      hoverBg: '#991B1B',
     },
   },
 
   // Input/Form styles
   input: {
     bg: '#ffffff',
-    border: '#E2E8F0',
-    focusBorder: '#C41E3A',
-    focusShadow: '0 0 0 3px rgba(196, 30, 58, 0.1)',
-    placeholder: '#94A3B8',
+    border: '#E7E5E4',
+    focusBorder: '#B91C1C',
+    focusShadow: '0 0 0 3px rgba(185, 28, 28, 0.12)',
+    placeholder: '#A8A29E',
   },
 };
 
