@@ -60,7 +60,7 @@ const Login = () => {
       justifyContent: 'center',
       position: 'relative',
       overflow: 'hidden',
-      background: themeConfig.background.sidebar,
+      background: 'linear-gradient(135deg, #18181B 0%, #27272A 50%, #3F3F46 100%)',
       '&::before': {
         content: '""',
         position: 'absolute',
@@ -69,41 +69,41 @@ const Login = () => {
         right: 0,
         bottom: 0,
         background: `
-          radial-gradient(circle at 20% 80%, rgba(13, 148, 136, 0.15) 0%, transparent 50%),
-          radial-gradient(circle at 80% 20%, rgba(249, 115, 22, 0.1) 0%, transparent 50%),
-          radial-gradient(circle at 40% 40%, rgba(139, 92, 246, 0.08) 0%, transparent 40%)
+          radial-gradient(circle at 20% 80%, rgba(185, 28, 28, 0.12) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%),
+          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 60%)
         `,
-        animation: 'pulse 8s ease-in-out infinite',
+        animation: 'pulse 10s ease-in-out infinite',
       },
       '@keyframes pulse': {
         '0%, 100%': { opacity: 1 },
-        '50%': { opacity: 0.7 },
+        '50%': { opacity: 0.8 },
       },
     }}>
       {/* Floating shapes */}
       <Box sx={{
         position: 'absolute',
-        width: 300,
-        height: 300,
+        width: 400,
+        height: 400,
         borderRadius: '50%',
-        background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.1) 0%, rgba(8, 145, 178, 0.05) 100%)',
-        top: '-100px',
+        background: 'radial-gradient(circle, rgba(185, 28, 28, 0.08) 0%, transparent 70%)',
+        top: '-150px',
         right: '-100px',
-        animation: 'float 6s ease-in-out infinite',
+        animation: 'float 8s ease-in-out infinite',
         '@keyframes float': {
-          '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
-          '50%': { transform: 'translateY(-20px) rotate(5deg)' },
+          '0%, 100%': { transform: 'translateY(0) scale(1)' },
+          '50%': { transform: 'translateY(-30px) scale(1.05)' },
         },
       }} />
       <Box sx={{
         position: 'absolute',
-        width: 200,
-        height: 200,
+        width: 300,
+        height: 300,
         borderRadius: '50%',
-        background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 146, 60, 0.04) 100%)',
-        bottom: '-50px',
-        left: '-50px',
-        animation: 'float 8s ease-in-out infinite reverse',
+        background: 'radial-gradient(circle, rgba(124, 58, 237, 0.06) 0%, transparent 70%)',
+        bottom: '-100px',
+        left: '-100px',
+        animation: 'float 10s ease-in-out infinite reverse',
       }} />
 
       <Container component="main" maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
@@ -119,33 +119,49 @@ const Login = () => {
         >
           {/* Logo */}
           <Box sx={{ 
-            width: 90, 
-            height: 90, 
-            borderRadius: themeConfig.borderRadius.xl,
-            bgcolor: themeConfig.primary.main,
+            width: 100, 
+            height: 100, 
+            borderRadius: '50%',
+            bgcolor: '#B91C1C',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             mb: 3,
-            boxShadow: themeConfig.shadows.glow,
+            boxShadow: '0 0 40px rgba(185, 28, 28, 0.3)',
+            border: '3px solid rgba(255,255,255,0.1)',
             transition: themeConfig.transitions.normal,
             '&:hover': {
-              transform: 'scale(1.05) rotate(-5deg)',
+              transform: 'scale(1.05)',
+              boxShadow: '0 0 50px rgba(185, 28, 28, 0.4)',
             },
           }}>
-            <RestaurantIcon sx={{ fontSize: 45, color: 'white' }} />
+            <RestaurantIcon sx={{ fontSize: 50, color: 'white' }} />
           </Box>
 
           {/* Title */}
           <Typography 
             component="h1" 
-            variant="h3" 
-            gutterBottom 
             sx={{ 
               color: 'white', 
-              fontWeight: 800,
+              fontWeight: 700,
               letterSpacing: '-0.02em',
               textAlign: 'center',
+              fontSize: { xs: '1.75rem', sm: '2rem' },
+              mb: 0.5,
+            }}
+          >
+            Lite Bite Foods
+          </Typography>
+          <Typography 
+            component="h2" 
+            sx={{ 
+              color: '#B91C1C', 
+              fontWeight: 600,
+              letterSpacing: '0.15em',
+              textAlign: 'center',
+              fontSize: '0.9rem',
+              textTransform: 'uppercase',
+              mb: 1,
             }}
           >
             Audit Pro
@@ -153,7 +169,7 @@ const Login = () => {
           <Typography 
             variant="body1" 
             sx={{ 
-              color: 'rgba(255,255,255,0.6)', 
+              color: 'rgba(255,255,255,0.5)', 
               mb: 4,
               fontWeight: 400,
             }}
@@ -285,14 +301,15 @@ const Login = () => {
                 sx={{ 
                   py: 1.75,
                   borderRadius: themeConfig.borderRadius.medium,
-                  background: themeConfig.dashboardCards.card1,
+                  background: 'linear-gradient(135deg, #B91C1C 0%, #DC2626 100%)',
                   fontSize: '1rem',
                   fontWeight: 600,
                   textTransform: 'none',
-                  boxShadow: 'none',
+                  boxShadow: '0 4px 15px rgba(185, 28, 28, 0.3)',
                   transition: themeConfig.transitions.normal,
                   '&:hover': {
-                    boxShadow: themeConfig.shadows.large,
+                    background: 'linear-gradient(135deg, #991B1B 0%, #B91C1C 100%)',
+                    boxShadow: '0 6px 20px rgba(185, 28, 28, 0.4)',
                     transform: 'translateY(-2px)',
                   },
                   '&:active': {
@@ -322,7 +339,7 @@ const Login = () => {
               color: 'rgba(255,255,255,0.4)',
             }}
           >
-            © 2025 Audit Pro. All rights reserved.
+            © 2025 Lite Bite Foods Audit Pro. All rights reserved.
           </Typography>
         </Box>
       </Container>

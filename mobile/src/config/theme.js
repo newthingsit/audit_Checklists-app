@@ -1,102 +1,102 @@
-// Theme Configuration - Lite Bite Foods Brand Colors
-// Official LBF burgundy red branding
+// Theme Configuration - Lite Bite Foods Premium Design
+// Matches the web app theme for consistent branding
 
 export const themeConfig = {
-  // Primary Colors - Lite Bite Foods Burgundy Red
+  // Primary Colors - Refined Burgundy/Crimson
   primary: {
-    main: '#A31621',      // LBF Burgundy Red - official brand color
-    light: '#C41E2A',     // Lighter burgundy
-    dark: '#7D111A',      // Darker burgundy
+    main: '#B91C1C',      // Rich crimson red
+    light: '#DC2626',     // Brighter red
+    dark: '#991B1B',      // Deep crimson
     contrast: '#ffffff',
   },
 
-  // Secondary/Accent Colors - Gold/Amber for contrast
+  // Secondary/Accent Colors - Warm Slate
   secondary: {
-    main: '#D4A574',      // Warm gold
-    light: '#E8C49A',     // Light gold
-    dark: '#B8894A',      // Dark gold
+    main: '#78716C',      // Warm stone
+    light: '#A8A29E',     // Light stone
+    dark: '#57534E',      // Dark stone
   },
 
-  // Background Colors - Subtle warmth
+  // Background Colors - Clean, professional
   background: {
-    default: '#f8fafc',   // Very light blue-gray
+    default: '#FAFAF9',   // Warm white
     paper: '#ffffff',      // Pure white cards
-    sidebar: '#0f172a',    // Dark navy sidebar
+    sidebar: '#18181B',    // Rich black
     elevated: '#ffffff',
-    dark: '#0f172a',       // Dark background for auth screens
+    dark: '#18181B',       // Dark background for auth screens
   },
 
   // Text Colors
   text: {
-    primary: '#0f172a',    // Dark navy - strong contrast
-    secondary: '#475569',   // Slate gray
-    disabled: '#94a3b8',    // Light slate
-    inverse: '#f8fafc',     // For dark backgrounds
-    muted: '#64748b',       // Muted text
+    primary: '#18181B',    // Rich black
+    secondary: '#52525B',   // Zinc gray
+    disabled: '#A1A1AA',    // Light zinc
+    inverse: '#FAFAF9',     // For dark backgrounds
+    muted: '#71717A',       // Muted text
   },
 
   // Border Colors
   border: {
-    default: '#e2e8f0',    // Light slate border
-    light: '#f1f5f9',      // Very light border
-    dark: '#cbd5e1',       // Darker border
-    focus: '#A31621',      // LBF burgundy focus ring
+    default: '#E4E4E7',    // Zinc border
+    light: '#F4F4F5',      // Very light zinc
+    dark: '#D4D4D8',       // Darker zinc
+    focus: '#B91C1C',      // Crimson focus ring
   },
 
-  // Status Colors - Vibrant but professional
+  // Status Colors - Professional and clear
   success: {
-    main: '#10b981',       // Emerald green
-    light: '#34d399',
-    dark: '#059669',
-    bg: '#ecfdf5',
+    main: '#059669',       // Emerald
+    light: '#10B981',
+    dark: '#047857',
+    bg: '#ECFDF5',
   },
   warning: {
-    main: '#f59e0b',       // Amber
-    light: '#fbbf24',
-    dark: '#d97706',
-    bg: '#fffbeb',
+    main: '#D97706',       // Amber
+    light: '#F59E0B',
+    dark: '#B45309',
+    bg: '#FFFBEB',
   },
   error: {
-    main: '#ef4444',       // Red
-    light: '#f87171',
-    dark: '#dc2626',
-    bg: '#fef2f2',
+    main: '#DC2626',       // Red
+    light: '#EF4444',
+    dark: '#B91C1C',
+    bg: '#FEF2F2',
   },
   info: {
-    main: '#3b82f6',       // Blue
-    light: '#60a5fa',
-    dark: '#2563eb',
-    bg: '#eff6ff',
+    main: '#2563EB',       // Blue
+    light: '#3B82F6',
+    dark: '#1D4ED8',
+    bg: '#EFF6FF',
   },
 
   // Dashboard Card Gradients (as color arrays for LinearGradient)
   dashboardCards: {
-    card1: ['#A31621', '#C41E2A'],  // LBF Burgundy gradient
-    card2: ['#D4A574', '#E8C49A'],  // Gold gradient
-    card3: ['#8b5cf6', '#a78bfa'],  // Purple gradient
-    card4: ['#10b981', '#34d399'],  // Green gradient
-    card5: ['#3b82f6', '#60a5fa'],  // Blue gradient
+    card1: ['#B91C1C', '#DC2626'],  // Crimson gradient
+    card2: ['#7C3AED', '#8B5CF6'],  // Purple gradient
+    card3: ['#059669', '#10B981'],  // Emerald gradient
+    card4: ['#2563EB', '#3B82F6'],  // Blue gradient
+    card5: ['#EA580C', '#F97316'],  // Orange gradient
   },
 
-  // Chart Colors - LBF harmonious palette
+  // Chart Colors - Professional palette
   chartColors: [
-    '#A31621', // LBF Burgundy
-    '#D4A574', // Gold
-    '#8b5cf6', // Purple
-    '#10b981', // Green
-    '#3b82f6', // Blue
-    '#f59e0b', // Amber
-    '#ec4899', // Pink
-    '#06b6d4', // Cyan
+    '#B91C1C', // Crimson
+    '#7C3AED', // Purple
+    '#059669', // Emerald
+    '#2563EB', // Blue
+    '#EA580C', // Orange
+    '#0891B2', // Cyan
+    '#CA8A04', // Yellow
+    '#BE185D', // Pink
   ],
 
   // Auth screen gradient
   auth: {
-    gradientColors: ['#1a1a1a', '#2d2d2d', '#A31621'],
+    gradientColors: ['#18181B', '#27272A', '#3F3F46'],
     gradientLocations: [0, 0.5, 1],
   },
 
-  // Border Radius - Softer, more modern
+  // Border Radius - Modern, professional
   borderRadius: {
     small: 6,
     medium: 10,
@@ -143,9 +143,9 @@ export const themeConfig = {
       elevation: 2,
     },
     glow: {
-      shadowColor: '#A31621',
+      shadowColor: '#B91C1C',
       shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.3,
+      shadowOpacity: 0.25,
       shadowRadius: 20,
       elevation: 8,
     },

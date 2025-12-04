@@ -1,33 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#f5f5f5;stop-opacity:1" />
+    <linearGradient id="bgGrad512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#B91C1C"/>
+      <stop offset="100%" style="stop-color:#DC2626"/>
     </linearGradient>
   </defs>
   
   <!-- Background circle -->
-  <circle cx="256" cy="256" r="240" fill="url(#bgGradient)" stroke="#e0e0e0" stroke-width="4"/>
+  <circle cx="256" cy="256" r="240" fill="url(#bgGrad512)"/>
   
-  <!-- Chef Hat -->
-  <g transform="translate(256, 200)">
-    <!-- Hat top (puffy part) -->
-    <ellipse cx="0" cy="-80" rx="120" ry="65" fill="#A31621"/>
-    <ellipse cx="-65" cy="-95" rx="48" ry="55" fill="#A31621"/>
-    <ellipse cx="65" cy="-95" rx="48" ry="55" fill="#A31621"/>
-    <ellipse cx="0" cy="-105" rx="55" ry="48" fill="#A31621"/>
-    
-    <!-- Hat band -->
-    <rect x="-112" y="-40" width="224" height="68" rx="5" fill="#A31621"/>
-    
-    <!-- LBF Text inside hat -->
-    <text x="0" y="12" font-family="Georgia, serif" font-size="64" font-weight="bold" 
-          fill="#ffffff" text-anchor="middle" font-style="italic">LBF</text>
+  <!-- Fork icon (simplified, elegant) -->
+  <g transform="translate(256, 256)" fill="#ffffff">
+    <!-- Fork handle -->
+    <rect x="-16" y="30" width="32" height="130" rx="16"/>
+    <!-- Fork prongs -->
+    <rect x="-80" y="-150" width="22" height="120" rx="11"/>
+    <rect x="-29" y="-150" width="22" height="120" rx="11"/>
+    <rect x="7" y="-150" width="22" height="120" rx="11"/>
+    <rect x="58" y="-150" width="22" height="120" rx="11"/>
+    <!-- Fork base connecting prongs -->
+    <rect x="-80" y="-40" width="160" height="32" rx="16"/>
   </g>
-  
-  <!-- Company Name -->
-  <text x="256" y="360" font-family="Georgia, serif" font-size="38" font-weight="bold" 
-        fill="#A31621" text-anchor="middle">Lite Bite Foods</text>
-  <text x="256" y="410" font-family="Arial, sans-serif" font-size="28" 
-        fill="#666666" text-anchor="middle">AUDIT PRO</text>
 </svg>
