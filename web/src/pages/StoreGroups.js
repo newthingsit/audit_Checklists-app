@@ -68,9 +68,10 @@ const StoreGroups = () => {
   const [formData, setFormData] = useState({
     name: '',
     type: 'region',
-    parent_id: '',
+    parent_group_id: '',
     description: ''
   });
+  const [saving, setSaving] = useState(false);
   const [openAssignDialog, setOpenAssignDialog] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedStores, setSelectedStores] = useState([]);
@@ -120,7 +121,7 @@ const StoreGroups = () => {
       setFormData({
         name: group.name,
         type: group.type || 'region',
-        parent_id: group.parent_id || '',
+        parent_group_id: group.parent_group_id || '',
         description: group.description || ''
       });
     } else {
@@ -128,7 +129,7 @@ const StoreGroups = () => {
       setFormData({
         name: '',
         type: 'region',
-        parent_id: '',
+        parent_group_id: '',
         description: ''
       });
     }
@@ -141,12 +142,13 @@ const StoreGroups = () => {
     setFormData({
       name: '',
       type: 'region',
-      parent_id: '',
+      parent_group_id: '',
       description: ''
     });
   };
 
   const handleSubmit = async () => {
+    setSaving(true);
     try {
       if (editingGroup) {
         await axios.put(`/api/store-groups/${editingGroup.id}`, formData);
@@ -156,9 +158,14 @@ const StoreGroups = () => {
         setSuccess('Group created successfully');
       }
       handleCloseDialog();
-      fetchData();
+      await fetchData();
+      // Auto-clear success after 3 seconds
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save group');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -168,9 +175,11 @@ const StoreGroups = () => {
     try {
       await axios.delete(`/api/store-groups/${groupId}`);
       setSuccess('Group deleted successfully');
-      fetchData();
+      await fetchData();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to delete group');
+      setTimeout(() => setError(''), 5000);
     }
   };
 
@@ -182,15 +191,32 @@ const StoreGroups = () => {
   };
 
   const handleAssignStores = async () => {
+    setSaving(true);
     try {
-      await axios.post(`/api/store-groups/${selectedGroup.id}/stores`, {
-        store_ids: selectedStores
-      });
+      // First, remove all stores from this group
+      const currentGroupStores = stores.filter(s => s.group_id === selectedGroup.id);
+      if (currentGroupStores.length > 0) {
+        await axios.delete(`/api/store-groups/${selectedGroup.id}/stores`, {
+          data: { store_ids: currentGroupStores.map(s => s.id) }
+        });
+      }
+      
+      // Then assign the selected stores
+      if (selectedStores.length > 0) {
+        await axios.post(`/api/store-groups/${selectedGroup.id}/stores`, {
+          store_ids: selectedStores
+        });
+      }
+      
       setSuccess('Stores assigned successfully');
       setOpenAssignDialog(false);
-      fetchData();
+      await fetchData();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to assign stores');
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -523,8 +549,8 @@ const StoreGroups = () => {
                         />
                       </TableCell>
                       <TableCell>
-                        {group.parent_id ? (
-                          groups.find(g => g.id === group.parent_id)?.name || '-'
+                        {group.parent_group_id ? (
+                          groups.find(g => g.id === group.parent_group_id)?.name || '-'
                         ) : (
                           <Typography variant="body2" color="text.secondary">Root</Typography>
                         )}
@@ -608,9 +634,9 @@ const StoreGroups = () => {
               <FormControl fullWidth>
                 <InputLabel>Parent Group (Optional)</InputLabel>
                 <Select
-                  value={formData.parent_id}
+                  value={formData.parent_group_id}
                   label="Parent Group (Optional)"
-                  onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, parent_group_id: e.target.value })}
                 >
                   <MenuItem value="">None (Root Level)</MenuItem>
                   {groups
@@ -634,13 +660,13 @@ const StoreGroups = () => {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseDialog}>Cancel</Button>
+            <Button onClick={handleCloseDialog} disabled={saving}>Cancel</Button>
             <Button 
               onClick={handleSubmit} 
               variant="contained"
-              disabled={!formData.name}
+              disabled={!formData.name || saving}
             >
-              {editingGroup ? 'Update' : 'Create'}
+              {saving ? <CircularProgress size={20} color="inherit" /> : (editingGroup ? 'Update' : 'Create')}
             </Button>
           </DialogActions>
         </Dialog>
@@ -683,9 +709,9 @@ const StoreGroups = () => {
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenAssignDialog(false)}>Cancel</Button>
-            <Button onClick={handleAssignStores} variant="contained">
-              Assign Stores
+            <Button onClick={() => setOpenAssignDialog(false)} disabled={saving}>Cancel</Button>
+            <Button onClick={handleAssignStores} variant="contained" disabled={saving}>
+              {saving ? <CircularProgress size={20} color="inherit" /> : 'Assign Stores'}
             </Button>
           </DialogActions>
         </Dialog>
