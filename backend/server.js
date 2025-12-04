@@ -159,7 +159,8 @@ const cacheControl = (maxAge) => (req, res, next) => {
 // Note: Checklists/templates cache reduced to 30 seconds since they're frequently updated
 app.use('/api/checklists', cacheControl(30)); // 30 sec cache for checklists
 app.use('/api/templates', cacheControl(30)); // 30 sec cache for templates
-app.use('/api/roles', cacheControl(600)); // 10 min cache for roles (rarely change)
+// Roles should not be cached since they're editable and changes should be immediate
+// app.use('/api/roles', cacheControl(600));
 app.use('/api/locations', cacheControl(300)); // 5 min cache for locations
 app.use('/api/analytics', cacheControl(120)); // 2 min cache for analytics (balance freshness vs performance)
 

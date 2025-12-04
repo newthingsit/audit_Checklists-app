@@ -41,7 +41,9 @@ export const ThemeProvider = ({ children }) => {
         return;
       }
 
-      const response = await axios.get('/api/settings/preferences').catch(() => null);
+      const response = await axios.get('/api/settings/preferences', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => null);
       if (response && response.data && response.data.preferences) {
         const theme = response.data.preferences.theme || 'light';
         setThemeMode(theme);

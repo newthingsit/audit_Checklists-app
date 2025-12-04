@@ -85,7 +85,8 @@ const RoleManagement = () => {
   const fetchRoles = async () => {
     try {
       const response = await axios.get('/api/roles', {
-        params: { search: searchTerm }
+        params: { search: searchTerm },
+        headers: { 'Cache-Control': 'no-cache' }
       });
       setRoles(response.data.roles || []);
     } catch (error) {
@@ -183,7 +184,13 @@ const RoleManagement = () => {
     setSaving(true);
     try {
       if (editingRole) {
-        await axios.put(`/api/roles/${editingRole.id}`, formData);
+        console.log('Updating role:', editingRole.id, formData);
+        const response = await axios.put(`/api/roles/${editingRole.id}`, {
+          display_name: formData.display_name,
+          description: formData.description,
+          permissions: formData.permissions
+        });
+        console.log('Update response:', response.data);
         showSuccess('Role updated successfully');
         
         // Always refresh current user's permissions after role update
@@ -204,6 +211,7 @@ const RoleManagement = () => {
       await fetchRoles();
     } catch (error) {
       console.error('Error saving role:', error);
+      console.error('Error response:', error.response?.data);
       showError(error.response?.data?.error || 'Failed to save role');
       if (error.response?.data?.errors) {
         setErrors(error.response.data.errors.reduce((acc, err) => {

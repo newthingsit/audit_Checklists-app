@@ -333,19 +333,30 @@ router.put('/:id', authenticate, requireAdmin, [
 
       params.push(id);
 
+      const updateSql = `UPDATE roles SET ${updates.join(', ')} WHERE id = ?`;
+      logger.debug('Executing update SQL:', { sql: updateSql, params });
+      
       dbInstance.run(
-        `UPDATE roles SET ${updates.join(', ')} WHERE id = ?`,
+        updateSql,
         params,
         function(err) {
           if (err) {
             logger.error('Error updating role:', err);
-            logger.error('Error updating role:', err);
             return res.status(500).json({ error: 'Error updating role' });
           }
           
+          // Check if any rows were actually updated
+          if (this.changes === 0) {
+            logger.warn('Role update affected 0 rows:', { id, params });
+            return res.status(404).json({ error: 'Role not found or no changes made' });
+          }
+          
+          logger.info('Role updated successfully:', { id, changes: this.changes });
+          
           // Return updated role
           dbInstance.get('SELECT * FROM roles WHERE id = ?', [id], (err, updatedRole) => {
-            if (err) {
+            if (err || !updatedRole) {
+              logger.error('Error fetching updated role:', err);
               return res.json({ message: 'Role updated successfully' });
             }
             
