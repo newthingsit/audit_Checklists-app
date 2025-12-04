@@ -1,6 +1,6 @@
 {
   "name": "restaurant-audit-backend",
-  "version": "1.7.2",
+  "version": "2.0.0",
   "description": "Backend API for Restaurant Audit & Checklist App",
   "main": "server.js",
   "scripts": {
