@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   continueButton: {
-    backgroundColor: themeConfig.primary.main,
+    backgroundColor: themeConfig.secondary.main,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

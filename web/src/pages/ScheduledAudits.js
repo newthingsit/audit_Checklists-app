@@ -768,7 +768,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           <IconButton
                             size="small"
                             onClick={() => handleContinueAudit(schedule)}
-                            color="warning"
+                            sx={{ color: '#4338CA' }}
                             title="Continue Audit"
                           >
                             <PlayArrowIcon />
@@ -901,14 +901,17 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                         <Button
                           variant="contained"
                           size="small"
-                          color="warning"
                           startIcon={<PlayArrowIcon />}
                           onClick={() => handleContinueAudit(schedule)}
                           fullWidth
                           sx={{
                             mt: 1,
                             textTransform: 'none',
-                            borderRadius: 1
+                            borderRadius: 1,
+                            background: 'linear-gradient(135deg, #4338CA 0%, #818CF8 100%)',
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)',
+                            }
                           }}
                         >
                           Continue Audit

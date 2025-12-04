@@ -868,7 +868,7 @@ const styles = StyleSheet.create({
   },
   startButton: {
     flexDirection: 'row',
-    backgroundColor: '#1976d2',
+    backgroundColor: themeConfig.secondary.main,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -884,7 +884,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   continueButton: {
-    backgroundColor: '#ff9800',
+    backgroundColor: themeConfig.secondary.main,
   },
   rescheduleButton: {
     flexDirection: 'row',
