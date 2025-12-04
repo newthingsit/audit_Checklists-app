@@ -688,8 +688,14 @@ router.put('/:id', authenticate, (req, res) => {
   });
 });
 
-// Update audit item
-router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
+// Update audit item (single item)
+// NOTE: This must come AFTER the batch route, or we need to skip 'batch' as itemId
+router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
+  // Skip if this is actually a batch request (route order issue workaround)
+  if (req.params.itemId === 'batch') {
+    return next();
+  }
+  
   // Convert params to integers to prevent MSSQL type conversion issues
   const auditId = parseInt(req.params.auditId, 10);
   const itemId = parseInt(req.params.itemId, 10);
