@@ -18,7 +18,7 @@ import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
-import { NetworkError } from '../components/ErrorState';
+import { NetworkError, ServerError } from '../components/ErrorState';
 
 // Auto-refresh interval in milliseconds (5 seconds for faster sync)
 const AUTO_REFRESH_INTERVAL = 5000;
@@ -139,9 +139,16 @@ const AuditHistoryScreen = () => {
     } catch (error) {
       console.error('Error fetching audits:', error);
       if (!silent) {
+        // Set error state for both network and server errors
         if (!error.response || error.message === 'Network Error') {
           setError('network');
+        } else {
+          // Server error (4xx, 5xx) - set error state
+          setError('server');
         }
+        // Clear stale data on error so users don't see outdated info
+        setAudits([]);
+        setFilteredAudits([]);
       }
     } finally {
       if (!silent) {
@@ -263,11 +270,20 @@ const AuditHistoryScreen = () => {
     );
   }
 
-  // Error state
+  // Error state (network errors)
   if (error === 'network') {
     return (
       <View style={styles.container}>
-        <NetworkError onRetry={fetchAudits} />
+        <NetworkError onRetry={() => fetchAudits(false)} />
+      </View>
+    );
+  }
+
+  // Error state (server errors)
+  if (error === 'server') {
+    return (
+      <View style={styles.container}>
+        <ServerError onRetry={() => fetchAudits(false)} />
       </View>
     );
   }

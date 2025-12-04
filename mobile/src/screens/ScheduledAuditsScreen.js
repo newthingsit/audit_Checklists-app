@@ -401,7 +401,11 @@ const ScheduledAuditsScreen = () => {
     try {
       console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits`);
       console.log('[Mobile] Current user:', user?.email);
-      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`);
+      // Add cache-busting parameter to ensure fresh data
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       console.log('[Mobile] Response status:', response.status);
       console.log('[Mobile] Response data:', JSON.stringify(response.data, null, 2));
       let schedulesData = response.data.schedules || [];
