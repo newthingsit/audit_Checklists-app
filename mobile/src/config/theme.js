@@ -131,16 +131,16 @@ export const themeConfig = {
     xs: {
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.03,
+      shadowOpacity: 0.05,
       shadowRadius: 1,
       elevation: 1,
     },
     small: {
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
+      shadowOpacity: 0.08,
       shadowRadius: 2,
-      elevation: 1,
+      elevation: 2,
     },
     medium: {
       shadowColor: '#000',
