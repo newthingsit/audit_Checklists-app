@@ -837,22 +837,22 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                 return res.json({ message: 'Audit item updated successfully' });
               }
 
-              // Get all checklist items for this template with their "Yes" option marks, weight, and critical flag
+              // Get all checklist items for this template with their MAX score from options, weight, and critical flag
+              // Use MAX numeric score (excluding NA) to support all scoring presets, not just Yes/No/NA
               const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
               let query;
               if (dbType === 'mssql' || dbType === 'sqlserver') {
                 query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-                         (SELECT TOP 1 CAST(cio.mark AS FLOAT)
+                         (SELECT MAX(CASE WHEN ISNUMERIC(cio.mark) = 1 THEN CAST(cio.mark AS FLOAT) ELSE NULL END)
                           FROM checklist_item_options cio 
-                          WHERE cio.item_id = ci.id AND cio.option_text = 'Yes') as max_score
+                          WHERE cio.item_id = ci.id) as max_score
                          FROM checklist_items ci
                          WHERE ci.template_id = ?`;
               } else {
                 query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-                         (SELECT CAST(cio.mark AS REAL)
+                         (SELECT MAX(CASE WHEN cio.mark NOT LIKE '%NA%' AND cio.mark GLOB '[0-9]*' THEN CAST(cio.mark AS REAL) ELSE NULL END)
                           FROM checklist_item_options cio 
-                          WHERE cio.item_id = ci.id AND cio.option_text = 'Yes' 
-                          LIMIT 1) as max_score
+                          WHERE cio.item_id = ci.id) as max_score
                          FROM checklist_items ci
                          WHERE ci.template_id = ?`;
               }
@@ -903,14 +903,14 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
                     }
                   });
 
-                  // Calculate regular percentage score
+                  // Calculate regular percentage score (capped at 100%)
                   const score = totalPossibleScore > 0 
-                    ? Math.round((actualScore / totalPossibleScore) * 100) 
+                    ? Math.min(100, Math.round((actualScore / totalPossibleScore) * 100))
                     : 0;
                     
-                  // Calculate weighted percentage score
+                  // Calculate weighted percentage score (capped at 100%)
                   const weightedScore = weightedTotalPossible > 0 
-                    ? Math.round((weightedActualScore / weightedTotalPossible) * 100) 
+                    ? Math.min(100, Math.round((weightedActualScore / weightedTotalPossible) * 100))
                     : 0;
 
                   const total = auditItems.length;
@@ -1144,19 +1144,19 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
     (err, auditItems) => {
       if (err) return callback(err);
 
-      // Get max possible score from template
+      // Get max possible score from template (use MAX numeric score, not just "Yes")
       let query;
       if (isSqlServer) {
         query = `SELECT ci.id, 
-                 (SELECT TOP 1 CAST(cio.mark AS FLOAT)
+                 (SELECT MAX(CASE WHEN ISNUMERIC(cio.mark) = 1 THEN CAST(cio.mark AS FLOAT) ELSE NULL END)
                   FROM checklist_item_options cio 
-                  WHERE cio.item_id = ci.id AND cio.option_text = 'Yes') as max_score
+                  WHERE cio.item_id = ci.id) as max_score
                  FROM checklist_items ci WHERE ci.template_id = ?`;
       } else {
         query = `SELECT ci.id, 
-                 (SELECT CAST(cio.mark AS REAL)
+                 (SELECT MAX(CASE WHEN cio.mark NOT LIKE '%NA%' AND cio.mark GLOB '[0-9]*' THEN CAST(cio.mark AS REAL) ELSE NULL END)
                   FROM checklist_item_options cio 
-                  WHERE cio.item_id = ci.id AND cio.option_text = 'Yes' LIMIT 1) as max_score
+                  WHERE cio.item_id = ci.id) as max_score
                  FROM checklist_items ci WHERE ci.template_id = ?`;
       }
 
@@ -1177,8 +1177,9 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
           }
         });
 
+        // Ensure score is capped at 100%
         const score = totalPossibleScore > 0 
-          ? Math.round((actualScore / totalPossibleScore) * 100) 
+          ? Math.min(100, Math.round((actualScore / totalPossibleScore) * 100))
           : 0;
 
         const total = auditItems.length;

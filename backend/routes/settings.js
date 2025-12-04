@@ -24,16 +24,6 @@ router.get('/preferences', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
     const database = getDb();
-    const dbType = getDbType();
-
-    const query = `SELECT preference_key, preference_value FROM user_preferences WHERE user_id = ?`;
-
-    const prefs = await new Promise((resolve, reject) => {
-      database.all(query, [userId], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
-      });
-    });
 
     // Default preferences
     const defaultPreferences = {
@@ -43,21 +33,35 @@ router.get('/preferences', authenticate, async (req, res) => {
       email_task_reminder: true,
       email_overdue_items: true,
       email_scheduled_audit: true,
-      date_format: 'MM/DD/YYYY',
+      date_format: 'DD-MM-YYYY',
       items_per_page: 25,
       theme: 'light',
-      dashboard_default_view: 'grid',
+      dashboard_default_view: 'cards',
     };
 
-    // Merge with database values
-    prefs.forEach(p => {
-      const key = p.preference_key;
-      try {
-        defaultPreferences[key] = JSON.parse(p.preference_value);
-      } catch {
-        defaultPreferences[key] = p.preference_value;
-      }
+    // Query user preferences from the column-based table
+    const query = `SELECT * FROM user_preferences WHERE user_id = ?`;
+
+    const userPrefs = await new Promise((resolve, reject) => {
+      database.get(query, [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
     });
+
+    // If user has preferences, merge them with defaults
+    if (userPrefs) {
+      Object.keys(defaultPreferences).forEach(key => {
+        if (userPrefs[key] !== undefined && userPrefs[key] !== null) {
+          // Convert 0/1 to boolean for boolean fields
+          if (key.startsWith('email_')) {
+            defaultPreferences[key] = userPrefs[key] === 1 || userPrefs[key] === true;
+          } else {
+            defaultPreferences[key] = userPrefs[key];
+          }
+        }
+      });
+    }
 
     res.json({ preferences: defaultPreferences });
   } catch (error) {
@@ -74,45 +78,81 @@ router.put('/preferences', authenticate, async (req, res) => {
     const database = getDb();
     const dbType = getDbType();
 
-    // Update each preference
-    for (const [key, value] of Object.entries(preferences)) {
-      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    // Valid columns in user_preferences table
+    const validColumns = [
+      'email_notifications_enabled', 'email_audit_completed', 'email_action_assigned',
+      'email_task_reminder', 'email_overdue_items', 'email_scheduled_audit',
+      'date_format', 'items_per_page', 'theme', 'dashboard_default_view'
+    ];
 
-      // Check if preference exists
-      const checkQuery = `SELECT id FROM user_preferences WHERE user_id = ? AND preference_key = ?`;
-      
-      const existing = await new Promise((resolve, reject) => {
-        database.get(checkQuery, [userId, key], (err, row) => {
+    // Check if user preferences row exists
+    const existing = await new Promise((resolve, reject) => {
+      database.get('SELECT id FROM user_preferences WHERE user_id = ?', [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    // Build update or insert query
+    const updateFields = [];
+    const updateValues = [];
+
+    for (const [key, value] of Object.entries(preferences)) {
+      if (validColumns.includes(key)) {
+        updateFields.push(`${key} = ?`);
+        // Convert booleans to 1/0 for SQLite/MSSQL
+        if (typeof value === 'boolean') {
+          updateValues.push(value ? 1 : 0);
+        } else {
+          updateValues.push(value);
+        }
+      }
+    }
+
+    if (updateFields.length === 0) {
+      return res.json({ success: true, message: 'No valid preferences to update' });
+    }
+
+    if (existing) {
+      // Update existing preferences
+      const updatedAtField = dbType === 'mssql' ? 'updated_at = GETDATE()' : "updated_at = datetime('now')";
+      updateFields.push(updatedAtField);
+      updateValues.push(userId);
+
+      const updateQuery = `UPDATE user_preferences SET ${updateFields.join(', ')} WHERE user_id = ?`;
+
+      await new Promise((resolve, reject) => {
+        database.run(updateQuery, updateValues, (err) => {
           if (err) reject(err);
-          else resolve(row);
+          else resolve();
         });
       });
+    } else {
+      // Insert new preferences row
+      const columns = ['user_id'];
+      const placeholders = ['?'];
+      const insertValues = [userId];
 
-      if (existing) {
-        // Update existing preference
-        const updateQuery = dbType === 'mssql'
-          ? `UPDATE user_preferences SET preference_value = ?, updated_at = GETDATE() WHERE user_id = ? AND preference_key = ?`
-          : `UPDATE user_preferences SET preference_value = ?, updated_at = datetime('now') WHERE user_id = ? AND preference_key = ?`;
-
-        await new Promise((resolve, reject) => {
-          database.run(updateQuery, [stringValue, userId, key], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      } else {
-        // Insert new preference
-        const insertQuery = dbType === 'mssql'
-          ? `INSERT INTO user_preferences (user_id, preference_key, preference_value, created_at, updated_at) VALUES (?, ?, ?, GETDATE(), GETDATE())`
-          : `INSERT INTO user_preferences (user_id, preference_key, preference_value, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))`;
-
-        await new Promise((resolve, reject) => {
-          database.run(insertQuery, [userId, key, stringValue], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+      for (const [key, value] of Object.entries(preferences)) {
+        if (validColumns.includes(key)) {
+          columns.push(key);
+          placeholders.push('?');
+          if (typeof value === 'boolean') {
+            insertValues.push(value ? 1 : 0);
+          } else {
+            insertValues.push(value);
+          }
+        }
       }
+
+      const insertQuery = `INSERT INTO user_preferences (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
+
+      await new Promise((resolve, reject) => {
+        database.run(insertQuery, insertValues, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
     }
 
     logger.info(`Preferences updated for user ${userId}`);
