@@ -48,6 +48,7 @@ import ScaleIcon from '@mui/icons-material/Scale';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
+import { themeConfig } from '../config/theme';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
@@ -691,10 +692,13 @@ const Checklists = () => {
                       startIcon={<PlayArrowIcon />}
                       onClick={() => handleStartAudit(getTemplateId(template))}
                       sx={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: themeConfig.dashboardCards.card2,
                         '&:hover': {
-                          background: 'linear-gradient(135deg, #5568d3 0%, #653a8f 100%)',
-                        }
+                          background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)',
+                          transform: 'translateY(-1px)',
+                          boxShadow: '0 4px 12px rgba(67, 56, 202, 0.4)',
+                        },
+                        transition: 'all 0.2s ease',
                       }}
                     >
                       Start Audit
