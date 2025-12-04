@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#8B0000"
+      "backgroundColor": "#A31621"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -59,7 +59,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#8B0000"
+          "color": "#A31621"
         }
       ],
       [

@@ -12,13 +12,13 @@
   <!-- Chef Hat -->
   <g transform="translate(512, 400)">
     <!-- Hat top (puffy part) -->
-    <ellipse cx="0" cy="-160" rx="240" ry="130" fill="#8B0000"/>
-    <ellipse cx="-130" cy="-190" rx="96" ry="110" fill="#8B0000"/>
-    <ellipse cx="130" cy="-190" rx="96" ry="110" fill="#8B0000"/>
-    <ellipse cx="0" cy="-210" rx="110" ry="96" fill="#8B0000"/>
+    <ellipse cx="0" cy="-160" rx="240" ry="130" fill="#A31621"/>
+    <ellipse cx="-130" cy="-190" rx="96" ry="110" fill="#A31621"/>
+    <ellipse cx="130" cy="-190" rx="96" ry="110" fill="#A31621"/>
+    <ellipse cx="0" cy="-210" rx="110" ry="96" fill="#A31621"/>
     
     <!-- Hat band -->
-    <rect x="-224" y="-80" width="448" height="136" rx="10" fill="#8B0000"/>
+    <rect x="-224" y="-80" width="448" height="136" rx="10" fill="#A31621"/>
     
     <!-- LBF Text inside hat -->
     <text x="0" y="24" font-family="Georgia, serif" font-size="128" font-weight="bold" 
@@ -27,7 +27,7 @@
   
   <!-- Company Name -->
   <text x="512" y="720" font-family="Georgia, serif" font-size="76" font-weight="bold" 
-        fill="#8B0000" text-anchor="middle">Lite Bite Foods</text>
+        fill="#A31621" text-anchor="middle">Lite Bite Foods</text>
   <text x="512" y="820" font-family="Arial, sans-serif" font-size="56" 
         fill="#666666" text-anchor="middle">AUDIT PRO</text>
 </svg>

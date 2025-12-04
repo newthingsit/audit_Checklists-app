@@ -1,20 +1,20 @@
-// Theme Configuration - Modern & Distinctive Design
-// A fresh, professional aesthetic that avoids generic AI-generated looks
+// Theme Configuration - Lite Bite Foods Brand Colors
+// Official LBF burgundy red branding for professional restaurant audit app
 
 export const themeConfig = {
-  // Primary Colors - Deep Teal with Warm Coral accents
+  // Primary Colors - Lite Bite Foods Burgundy Red
   primary: {
-    main: '#0d9488',      // Teal - sophisticated and professional
-    light: '#14b8a6',     // Lighter teal
-    dark: '#0f766e',      // Darker teal
+    main: '#A31621',      // LBF Burgundy Red - official brand color
+    light: '#C41E2A',     // Lighter burgundy
+    dark: '#7D111A',      // Darker burgundy
     contrast: '#ffffff',
   },
 
-  // Secondary/Accent Colors - Warm Coral
+  // Secondary/Accent Colors - Gold/Amber for elegant contrast
   secondary: {
-    main: '#f97316',      // Vibrant coral/orange
-    light: '#fb923c',     // Light coral
-    dark: '#ea580c',      // Dark coral
+    main: '#D4A574',      // Warm gold
+    light: '#E8C49A',     // Light gold
+    dark: '#B8894A',      // Dark gold
   },
 
   // Background Colors - Subtle warmth
@@ -39,7 +39,7 @@ export const themeConfig = {
     default: '#e2e8f0',    // Light slate border
     light: '#f1f5f9',      // Very light border
     dark: '#cbd5e1',       // Darker border
-    focus: '#0d9488',      // Teal focus ring
+    focus: '#A31621',      // LBF burgundy focus ring
   },
 
   // Status Colors - Vibrant but professional
@@ -68,32 +68,32 @@ export const themeConfig = {
     bg: '#eff6ff',
   },
 
-  // Dashboard Card Gradients - Rich, modern gradients
+  // Dashboard Card Gradients - LBF brand gradients
   dashboardCards: {
-    card1: 'linear-gradient(135deg, #0d9488 0%, #0891b2 100%)',  // Teal to Cyan
-    card2: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',  // Orange gradient
+    card1: 'linear-gradient(135deg, #A31621 0%, #C41E2A 100%)',  // LBF Burgundy gradient
+    card2: 'linear-gradient(135deg, #D4A574 0%, #E8C49A 100%)',  // Gold gradient
     card3: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',  // Purple gradient
     card4: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',  // Green gradient
-    card5: 'linear-gradient(135deg, #ec4899 0%, #f472b6 100%)',  // Pink gradient
+    card5: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)',  // Blue gradient
   },
 
-  // Chart Colors - Harmonious palette
+  // Chart Colors - LBF harmonious palette
   chartColors: [
-    '#0d9488', // Teal
-    '#f97316', // Orange
+    '#A31621', // LBF Burgundy
+    '#D4A574', // Gold
     '#8b5cf6', // Purple
     '#10b981', // Green
-    '#ec4899', // Pink
     '#3b82f6', // Blue
     '#f59e0b', // Amber
+    '#ec4899', // Pink
     '#06b6d4', // Cyan
   ],
 
-  // Login/Register Page - Animated gradient
+  // Login/Register Page - LBF branded gradient
   auth: {
-    gradient: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0d9488 100%)',
+    gradient: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #A31621 100%)',
     gradientAnimated: `
-      linear-gradient(-45deg, #0f172a, #1e293b, #0d9488, #0891b2)
+      linear-gradient(-45deg, #1a1a1a, #2d2d2d, #A31621, #C41E2A)
     `,
   },
 
@@ -121,7 +121,7 @@ export const themeConfig = {
     xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
     card: '0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06)',
     cardHover: '0 10px 40px rgba(0, 0, 0, 0.12)',
-    glow: '0 0 20px rgba(13, 148, 136, 0.3)',
+    glow: '0 0 20px rgba(163, 22, 33, 0.3)',
   },
 
   // Transitions - Smooth animations
@@ -136,9 +136,9 @@ export const themeConfig = {
   sidebar: {
     width: 260,
     collapsedWidth: 72,
-    background: '#0f172a',
-    activeBackground: 'rgba(13, 148, 136, 0.15)',
-    activeBorder: '#0d9488',
+    background: '#1a1a1a',
+    activeBackground: 'rgba(163, 22, 33, 0.15)',
+    activeBorder: '#A31621',
     hoverBackground: 'rgba(255, 255, 255, 0.05)',
   },
 };
