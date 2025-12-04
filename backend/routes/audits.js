@@ -1013,7 +1013,10 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res) => {
 // Batch update audit items - OPTIMIZED for faster saves
 router.put('/:id/items/batch', authenticate, async (req, res) => {
   const auditId = parseInt(req.params.id, 10);
+  logger.debug(`[Batch Update] Audit ID: ${auditId}, Body keys: ${Object.keys(req.body || {}).join(', ')}`);
+  
   if (isNaN(auditId)) {
+    logger.warn('[Batch Update] Invalid audit ID provided');
     return res.status(400).json({ error: 'Invalid audit ID' });
   }
   const { items } = req.body;
@@ -1021,8 +1024,11 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
 
+  logger.debug(`[Batch Update] Items received: ${items ? (Array.isArray(items) ? items.length : 'not array') : 'undefined'}`);
+  
   if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'Items array is required' });
+    logger.warn(`[Batch Update] Invalid items: items=${!!items}, isArray=${Array.isArray(items)}, length=${items?.length}`);
+    return res.status(400).json({ error: 'Items array is required', debug: { hasItems: !!items, isArray: Array.isArray(items), length: items?.length } });
   }
 
   // Verify audit belongs to user

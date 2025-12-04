@@ -372,34 +372,42 @@ const AuditForm = () => {
       }
 
       // Update all items in a single batch request (much faster!)
-      const batchItems = items.map((item) => {
-        const itemData = {
-          itemId: item.id,
-          status: responses[item.id] || 'pending',
-        };
-        
-        if (selectedOptions[item.id]) {
-          itemData.selected_option_id = parseInt(selectedOptions[item.id]);
-          // Also include the mark from the selected option
-          const selectedOpt = item.options?.find(o => o.id === parseInt(selectedOptions[item.id]));
-          if (selectedOpt) {
-            itemData.mark = selectedOpt.mark;
+      const batchItems = items
+        .filter(item => item && item.id) // Filter out any items without valid IDs
+        .map((item) => {
+          const itemData = {
+            itemId: item.id,
+            status: responses[item.id] || 'pending',
+          };
+          
+          if (selectedOptions[item.id]) {
+            itemData.selected_option_id = parseInt(selectedOptions[item.id]);
+            // Also include the mark from the selected option
+            const selectedOpt = item.options?.find(o => o.id === parseInt(selectedOptions[item.id]));
+            if (selectedOpt) {
+              itemData.mark = selectedOpt.mark;
+            }
           }
-        }
-        
-        if (comments[item.id]) {
-          itemData.comment = comments[item.id];
-        }
-        
-        if (photos[item.id]) {
-          const photoUrl = photos[item.id];
-          itemData.photo_url = photoUrl.startsWith('http') 
-            ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
-            : photoUrl;
-        }
+          
+          if (comments[item.id]) {
+            itemData.comment = comments[item.id];
+          }
+          
+          if (photos[item.id]) {
+            const photoUrl = photos[item.id];
+            itemData.photo_url = photoUrl.startsWith('http') 
+              ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
+              : photoUrl;
+          }
 
-        return itemData;
-      });
+          return itemData;
+        });
+
+      console.log('[AuditForm] Saving batch items:', { auditId: currentAuditId, itemCount: batchItems.length, sampleItem: batchItems[0] });
+      
+      if (batchItems.length === 0) {
+        throw new Error('No valid items to save. Please ensure all checklist items have valid IDs.');
+      }
 
       // Single batch API call instead of multiple individual calls
       await axios.put(`/api/audits/${currentAuditId}/items/batch`, { items: batchItems });
