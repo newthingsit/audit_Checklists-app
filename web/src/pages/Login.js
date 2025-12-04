@@ -60,7 +60,7 @@ const Login = () => {
       justifyContent: 'center',
       position: 'relative',
       overflow: 'hidden',
-      background: 'linear-gradient(135deg, #18181B 0%, #27272A 50%, #3F3F46 100%)',
+      background: themeConfig.auth.gradient,
       '&::before': {
         content: '""',
         position: 'absolute',
@@ -69,27 +69,27 @@ const Login = () => {
         right: 0,
         bottom: 0,
         background: `
-          radial-gradient(circle at 20% 80%, rgba(185, 28, 28, 0.12) 0%, transparent 50%),
-          radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%),
-          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 60%)
+          radial-gradient(ellipse at 20% 80%, ${themeConfig.auth.accentGlow} 0%, transparent 50%),
+          radial-gradient(ellipse at 80% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%),
+          radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 60%)
         `,
-        animation: 'pulse 10s ease-in-out infinite',
+        animation: 'pulse 12s ease-in-out infinite',
       },
       '@keyframes pulse': {
         '0%, 100%': { opacity: 1 },
-        '50%': { opacity: 0.8 },
+        '50%': { opacity: 0.7 },
       },
     }}>
       {/* Floating shapes */}
       <Box sx={{
         position: 'absolute',
-        width: 400,
-        height: 400,
+        width: 500,
+        height: 500,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(185, 28, 28, 0.08) 0%, transparent 70%)',
-        top: '-150px',
-        right: '-100px',
-        animation: 'float 8s ease-in-out infinite',
+        background: `radial-gradient(circle, ${themeConfig.auth.accentGlow} 0%, transparent 70%)`,
+        top: '-200px',
+        right: '-150px',
+        animation: 'float 10s ease-in-out infinite',
         '@keyframes float': {
           '0%, 100%': { transform: 'translateY(0) scale(1)' },
           '50%': { transform: 'translateY(-30px) scale(1.05)' },
@@ -97,13 +97,13 @@ const Login = () => {
       }} />
       <Box sx={{
         position: 'absolute',
-        width: 300,
-        height: 300,
+        width: 350,
+        height: 350,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124, 58, 237, 0.06) 0%, transparent 70%)',
-        bottom: '-100px',
-        left: '-100px',
-        animation: 'float 10s ease-in-out infinite reverse',
+        background: 'radial-gradient(circle, rgba(124, 58, 237, 0.05) 0%, transparent 70%)',
+        bottom: '-120px',
+        left: '-120px',
+        animation: 'float 12s ease-in-out infinite reverse',
       }} />
 
       <Container component="main" maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
@@ -122,17 +122,17 @@ const Login = () => {
             width: 100, 
             height: 100, 
             borderRadius: '50%',
-            bgcolor: '#B91C1C',
+            background: `linear-gradient(135deg, ${themeConfig.primary.main} 0%, ${themeConfig.primary.light} 100%)`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             mb: 3,
-            boxShadow: '0 0 40px rgba(185, 28, 28, 0.3)',
-            border: '3px solid rgba(255,255,255,0.1)',
+            boxShadow: themeConfig.shadows.glow,
+            border: '3px solid rgba(255,255,255,0.15)',
             transition: themeConfig.transitions.normal,
             '&:hover': {
               transform: 'scale(1.05)',
-              boxShadow: '0 0 50px rgba(185, 28, 28, 0.4)',
+              boxShadow: '0 0 50px rgba(196, 30, 58, 0.35)',
             },
           }}>
             <RestaurantIcon sx={{ fontSize: 50, color: 'white' }} />
@@ -146,7 +146,7 @@ const Login = () => {
               fontWeight: 700,
               letterSpacing: '-0.02em',
               textAlign: 'center',
-              fontSize: { xs: '1.75rem', sm: '2rem' },
+              fontSize: { xs: '1.75rem', sm: '2.25rem' },
               mb: 0.5,
             }}
           >
@@ -155,13 +155,13 @@ const Login = () => {
           <Typography 
             component="h2" 
             sx={{ 
-              color: '#B91C1C', 
+              color: themeConfig.primary.main, 
               fontWeight: 600,
-              letterSpacing: '0.15em',
+              letterSpacing: '0.2em',
               textAlign: 'center',
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               textTransform: 'uppercase',
-              mb: 1,
+              mb: 1.5,
             }}
           >
             Audit Pro
@@ -301,15 +301,15 @@ const Login = () => {
                 sx={{ 
                   py: 1.75,
                   borderRadius: themeConfig.borderRadius.medium,
-                  background: 'linear-gradient(135deg, #B91C1C 0%, #DC2626 100%)',
+                  background: `linear-gradient(135deg, ${themeConfig.primary.main} 0%, ${themeConfig.primary.light} 100%)`,
                   fontSize: '1rem',
                   fontWeight: 600,
                   textTransform: 'none',
-                  boxShadow: '0 4px 15px rgba(185, 28, 28, 0.3)',
+                  boxShadow: '0 4px 15px rgba(196, 30, 58, 0.3)',
                   transition: themeConfig.transitions.normal,
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #991B1B 0%, #B91C1C 100%)',
-                    boxShadow: '0 6px 20px rgba(185, 28, 28, 0.4)',
+                    background: `linear-gradient(135deg, ${themeConfig.primary.dark} 0%, ${themeConfig.primary.main} 100%)`,
+                    boxShadow: '0 6px 20px rgba(196, 30, 58, 0.4)',
                     transform: 'translateY(-2px)',
                   },
                   '&:active': {

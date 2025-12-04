@@ -19,7 +19,7 @@
   "start_url": ".",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#B91C1C",
+  "theme_color": "#C41E3A",
   "background_color": "#f8fafc",
   "scope": "/",
   "prefer_related_applications": false,

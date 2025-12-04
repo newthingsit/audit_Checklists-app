@@ -98,8 +98,8 @@ const LoginScreen = () => {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[themeConfig.background.dark, '#1e293b', themeConfig.primary.main]}
-        locations={[0, 0.6, 1]}
+        colors={themeConfig.auth.gradientColors}
+        locations={themeConfig.auth.gradientLocations}
         style={styles.gradient}
       >
         {/* Decorative circles */}
@@ -125,7 +125,8 @@ const LoginScreen = () => {
             </View>
 
             {/* Title */}
-            <Text style={styles.title}>Audit Pro</Text>
+            <Text style={styles.title}>Lite Bite Foods</Text>
+            <Text style={styles.brandSubtitle}>AUDIT PRO</Text>
             <Text style={styles.subtitle}>Sign in to continue</Text>
 
             {/* Form Card */}
@@ -257,21 +258,21 @@ const styles = StyleSheet.create({
   },
   decorativeCircle1: {
     position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(13, 148, 136, 0.1)',
-    top: -100,
-    right: -100,
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    backgroundColor: 'rgba(196, 30, 58, 0.08)',
+    top: -150,
+    right: -120,
   },
   decorativeCircle2: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
-    bottom: -50,
-    left: -50,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(124, 58, 237, 0.06)',
+    bottom: -80,
+    left: -80,
   },
   keyboardView: {
     flex: 1,
@@ -295,17 +296,26 @@ const styles = StyleSheet.create({
     ...themeConfig.shadows.glow,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
     letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.6)',
+  brandSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: themeConfig.primary.main,
     textAlign: 'center',
-    marginTop: 8,
+    letterSpacing: 3,
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginTop: 12,
     marginBottom: 32,
   },
   formCard: {
