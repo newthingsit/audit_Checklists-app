@@ -162,7 +162,6 @@ const ScheduledAudits = () => {
       
       if (user?.role === 'admin' && results[3]) {
         const usersData = results[3].data.users || [];
-        console.log('Fetched users:', usersData.length);
         setUsers(usersData);
       }
 

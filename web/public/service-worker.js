@@ -1,6 +1,8 @@
-const CACHE_NAME = 'audit-pro-v1';
-const STATIC_CACHE = 'audit-pro-static-v1';
-const API_CACHE = 'audit-pro-api-v1';
+// Version should be updated on each deployment to invalidate cache
+const CACHE_VERSION = '2';
+const CACHE_NAME = `audit-pro-v${CACHE_VERSION}`;
+const STATIC_CACHE = `audit-pro-static-v${CACHE_VERSION}`;
+const API_CACHE = `audit-pro-api-v${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
   '/',
@@ -8,11 +10,11 @@ const STATIC_ASSETS = [
   '/manifest.json'
 ];
 
+// Only cache read-only reference data, NOT frequently changing data
 const CACHEABLE_API_ROUTES = [
   '/api/templates',
-  '/api/locations',
-  '/api/roles',
-  '/api/auth/me'
+  '/api/locations'
+  // Removed /api/roles and /api/auth/me - these change frequently
 ];
 
 self.addEventListener('install', (event) => {
@@ -28,11 +30,18 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== STATIC_CACHE && name !== API_CACHE)
+          .filter((name) => name !== STATIC_CACHE && name !== API_CACHE && name !== CACHE_NAME)
           .map((name) => caches.delete(name))
       );
     }).then(() => self.clients.claim())
   );
+});
+
+// Handle skip waiting message from clients (for immediate update)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
