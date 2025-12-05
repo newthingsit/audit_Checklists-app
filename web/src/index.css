@@ -55,8 +55,11 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Hide scrollbars on mobile for cleaner look */
+/* ===== Mobile Browser Responsive Styles ===== */
+/* For Safari, Chrome, and other mobile browsers */
+
 @media (max-width: 768px) {
+  /* Hide scrollbars on mobile for cleaner look */
   ::-webkit-scrollbar {
     display: none;
   }
@@ -74,6 +77,13 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* Full-width buttons on mobile */
   .MuiButton-root {
     width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  /* Inline buttons in forms should not be full width */
+  .MuiButton-root.MuiButton-sizeSmall,
+  .inline-button {
+    width: auto;
   }
   
   /* Better spacing for cards */
@@ -85,6 +95,275 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   .MuiContainer-root {
     padding-left: 12px;
     padding-right: 12px;
+  }
+  
+  /* ===== Mobile Navigation ===== */
+  .MuiAppBar-root {
+    position: fixed !important;
+  }
+  
+  /* ===== Mobile Typography ===== */
+  h1, .MuiTypography-h1 {
+    font-size: 1.75rem !important;
+  }
+  
+  h2, .MuiTypography-h2 {
+    font-size: 1.5rem !important;
+  }
+  
+  h3, .MuiTypography-h3 {
+    font-size: 1.25rem !important;
+  }
+  
+  h4, .MuiTypography-h4 {
+    font-size: 1.1rem !important;
+  }
+  
+  /* ===== Mobile Forms ===== */
+  .MuiTextField-root,
+  .MuiFormControl-root {
+    margin-bottom: 16px !important;
+  }
+  
+  .MuiInputBase-root {
+    font-size: 16px !important; /* Prevent zoom on iOS */
+  }
+  
+  .MuiAutocomplete-root {
+    width: 100% !important;
+  }
+  
+  /* Radio buttons in column on mobile */
+  .MuiFormGroup-row {
+    flex-direction: column !important;
+  }
+  
+  .MuiFormControlLabel-root {
+    margin-left: 0 !important;
+    margin-bottom: 8px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .MuiRadio-root,
+  .MuiCheckbox-root {
+    padding: 8px !important;
+  }
+  
+  /* ===== Mobile Tables ===== */
+  .MuiTableContainer-root {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .MuiTable-root {
+    min-width: 600px;
+  }
+  
+  .MuiTableCell-root {
+    padding: 12px 8px !important;
+    font-size: 0.875rem !important;
+  }
+  
+  .MuiTableCell-head {
+    font-weight: 600 !important;
+    white-space: nowrap;
+  }
+  
+  /* ===== Mobile Cards ===== */
+  .MuiPaper-root {
+    border-radius: 12px !important;
+  }
+  
+  .MuiCardContent-root {
+    padding: 16px !important;
+  }
+  
+  /* ===== Mobile Dialogs ===== */
+  .MuiDialog-paper {
+    margin: 16px !important;
+    width: calc(100% - 32px) !important;
+    max-width: none !important;
+    max-height: calc(100% - 32px) !important;
+  }
+  
+  .MuiDialogTitle-root {
+    padding: 16px !important;
+    font-size: 1.1rem !important;
+  }
+  
+  .MuiDialogContent-root {
+    padding: 16px !important;
+  }
+  
+  .MuiDialogActions-root {
+    padding: 12px 16px !important;
+    flex-direction: column !important;
+    gap: 8px;
+  }
+  
+  .MuiDialogActions-root > .MuiButton-root {
+    margin: 0 !important;
+    width: 100% !important;
+  }
+  
+  /* ===== Mobile Grid ===== */
+  .MuiGrid-container {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+  }
+  
+  .MuiGrid-item {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  
+  /* ===== Mobile Stepper ===== */
+  .MuiStepper-root {
+    padding: 16px 0 !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .MuiStepLabel-label {
+    font-size: 0.75rem !important;
+  }
+  
+  /* ===== Mobile Chips ===== */
+  .MuiChip-root {
+    height: auto !important;
+    min-height: 32px;
+    padding: 4px 0;
+  }
+  
+  /* ===== Mobile Bottom Actions ===== */
+  .mobile-bottom-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    padding: 12px 16px;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+  }
+  
+  .mobile-bottom-actions .MuiButton-root {
+    flex: 1;
+    margin-bottom: 0 !important;
+  }
+  
+  /* Add padding at bottom for fixed actions */
+  .has-bottom-actions {
+    padding-bottom: 80px !important;
+  }
+  
+  /* ===== Mobile Audit Form Specific ===== */
+  .audit-item-card {
+    margin-bottom: 16px !important;
+  }
+  
+  .audit-item-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .audit-item-options .MuiButton-root {
+    padding: 16px !important;
+    font-size: 1rem !important;
+    justify-content: space-between !important;
+  }
+  
+  /* Photo upload button */
+  .photo-upload-btn {
+    min-height: 48px;
+    width: 100%;
+  }
+  
+  /* Progress indicator */
+  .audit-progress {
+    position: sticky;
+    top: 64px;
+    background: #fff;
+    z-index: 100;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0;
+    margin: -16px -12px 16px;
+  }
+  
+  /* ===== Mobile Menu ===== */
+  .MuiMenu-paper {
+    max-height: 70vh !important;
+  }
+  
+  .MuiMenuItem-root {
+    padding: 14px 16px !important;
+    min-height: 48px !important;
+  }
+  
+  /* ===== Mobile Tabs ===== */
+  .MuiTabs-root {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .MuiTab-root {
+    min-width: 80px !important;
+    padding: 12px 16px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  /* ===== Mobile Alert ===== */
+  .MuiAlert-root {
+    padding: 12px 16px !important;
+    margin-bottom: 12px !important;
+  }
+  
+  .MuiAlert-message {
+    font-size: 0.875rem !important;
+  }
+  
+  /* ===== Floating Action Button ===== */
+  .mobile-fab {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    z-index: 1000 !important;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+  /* Even smaller text */
+  h1, .MuiTypography-h1 {
+    font-size: 1.5rem !important;
+  }
+  
+  h2, .MuiTypography-h2 {
+    font-size: 1.25rem !important;
+  }
+  
+  /* Compact cards */
+  .MuiCardContent-root {
+    padding: 12px !important;
+  }
+  
+  /* Smaller buttons */
+  .MuiButton-root {
+    padding: 10px 16px !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Hide non-essential text */
+  .hide-on-small-mobile {
+    display: none !important;
   }
 }
 

@@ -9,7 +9,8 @@ import {
   TextInput,
   Modal,
   ScrollView,
-  AppState
+  AppState,
+  Animated
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
@@ -20,8 +21,12 @@ import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError, ServerError } from '../components/ErrorState';
 
-// Auto-refresh interval in milliseconds (5 seconds for real-time updates)
-const AUTO_REFRESH_INTERVAL = 5000;
+// Auto-refresh interval in milliseconds (60 seconds - reduced from 5s to prevent server overload)
+const AUTO_REFRESH_INTERVAL = 60000;
+
+// Maximum retry attempts for error recovery
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_BASE = 2000; // 2 seconds, will use exponential backoff
 
 const AuditHistoryScreen = () => {
   const [audits, setAudits] = useState([]);
@@ -29,6 +34,7 @@ const AuditHistoryScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [connectionError, setConnectionError] = useState(false); // Soft error banner
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
@@ -38,6 +44,9 @@ const AuditHistoryScreen = () => {
   const isFocused = useIsFocused();
   const intervalRef = useRef(null);
   const appState = useRef(AppState.currentState);
+  const retryCountRef = useRef(0);
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
+  const lastSuccessfulFetchRef = useRef(null);
 
   // Initial fetch
   useEffect(() => {
@@ -120,35 +129,90 @@ const AuditHistoryScreen = () => {
     setFilteredAudits(filtered);
   };
 
+  // Show connection error banner with animation
+  const showConnectionBanner = useCallback((show) => {
+    Animated.timing(bannerOpacity, {
+      toValue: show ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+    setConnectionError(show);
+  }, [bannerOpacity]);
+
+  // Retry with exponential backoff
+  const retryWithBackoff = useCallback(async () => {
+    if (retryCountRef.current >= MAX_RETRY_ATTEMPTS) {
+      retryCountRef.current = 0;
+      return false;
+    }
+    
+    const delay = RETRY_DELAY_BASE * Math.pow(2, retryCountRef.current);
+    retryCountRef.current++;
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return true;
+  }, []);
+
   const fetchAudits = useCallback(async (silent = false) => {
     try {
       if (!silent) {
         setError(null);
       }
+      
       // Add cache-busting parameter to ensure fresh data
       const response = await axios.get(`${API_BASE_URL}/audits`, {
         params: { _t: Date.now() },
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache' },
+        timeout: 15000 // 15 second timeout
       });
+      
       const auditsData = response.data.audits || [];
       setAudits(auditsData);
       setFilteredAudits(auditsData);
-      if (!silent) {
-        setError(null);
-      }
+      
+      // Success - clear any error states
+      setError(null);
+      showConnectionBanner(false);
+      retryCountRef.current = 0;
+      lastSuccessfulFetchRef.current = Date.now();
+      
     } catch (error) {
       console.error('Error fetching audits:', error);
-      if (!silent) {
-        // Set error state for both network and server errors
-        if (!error.response || error.message === 'Network Error') {
-          setError('network');
-        } else {
-          // Server error (4xx, 5xx) - set error state
-          setError('server');
+      
+      const isNetworkError = !error.response || error.message === 'Network Error' || error.code === 'ECONNABORTED';
+      const isAuthError = error.response?.status === 401 || error.response?.status === 403;
+      
+      // Handle auth errors - need to re-login
+      if (isAuthError) {
+        if (!silent) {
+          setError('auth');
         }
-        // Clear stale data on error so users don't see outdated info
-        setAudits([]);
-        setFilteredAudits([]);
+        return;
+      }
+      
+      if (silent) {
+        // Silent refresh failed - show banner but DON'T clear existing data
+        // This keeps the history visible while showing connection issues
+        showConnectionBanner(true);
+        
+        // Try to recover with exponential backoff
+        const shouldRetry = await retryWithBackoff();
+        if (shouldRetry) {
+          fetchAudits(true); // Retry silently
+        }
+      } else {
+        // Non-silent fetch (initial load or manual refresh)
+        // Only show full error screen if we have NO cached data
+        if (audits.length === 0) {
+          if (isNetworkError) {
+            setError('network');
+          } else {
+            setError('server');
+          }
+        } else {
+          // We have cached data - show banner instead of replacing content
+          showConnectionBanner(true);
+        }
       }
     } finally {
       if (!silent) {
@@ -156,7 +220,7 @@ const AuditHistoryScreen = () => {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [audits.length, showConnectionBanner, retryWithBackoff]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -288,8 +352,32 @@ const AuditHistoryScreen = () => {
     );
   }
 
+  // Connection error banner component
+  const ConnectionBanner = () => (
+    <Animated.View style={[styles.connectionBanner, { opacity: bannerOpacity }]}>
+      <View style={styles.connectionBannerContent}>
+        <Icon name="cloud-off" size={16} color="#fff" />
+        <Text style={styles.connectionBannerText}>
+          Connection issue. Showing cached data.
+        </Text>
+        <TouchableOpacity 
+          onPress={() => {
+            showConnectionBanner(false);
+            fetchAudits(false);
+          }}
+          style={styles.connectionBannerRetry}
+        >
+          <Icon name="refresh" size={16} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+
   return (
     <View style={styles.container}>
+      {/* Connection Error Banner */}
+      {connectionError && <ConnectionBanner />}
+      
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputWrapper}>
@@ -492,6 +580,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: themeConfig.background.default,
+  },
+  
+  // Connection Error Banner
+  connectionBanner: {
+    backgroundColor: themeConfig.warning.main,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  connectionBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  connectionBannerText: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  connectionBannerRetry: {
+    padding: 6,
+    marginLeft: 8,
   },
   
   // Search

@@ -44,24 +44,52 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Event emitter for auth events (logout on 401)
+let authEventListener = null;
+
+export const setAuthEventListener = (listener) => {
+  authEventListener = listener;
+};
+
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error.config;
     
-    // Retry logic for network errors
+    // Handle 401 Unauthorized - token expired or invalid
+    if (error.response?.status === 401) {
+      // Emit auth error event to trigger logout/re-login
+      if (authEventListener) {
+        authEventListener({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
+      }
+      return Promise.reject(error);
+    }
+    
+    // Handle 403 Forbidden - permission issues
+    if (error.response?.status === 403) {
+      if (__DEV__) {
+        console.warn('Permission denied:', config?.url);
+      }
+      return Promise.reject(error);
+    }
+    
+    // Retry logic for network errors and server errors
     if (
       !config._retry &&
-      config._retryCount < RETRY_CONFIG.maxRetries &&
-      RETRY_CONFIG.retryOnStatusCodes.includes(error.response?.status)
+      (config._retryCount || 0) < RETRY_CONFIG.maxRetries &&
+      (RETRY_CONFIG.retryOnStatusCodes.includes(error.response?.status) || !error.response)
     ) {
       config._retry = true;
       config._retryCount = (config._retryCount || 0) + 1;
       
-      await new Promise(resolve => 
-        setTimeout(resolve, RETRY_CONFIG.retryDelay * config._retryCount)
-      );
+      // Exponential backoff
+      const delay = RETRY_CONFIG.retryDelay * Math.pow(2, config._retryCount - 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      if (__DEV__) {
+        console.log(`Retrying request (attempt ${config._retryCount}):`, config.url);
+      }
       
       return apiClient(config);
     }

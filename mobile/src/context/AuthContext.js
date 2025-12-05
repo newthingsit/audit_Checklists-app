@@ -1,13 +1,15 @@
 import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { setAuthEventListener } from '../services/ApiService';
 
 const AuthContext = createContext();
 
 // Token storage key
 const TOKEN_KEY = 'auth_token';
+const TOKEN_EXPIRY_KEY = 'auth_token_expiry';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -21,8 +23,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const appState = useRef(AppState.currentState);
+  const isHandlingAuthError = useRef(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -73,7 +77,37 @@ export const AuthProvider = ({ children }) => {
     }
   }, [fetchUser]);
 
+  // Handle auth errors from ApiService (401 errors)
+  const handleAuthError = useCallback(async (event) => {
+    if (isHandlingAuthError.current) return;
+    isHandlingAuthError.current = true;
+    
+    if (event.type === 'AUTH_ERROR') {
+      setSessionExpired(true);
+      
+      // Show alert and logout
+      Alert.alert(
+        'Session Expired',
+        'Your session has expired. Please login again.',
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              await logout();
+              isHandlingAuthError.current = false;
+              setSessionExpired(false);
+            }
+          }
+        ],
+        { cancelable: false }
+      );
+    }
+  }, []);
+
   useEffect(() => {
+    // Set up auth event listener for 401 errors
+    setAuthEventListener(handleAuthError);
+    
     loadStoredAuth();
 
     // Listen for app state changes to refresh user data when app comes to foreground
@@ -91,8 +125,9 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       subscription?.remove();
+      setAuthEventListener(null);
     };
-  }, [token, loadStoredAuth, refreshUser]);
+  }, [token, loadStoredAuth, refreshUser, handleAuthError]);
 
   const login = async (email, password) => {
     try {
@@ -172,7 +207,8 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     refreshUser,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    sessionExpired
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

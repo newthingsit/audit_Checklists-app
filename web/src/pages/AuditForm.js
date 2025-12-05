@@ -22,7 +22,10 @@ import {
   Chip,
   IconButton,
   Tooltip,
-  Autocomplete
+  Autocomplete,
+  useMediaQuery,
+  useTheme,
+  LinearProgress
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -36,6 +39,8 @@ const AuditForm = () => {
   const { templateId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -468,11 +473,26 @@ const AuditForm = () => {
   return (
     <Layout>
       <Container maxWidth="md">
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: '#333', mb: 3 }}>
+        <Typography 
+          variant="h4" 
+          gutterBottom 
+          sx={{ 
+            fontWeight: 600, 
+            color: '#333', 
+            mb: 3,
+            fontSize: isMobile ? '1.25rem' : '2rem',
+            lineHeight: 1.3
+          }}
+        >
           {isEditing ? 'Resume Audit' : 'New Audit'}: {template?.name}
         </Typography>
 
-        <Stepper activeStep={activeStep} sx={{ mt: 3, mb: 4 }}>
+        <Stepper 
+          activeStep={activeStep} 
+          sx={{ mt: 3, mb: 4 }}
+          orientation={isMobile ? 'vertical' : 'horizontal'}
+          alternativeLabel={!isMobile}
+        >
           {steps.map((label) => (
             <Step key={label}>
               <StepLabel>{label}</StepLabel>
@@ -487,8 +507,8 @@ const AuditForm = () => {
         )}
 
         {activeStep === 0 && (
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+          <Paper sx={{ p: isMobile ? 2 : 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
               Store Information
             </Typography>
             
@@ -553,24 +573,67 @@ const AuditForm = () => {
               onChange={(e) => setNotes(e.target.value)}
               margin="normal"
             />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: isMobile ? 'stretch' : 'flex-end', 
+              mt: 3 
+            }}>
               <Button 
                 onClick={handleNext} 
                 variant="contained"
                 disabled={isBeforeScheduledDate}
+                fullWidth={isMobile}
+                sx={{ 
+                  minHeight: isMobile ? 48 : 36,
+                  fontSize: isMobile ? '1rem' : '0.875rem'
+                }}
               >
-                Next
+                Next: Start Audit
               </Button>
             </Box>
           </Paper>
         )}
 
         {activeStep === 1 && (
-          <Box>
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
-              <Typography variant="body2">
-                Progress: {completedItems} / {items.length} items completed
-              </Typography>
+          <Box className={isMobile ? 'has-bottom-actions' : ''}>
+            {/* Sticky Progress Bar for Mobile */}
+            <Paper 
+              sx={{ 
+                p: 2, 
+                mb: 2, 
+                bgcolor: 'info.light',
+                ...(isMobile && {
+                  position: 'sticky',
+                  top: 64,
+                  zIndex: 100,
+                  borderRadius: 0,
+                  mx: -2,
+                  width: 'calc(100% + 32px)',
+                })
+              }}
+              className="audit-progress"
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
+                  {completedItems} / {items.length}
+                </Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(completedItems / items.length) * 100} 
+                  sx={{ 
+                    flex: 1, 
+                    height: 8, 
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.5)',
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 4,
+                    }
+                  }}
+                />
+                <Typography variant="body2" sx={{ color: 'info.dark', fontWeight: 500, minWidth: 'fit-content' }}>
+                  {Math.round((completedItems / items.length) * 100)}%
+                </Typography>
+              </Box>
             </Paper>
 
             {(() => {
@@ -590,26 +653,51 @@ const AuditForm = () => {
             {items.map((item, index) => (
               <Card 
                 key={item.id} 
+                className="audit-item-card"
                 sx={{ 
-                  mb: 2,
+                  mb: isMobile ? 2 : 2,
                   border: '1px solid',
-                  borderColor: 'divider'
+                  borderColor: selectedOptions[item.id] ? 'primary.main' : 'divider',
+                  transition: 'border-color 0.2s',
                 }}
               >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
-                    <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                      {index + 1}. {item.title}
+                <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: isMobile ? 'flex-start' : 'center', 
+                    mb: 2,
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? 1 : 0
+                  }}>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        flexGrow: 1, 
+                        fontSize: isMobile ? '1rem' : '1.25rem',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: 1
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
                       {item.required && (
                         <Chip 
                           label="Required" 
                           size="small" 
                           color="error" 
-                          sx={{ ml: 1, fontSize: '0.7rem', height: 20 }} 
+                          sx={{ fontSize: '0.65rem', height: 20 }} 
                         />
                       )}
                     </Typography>
-                    {getStatusIcon(responses[item.id])}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1,
+                      ...(isMobile && { alignSelf: 'flex-end' })
+                    }}>
+                      {getStatusIcon(responses[item.id])}
+                    </Box>
                   </Box>
                   {item.description && (
                     <Typography variant="body2" color="text.secondary" paragraph>
@@ -626,8 +714,10 @@ const AuditForm = () => {
                   {/* Show options if available (Yes/No/N/A), otherwise show status radio buttons */}
                   {item.options && item.options.length > 0 ? (
                     <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-                      <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600 }}>Select Option:</FormLabel>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
+                        Select Option:
+                      </FormLabel>
+                      <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
                         {item.options.map((option) => (
                           <Button
                             key={option.id}
@@ -635,11 +725,13 @@ const AuditForm = () => {
                             fullWidth
                             onClick={() => handleOptionChange(item.id, option.id)}
                             sx={{
-                              py: 1.5,
+                              py: isMobile ? 2 : 1.5,
+                              px: isMobile ? 2 : 2,
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               textTransform: 'none',
+                              minHeight: isMobile ? 56 : 48,
                               border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
                               borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
                               backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
@@ -647,21 +739,33 @@ const AuditForm = () => {
                               '&:hover': {
                                 borderColor: 'primary.main',
                                 backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
+                              },
+                              // Touch-friendly active state
+                              '&:active': {
+                                transform: 'scale(0.98)',
                               }
                             }}
                           >
-                            <Typography variant="body1" sx={{ fontWeight: selectedOptions[item.id] === option.id ? 600 : 400 }}>
+                            <Typography 
+                              variant="body1" 
+                              sx={{ 
+                                fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
+                                fontSize: isMobile ? '1rem' : '1rem'
+                              }}
+                            >
                               {option.option_text}
                             </Typography>
                             <Chip
-                              label={`Score: ${option.mark}`}
+                              label={`${option.mark}`}
                               size="small"
                               sx={{
-                                ml: 2,
+                                ml: 1,
+                                minWidth: 40,
                                 backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
                                 color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
                                 border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
-                                borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider'
+                                borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
+                                fontWeight: 600
                               }}
                             />
                           </Button>
@@ -722,9 +826,16 @@ const AuditForm = () => {
                     sx={{ mb: 2, mt: 2 }}
                   />
 
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 2, 
+                    mt: 2,
+                    flexWrap: isMobile ? 'wrap' : 'nowrap'
+                  }}>
                     <input
                       accept="image/*"
+                      capture="environment"
                       style={{ display: 'none' }}
                       id={`photo-upload-${item.id}`}
                       type="file"
@@ -733,25 +844,43 @@ const AuditForm = () => {
                         if (file) handlePhotoUpload(item.id, file);
                       }}
                     />
-                    <label htmlFor={`photo-upload-${item.id}`}>
+                    <label htmlFor={`photo-upload-${item.id}`} style={{ width: isMobile ? '100%' : 'auto' }}>
                       <Tooltip title="Upload photo evidence">
                         <Button
                           variant="outlined"
                           component="span"
                           startIcon={<PhotoCameraIcon />}
-                          size="small"
+                          size={isMobile ? "medium" : "small"}
                           disabled={uploading[item.id]}
+                          className="photo-upload-btn"
+                          sx={{
+                            width: isMobile ? '100%' : 'auto',
+                            minHeight: isMobile ? 48 : 36,
+                          }}
                         >
-                          {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Upload Photo'}
+                          {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
                         </Button>
                       </Tooltip>
                     </label>
                     {photos[item.id] && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 1,
+                        width: isMobile ? '100%' : 'auto',
+                        justifyContent: isMobile ? 'center' : 'flex-start',
+                        mt: isMobile ? 1 : 0
+                      }}>
                         <img 
                           src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]} 
                           alt="Uploaded"
-                          style={{ width: 50, height: 50, borderRadius: 4, objectFit: 'cover' }}
+                          style={{ 
+                            width: isMobile ? 60 : 50, 
+                            height: isMobile ? 60 : 50, 
+                            borderRadius: 8, 
+                            objectFit: 'cover',
+                            border: '2px solid #e0e0e0'
+                          }}
                           crossOrigin="anonymous"
                         />
                         <IconButton
@@ -768,16 +897,51 @@ const AuditForm = () => {
               </Card>
             ))}
 
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-              <Button onClick={handleBack}>Back</Button>
-              <Button
-                onClick={handleSubmit}
-                variant="contained"
-                disabled={saving || auditStatus === 'completed'}
+            {/* Mobile: Fixed bottom action bar, Desktop: Regular buttons */}
+            {isMobile ? (
+              <Box 
+                className="mobile-bottom-actions"
+                sx={{
+                  position: 'fixed',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  bgcolor: 'background.paper',
+                  p: 2,
+                  boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                  zIndex: 1000,
+                  display: 'flex',
+                  gap: 2,
+                }}
               >
-                {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
-              </Button>
-            </Box>
+                <Button 
+                  onClick={handleBack}
+                  variant="outlined"
+                  sx={{ flex: 1, minHeight: 48 }}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  variant="contained"
+                  disabled={saving || auditStatus === 'completed'}
+                  sx={{ flex: 2, minHeight: 48 }}
+                >
+                  {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
+                </Button>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+                <Button onClick={handleBack}>Back</Button>
+                <Button
+                  onClick={handleSubmit}
+                  variant="contained"
+                  disabled={saving || auditStatus === 'completed'}
+                >
+                  {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
       </Container>
