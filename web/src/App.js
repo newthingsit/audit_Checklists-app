@@ -32,6 +32,7 @@ const ScheduledAuditsReport = lazy(() => import('./pages/ScheduledAuditsReport')
 const StoreAnalytics = lazy(() => import('./pages/StoreAnalytics'));
 const LocationVerificationReport = lazy(() => import('./pages/LocationVerificationReport'));
 const StoreGroups = lazy(() => import('./pages/StoreGroups'));
+const RecurringFailures = lazy(() => import('./pages/RecurringFailures'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -440,6 +441,14 @@ function ThemeWrapper() {
                 element={
                   <PrivateRoute>
                     <ScheduledAuditsReport />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/recurring-failures"
+                element={
+                  <PrivateRoute>
+                    <RecurringFailures />
                   </PrivateRoute>
                 }
               />

@@ -67,6 +67,12 @@ const AuditForm = () => {
   const [scheduledAudit, setScheduledAudit] = useState(null);
   const [isLocationLocked, setIsLocationLocked] = useState(false);
   const [isBeforeScheduledDate, setIsBeforeScheduledDate] = useState(false);
+  
+  // Previous failures state for highlighting recurring issues
+  const [previousFailures, setPreviousFailures] = useState([]);
+  const [failedItemIds, setFailedItemIds] = useState(new Set());
+  const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
+  const [showFailuresAlert, setShowFailuresAlert] = useState(false);
 
   useEffect(() => {
     fetchLocations();
@@ -217,6 +223,39 @@ const AuditForm = () => {
       console.error('Error fetching locations:', error);
     }
   };
+
+  // Fetch previous audit failures to highlight recurring issues
+  const fetchPreviousFailures = useCallback(async (tmplId, locId) => {
+    if (!tmplId || !locId) return;
+    
+    try {
+      const response = await axios.get('/api/audits/previous-failures', {
+        params: { template_id: tmplId, location_id: locId, months_back: 3 }
+      });
+      
+      const data = response.data;
+      setPreviousFailures(data.failedItems || []);
+      setFailedItemIds(new Set((data.failedItems || []).map(f => f.item_id)));
+      setPreviousAuditInfo(data.previousAudit);
+      
+      // Show alert if there are failures
+      if ((data.failedItems && data.failedItems.length > 0) || (data.recurringFailures && data.recurringFailures.length > 0)) {
+        setShowFailuresAlert(true);
+      }
+    } catch (error) {
+      console.error('Error fetching previous failures:', error);
+      // Don't show error to user, just continue without highlighting
+    }
+  }, []);
+
+  // Fetch previous failures when template and location are selected
+  useEffect(() => {
+    const tmplId = template?.id || templateId;
+    
+    if (tmplId && locationId && !isEditing) {
+      fetchPreviousFailures(tmplId, locationId);
+    }
+  }, [template?.id, templateId, locationId, isEditing, fetchPreviousFailures]);
 
   const handleResponseChange = (itemId, status) => {
     if (auditStatus === 'completed') {
@@ -636,6 +675,31 @@ const AuditForm = () => {
               </Box>
             </Paper>
 
+            {/* Previous failures summary banner */}
+            {previousAuditInfo && previousFailures.length > 0 && (
+              <Alert 
+                severity="warning" 
+                sx={{ 
+                  mb: 2, 
+                  '& .MuiAlert-icon': { color: 'warning.dark' }
+                }}
+                onClose={() => setShowFailuresAlert(false)}
+              >
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>
+                    ⚠️ {previousFailures.length} item(s) failed in the last audit 
+                    ({new Date(previousAuditInfo.date).toLocaleDateString()})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Previous score: {previousAuditInfo.score}% • Failed items are highlighted below
+                    {previousFailures.filter(f => f.is_recurring).length > 0 && 
+                      ` • ${previousFailures.filter(f => f.is_recurring).length} recurring issue(s)`
+                    }
+                  </Typography>
+                </Box>
+              </Alert>
+            )}
+            
             {(() => {
               const requiredItems = items.filter(item => item.required);
               const missingRequired = requiredItems.filter(item => {
@@ -650,18 +714,75 @@ const AuditForm = () => {
                 </Alert>
               ) : null;
             })()}
-            {items.map((item, index) => (
+            {items.map((item, index) => {
+              const isPreviousFailure = failedItemIds.has(item.id);
+              const failureInfo = previousFailures.find(f => f.item_id === item.id);
+              
+              return (
               <Card 
                 key={item.id} 
-                className="audit-item-card"
+                className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''}`}
                 sx={{ 
                   mb: isMobile ? 2 : 2,
-                  border: '1px solid',
-                  borderColor: selectedOptions[item.id] ? 'primary.main' : 'divider',
+                  border: isPreviousFailure ? '2px solid' : '1px solid',
+                  borderColor: isPreviousFailure 
+                    ? 'error.main' 
+                    : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
+                  backgroundColor: isPreviousFailure ? '#FFF5F5' : 'background.paper',
                   transition: 'border-color 0.2s',
                 }}
               >
                 <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+                  {/* Previous failure warning banner */}
+                  {isPreviousFailure && (
+                    <Alert 
+                      severity="warning" 
+                      icon={<span style={{ fontSize: '1rem' }}>⚠️</span>}
+                      sx={{ 
+                        mb: 2, 
+                        py: 0.5,
+                        backgroundColor: '#FFE5E5',
+                        '& .MuiAlert-message': { fontSize: '0.85rem' }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="body2" fontWeight={600} color="error.dark">
+                          Failed in last audit
+                          {failureInfo?.failure_count > 1 && ` (${failureInfo.failure_count}x in 6 months)`}
+                        </Typography>
+                        {failureInfo?.is_recurring && (
+                          <Chip 
+                            label="RECURRING" 
+                            size="small" 
+                            color="error" 
+                            sx={{ fontSize: '0.6rem', height: 18, fontWeight: 700 }} 
+                          />
+                        )}
+                      </Box>
+                    </Alert>
+                  )}
+                  
+                  {/* Previous comment if available */}
+                  {isPreviousFailure && failureInfo?.comment && (
+                    <Box 
+                      sx={{ 
+                        mb: 2, 
+                        p: 1.5, 
+                        backgroundColor: '#FFF0E5', 
+                        borderRadius: 1,
+                        borderLeft: '3px solid',
+                        borderLeftColor: 'warning.main'
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Previous comment:
+                      </Typography>
+                      <Typography variant="body2" fontStyle="italic" sx={{ mt: 0.5 }}>
+                        "{failureInfo.comment}"
+                      </Typography>
+                    </Box>
+                  )}
+                  
                   <Box sx={{ 
                     display: 'flex', 
                     alignItems: isMobile ? 'flex-start' : 'center', 
@@ -895,7 +1016,8 @@ const AuditForm = () => {
                   </Box>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
 
             {/* Mobile: Fixed bottom action bar, Desktop: Regular buttons */}
             {isMobile ? (

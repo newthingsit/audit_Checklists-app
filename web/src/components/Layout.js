@@ -41,6 +41,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
@@ -77,6 +78,7 @@ const Layout = ({ children }) => {
     ...(hasPermission(userPermissions, 'view_analytics') || isAdmin(user) ? [
       { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
       { text: 'Store Analytics', icon: <StorefrontIcon />, path: '/store-analytics' },
+      { text: 'Recurring Failures', icon: <WarningAmberIcon />, path: '/recurring-failures' },
       { text: 'Location Verification', icon: <GpsFixedIcon />, path: '/location-verification' },
       { text: 'Monthly Scorecard', icon: <AssessmentIcon />, path: '/scorecard' }
     ] : []),
@@ -139,6 +141,7 @@ const Layout = ({ children }) => {
       '/profile': 'Profile',
       '/settings': 'Settings',
       '/store-analytics': 'Store Analytics',
+      '/recurring-failures': 'Recurring Failures',
       '/location-verification': 'Location Verification',
     };
     return titles[location.pathname] || 'Dashboard';

@@ -50,6 +50,12 @@ const AuditFormScreen = () => {
   const [capturedLocation, setCapturedLocation] = useState(null);
   const [locationVerified, setLocationVerified] = useState(false);
   const [showLocationVerification, setShowLocationVerification] = useState(false);
+  
+  // Previous failures state for highlighting recurring issues
+  const [previousFailures, setPreviousFailures] = useState([]);
+  const [failedItemIds, setFailedItemIds] = useState(new Set());
+  const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
+  const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
 
   useEffect(() => {
     if (auditId) {
@@ -228,6 +234,53 @@ const AuditFormScreen = () => {
       console.error('Error fetching locations:', error);
     }
   };
+
+  // Fetch previous audit failures to highlight recurring issues
+  const fetchPreviousFailures = async (tmplId, locId) => {
+    if (!tmplId || !locId) return;
+    
+    setLoadingPreviousFailures(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/audits/previous-failures`, {
+        params: { template_id: tmplId, location_id: locId, months_back: 3 }
+      });
+      
+      const data = response.data;
+      setPreviousFailures(data.failedItems || []);
+      setFailedItemIds(new Set((data.failedItems || []).map(f => f.item_id)));
+      setPreviousAuditInfo(data.previousAudit);
+      
+      // Show alert if there are recurring failures
+      if (data.recurringFailures && data.recurringFailures.length > 0) {
+        Alert.alert(
+          '⚠️ Recurring Issues Found',
+          `${data.recurringFailures.length} item(s) have failed 3+ times in the last 6 months. These will be highlighted in red during the audit.`,
+          [{ text: 'OK', style: 'default' }]
+        );
+      } else if (data.failedItems && data.failedItems.length > 0) {
+        Alert.alert(
+          '📋 Previous Failures',
+          `${data.failedItems.length} item(s) failed in the last audit on ${new Date(data.previousAudit.date).toLocaleDateString()}. These will be highlighted during the audit.`,
+          [{ text: 'OK', style: 'default' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching previous failures:', error);
+      // Don't show error to user, just continue without highlighting
+    } finally {
+      setLoadingPreviousFailures(false);
+    }
+  };
+
+  // Fetch previous failures when template and location are selected
+  useEffect(() => {
+    const tmplId = template?.id || templateId;
+    const locId = selectedLocation?.id || locationId;
+    
+    if (tmplId && locId && !isEditing) {
+      fetchPreviousFailures(tmplId, locId);
+    }
+  }, [template?.id, templateId, selectedLocation?.id, locationId, isEditing]);
 
   const handleResponseChange = (itemId, status) => {
     if (auditStatus === 'completed') {
@@ -733,8 +786,51 @@ const AuditFormScreen = () => {
           </View>
 
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            {items.map((item, index) => (
-              <View key={item.id} style={styles.itemCard}>
+            {/* Previous failures summary banner */}
+            {previousAuditInfo && previousFailures.length > 0 && (
+              <View style={styles.previousFailuresBanner}>
+                <Icon name="history" size={18} color={themeConfig.warning.dark} />
+                <Text style={styles.previousFailuresBannerText}>
+                  {previousFailures.length} item(s) failed in last audit ({new Date(previousAuditInfo.date).toLocaleDateString()})
+                </Text>
+              </View>
+            )}
+            
+            {items.map((item, index) => {
+              const isPreviousFailure = failedItemIds.has(item.id);
+              const failureInfo = previousFailures.find(f => f.item_id === item.id);
+              
+              return (
+              <View 
+                key={item.id} 
+                style={[
+                  styles.itemCard,
+                  isPreviousFailure && styles.itemCardPreviousFailure
+                ]}
+              >
+                {/* Previous failure warning banner */}
+                {isPreviousFailure && (
+                  <View style={styles.previousFailureWarning}>
+                    <Icon name="warning" size={16} color={themeConfig.error.dark} />
+                    <Text style={styles.previousFailureWarningText}>
+                      Failed in last audit {failureInfo?.failure_count > 1 ? `(${failureInfo.failure_count}x in 6 months)` : ''}
+                    </Text>
+                    {failureInfo?.is_recurring && (
+                      <View style={styles.recurringBadge}>
+                        <Text style={styles.recurringBadgeText}>RECURRING</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                
+                {/* Previous failure comment if available */}
+                {isPreviousFailure && failureInfo?.comment && (
+                  <View style={styles.previousCommentBox}>
+                    <Text style={styles.previousCommentLabel}>Previous comment:</Text>
+                    <Text style={styles.previousCommentText}>"{failureInfo.comment}"</Text>
+                  </View>
+                )}
+                
                 <View style={styles.itemHeader}>
                   <Text style={styles.itemTitle}>
                     {index + 1}. {item.title}
@@ -842,7 +938,8 @@ const AuditFormScreen = () => {
                   />
                 </View>
               </View>
-            ))}
+              );
+            })}
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -966,6 +1063,73 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: themeConfig.border.default,
     ...themeConfig.shadows.small,
+  },
+  itemCardPreviousFailure: {
+    borderColor: themeConfig.error.main,
+    borderWidth: 2,
+    backgroundColor: '#FFF5F5',
+  },
+  previousFailuresBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.warning.bg,
+    padding: 12,
+    borderRadius: themeConfig.borderRadius.medium,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: themeConfig.warning.main,
+  },
+  previousFailuresBannerText: {
+    marginLeft: 8,
+    color: themeConfig.warning.dark,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  previousFailureWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFE5E5',
+    padding: 10,
+    borderRadius: themeConfig.borderRadius.small,
+    marginBottom: 12,
+  },
+  previousFailureWarningText: {
+    marginLeft: 8,
+    color: themeConfig.error.dark,
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  recurringBadge: {
+    backgroundColor: themeConfig.error.main,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  recurringBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  previousCommentBox: {
+    backgroundColor: '#FFF0E5',
+    padding: 10,
+    borderRadius: themeConfig.borderRadius.small,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: themeConfig.warning.main,
+  },
+  previousCommentLabel: {
+    fontSize: 11,
+    color: themeConfig.text.secondary,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  previousCommentText: {
+    fontSize: 12,
+    color: themeConfig.text.primary,
+    fontStyle: 'italic',
   },
   required: {
     color: themeConfig.error.main,

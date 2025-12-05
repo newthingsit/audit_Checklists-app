@@ -836,5 +836,312 @@ router.get('/trends/weekly', authenticate, (req, res) => {
   });
 });
 
+// ========================================
+// RECURRING FAILURES ANALYTICS
+// ========================================
+
+// Get recurring failures dashboard data
+router.get('/recurring-failures', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { template_id, location_id, date_from, date_to } = req.query;
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Build date filter
+  let dateFilter = '';
+  const params = [];
+  
+  if (isMssql) {
+    dateFilter = 'AND a.created_at >= DATEADD(month, -6, GETDATE())';
+    if (date_from) {
+      dateFilter = 'AND a.created_at >= ?';
+      params.push(date_from);
+    }
+    if (date_to) {
+      dateFilter += ' AND a.created_at <= ?';
+      params.push(date_to);
+    }
+  } else {
+    dateFilter = "AND a.created_at >= date('now', '-6 months')";
+    if (date_from) {
+      dateFilter = 'AND a.created_at >= ?';
+      params.push(date_from);
+    }
+    if (date_to) {
+      dateFilter += ' AND a.created_at <= ?';
+      params.push(date_to);
+    }
+  }
+  
+  // Add template and location filters if provided
+  let templateFilter = '';
+  let locationFilter = '';
+  if (template_id) {
+    templateFilter = 'AND a.template_id = ?';
+    params.push(template_id);
+  }
+  if (location_id) {
+    locationFilter = 'AND a.location_id = ?';
+    params.push(location_id);
+  }
+  
+  // Query for items that failed 2+ times
+  let recurringQuery;
+  if (isMssql) {
+    recurringQuery = `
+      SELECT 
+        ci.id as item_id,
+        ci.title,
+        ci.category,
+        ct.id as template_id,
+        ct.name as template_name,
+        COUNT(DISTINCT a.id) as failure_count,
+        COUNT(DISTINCT a.location_id) as stores_affected,
+        MAX(a.created_at) as last_failure_date,
+        COALESCE(ci.is_critical, 0) as is_critical
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON ci.template_id = ct.id
+      WHERE a.status = 'completed'
+        ${dateFilter}
+        ${templateFilter}
+        ${locationFilter}
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+        )
+      GROUP BY ci.id, ci.title, ci.category, ct.id, ct.name, ci.is_critical
+      HAVING COUNT(DISTINCT a.id) >= 2
+      ORDER BY failure_count DESC, stores_affected DESC
+    `;
+  } else {
+    recurringQuery = `
+      SELECT 
+        ci.id as item_id,
+        ci.title,
+        ci.category,
+        ct.id as template_id,
+        ct.name as template_name,
+        COUNT(DISTINCT a.id) as failure_count,
+        COUNT(DISTINCT a.location_id) as stores_affected,
+        MAX(a.created_at) as last_failure_date,
+        COALESCE(ci.is_critical, 0) as is_critical
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON ci.template_id = ct.id
+      WHERE a.status = 'completed'
+        ${dateFilter}
+        ${templateFilter}
+        ${locationFilter}
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+        )
+      GROUP BY ci.id, ci.title, ci.category, ct.id, ct.name, ci.is_critical
+      HAVING COUNT(DISTINCT a.id) >= 2
+      ORDER BY failure_count DESC, stores_affected DESC
+    `;
+  }
+  
+  dbInstance.all(recurringQuery, params, (err, recurringItems) => {
+    if (err) {
+      logger.error('Error fetching recurring failures:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Get summary by store
+    let storeQuery;
+    const storeParams = [...params]; // Clone params
+    
+    if (isMssql) {
+      storeQuery = `
+        SELECT 
+          l.id as store_id,
+          l.name as store_name,
+          l.store_number,
+          COUNT(DISTINCT ai.item_id) as recurring_items,
+          COUNT(DISTINCT a.id) as audits_with_failures
+        FROM audit_items ai
+        JOIN audits a ON ai.audit_id = a.id
+        LEFT JOIN locations l ON a.location_id = l.id
+        WHERE a.status = 'completed'
+          ${dateFilter}
+          ${templateFilter}
+          ${locationFilter}
+          AND (
+            ai.mark = '0' 
+            OR ai.mark = 'No' 
+            OR ai.mark = 'Fail'
+            OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+          )
+        GROUP BY l.id, l.name, l.store_number
+        HAVING COUNT(DISTINCT ai.item_id) >= 2
+        ORDER BY recurring_items DESC
+      `;
+    } else {
+      storeQuery = `
+        SELECT 
+          l.id as store_id,
+          l.name as store_name,
+          l.store_number,
+          COUNT(DISTINCT ai.item_id) as recurring_items,
+          COUNT(DISTINCT a.id) as audits_with_failures
+        FROM audit_items ai
+        JOIN audits a ON ai.audit_id = a.id
+        LEFT JOIN locations l ON a.location_id = l.id
+        WHERE a.status = 'completed'
+          ${dateFilter}
+          ${templateFilter}
+          ${locationFilter}
+          AND (
+            ai.mark = '0' 
+            OR ai.mark = 'No' 
+            OR ai.mark = 'Fail'
+            OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+          )
+        GROUP BY l.id, l.name, l.store_number
+        HAVING COUNT(DISTINCT ai.item_id) >= 2
+        ORDER BY recurring_items DESC
+      `;
+    }
+    
+    dbInstance.all(storeQuery, storeParams, (err, byStore) => {
+      if (err) {
+        logger.error('Error fetching recurring by store:', err);
+        byStore = [];
+      }
+      
+      // Group items by template
+      const byTemplate = {};
+      (recurringItems || []).forEach(item => {
+        if (!byTemplate[item.template_id]) {
+          byTemplate[item.template_id] = {
+            template_id: item.template_id,
+            template_name: item.template_name,
+            recurring_items: []
+          };
+        }
+        byTemplate[item.template_id].recurring_items.push({
+          item_id: item.item_id,
+          title: item.title,
+          category: item.category,
+          failure_count: item.failure_count,
+          stores_affected: item.stores_affected,
+          last_failure_date: item.last_failure_date,
+          is_critical: item.is_critical
+        });
+      });
+      
+      // Calculate summary
+      const allItems = recurringItems || [];
+      const criticalRecurring = allItems.filter(i => i.failure_count >= 3 || i.is_critical);
+      const storesWithRecurring = new Set(allItems.map(i => i.stores_affected)).size;
+      
+      res.json({
+        summary: {
+          total_recurring_items: allItems.length,
+          critical_recurring: criticalRecurring.length,
+          stores_with_recurring: (byStore || []).length,
+          most_failed_item: allItems.length > 0 ? allItems[0] : null
+        },
+        by_template: Object.values(byTemplate),
+        by_store: byStore || [],
+        all_items: allItems,
+        generated_at: new Date().toISOString(),
+        filters: {
+          template_id: template_id || 'all',
+          location_id: location_id || 'all',
+          date_from: date_from || '6 months ago',
+          date_to: date_to || 'now'
+        }
+      });
+    });
+  });
+});
+
+// Get recurring failures trend over time
+router.get('/recurring-failures/trend', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { template_id, location_id, months = 6 } = req.query;
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  let params = [];
+  let templateFilter = '';
+  let locationFilter = '';
+  
+  if (template_id) {
+    templateFilter = 'AND a.template_id = ?';
+    params.push(template_id);
+  }
+  if (location_id) {
+    locationFilter = 'AND a.location_id = ?';
+    params.push(location_id);
+  }
+  
+  let query;
+  if (isMssql) {
+    query = `
+      SELECT 
+        FORMAT(a.created_at, 'yyyy-MM') as month,
+        COUNT(DISTINCT CASE 
+          WHEN ai.mark = '0' OR ai.mark = 'No' OR ai.mark = 'Fail' 
+               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+          THEN ai.item_id 
+        END) as failed_items,
+        COUNT(DISTINCT a.id) as total_audits,
+        COUNT(DISTINCT a.location_id) as stores_audited
+      FROM audits a
+      LEFT JOIN audit_items ai ON ai.audit_id = a.id
+      WHERE a.status = 'completed'
+        AND a.created_at >= DATEADD(month, -${parseInt(months) || 6}, GETDATE())
+        ${templateFilter}
+        ${locationFilter}
+      GROUP BY FORMAT(a.created_at, 'yyyy-MM')
+      ORDER BY month
+    `;
+  } else {
+    query = `
+      SELECT 
+        strftime('%Y-%m', a.created_at) as month,
+        COUNT(DISTINCT CASE 
+          WHEN ai.mark = '0' OR ai.mark = 'No' OR ai.mark = 'Fail' 
+               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+          THEN ai.item_id 
+        END) as failed_items,
+        COUNT(DISTINCT a.id) as total_audits,
+        COUNT(DISTINCT a.location_id) as stores_audited
+      FROM audits a
+      LEFT JOIN audit_items ai ON ai.audit_id = a.id
+      WHERE a.status = 'completed'
+        AND a.created_at >= date('now', '-${parseInt(months) || 6} months')
+        ${templateFilter}
+        ${locationFilter}
+      GROUP BY strftime('%Y-%m', a.created_at)
+      ORDER BY month
+    `;
+  }
+  
+  dbInstance.all(query, params, (err, trend) => {
+    if (err) {
+      logger.error('Error fetching recurring failures trend:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({
+      trend: trend || [],
+      months: parseInt(months) || 6
+    });
+  });
+});
+
 module.exports = router;
 

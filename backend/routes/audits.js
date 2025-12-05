@@ -1421,5 +1421,352 @@ router.post('/bulk-delete', authenticate, (req, res) => {
   });
 });
 
+// ========================================
+// RECURRING FAILURES ENDPOINTS
+// ========================================
+
+// Get previous audit failures for highlighting during new audit
+router.get('/previous-failures', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const { template_id, location_id, months_back = 1 } = req.query;
+  
+  if (!template_id || !location_id) {
+    return res.status(400).json({ error: 'template_id and location_id are required' });
+  }
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Get the most recent completed audit for this template and location
+  let previousAuditQuery;
+  if (isSqlServer) {
+    previousAuditQuery = `
+      SELECT TOP 1 a.id, a.score, a.created_at, a.completed_at,
+             ct.name as template_name, l.name as location_name
+      FROM audits a
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      WHERE a.template_id = ? 
+        AND a.location_id = ? 
+        AND a.status = 'completed'
+        AND a.created_at >= DATEADD(month, -?, GETDATE())
+      ORDER BY a.created_at DESC
+    `;
+  } else {
+    previousAuditQuery = `
+      SELECT a.id, a.score, a.created_at, a.completed_at,
+             ct.name as template_name, l.name as location_name
+      FROM audits a
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      LEFT JOIN locations l ON a.location_id = l.id
+      WHERE a.template_id = ? 
+        AND a.location_id = ? 
+        AND a.status = 'completed'
+        AND a.created_at >= date('now', '-' || ? || ' months')
+      ORDER BY a.created_at DESC
+      LIMIT 1
+    `;
+  }
+  
+  dbInstance.get(previousAuditQuery, [template_id, location_id, months_back], (err, previousAudit) => {
+    if (err) {
+      logger.error('Error fetching previous audit:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (!previousAudit) {
+      return res.json({
+        previousAudit: null,
+        failedItems: [],
+        recurringFailures: [],
+        message: 'No previous completed audit found for this location and template'
+      });
+    }
+    
+    // Get failed items from the previous audit (items with mark = 0 or 'No' or score < passing)
+    const failedItemsQuery = `
+      SELECT 
+        ai.item_id,
+        ci.title,
+        ci.description,
+        ci.category,
+        ai.mark,
+        ai.comment,
+        ai.photo_url,
+        COALESCE(ci.weight, 1) as weight,
+        COALESCE(ci.is_critical, 0) as is_critical
+      FROM audit_items ai
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      WHERE ai.audit_id = ?
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS FLOAT) = 0)
+        )
+      ORDER BY ci.order_index, ci.id
+    `;
+    
+    dbInstance.all(failedItemsQuery, [previousAudit.id], (err, failedItems) => {
+      if (err) {
+        logger.error('Error fetching failed items:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      // Get historical failure count for each item (last 6 months)
+      let historyQuery;
+      if (isSqlServer) {
+        historyQuery = `
+          SELECT 
+            ai.item_id,
+            COUNT(*) as failure_count
+          FROM audit_items ai
+          JOIN audits a ON ai.audit_id = a.id
+          WHERE a.template_id = ?
+            AND a.location_id = ?
+            AND a.status = 'completed'
+            AND a.created_at >= DATEADD(month, -6, GETDATE())
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+            )
+          GROUP BY ai.item_id
+          HAVING COUNT(*) >= 2
+        `;
+      } else {
+        historyQuery = `
+          SELECT 
+            ai.item_id,
+            COUNT(*) as failure_count
+          FROM audit_items ai
+          JOIN audits a ON ai.audit_id = a.id
+          WHERE a.template_id = ?
+            AND a.location_id = ?
+            AND a.status = 'completed'
+            AND a.created_at >= date('now', '-6 months')
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+            )
+          GROUP BY ai.item_id
+          HAVING COUNT(*) >= 2
+        `;
+      }
+      
+      dbInstance.all(historyQuery, [template_id, location_id], (err, recurringFailures) => {
+        if (err) {
+          logger.error('Error fetching recurring failures:', err);
+          // Continue without recurring data
+          recurringFailures = [];
+        }
+        
+        // Create a map of recurring failures for quick lookup
+        const recurringMap = new Map();
+        (recurringFailures || []).forEach(rf => {
+          recurringMap.set(rf.item_id, rf.failure_count);
+        });
+        
+        // Enhance failed items with failure count
+        const enhancedFailedItems = (failedItems || []).map(item => ({
+          ...item,
+          failure_count: recurringMap.get(item.item_id) || 1,
+          is_recurring: recurringMap.has(item.item_id)
+        }));
+        
+        // Get items that are recurring (failed 3+ times)
+        let recurringItemsQuery;
+        if (isSqlServer) {
+          recurringItemsQuery = `
+            SELECT 
+              ci.id as item_id,
+              ci.title,
+              ci.category,
+              ci.description,
+              COUNT(*) as failure_count,
+              MAX(a.created_at) as last_failure_date
+            FROM audit_items ai
+            JOIN audits a ON ai.audit_id = a.id
+            JOIN checklist_items ci ON ai.item_id = ci.id
+            WHERE a.template_id = ?
+              AND a.location_id = ?
+              AND a.status = 'completed'
+              AND a.created_at >= DATEADD(month, -6, GETDATE())
+              AND (
+                ai.mark = '0' 
+                OR ai.mark = 'No' 
+                OR ai.mark = 'Fail'
+                OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+              )
+            GROUP BY ci.id, ci.title, ci.category, ci.description
+            HAVING COUNT(*) >= 3
+            ORDER BY failure_count DESC
+          `;
+        } else {
+          recurringItemsQuery = `
+            SELECT 
+              ci.id as item_id,
+              ci.title,
+              ci.category,
+              ci.description,
+              COUNT(*) as failure_count,
+              MAX(a.created_at) as last_failure_date
+            FROM audit_items ai
+            JOIN audits a ON ai.audit_id = a.id
+            JOIN checklist_items ci ON ai.item_id = ci.id
+            WHERE a.template_id = ?
+              AND a.location_id = ?
+              AND a.status = 'completed'
+              AND a.created_at >= date('now', '-6 months')
+              AND (
+                ai.mark = '0' 
+                OR ai.mark = 'No' 
+                OR ai.mark = 'Fail'
+                OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+              )
+            GROUP BY ci.id, ci.title, ci.category, ci.description
+            HAVING COUNT(*) >= 3
+            ORDER BY failure_count DESC
+          `;
+        }
+        
+        dbInstance.all(recurringItemsQuery, [template_id, location_id], (err, criticalRecurring) => {
+          if (err) {
+            logger.error('Error fetching critical recurring:', err);
+            criticalRecurring = [];
+          }
+          
+          res.json({
+            previousAudit: {
+              id: previousAudit.id,
+              date: previousAudit.completed_at || previousAudit.created_at,
+              score: previousAudit.score,
+              template_name: previousAudit.template_name,
+              location_name: previousAudit.location_name,
+              failed_count: enhancedFailedItems.length
+            },
+            failedItems: enhancedFailedItems,
+            recurringFailures: criticalRecurring || [],
+            summary: {
+              total_failed_last_audit: enhancedFailedItems.length,
+              recurring_items: (criticalRecurring || []).length,
+              critical_recurring: (criticalRecurring || []).filter(i => i.failure_count >= 4).length
+            }
+          });
+        });
+      });
+    });
+  });
+});
+
+// Get recurring failures summary for a specific store across all templates
+router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const locationId = parseInt(req.params.locationId);
+  
+  if (isNaN(locationId)) {
+    return res.status(400).json({ error: 'Invalid location ID' });
+  }
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  let query;
+  if (isSqlServer) {
+    query = `
+      SELECT 
+        ci.id as item_id,
+        ci.title,
+        ci.category,
+        ct.name as template_name,
+        ct.id as template_id,
+        COUNT(*) as failure_count,
+        MAX(a.created_at) as last_failure_date,
+        STRING_AGG(CAST(a.id AS VARCHAR), ',') as audit_ids
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      WHERE a.location_id = ?
+        AND a.status = 'completed'
+        AND a.created_at >= DATEADD(month, -6, GETDATE())
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+        )
+      GROUP BY ci.id, ci.title, ci.category, ct.name, ct.id
+      HAVING COUNT(*) >= 2
+      ORDER BY failure_count DESC, ci.category
+    `;
+  } else {
+    query = `
+      SELECT 
+        ci.id as item_id,
+        ci.title,
+        ci.category,
+        ct.name as template_name,
+        ct.id as template_id,
+        COUNT(*) as failure_count,
+        MAX(a.created_at) as last_failure_date,
+        GROUP_CONCAT(a.id) as audit_ids
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      WHERE a.location_id = ?
+        AND a.status = 'completed'
+        AND a.created_at >= date('now', '-6 months')
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+        )
+      GROUP BY ci.id, ci.title, ci.category, ct.name, ct.id
+      HAVING COUNT(*) >= 2
+      ORDER BY failure_count DESC, ci.category
+    `;
+  }
+  
+  dbInstance.all(query, [locationId], (err, failures) => {
+    if (err) {
+      logger.error('Error fetching recurring failures by store:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Group by template
+    const byTemplate = {};
+    (failures || []).forEach(f => {
+      if (!byTemplate[f.template_id]) {
+        byTemplate[f.template_id] = {
+          template_id: f.template_id,
+          template_name: f.template_name,
+          items: []
+        };
+      }
+      byTemplate[f.template_id].items.push({
+        item_id: f.item_id,
+        title: f.title,
+        category: f.category,
+        failure_count: f.failure_count,
+        last_failure_date: f.last_failure_date
+      });
+    });
+    
+    res.json({
+      location_id: locationId,
+      total_recurring_items: (failures || []).length,
+      critical_items: (failures || []).filter(f => f.failure_count >= 3).length,
+      by_template: Object.values(byTemplate),
+      all_failures: failures || []
+    });
+  });
+});
+
 module.exports = router;
 
