@@ -258,9 +258,12 @@ const AuditFormScreen = () => {
           [{ text: 'OK', style: 'default' }]
         );
       } else if (data.failedItems && data.failedItems.length > 0) {
+        const dateStr = data.previousAudit?.date 
+          ? new Date(data.previousAudit.date).toLocaleDateString()
+          : 'previously';
         Alert.alert(
           '📋 Previous Failures',
-          `${data.failedItems.length} item(s) failed in the last audit on ${new Date(data.previousAudit.date).toLocaleDateString()}. These will be highlighted during the audit.`,
+          `${data.failedItems.length} item(s) failed in the last audit${dateStr !== 'previously' ? ` on ${dateStr}` : ''}. These will be highlighted during the audit.`,
           [{ text: 'OK', style: 'default' }]
         );
       }

@@ -1144,4 +1144,3 @@ router.get('/recurring-failures/trend', authenticate, (req, res) => {
 });
 
 module.exports = router;
-
