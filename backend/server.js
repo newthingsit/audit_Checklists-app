@@ -29,10 +29,19 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 // This ensures CORS headers are present even when errors occur
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  const isProduction = process.env.NODE_ENV === 'production';
   
-  // Always set CORS headers for allowed origins
-  if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  // Determine if origin is allowed:
+  // 1. No origin (mobile apps, Postman, etc.) - always allow
+  // 2. Origin is in the allowlist - always allow
+  // 3. Development mode - allow all for easier testing
+  // Note: strictCORS only affects whether to LOG or BLOCK in production (handled in backup middleware)
+  const isAllowed = !origin || allowedOrigins.includes(origin) || !isProduction;
+  
+  if (isAllowed) {
+    // Use specific origin (not *) when credentials are required, unless no origin (mobile apps)
+    const corsOrigin = origin || (!isProduction ? '*' : allowedOrigins[0]);
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -42,7 +51,7 @@ app.use((req, res, next) => {
   
   // Handle preflight immediately
   if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+    return res.status(isAllowed ? 204 : 403).end();
   }
   
   next();
@@ -74,18 +83,30 @@ app.use(helmet({
 }));
 
 // Standard CORS middleware as backup (handles edge cases)
+// Note: First middleware handles CORS, this is a fallback for edge cases
 app.use(cors({
   origin: (origin, callback) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const strictCORS = process.env.STRICT_CORS === 'true';
+    
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
+    // In development, always allow
+    if (!isProduction) return callback(null, true);
+    
+    // In production with strict mode, enforce allowlist
+    if (strictCORS && !allowedOrigins.includes(origin)) {
       logger.security('cors_blocked', { origin, allowedOrigins });
-      // Still allow the request but log it - better UX than blocking
-      callback(null, true);
+      return callback(new Error('Not allowed by CORS policy'));
     }
+    
+    // In production without strict mode, allow but log
+    if (!allowedOrigins.includes(origin)) {
+      logger.security('cors_allowed_but_not_in_allowlist', { origin, allowedOrigins });
+    }
+    
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],

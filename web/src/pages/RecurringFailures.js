@@ -183,10 +183,22 @@ const RecurringFailures = () => {
     if (storeName.length > 25) {
       storeName = storeName.substring(0, 22) + '...';
     }
+    
+    // Safely extract failures count - handle both number and array cases
+    let failuresCount = 0;
+    if (typeof s.recurring_items === 'number') {
+      failuresCount = s.recurring_items;
+    } else if (Array.isArray(s.recurring_items)) {
+      failuresCount = s.recurring_items.length;
+    } else if (s.recurring_items != null) {
+      // Try to convert to number if it's a string representation
+      failuresCount = parseInt(s.recurring_items, 10) || 0;
+    }
+    
     return {
       name: storeName,
       fullName: s.store_name || `Store ${s.store_number}`, // For tooltip
-      failures: s.recurring_items || 0,
+      failures: failuresCount,
       storeNumber: s.store_number
     };
   });

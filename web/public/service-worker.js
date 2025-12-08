@@ -43,10 +43,32 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
   // Force clear all caches on request
+  // Note: Using Promise.all ensures all deletions complete before worker can terminate
   if (event.data && event.data.type === 'CLEAR_CACHE') {
-    caches.keys().then((names) => {
-      names.forEach((name) => caches.delete(name));
-    });
+    const clearPromise = caches.keys()
+      .then((names) => Promise.all(names.map((name) => caches.delete(name))))
+      .then(() => {
+        console.log('All caches cleared successfully');
+        // Notify client if possible
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: true });
+        }
+      })
+      .catch((err) => {
+        console.error('Error clearing caches:', err);
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: false, error: err.message });
+        }
+      });
+    
+    // Keep service worker alive until cache clearing completes
+    // This pattern works in message handlers to prevent premature termination
+    if (event.waitUntil) {
+      event.waitUntil(clearPromise);
+    } else {
+      // Fallback: ensure promise is tracked
+      self._cacheClearPromise = clearPromise;
+    }
   }
 });
 
