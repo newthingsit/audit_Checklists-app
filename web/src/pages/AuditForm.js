@@ -655,7 +655,7 @@ const AuditForm = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
                   {completedItems} / {items.length}
-                </Typography>
+              </Typography>
                 <LinearProgress 
                   variant="determinate" 
                   value={(completedItems / items.length) * 100} 
@@ -699,7 +699,7 @@ const AuditForm = () => {
                 </Box>
               </Alert>
             )}
-            
+
             {(() => {
               const requiredItems = items.filter(item => item.required);
               const missingRequired = requiredItems.filter(item => {
@@ -738,8 +738,8 @@ const AuditForm = () => {
                     <Alert 
                       severity="warning" 
                       icon={<span style={{ fontSize: '1rem' }}>⚠️</span>}
-                      sx={{ 
-                        mb: 2, 
+                sx={{ 
+                  mb: 2,
                         py: 0.5,
                         backgroundColor: '#FFE5E5',
                         '& .MuiAlert-message': { fontSize: '0.85rem' }
@@ -772,8 +772,8 @@ const AuditForm = () => {
                         borderRadius: 1,
                         borderLeft: '3px solid',
                         borderLeftColor: 'warning.main'
-                      }}
-                    >
+                }}
+              >
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>
                         Previous comment:
                       </Typography>
@@ -817,7 +817,7 @@ const AuditForm = () => {
                       gap: 1,
                       ...(isMobile && { alignSelf: 'flex-end' })
                     }}>
-                      {getStatusIcon(responses[item.id])}
+                    {getStatusIcon(responses[item.id])}
                     </Box>
                   </Box>
                   {item.description && (
@@ -1053,16 +1053,16 @@ const AuditForm = () => {
                 </Button>
               </Box>
             ) : (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-                <Button onClick={handleBack}>Back</Button>
-                <Button
-                  onClick={handleSubmit}
-                  variant="contained"
-                  disabled={saving || auditStatus === 'completed'}
-                >
-                  {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
-                </Button>
-              </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+              <Button onClick={handleBack}>Back</Button>
+              <Button
+                onClick={handleSubmit}
+                variant="contained"
+                disabled={saving || auditStatus === 'completed'}
+              >
+                {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
+              </Button>
+            </Box>
             )}
           </Box>
         )}

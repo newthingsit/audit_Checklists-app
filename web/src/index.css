@@ -59,7 +59,7 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
 /* For Safari, Chrome, and other mobile browsers */
 
 @media (max-width: 768px) {
-  /* Hide scrollbars on mobile for cleaner look */
+/* Hide scrollbars on mobile for cleaner look */
   ::-webkit-scrollbar {
     display: none;
   }

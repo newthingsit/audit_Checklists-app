@@ -21,14 +21,18 @@ const init = () => {
           encrypt: shouldEncrypt,
           trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
           enableArithAbort: true,
-          connectionTimeout: 30000,
-          requestTimeout: 30000
+          connectionTimeout: 60000, // Increased for Azure cold starts
+          requestTimeout: 60000
         },
         pool: {
           max: 10,
           min: 2, // Keep minimum connections alive to prevent cold start issues
-          idleTimeoutMillis: 60000, // Increase idle timeout for Azure
-          acquireTimeoutMillis: 30000 // Timeout for acquiring a connection
+          idleTimeoutMillis: 300000, // 5 minutes - keep connections alive longer for Azure
+          acquireTimeoutMillis: 60000, // Increased timeout for acquiring a connection
+          createTimeoutMillis: 60000,
+          destroyTimeoutMillis: 5000,
+          reapIntervalMillis: 1000,
+          createRetryIntervalMillis: 200
         }
       };
 
@@ -43,9 +47,42 @@ const init = () => {
   });
 };
 
+// Check if error is a connection-related error that should trigger reconnection
+const isConnectionError = (error) => {
+  if (!error) return false;
+  const errorMessage = (error.message || '').toLowerCase();
+  const errorCode = error.code || '';
+  return (
+    errorMessage.includes('connection') ||
+    errorMessage.includes('network') ||
+    errorMessage.includes('timeout') ||
+    errorMessage.includes('socket') ||
+    errorMessage.includes('econnreset') ||
+    errorMessage.includes('econnrefused') ||
+    errorMessage.includes('pool') ||
+    errorCode === 'ESOCKET' ||
+    errorCode === 'ECONNRESET' ||
+    errorCode === 'ETIMEOUT' ||
+    errorCode === 'ECONNCLOSED'
+  );
+};
+
+// Force close existing pool before reconnection
+const forceClosePool = async () => {
+  if (pool) {
+    try {
+      await pool.close();
+    } catch (e) {
+      console.warn('Error closing pool:', e.message);
+    }
+    pool = null;
+  }
+};
+
 // Ensure connection is ready (with retry logic for cold starts)
-const ensureConnection = async () => {
-  if (pool && pool.connected) {
+const ensureConnection = async (forceReconnect = false) => {
+  // Check if pool is healthy
+  if (!forceReconnect && pool && pool.connected && pool._connected) {
     return pool;
   }
   
@@ -56,6 +93,9 @@ const ensureConnection = async () => {
   
   console.log('Database pool not connected, attempting reconnection...');
   isConnecting = true;
+  
+  // Force close any stale connections
+  await forceClosePool();
   
   connectionPromise = new Promise(async (resolve, reject) => {
     const maxRetries = 3;
@@ -75,20 +115,25 @@ const ensureConnection = async () => {
             encrypt: shouldEncrypt,
             trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
             enableArithAbort: true,
-            connectionTimeout: 30000,
-            requestTimeout: 30000
+            connectionTimeout: 60000, // Increased for Azure cold starts
+            requestTimeout: 60000
           },
           pool: {
             max: 10,
             min: 2,
-            idleTimeoutMillis: 60000,
-            acquireTimeoutMillis: 30000
+            idleTimeoutMillis: 300000, // 5 minutes - keep connections alive longer
+            acquireTimeoutMillis: 60000, // Increased timeout
+            createTimeoutMillis: 60000,
+            destroyTimeoutMillis: 5000,
+            reapIntervalMillis: 1000,
+            createRetryIntervalMillis: 200
           }
         };
         
         pool = await sql.connect(config);
         console.log(`Database reconnected successfully (attempt ${attempt})`);
         isConnecting = false;
+        connectionPromise = null;
         resolve(pool);
         return;
       } catch (error) {
@@ -101,6 +146,7 @@ const ensureConnection = async () => {
     }
     
     isConnecting = false;
+    connectionPromise = null;
     reject(lastError);
   });
   
@@ -1042,7 +1088,7 @@ const getDb = () => {
   return {
     // Run a query (for INSERT, UPDATE, DELETE)
     run: (query, params = [], callback) => {
-      const executeRun = async () => {
+      const executeRun = async (retryCount = 0) => {
         try {
           await ensureConnection();
           const request = pool.request();
@@ -1064,6 +1110,12 @@ const getDb = () => {
           }
           return { lastID, changes: result.rowsAffected[0] || 0 };
         } catch (error) {
+          // Retry on connection errors (but not for write operations to avoid duplicates)
+          if (isConnectionError(error) && retryCount < 2 && !query.trim().toUpperCase().startsWith('INSERT')) {
+            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
+            await ensureConnection(true); // Force reconnect
+            return executeRun(retryCount + 1);
+          }
           throw error;
         }
       };
@@ -1077,7 +1129,7 @@ const getDb = () => {
 
     // Get a single row
     get: (query, params = [], callback) => {
-      const executeGet = async () => {
+      const executeGet = async (retryCount = 0) => {
         try {
           await ensureConnection();
           const request = pool.request();
@@ -1085,6 +1137,12 @@ const getDb = () => {
           const result = await request.query(processedQuery);
           return result.recordset[0] || null;
         } catch (error) {
+          // Retry on connection errors
+          if (isConnectionError(error) && retryCount < 2) {
+            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
+            await ensureConnection(true); // Force reconnect
+            return executeGet(retryCount + 1);
+          }
           throw error;
         }
       };
@@ -1098,7 +1156,7 @@ const getDb = () => {
 
     // Get all rows
     all: (query, params = [], callback) => {
-      const executeAll = async () => {
+      const executeAll = async (retryCount = 0) => {
         try {
           await ensureConnection();
           const request = pool.request();
@@ -1106,6 +1164,12 @@ const getDb = () => {
           const result = await request.query(processedQuery);
           return result.recordset || [];
         } catch (error) {
+          // Retry on connection errors
+          if (isConnectionError(error) && retryCount < 2) {
+            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
+            await ensureConnection(true); // Force reconnect
+            return executeAll(retryCount + 1);
+          }
           throw error;
         }
       };
@@ -1119,7 +1183,7 @@ const getDb = () => {
 
     // Execute a query (returns result object)
     query: (query, params = [], callback) => {
-      const executeQuery = async () => {
+      const executeQuery = async (retryCount = 0) => {
         try {
           await ensureConnection();
           const request = pool.request();
@@ -1127,6 +1191,12 @@ const getDb = () => {
           const result = await request.query(processedQuery);
           return { rows: result.recordset, fields: result.columns };
         } catch (error) {
+          // Retry on connection errors
+          if (isConnectionError(error) && retryCount < 2) {
+            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
+            await ensureConnection(true); // Force reconnect
+            return executeQuery(retryCount + 1);
+          }
           throw error;
         }
       };

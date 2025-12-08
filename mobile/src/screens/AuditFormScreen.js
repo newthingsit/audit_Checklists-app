@@ -50,7 +50,7 @@ const AuditFormScreen = () => {
   const [capturedLocation, setCapturedLocation] = useState(null);
   const [locationVerified, setLocationVerified] = useState(false);
   const [showLocationVerification, setShowLocationVerification] = useState(false);
-  
+
   // Previous failures state for highlighting recurring issues
   const [previousFailures, setPreviousFailures] = useState([]);
   const [failedItemIds, setFailedItemIds] = useState(new Set());

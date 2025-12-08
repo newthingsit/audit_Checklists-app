@@ -176,10 +176,20 @@ const RecurringFailures = () => {
     count: t.recurring_items?.length || 0
   }));
 
-  const storeChartData = byStore.slice(0, 10).map(s => ({
-    name: s.store_name || `Store ${s.store_number}`,
-    failures: s.recurring_items
-  }));
+  const storeChartData = byStore.slice(0, 10).map((s, index) => {
+    // Create unique, readable store name
+    let storeName = s.store_name || `Store ${s.store_number || index + 1}`;
+    // Truncate long names but keep them readable
+    if (storeName.length > 25) {
+      storeName = storeName.substring(0, 22) + '...';
+    }
+    return {
+      name: storeName,
+      fullName: s.store_name || `Store ${s.store_number}`, // For tooltip
+      failures: s.recurring_items || 0,
+      storeNumber: s.store_number
+    };
+  });
 
   return (
     <Layout>
@@ -415,13 +425,39 @@ const RecurringFailures = () => {
                 Stores with Most Recurring Issues
               </Typography>
               {storeChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={storeChartData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" width={150} />
-                    <RechartsTooltip />
-                    <Bar dataKey="failures" fill={themeConfig.error.main} name="Recurring Items" />
+                <ResponsiveContainer width="100%" height={Math.max(400, storeChartData.length * 45)}>
+                  <BarChart 
+                    data={storeChartData} 
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                    <XAxis 
+                      type="number" 
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={{ stroke: '#e0e0e0' }}
+                    />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      width={200}
+                      tick={{ fontSize: 12, fill: '#333' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <RechartsTooltip 
+                      formatter={(value, name, props) => [`${value} recurring items`, props.payload.fullName || props.payload.name]}
+                      contentStyle={{ borderRadius: 8, border: '1px solid #e0e0e0' }}
+                      labelFormatter={(label) => label}
+                    />
+                    <Bar 
+                      dataKey="failures" 
+                      fill={themeConfig.error.main} 
+                      name="Recurring Items"
+                      radius={[0, 4, 4, 0]}
+                      barSize={28}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (

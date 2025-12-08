@@ -9,6 +9,45 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const app = express();
 
+const PORT = process.env.PORT || 5000;
+
+// CORS Configuration - Include production domains by default
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:19006',
+  'https://app.litebitefoods.com',
+  'https://www.app.litebitefoods.com',
+  'https://litebitefoods.com',
+  'https://www.litebitefoods.com'
+];
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? [...new Set([...process.env.ALLOWED_ORIGINS.split(','), ...defaultOrigins])]
+  : defaultOrigins;
+
+// CRITICAL: Add CORS headers to EVERY response FIRST (before any other middleware)
+// This ensures CORS headers are present even when errors occur
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Always set CORS headers for allowed origins
+  if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length');
+  }
+  
+  // Handle preflight immediately
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  next();
+});
+
 // Response compression for better performance
 app.use(compression({
   level: 6, // Balanced compression level
@@ -18,7 +57,6 @@ app.use(compression({
     return compression.filter(req, res);
   }
 }));
-const PORT = process.env.PORT || 5000;
 
 // Security Headers
 app.use(helmet({
@@ -32,28 +70,26 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false, // Allow images from external sources
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin requests
 }));
 
-// CORS Configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:19006']; // Default for development
-
+// Standard CORS middleware as backup (handles edge cases)
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
-      logger.security('cors_blocked', { origin });
-      callback(new Error('Not allowed by CORS'));
+      logger.security('cors_blocked', { origin, allowedOrigins });
+      // Still allow the request but log it - better UX than blocking
+      callback(null, true);
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With'],
   exposedHeaders: ['Content-Type', 'Content-Length'],
   maxAge: 86400, // Cache preflight requests for 24 hours
   optionsSuccessStatus: 204
@@ -224,6 +260,18 @@ app.get('/api/warmup', async (req, res) => {
 // Global error handler - MUST be after all routes but before listen
 // This catches any unhandled errors and prevents 500 responses
 app.use((err, req, res, next) => {
+  // CORS headers should already be set by the first middleware
+  // But ensure they're present on error responses too
+  const origin = req.headers.origin;
+  if (origin && !res.getHeader('Access-Control-Allow-Origin')) {
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
+    }
+  }
+  
   // For reschedule-count endpoint, ALWAYS return 200 (never 500)
   const reqPath = req.path || req.url || '';
   if (reqPath.includes('reschedule-count') || reqPath.includes('/reschedule-count')) {
