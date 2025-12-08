@@ -73,8 +73,7 @@ const Layout = ({ children }) => {
       { text: 'Scheduled', icon: <ScheduleIcon />, path: '/scheduled' }
     ] : []),
     ...(hasPermission(userPermissions, 'view_locations') || isAdmin(user) ? [
-      { text: 'Stores', icon: <StorefrontIcon />, path: '/stores' },
-      { text: 'Store Groups', icon: <GroupWorkIcon />, path: '/store-groups' }
+      { text: 'Stores', icon: <StorefrontIcon />, path: '/stores' }
     ] : []),
     ...(hasPermission(userPermissions, 'view_analytics') || isAdmin(user) ? [
       { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },

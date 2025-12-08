@@ -484,6 +484,9 @@ const createTables = () => {
           if (!columnNames.includes('brand')) {
             db.run(`ALTER TABLE locations ADD COLUMN brand TEXT`, () => {});
           }
+          if (!columnNames.includes('is_active')) {
+            db.run(`ALTER TABLE locations ADD COLUMN is_active INTEGER DEFAULT 1`, () => {});
+          }
         }
       });
 

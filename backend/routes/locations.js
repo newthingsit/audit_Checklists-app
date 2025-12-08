@@ -17,9 +17,9 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
   const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
   
   if (isAdminOrManager && all === 'true') {
-    // Admin/Manager requesting all locations
+    // Admin/Manager requesting all locations (including inactive)
     dbInstance.all(
-      `SELECT * FROM locations ORDER BY name`,
+      `SELECT * FROM locations ORDER BY is_active DESC, name`,
       [],
       (err, locations) => {
         if (err) {
@@ -30,9 +30,9 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
       }
     );
   } else if (isAdminOrManager) {
-    // Admin/Manager gets all locations by default
+    // Admin/Manager gets all locations by default (including inactive for management)
     dbInstance.all(
-      `SELECT * FROM locations ORDER BY name`,
+      `SELECT * FROM locations ORDER BY is_active DESC, name`,
       [],
       (err, locations) => {
         if (err) {
@@ -56,11 +56,11 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
         const hasAssignments = countResult && countResult[0] && countResult[0].count > 0;
         
         if (hasAssignments) {
-          // User has specific assignments - only show those locations
+          // User has specific assignments - only show those locations (active only)
           dbInstance.all(
             `SELECT l.* FROM locations l
              INNER JOIN user_locations ul ON l.id = ul.location_id
-             WHERE ul.user_id = ?
+             WHERE ul.user_id = ? AND (l.is_active IS NULL OR l.is_active = 1)
              ORDER BY l.name`,
             [userId],
             (err, locations) => {
@@ -72,9 +72,9 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
             }
           );
         } else {
-          // No specific assignments - show all locations (backward compatible)
+          // No specific assignments - show all active locations (backward compatible)
           dbInstance.all(
-            `SELECT * FROM locations ORDER BY name`,
+            `SELECT * FROM locations WHERE is_active IS NULL OR is_active = 1 ORDER BY name`,
             [],
             (err, locations) => {
               if (err) {
@@ -136,7 +136,7 @@ router.post('/', authenticate, requirePermission('manage_locations'), (req, res)
 // Update location
 router.put('/:id', authenticate, requirePermission('manage_locations'), (req, res) => {
   const { id } = req.params;
-  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude } = req.body;
+  const { store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude, is_active } = req.body;
   const dbInstance = db.getDb();
 
   // Prevent circular reference (location cannot be its own parent)
@@ -144,12 +144,20 @@ router.put('/:id', authenticate, requirePermission('manage_locations'), (req, re
     return res.status(400).json({ error: 'Location cannot be its own parent' });
   }
 
-  dbInstance.run(
-    `UPDATE locations 
-     SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?, parent_id = ?, region = ?, district = ?, latitude = ?, longitude = ?
-     WHERE id = ?`,
-    [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, latitude || null, longitude || null, id],
-    function(err) {
+  // Build dynamic update query to handle is_active if provided
+  let query = `UPDATE locations 
+     SET store_number = ?, name = ?, address = ?, city = ?, state = ?, country = ?, phone = ?, email = ?, parent_id = ?, region = ?, district = ?, latitude = ?, longitude = ?`;
+  let params = [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, latitude || null, longitude || null];
+  
+  if (is_active !== undefined) {
+    query += `, is_active = ?`;
+    params.push(is_active ? 1 : 0);
+  }
+  
+  query += ` WHERE id = ?`;
+  params.push(id);
+
+  dbInstance.run(query, params, function(err) {
       if (err) {
         logger.error('Error updating location:', err);
         return res.status(500).json({ error: 'Error updating location' });
@@ -157,6 +165,35 @@ router.put('/:id', authenticate, requirePermission('manage_locations'), (req, re
       res.json({ message: 'Location updated successfully' });
     }
   );
+});
+
+// Toggle location active status
+router.patch('/:id/toggle-active', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const { id } = req.params;
+  const dbInstance = db.getDb();
+
+  // First get current status
+  dbInstance.get('SELECT is_active FROM locations WHERE id = ?', [id], (err, location) => {
+    if (err) {
+      logger.error('Error fetching location:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!location) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    const newStatus = location.is_active ? 0 : 1;
+    dbInstance.run('UPDATE locations SET is_active = ? WHERE id = ?', [newStatus, id], function(err) {
+      if (err) {
+        logger.error('Error toggling location status:', err);
+        return res.status(500).json({ error: 'Error updating location status' });
+      }
+      res.json({ 
+        message: newStatus ? 'Store activated' : 'Store deactivated',
+        is_active: newStatus === 1
+      });
+    });
+  });
 });
 
 // Delete location

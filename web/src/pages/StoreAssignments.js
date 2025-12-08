@@ -91,16 +91,20 @@ const StoreAssignments = () => {
     }
     
     try {
-      await axios.post(`/api/locations/assignments/user/${userId}`, {
+      const response = await axios.post(`/api/locations/assignments/user/${userId}`, {
         location_ids: selectedItems
       });
-      showSuccess('Stores assigned successfully');
+      showSuccess(response.data.message || 'Stores assigned successfully');
       setAssignDialog({ open: false, type: null, item: null });
       setSelectedItems([]);
-      fetchData();
+      // Force refresh with a small delay to ensure backend has processed
+      setTimeout(() => {
+        fetchData();
+      }, 300);
     } catch (error) {
       console.error('Error assigning stores:', error);
-      showError('Failed to assign stores');
+      const errorMsg = error.response?.data?.error || 'Failed to assign stores';
+      showError(errorMsg);
     }
   };
 
@@ -111,16 +115,20 @@ const StoreAssignments = () => {
     }
     
     try {
-      await axios.post(`/api/locations/assignments/location/${locationId}`, {
+      const response = await axios.post(`/api/locations/assignments/location/${locationId}`, {
         user_ids: selectedItems
       });
-      showSuccess('Users assigned successfully');
+      showSuccess(response.data.message || 'Users assigned successfully');
       setAssignDialog({ open: false, type: null, item: null });
       setSelectedItems([]);
-      fetchData();
+      // Force refresh with a small delay to ensure backend has processed
+      setTimeout(() => {
+        fetchData();
+      }, 300);
     } catch (error) {
       console.error('Error assigning users:', error);
-      showError('Failed to assign users');
+      const errorMsg = error.response?.data?.error || 'Failed to assign users';
+      showError(errorMsg);
     }
   };
 
@@ -130,10 +138,14 @@ const StoreAssignments = () => {
     try {
       await axios.delete(`/api/locations/assignments/user/${userId}/location/${locationId}`);
       showSuccess('Assignment removed');
-      fetchData();
+      // Force refresh with a small delay
+      setTimeout(() => {
+        fetchData();
+      }, 300);
     } catch (error) {
       console.error('Error removing assignment:', error);
-      showError('Failed to remove assignment');
+      const errorMsg = error.response?.data?.error || 'Failed to remove assignment';
+      showError(errorMsg);
     }
   };
 
@@ -141,12 +153,16 @@ const StoreAssignments = () => {
     if (!window.confirm(`Remove all store assignments for ${userName}?`)) return;
     
     try {
-      await axios.delete(`/api/locations/assignments/user/${userId}`);
-      showSuccess('All assignments removed');
-      fetchData();
+      const response = await axios.delete(`/api/locations/assignments/user/${userId}`);
+      showSuccess(response.data.message || 'All assignments removed');
+      // Force refresh with a small delay
+      setTimeout(() => {
+        fetchData();
+      }, 300);
     } catch (error) {
       console.error('Error removing assignments:', error);
-      showError('Failed to remove assignments');
+      const errorMsg = error.response?.data?.error || 'Failed to remove assignments';
+      showError(errorMsg);
     }
   };
 

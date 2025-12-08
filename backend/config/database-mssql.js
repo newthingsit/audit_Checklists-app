@@ -500,6 +500,10 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('locations') AND name = 'brand')
     ALTER TABLE locations ADD brand NVARCHAR(100)`,
 
+    // Add is_active column to locations if not exists
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('locations') AND name = 'is_active')
+    ALTER TABLE locations ADD is_active BIT DEFAULT 1`,
+
     // Index on locations.group_id
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_locations_group')
     CREATE INDEX idx_locations_group ON locations(group_id)`,

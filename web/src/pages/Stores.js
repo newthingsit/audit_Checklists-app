@@ -22,7 +22,8 @@ import {
   TableHead,
   TableRow,
   Alert,
-  Paper
+  Paper,
+  Tooltip
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -36,8 +37,13 @@ import ViewListIcon from '@mui/icons-material/ViewList';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Switch from '@mui/material/Switch';
+import Chip from '@mui/material/Chip';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -53,6 +59,7 @@ const Stores = () => {
   const [parseError, setParseError] = useState('');
   const [editingStore, setEditingStore] = useState(null);
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [showInactive, setShowInactive] = useState(false); // Show inactive stores filter
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState({
     open: false,
     store: null,
@@ -107,7 +114,8 @@ const Stores = () => {
         region: store.region || '',
         district: store.district || '',
         latitude: store.latitude || '',
-        longitude: store.longitude || ''
+        longitude: store.longitude || '',
+        is_active: store.is_active !== undefined ? store.is_active : 1
       });
     } else {
       setEditingStore(null);
@@ -202,6 +210,21 @@ const Stores = () => {
   const handleDeleteCancel = () => {
     setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
   };
+
+  const handleToggleActive = async (store) => {
+    try {
+      const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
+      showSuccess(response.data.message);
+      fetchStores();
+    } catch (error) {
+      console.error('Error toggling store status:', error);
+      showError('Failed to update store status');
+    }
+  };
+
+  // Filter stores based on active status
+  const filteredStores = showInactive ? stores : stores.filter(s => s.is_active !== 0);
+  const inactiveCount = stores.filter(s => s.is_active === 0).length;
 
   // Improved CSV parser that handles quoted fields
   const parseCSVLine = (line) => {
@@ -476,7 +499,21 @@ const Stores = () => {
           <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
             Stores
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                  size="small"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Show Inactive {inactiveCount > 0 && `(${inactiveCount})`}
+                </Typography>
+              }
+            />
             <ToggleButtonGroup
               value={viewMode}
               exclusive
@@ -541,18 +578,19 @@ const Stores = () => {
           </Card>
         ) : viewMode === 'card' ? (
           <Grid container spacing={3}>
-            {stores.map((store) => (
+            {filteredStores.map((store) => (
               <Grid item xs={12} sm={6} md={4} key={store.id}>
                 <Card
                   sx={{
                     height: '100%',
                     border: '1px solid',
-                    borderColor: 'divider',
+                    borderColor: store.is_active === 0 ? 'error.light' : 'divider',
                     transition: 'all 0.3s ease',
+                    opacity: store.is_active === 0 ? 0.7 : 1,
                     '&:hover': {
                       transform: 'translateY(-4px)',
                       boxShadow: 6,
-                      borderColor: 'primary.main'
+                      borderColor: store.is_active === 0 ? 'error.main' : 'primary.main'
                     }
                   }}
                 >
@@ -574,11 +612,19 @@ const Stores = () => {
                           <StorefrontIcon sx={{ fontSize: 28, color: 'primary.main' }} />
                         </Box>
                         <Box sx={{ flex: 1 }}>
-                          {store.store_number && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 500 }}>
-                              Store #{store.store_number}
-                            </Typography>
-                          )}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                            {store.store_number && (
+                              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                Store #{store.store_number}
+                              </Typography>
+                            )}
+                            <Chip
+                              label={store.is_active === 0 ? 'Inactive' : 'Active'}
+                              color={store.is_active === 0 ? 'error' : 'success'}
+                              size="small"
+                              sx={{ height: 20, fontSize: '0.65rem' }}
+                            />
+                          </Box>
                           <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                             {store.name}
                           </Typography>
@@ -605,7 +651,16 @@ const Stores = () => {
                           )}
                         </Box>
                       </Box>
-                      <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Tooltip title={store.is_active === 0 ? 'Activate Store' : 'Deactivate Store'}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleToggleActive(store)}
+                            sx={{ color: store.is_active === 0 ? 'error.main' : 'success.main' }}
+                          >
+                            {store.is_active === 0 ? <CancelIcon /> : <CheckCircleIcon />}
+                          </IconButton>
+                        </Tooltip>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenDialog(store)}
@@ -645,6 +700,7 @@ const Stores = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell><strong>Status</strong></TableCell>
                       <TableCell><strong>Store #</strong></TableCell>
                       <TableCell><strong>Store Name</strong></TableCell>
                       <TableCell><strong>Brand Name</strong></TableCell>
@@ -658,8 +714,15 @@ const Stores = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {stores.map((store) => (
+                    {filteredStores.map((store) => (
                       <TableRow key={store.id} hover>
+                        <TableCell>
+                          <Chip
+                            label={store.is_active === 0 ? 'Inactive' : 'Active'}
+                            color={store.is_active === 0 ? 'error' : 'success'}
+                            size="small"
+                          />
+                        </TableCell>
                         <TableCell>{store.store_number || '-'}</TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -677,20 +740,31 @@ const Stores = () => {
                         <TableCell>{store.phone || '-'}</TableCell>
                         <TableCell>{store.email || '-'}</TableCell>
                         <TableCell align="center">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenDialog(store)}
-                            sx={{ color: 'primary.main' }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeleteClick(store)}
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                            <Tooltip title={store.is_active === 0 ? 'Activate Store' : 'Deactivate Store'}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleToggleActive(store)}
+                                sx={{ color: store.is_active === 0 ? 'error.main' : 'success.main' }}
+                              >
+                                {store.is_active === 0 ? <CancelIcon /> : <CheckCircleIcon />}
+                              </IconButton>
+                            </Tooltip>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleOpenDialog(store)}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeleteClick(store)}
+                              color="error"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -912,6 +986,29 @@ const Stores = () => {
                   </Button>
                 </Box>
               )}
+            </Box>
+            
+            {/* Active Status Toggle */}
+            <Box sx={{ mt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.is_active === 1}
+                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked ? 1 : 0 })}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      Store Status
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {formData.is_active === 1 ? 'Active - Store is visible and can be used for audits' : 'Inactive - Store is hidden from users'}
+                    </Typography>
+                  </Box>
+                }
+              />
             </Box>
           </DialogContent>
           <DialogActions
