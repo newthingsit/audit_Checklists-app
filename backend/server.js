@@ -338,4 +338,3 @@ db.init().then(() => {
   logger.error('Database initialization failed:', err);
   process.exit(1);
 });
-
