@@ -42,6 +42,7 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
@@ -86,6 +87,9 @@ const Layout = ({ children }) => {
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
     ...(isAdmin(user) || hasPermission(userPermissions, 'create_users') || hasPermission(userPermissions, 'manage_users') || hasPermission(userPermissions, 'view_users') ? [
       { text: 'Users', icon: <PeopleIcon />, path: '/users' }
+    ] : []),
+    ...(isAdmin(user) || hasPermission(userPermissions, 'manage_locations') ? [
+      { text: 'Store Assignments', icon: <AssignmentIndIcon />, path: '/store-assignments' }
     ] : []),
     ...(isAdmin(user) ? [
       { text: 'Roles', icon: <SecurityIcon />, path: '/roles' }
@@ -134,6 +138,7 @@ const Layout = ({ children }) => {
       '/analytics': 'Analytics',
       '/stores': 'Stores',
       '/store-groups': 'Store Groups',
+      '/store-assignments': 'Store Assignments',
       '/scheduled': 'Scheduled Audits',
       '/scorecard': 'Monthly Scorecard',
       '/users': 'User Management',

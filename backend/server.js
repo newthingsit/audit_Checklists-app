@@ -157,7 +157,7 @@ const authLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 2000 : 100, // Much more lenient in development (2000 requests per 15 min)
+  max: isDevelopment ? 2000 : 500, // Increased to 500 for production (mobile apps need more requests)
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -170,7 +170,7 @@ const apiLimiter = rateLimit({
 // Stricter rate limiter for sensitive operations
 const sensitiveOpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: isDevelopment ? 100 : 10, // 10 attempts per hour in production
+  max: isDevelopment ? 100 : 50, // Increased to 50 attempts per hour in production
   message: 'Too many attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -182,8 +182,20 @@ const sensitiveOpLimiter = rateLimit({
 // File upload rate limiter
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 100 : 20, // 20 uploads per 15 min in production
+  max: isDevelopment ? 100 : 100, // Increased to 100 uploads per 15 min (audits often have many photos)
   message: 'Too many file uploads, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: isDevelopment ? false : true,
+  },
+});
+
+// Audit operations rate limiter (more lenient - mobile apps make many requests per audit)
+const auditLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isDevelopment ? 2000 : 1000, // 1000 requests per 15 min for audit operations
+  message: 'Too many audit requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   validate: {
@@ -201,6 +213,9 @@ app.use('/api/roles', sensitiveOpLimiter); // Role management
 
 // Apply upload limiter to file upload routes
 app.use('/api/upload', uploadLimiter);
+
+// Apply more lenient rate limiting to audit routes (mobile apps need more requests)
+app.use('/api/audits', auditLimiter);
 
 // Apply general rate limiting to all API routes
 app.use('/api/', apiLimiter);

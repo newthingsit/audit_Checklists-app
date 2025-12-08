@@ -6,21 +6,88 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// Get all locations
+// Get all locations (filtered by user assignments for non-admin users)
 router.get('/', authenticate, requirePermission('view_locations', 'manage_locations', 'start_scheduled_audits'), (req, res) => {
   const dbInstance = db.getDb();
-  dbInstance.all(
-    `SELECT * FROM locations ORDER BY name`,
-    [],
-    (err, locations) => {
-      if (err) {
-        logger.error('Error fetching locations:', err);
-        logger.error('Database error:', err);
-        return res.status(500).json({ error: 'Database error' });
+  const userId = req.user.id;
+  const userRole = req.user.role;
+  const { all } = req.query; // Admin can pass ?all=true to see all locations
+  
+  // Check if user is admin or manager - they can see all locations
+  const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
+  
+  if (isAdminOrManager && all === 'true') {
+    // Admin/Manager requesting all locations
+    dbInstance.all(
+      `SELECT * FROM locations ORDER BY name`,
+      [],
+      (err, locations) => {
+        if (err) {
+          logger.error('Error fetching locations:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        res.json({ locations: locations || [], filtered: false });
       }
-      res.json({ locations: locations || [] });
-    }
-  );
+    );
+  } else if (isAdminOrManager) {
+    // Admin/Manager gets all locations by default
+    dbInstance.all(
+      `SELECT * FROM locations ORDER BY name`,
+      [],
+      (err, locations) => {
+        if (err) {
+          logger.error('Error fetching locations:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        res.json({ locations: locations || [], filtered: false });
+      }
+    );
+  } else {
+    // Non-admin users - check for assigned locations first
+    dbInstance.all(
+      `SELECT COUNT(*) as count FROM user_locations WHERE user_id = ?`,
+      [userId],
+      (err, countResult) => {
+        if (err) {
+          logger.error('Error checking user location assignments:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        const hasAssignments = countResult && countResult[0] && countResult[0].count > 0;
+        
+        if (hasAssignments) {
+          // User has specific assignments - only show those locations
+          dbInstance.all(
+            `SELECT l.* FROM locations l
+             INNER JOIN user_locations ul ON l.id = ul.location_id
+             WHERE ul.user_id = ?
+             ORDER BY l.name`,
+            [userId],
+            (err, locations) => {
+              if (err) {
+                logger.error('Error fetching assigned locations:', err);
+                return res.status(500).json({ error: 'Database error' });
+              }
+              res.json({ locations: locations || [], filtered: true, assignedCount: locations?.length || 0 });
+            }
+          );
+        } else {
+          // No specific assignments - show all locations (backward compatible)
+          dbInstance.all(
+            `SELECT * FROM locations ORDER BY name`,
+            [],
+            (err, locations) => {
+              if (err) {
+                logger.error('Error fetching locations:', err);
+                return res.status(500).json({ error: 'Database error' });
+              }
+              res.json({ locations: locations || [], filtered: false });
+            }
+          );
+        }
+      }
+    );
+  }
 });
 
 // Get single location
@@ -95,23 +162,70 @@ router.put('/:id', authenticate, requirePermission('manage_locations'), (req, re
 // Delete location
 router.delete('/:id', authenticate, requirePermission('manage_locations'), (req, res) => {
   const { id } = req.params;
+  const { force } = req.query; // Allow force delete with ?force=true
   const dbInstance = db.getDb();
 
   // Check if location has audits
   dbInstance.get('SELECT COUNT(*) as count FROM audits WHERE location_id = ?', [id], (err, row) => {
     if (err) {
+      logger.error('Error checking audits for location:', err);
       return res.status(500).json({ error: 'Database error' });
     }
-    if (row.count > 0) {
-      return res.status(400).json({ error: 'Cannot delete location with existing audits' });
+    
+    const auditCount = row ? row.count : 0;
+    
+    if (auditCount > 0 && force !== 'true') {
+      // Return 409 Conflict with details about the audits
+      return res.status(409).json({ 
+        error: 'Cannot delete store with existing audits',
+        message: `This store has ${auditCount} audit(s) associated with it. Delete them first or use force delete.`,
+        auditCount: auditCount,
+        canForceDelete: true
+      });
     }
 
-    dbInstance.run('DELETE FROM locations WHERE id = ?', [id], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Error deleting location' });
-      }
-      res.json({ message: 'Location deleted successfully' });
-    });
+    // If force delete, remove associated audits first
+    if (auditCount > 0 && force === 'true') {
+      logger.warn(`Force deleting location ${id} with ${auditCount} audits`);
+      
+      // Delete audit responses first (foreign key constraint)
+      dbInstance.run('DELETE FROM audit_responses WHERE audit_id IN (SELECT id FROM audits WHERE location_id = ?)', [id], function(err) {
+        if (err) {
+          logger.error('Error deleting audit responses:', err);
+          return res.status(500).json({ error: 'Error deleting associated audit responses' });
+        }
+        
+        // Delete audits
+        dbInstance.run('DELETE FROM audits WHERE location_id = ?', [id], function(err) {
+          if (err) {
+            logger.error('Error deleting audits:', err);
+            return res.status(500).json({ error: 'Error deleting associated audits' });
+          }
+          
+          // Now delete the location
+          dbInstance.run('DELETE FROM locations WHERE id = ?', [id], function(err) {
+            if (err) {
+              logger.error('Error deleting location:', err);
+              return res.status(500).json({ error: 'Error deleting location' });
+            }
+            logger.info(`Location ${id} and ${auditCount} audits deleted successfully`);
+            res.json({ 
+              message: 'Store and associated audits deleted successfully',
+              deletedAudits: auditCount
+            });
+          });
+        });
+      });
+    } else {
+      // No audits, safe to delete
+      dbInstance.run('DELETE FROM locations WHERE id = ?', [id], function(err) {
+        if (err) {
+          logger.error('Error deleting location:', err);
+          return res.status(500).json({ error: 'Error deleting location' });
+        }
+        res.json({ message: 'Store deleted successfully' });
+      });
+    }
   });
 });
 
@@ -397,6 +511,274 @@ router.post('/compare', authenticate, requirePermission('view_locations', 'view_
     }
     res.json({ comparisons: comparisons || [] });
   });
+});
+
+// ========================================
+// USER-LOCATION ASSIGNMENTS (Store Access)
+// ========================================
+
+// Get all user-location assignments (admin only)
+router.get('/assignments/all', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  
+  dbInstance.all(
+    `SELECT ul.*, 
+            u.name as user_name, u.email as user_email, u.role as user_role,
+            l.name as location_name, l.store_number,
+            ab.name as assigned_by_name
+     FROM user_locations ul
+     JOIN users u ON ul.user_id = u.id
+     JOIN locations l ON ul.location_id = l.id
+     LEFT JOIN users ab ON ul.assigned_by = ab.id
+     ORDER BY u.name, l.name`,
+    [],
+    (err, assignments) => {
+      if (err) {
+        logger.error('Error fetching user-location assignments:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ assignments: assignments || [] });
+    }
+  );
+});
+
+// Get locations assigned to a specific user
+router.get('/assignments/user/:userId', authenticate, requirePermission('manage_locations', 'view_users'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { userId } = req.params;
+  
+  dbInstance.all(
+    `SELECT l.*, ul.access_type, ul.assigned_at,
+            ab.name as assigned_by_name
+     FROM locations l
+     JOIN user_locations ul ON l.id = ul.location_id
+     LEFT JOIN users ab ON ul.assigned_by = ab.id
+     WHERE ul.user_id = ?
+     ORDER BY l.name`,
+    [userId],
+    (err, locations) => {
+      if (err) {
+        logger.error('Error fetching user locations:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ locations: locations || [] });
+    }
+  );
+});
+
+// Get users assigned to a specific location
+router.get('/assignments/location/:locationId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { locationId } = req.params;
+  
+  dbInstance.all(
+    `SELECT u.id, u.name, u.email, u.role, ul.access_type, ul.assigned_at,
+            ab.name as assigned_by_name
+     FROM users u
+     JOIN user_locations ul ON u.id = ul.user_id
+     LEFT JOIN users ab ON ul.assigned_by = ab.id
+     WHERE ul.location_id = ?
+     ORDER BY u.name`,
+    [locationId],
+    (err, users) => {
+      if (err) {
+        logger.error('Error fetching location users:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ users: users || [] });
+    }
+  );
+});
+
+// Assign locations to a user (bulk)
+router.post('/assignments/user/:userId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { userId } = req.params;
+  const { location_ids, access_type = 'assigned' } = req.body;
+  const assignedBy = req.user.id;
+  
+  if (!Array.isArray(location_ids) || location_ids.length === 0) {
+    return res.status(400).json({ error: 'Location IDs array is required' });
+  }
+  
+  // First verify user exists
+  dbInstance.get('SELECT id, name FROM users WHERE id = ?', [userId], (err, user) => {
+    if (err) {
+      logger.error('Error checking user:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    const processAssignment = (index) => {
+      if (index >= location_ids.length) {
+        logger.info(`Assigned ${successCount} locations to user ${user.name} (${userId})`);
+        return res.json({ 
+          message: `${successCount} location(s) assigned successfully`,
+          successCount,
+          errorCount
+        });
+      }
+      
+      const locationId = location_ids[index];
+      
+      dbInstance.run(
+        `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [userId, locationId, access_type, assignedBy],
+        (err) => {
+          if (err) {
+            logger.error(`Error assigning location ${locationId} to user ${userId}:`, err);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+          processAssignment(index + 1);
+        }
+      );
+    };
+    
+    processAssignment(0);
+  });
+});
+
+// Assign users to a location (bulk)
+router.post('/assignments/location/:locationId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { locationId } = req.params;
+  const { user_ids, access_type = 'assigned' } = req.body;
+  const assignedBy = req.user.id;
+  
+  if (!Array.isArray(user_ids) || user_ids.length === 0) {
+    return res.status(400).json({ error: 'User IDs array is required' });
+  }
+  
+  // First verify location exists
+  dbInstance.get('SELECT id, name FROM locations WHERE id = ?', [locationId], (err, location) => {
+    if (err) {
+      logger.error('Error checking location:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!location) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    const processAssignment = (index) => {
+      if (index >= user_ids.length) {
+        logger.info(`Assigned ${successCount} users to location ${location.name} (${locationId})`);
+        return res.json({ 
+          message: `${successCount} user(s) assigned successfully`,
+          successCount,
+          errorCount
+        });
+      }
+      
+      const userId = user_ids[index];
+      
+      dbInstance.run(
+        `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [userId, locationId, access_type, assignedBy],
+        (err) => {
+          if (err) {
+            logger.error(`Error assigning user ${userId} to location ${locationId}:`, err);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+          processAssignment(index + 1);
+        }
+      );
+    };
+    
+    processAssignment(0);
+  });
+});
+
+// Remove location assignment from user
+router.delete('/assignments/user/:userId/location/:locationId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { userId, locationId } = req.params;
+  
+  dbInstance.run(
+    'DELETE FROM user_locations WHERE user_id = ? AND location_id = ?',
+    [userId, locationId],
+    function(err) {
+      if (err) {
+        logger.error('Error removing user-location assignment:', err);
+        return res.status(500).json({ error: 'Error removing assignment' });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Assignment not found' });
+      }
+      res.json({ message: 'Assignment removed successfully' });
+    }
+  );
+});
+
+// Remove all location assignments for a user
+router.delete('/assignments/user/:userId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { userId } = req.params;
+  
+  dbInstance.run(
+    'DELETE FROM user_locations WHERE user_id = ?',
+    [userId],
+    function(err) {
+      if (err) {
+        logger.error('Error removing user location assignments:', err);
+        return res.status(500).json({ error: 'Error removing assignments' });
+      }
+      res.json({ message: `${this.changes} assignment(s) removed successfully`, count: this.changes });
+    }
+  );
+});
+
+// Remove all user assignments for a location
+router.delete('/assignments/location/:locationId', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { locationId } = req.params;
+  
+  dbInstance.run(
+    'DELETE FROM user_locations WHERE location_id = ?',
+    [locationId],
+    function(err) {
+      if (err) {
+        logger.error('Error removing location user assignments:', err);
+        return res.status(500).json({ error: 'Error removing assignments' });
+      }
+      res.json({ message: `${this.changes} assignment(s) removed successfully`, count: this.changes });
+    }
+  );
+});
+
+// Get assignment summary (for dashboard)
+router.get('/assignments/summary', authenticate, requirePermission('manage_locations'), (req, res) => {
+  const dbInstance = db.getDb();
+  
+  dbInstance.all(
+    `SELECT 
+       (SELECT COUNT(DISTINCT user_id) FROM user_locations) as users_with_assignments,
+       (SELECT COUNT(DISTINCT location_id) FROM user_locations) as locations_with_assignments,
+       (SELECT COUNT(*) FROM user_locations) as total_assignments,
+       (SELECT COUNT(*) FROM users WHERE role NOT IN ('admin', 'manager')) as total_non_admin_users,
+       (SELECT COUNT(*) FROM locations) as total_locations`,
+    [],
+    (err, result) => {
+      if (err) {
+        logger.error('Error fetching assignment summary:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ summary: result[0] || {} });
+    }
+  );
 });
 
 module.exports = router;

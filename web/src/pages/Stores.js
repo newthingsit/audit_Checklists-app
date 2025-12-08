@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  DialogContentText,
   TextField,
   Grid,
   IconButton,
@@ -34,6 +35,7 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import axios from 'axios';
@@ -51,6 +53,12 @@ const Stores = () => {
   const [parseError, setParseError] = useState('');
   const [editingStore, setEditingStore] = useState(null);
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState({
+    open: false,
+    store: null,
+    auditCount: 0,
+    isForceDelete: false
+  });
   const [formData, setFormData] = useState({
     store_number: '',
     name: '',
@@ -143,17 +151,56 @@ const Stores = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this store?')) {
-      try {
-        await axios.delete(`/api/locations/${id}`);
+  const handleDeleteClick = (store) => {
+    setDeleteConfirmDialog({
+      open: true,
+      store: store,
+      auditCount: 0,
+      isForceDelete: false
+    });
+  };
+
+  const handleDeleteConfirm = async (forceDelete = false) => {
+    const { store } = deleteConfirmDialog;
+    if (!store) return;
+
+    try {
+      const url = forceDelete 
+        ? `/api/locations/${store.id}?force=true` 
+        : `/api/locations/${store.id}`;
+      
+      const response = await axios.delete(url);
+      
+      if (response.data.deletedAudits) {
+        showSuccess(`Store and ${response.data.deletedAudits} audit(s) deleted successfully!`);
+      } else {
         showSuccess('Store deleted successfully!');
-        fetchStores();
-      } catch (error) {
-        console.error('Error deleting store:', error);
-        showError('Error deleting store');
       }
+      
+      setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
+      fetchStores();
+    } catch (error) {
+      console.error('Error deleting store:', error);
+      
+      // Handle 409 Conflict - store has audits
+      if (error.response?.status === 409 && error.response?.data?.canForceDelete) {
+        setDeleteConfirmDialog(prev => ({
+          ...prev,
+          auditCount: error.response.data.auditCount,
+          isForceDelete: true
+        }));
+        return; // Don't close dialog, show force delete option
+      }
+      
+      // Show specific error message from server
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error deleting store';
+      showError(errorMessage);
+      setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
   };
 
   // Improved CSV parser that handles quoted fields
@@ -568,7 +615,7 @@ const Stores = () => {
                         </IconButton>
                         <IconButton
                           size="small"
-                          onClick={() => handleDelete(store.id)}
+                          onClick={() => handleDeleteClick(store)}
                           color="error"
                         >
                           <DeleteIcon />
@@ -639,7 +686,7 @@ const Stores = () => {
                           </IconButton>
                           <IconButton
                             size="small"
-                            onClick={() => handleDelete(store.id)}
+                            onClick={() => handleDeleteClick(store)}
                             color="error"
                           >
                             <DeleteIcon />
@@ -1093,6 +1140,88 @@ const Stores = () => {
             >
               {importing ? 'Importing...' : `Import ${parsedStores.length} Store(s)`}
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteConfirmDialog.open}
+          onClose={handleDeleteCancel}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1,
+            color: deleteConfirmDialog.isForceDelete ? 'error.main' : 'text.primary'
+          }}>
+            {deleteConfirmDialog.isForceDelete && <WarningAmberIcon color="error" />}
+            {deleteConfirmDialog.isForceDelete ? 'Warning: Store Has Audits' : 'Delete Store'}
+          </DialogTitle>
+          <DialogContent>
+            {deleteConfirmDialog.isForceDelete ? (
+              <Box>
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <strong>This store has {deleteConfirmDialog.auditCount} audit(s) associated with it.</strong>
+                </Alert>
+                <DialogContentText>
+                  You are about to permanently delete <strong>"{deleteConfirmDialog.store?.name}"</strong> and all {deleteConfirmDialog.auditCount} associated audit(s).
+                </DialogContentText>
+                <DialogContentText sx={{ mt: 2, color: 'error.main', fontWeight: 500 }}>
+                  ⚠️ This action cannot be undone. All audit data, responses, and photos for this store will be permanently lost.
+                </DialogContentText>
+              </Box>
+            ) : (
+              <DialogContentText>
+                Are you sure you want to delete <strong>"{deleteConfirmDialog.store?.name}"</strong>?
+                {deleteConfirmDialog.store?.store_number && (
+                  <span> (Store #{deleteConfirmDialog.store.store_number})</span>
+                )}
+              </DialogContentText>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+            <Button 
+              onClick={handleDeleteCancel}
+              variant="outlined"
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+              }}
+            >
+              Cancel
+            </Button>
+            {deleteConfirmDialog.isForceDelete ? (
+              <Button
+                onClick={() => handleDeleteConfirm(true)}
+                variant="contained"
+                color="error"
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                }}
+              >
+                Delete Store & {deleteConfirmDialog.auditCount} Audit(s)
+              </Button>
+            ) : (
+              <Button
+                onClick={() => handleDeleteConfirm(false)}
+                variant="contained"
+                color="error"
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                }}
+              >
+                Delete Store
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
       </Container>

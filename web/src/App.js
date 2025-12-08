@@ -33,6 +33,7 @@ const StoreAnalytics = lazy(() => import('./pages/StoreAnalytics'));
 const LocationVerificationReport = lazy(() => import('./pages/LocationVerificationReport'));
 const StoreGroups = lazy(() => import('./pages/StoreGroups'));
 const RecurringFailures = lazy(() => import('./pages/RecurringFailures'));
+const StoreAssignments = lazy(() => import('./pages/StoreAssignments'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -466,6 +467,14 @@ function ThemeWrapper() {
                   <AdminRoute>
                     <RoleManagement />
                   </AdminRoute>
+                }
+              />
+              <Route
+                path="/store-assignments"
+                element={
+                  <PermissionRoute requiredPermissions={['manage_locations']}>
+                    <StoreAssignments />
+                  </PermissionRoute>
                 }
               />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

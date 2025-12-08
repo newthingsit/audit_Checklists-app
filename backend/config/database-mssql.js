@@ -509,7 +509,28 @@ const createTables = async () => {
     CREATE INDEX idx_store_groups_parent ON store_groups(parent_group_id)`,
 
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_store_groups_type')
-    CREATE INDEX idx_store_groups_type ON store_groups(type)`
+    CREATE INDEX idx_store_groups_type ON store_groups(type)`,
+
+    // User-Location assignments table (which stores/outlets each user can access)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[user_locations]') AND type in (N'U'))
+    CREATE TABLE [dbo].[user_locations] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL,
+      [location_id] INT NOT NULL,
+      [access_type] NVARCHAR(50) DEFAULT 'assigned',
+      [assigned_by] INT,
+      [assigned_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([location_id]) REFERENCES [locations]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([assigned_by]) REFERENCES [users]([id]),
+      CONSTRAINT [UK_user_locations] UNIQUE ([user_id], [location_id])
+    )`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_locations_user')
+    CREATE INDEX idx_user_locations_user ON user_locations(user_id)`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_locations_location')
+    CREATE INDEX idx_user_locations_location ON user_locations(location_id)`
   ];
 
   try {

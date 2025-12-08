@@ -505,6 +505,22 @@ const createTables = () => {
         FOREIGN KEY (parent_group_id) REFERENCES store_groups(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )`);
+
+      // User-Location assignments table (which stores/outlets each user can access)
+      db.run(`CREATE TABLE IF NOT EXISTS user_locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        location_id INTEGER NOT NULL,
+        access_type TEXT DEFAULT 'assigned',
+        assigned_by INTEGER,
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES users(id),
+        UNIQUE(user_id, location_id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_user_locations_user ON user_locations(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_user_locations_location ON user_locations(location_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_locations_group ON locations(group_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_parent ON store_groups(parent_group_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_type ON store_groups(type)`);

@@ -310,6 +310,60 @@ const AuditFormScreen = () => {
     setComments({ ...comments, [itemId]: comment });
   };
 
+  // Photo upload with retry logic
+  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            ...(authToken ? { 'Authorization': authToken } : {}),
+          },
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          if (uploadResponse.status === 401) {
+            throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
+          } else if (uploadResponse.status === 404) {
+            throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
+          } else if (uploadResponse.status === 429) {
+            // Rate limited - wait and retry
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+              continue;
+            }
+            throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment.' };
+          } else {
+            throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
+          }
+        }
+
+        return await uploadResponse.json();
+      } catch (error) {
+        lastError = error;
+        
+        // Don't retry on auth or not found errors
+        if (error.noRetry) throw error;
+        
+        // Network errors - retry
+        if (error.message?.includes('Network request failed') && attempt < maxRetries) {
+          console.log(`Upload attempt ${attempt} failed, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+        
+        if (attempt === maxRetries) throw error;
+      }
+    }
+    
+    throw lastError;
+  };
+
   const handlePhotoUpload = async (itemId) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
@@ -326,23 +380,13 @@ const AuditFormScreen = () => {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 0.7, // Reduced quality for better upload performance
       });
 
       if (!result.canceled && result.assets[0]) {
         setUploading({ ...uploading, [itemId]: true });
         
-        // Get the image URI - handle Android content:// URIs
         let imageUri = result.assets[0].uri;
-        
-        // On Android, content:// URIs need special handling
-        // Expo ImagePicker already provides a file:// URI that works cross-platform
-        // But we need to ensure it's in the correct format for FormData
-        if (Platform.OS === 'android' && !imageUri.startsWith('file://')) {
-          // If it's a content:// URI, it should still work with FormData
-          // but we need to make sure the URI is properly encoded
-          imageUri = imageUri;
-        }
         
         const formData = new FormData();
         formData.append('photo', {
@@ -351,37 +395,13 @@ const AuditFormScreen = () => {
           name: `photo_${itemId}_${Date.now()}.jpg`,
         });
 
-        // Get the auth token from axios defaults
         const authToken = axios.defaults.headers.common['Authorization'];
         
-        // Use fetch instead of axios for file uploads (more reliable on Android)
-        const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            // Don't set Content-Type - fetch will set it with the correct boundary for FormData
-            ...(authToken ? { 'Authorization': authToken } : {}),
-          },
-          body: formData,
-        });
+        // Use retry logic for upload
+        const responseData = await uploadPhotoWithRetry(formData, authToken);
 
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json().catch(() => ({}));
-          if (uploadResponse.status === 401) {
-            throw { type: 'auth', message: 'Authentication required. Please login again.' };
-          } else if (uploadResponse.status === 404) {
-            throw { type: 'notfound', message: 'Upload endpoint not found. Please check backend server.' };
-          } else {
-            throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
-          }
-        }
-
-        const responseData = await uploadResponse.json();
-
-        // The backend returns photo_url like "/uploads/filename.jpg"
-        // Construct full URL: http://IP:PORT/uploads/filename.jpg
         const photoUrl = responseData.photo_url;
-        const baseUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+        const baseUrl = API_BASE_URL.replace('/api', '');
         const fullPhotoUrl = photoUrl.startsWith('http') 
           ? photoUrl 
           : `${baseUrl}${photoUrl}`;
@@ -395,18 +415,24 @@ const AuditFormScreen = () => {
       let errorMessage = 'Failed to upload photo';
       
       if (error.type) {
-        // Custom error from our fetch handling
         errorMessage = error.message;
       } else if (error.message) {
-        // Network error or other error
         if (error.message.includes('Network request failed')) {
-          errorMessage = 'Cannot connect to server. Please check your connection.';
+          errorMessage = 'Cannot connect to server. Please check your connection and try again.';
         } else {
           errorMessage = error.message;
         }
       }
       
-      Alert.alert('Upload Failed', errorMessage);
+      // Offer retry option
+      Alert.alert(
+        'Upload Failed', 
+        errorMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: () => handlePhotoUpload(itemId) }
+        ]
+      );
     } finally {
       setUploading({ ...uploading, [itemId]: false });
     }
