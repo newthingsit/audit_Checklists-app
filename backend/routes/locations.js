@@ -596,6 +596,7 @@ router.post('/assignments/user/:userId', authenticate, requirePermission('manage
   const { userId } = req.params;
   const { location_ids, access_type = 'assigned' } = req.body;
   const assignedBy = req.user.id;
+  const dbType = process.env.DB_TYPE || 'sqlite';
   
   if (!Array.isArray(location_ids) || location_ids.length === 0) {
     return res.status(400).json({ error: 'Location IDs array is required' });
@@ -626,20 +627,39 @@ router.post('/assignments/user/:userId', authenticate, requirePermission('manage
       
       const locationId = location_ids[index];
       
-      dbInstance.run(
-        `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [userId, locationId, access_type, assignedBy],
-        (err) => {
-          if (err) {
-            logger.error(`Error assigning location ${locationId} to user ${userId}:`, err);
-            errorCount++;
-          } else {
-            successCount++;
-          }
-          processAssignment(index + 1);
+      // Use database-specific upsert syntax
+      let query;
+      let params;
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        // MSSQL: Use MERGE for upsert
+        query = `
+          MERGE INTO user_locations AS target
+          USING (SELECT ? AS user_id, ? AS location_id) AS source
+          ON target.user_id = source.user_id AND target.location_id = source.location_id
+          WHEN MATCHED THEN
+            UPDATE SET access_type = ?, assigned_by = ?, assigned_at = GETDATE()
+          WHEN NOT MATCHED THEN
+            INSERT (user_id, location_id, access_type, assigned_by, assigned_at)
+            VALUES (?, ?, ?, ?, GETDATE());
+        `;
+        params = [userId, locationId, access_type, assignedBy, userId, locationId, access_type, assignedBy];
+      } else {
+        // SQLite: Use INSERT OR REPLACE
+        query = `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`;
+        params = [userId, locationId, access_type, assignedBy];
+      }
+      
+      dbInstance.run(query, params, (err) => {
+        if (err) {
+          logger.error(`Error assigning location ${locationId} to user ${userId}:`, err);
+          errorCount++;
+        } else {
+          successCount++;
         }
-      );
+        processAssignment(index + 1);
+      });
     };
     
     processAssignment(0);
@@ -652,6 +672,7 @@ router.post('/assignments/location/:locationId', authenticate, requirePermission
   const { locationId } = req.params;
   const { user_ids, access_type = 'assigned' } = req.body;
   const assignedBy = req.user.id;
+  const dbType = process.env.DB_TYPE || 'sqlite';
   
   if (!Array.isArray(user_ids) || user_ids.length === 0) {
     return res.status(400).json({ error: 'User IDs array is required' });
@@ -682,20 +703,39 @@ router.post('/assignments/location/:locationId', authenticate, requirePermission
       
       const userId = user_ids[index];
       
-      dbInstance.run(
-        `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [userId, locationId, access_type, assignedBy],
-        (err) => {
-          if (err) {
-            logger.error(`Error assigning user ${userId} to location ${locationId}:`, err);
-            errorCount++;
-          } else {
-            successCount++;
-          }
-          processAssignment(index + 1);
+      // Use database-specific upsert syntax
+      let query;
+      let params;
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        // MSSQL: Use MERGE for upsert
+        query = `
+          MERGE INTO user_locations AS target
+          USING (SELECT ? AS user_id, ? AS location_id) AS source
+          ON target.user_id = source.user_id AND target.location_id = source.location_id
+          WHEN MATCHED THEN
+            UPDATE SET access_type = ?, assigned_by = ?, assigned_at = GETDATE()
+          WHEN NOT MATCHED THEN
+            INSERT (user_id, location_id, access_type, assigned_by, assigned_at)
+            VALUES (?, ?, ?, ?, GETDATE());
+        `;
+        params = [userId, locationId, access_type, assignedBy, userId, locationId, access_type, assignedBy];
+      } else {
+        // SQLite: Use INSERT OR REPLACE
+        query = `INSERT OR REPLACE INTO user_locations (user_id, location_id, access_type, assigned_by, assigned_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`;
+        params = [userId, locationId, access_type, assignedBy];
+      }
+      
+      dbInstance.run(query, params, (err) => {
+        if (err) {
+          logger.error(`Error assigning user ${userId} to location ${locationId}:`, err);
+          errorCount++;
+        } else {
+          successCount++;
         }
-      );
+        processAssignment(index + 1);
+      });
     };
     
     processAssignment(0);
