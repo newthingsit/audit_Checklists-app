@@ -39,12 +39,30 @@ app.use((req, res, next) => {
   const isAllowed = !origin || allowedOrigins.includes(origin) || !isProduction;
   
   if (isAllowed) {
-    // Use specific origin (not *) when credentials are required, unless no origin (mobile apps)
-    const corsOrigin = origin || (!isProduction ? '*' : allowedOrigins[0]);
+    // Use specific origin when sending credentials; never send credentials with "*"
+    let corsOrigin = '*';
+    let allowCredentials = false;
+
+    if (origin && allowedOrigins.includes(origin)) {
+      corsOrigin = origin;
+      allowCredentials = true;
+    } else if (!isProduction && origin) {
+      // In development allow any origin, but still only allow credentials for explicit origin
+      corsOrigin = origin;
+      allowCredentials = true;
+    } else {
+      // No origin (mobile/Postman) or not in allowlist: keep "*" and no credentials
+      corsOrigin = '*';
+      allowCredentials = false;
+    }
+
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+    res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    if (allowCredentials) {
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length');
   }

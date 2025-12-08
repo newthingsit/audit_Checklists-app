@@ -23,6 +23,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+*.log
+*.zip
 
 # IDE
 .vscode/
@@ -67,9 +69,26 @@ package-lock.json
 yarn.lock
 
 # Temporary files and notes
+*.txt
+!README.txt
 Push the code.txt
 GITHUB_SECRETS.md
-Step.docx
 
-# Cursor workspace temp files (auto-generated images)
+# Office documents (should not be in repo)
+*.xlsx
+*.docx
+*.doc
+*.xls
+*.pptx
+*.ppt
+
+# PowerShell scripts (local dev only)
+*.ps1
+
+# Cursor workspace temp files
 assets/c__Users_*
+.cursor/
+
+# Zip archives
+*.zip
+backend-logs.zip

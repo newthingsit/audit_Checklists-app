@@ -43,7 +43,7 @@ const APP_VERSION = '5'; // Increment this on each major deployment
         localStorage.setItem('app_version', APP_VERSION);
         
         // Reload to get fresh content (only if we actually cleared something)
-        if (cacheNames?.length > 0 || registrations.length > 0) {
+        if (registrations.length > 0) {
           window.location.reload(true);
           return;
         }
