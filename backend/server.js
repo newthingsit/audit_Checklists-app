@@ -145,6 +145,9 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 
 // Custom keyGenerator to handle Azure App Service IP addresses with ports
 // Azure passes IP addresses like "180.151.76.170:55400" which express-rate-limit rejects
+// Must use ipKeyGenerator helper for IPv6 support (required by express-rate-limit v7+)
+const { ipKeyGenerator } = require('express-rate-limit');
+
 const getClientIp = (req) => {
   // Try x-forwarded-for header first (Azure App Service)
   let ip = req.headers['x-forwarded-for'] || 
@@ -183,13 +186,27 @@ const getClientIp = (req) => {
   return ip;
 };
 
+// Use ipKeyGenerator helper to properly handle IPv6 addresses
+// This wraps our custom getClientIp function to satisfy express-rate-limit's IPv6 requirements
+// ipKeyGenerator applies subnet masking to IPv6 addresses (default /56) to prevent bypass
+const getClientIpKeyGenerator = (req) => {
+  const ip = getClientIp(req);
+  // If IP is invalid/unknown, return the fallback key
+  if (ip === 'unknown' || ip === (req.headers['user-agent'] || 'unknown-client')) {
+    return ip;
+  }
+  // Use ipKeyGenerator helper for proper IPv6 subnet masking (prevents IPv6 bypass)
+  // For IPv4, it returns the IP unchanged; for IPv6, it applies /56 subnet mask
+  return ipKeyGenerator(ip, 56);
+};
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: isDevelopment ? 100 : 5, // More lenient in development
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp, // Use custom IP extractor
+  keyGenerator: getClientIpKeyGenerator, // Use custom IP extractor with IPv6 support
   // Skip X-Forwarded-For validation in development to avoid warnings
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
@@ -202,7 +219,7 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp, // Use custom IP extractor
+  keyGenerator: getClientIpKeyGenerator, // Use custom IP extractor with IPv6 support
   // Skip X-Forwarded-For validation in development to avoid warnings
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
@@ -216,7 +233,7 @@ const sensitiveOpLimiter = rateLimit({
   message: 'Too many attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp, // Use custom IP extractor
+  keyGenerator: getClientIpKeyGenerator, // Use custom IP extractor with IPv6 support
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
@@ -229,7 +246,7 @@ const uploadLimiter = rateLimit({
   message: 'Too many file uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp, // Use custom IP extractor
+  keyGenerator: getClientIpKeyGenerator, // Use custom IP extractor with IPv6 support
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
@@ -242,7 +259,7 @@ const auditLimiter = rateLimit({
   message: 'Too many audit requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp, // Use custom IP extractor
+  keyGenerator: getClientIpKeyGenerator, // Use custom IP extractor with IPv6 support
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },

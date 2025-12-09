@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database-loader');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 const router = express.Router();
