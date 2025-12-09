@@ -86,15 +86,22 @@ const Stores = () => {
     fetchStores();
   }, []);
 
-  const fetchStores = async () => {
+  const fetchStores = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
-      const response = await axios.get('/api/locations');
+      // Add cache-busting timestamp to ensure fresh data
+      const cacheBuster = `_t=${Date.now()}`;
+      const response = await axios.get(`/api/locations?${cacheBuster}`);
       setStores(response.data.locations || []);
     } catch (error) {
       console.error('Error fetching stores:', error);
       setStores([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -159,8 +166,12 @@ const Stores = () => {
         showSuccess('Store created successfully!');
       }
       handleCloseDialog();
-      // Refresh stores list immediately
-      await fetchStores();
+      // Immediate refresh (without loading spinner for better UX)
+      await fetchStores(false);
+      // Second refresh after delay to ensure backend has fully processed
+      setTimeout(async () => {
+        await fetchStores(false);
+      }, 800);
     } catch (error) {
       console.error('Error saving store:', error);
       const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Error saving store';
@@ -182,7 +193,7 @@ const Stores = () => {
     if (!store) return;
 
     // Close dialog immediately for better UX, then perform async operation
-    setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
+      setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
 
     // Use setTimeout to defer the async operation and prevent blocking the UI thread
     setTimeout(async () => {
@@ -199,8 +210,12 @@ const Stores = () => {
           showSuccess('Store deleted successfully!');
         }
         
-        // Refresh stores list immediately
-        await fetchStores();
+        // Immediate refresh (without loading spinner for better UX)
+        await fetchStores(false);
+        // Second refresh after delay to ensure backend has fully processed
+        setTimeout(async () => {
+          await fetchStores(false);
+        }, 800);
       } catch (error) {
         console.error('Error deleting store:', error);
         
@@ -237,8 +252,12 @@ const Stores = () => {
       try {
         const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
         showSuccess(response.data.message);
-        // Refresh stores list immediately
-        await fetchStores();
+        // Immediate refresh (without loading spinner for better UX)
+        await fetchStores(false);
+        // Second refresh after delay to ensure backend has fully processed
+        setTimeout(async () => {
+          await fetchStores(false);
+        }, 800);
       } catch (error) {
         console.error('Error toggling store status:', error);
         const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update store status';

@@ -330,7 +330,16 @@ router.get('/:id', authenticate, (req, res) => {
             return res.json({ audit, items: [], categoryScores: {} });
           }
           
-          const itemIds = items.map(item => item.item_id);
+          // Construct full photo URLs if they exist
+          const appUrl = process.env.APP_URL || '';
+          const itemsWithFullUrls = items.map(item => {
+            if (item.photo_url && !item.photo_url.startsWith('http')) {
+              item.photo_url = `${appUrl}${item.photo_url}`;
+            }
+            return item;
+          });
+          
+          const itemIds = itemsWithFullUrls.map(item => item.item_id);
           const placeholders = itemIds.map(() => '?').join(',');
           
           dbInstance.all(
@@ -407,14 +416,24 @@ router.get('/:id', authenticate, (req, res) => {
                   : 0;
               });
               
-              // Attach options to items, normalize option_text to text for compatibility
-              const itemsWithOptions = items.map(item => ({
-                ...item,
-                options: (optionsByItem[item.item_id] || []).map(option => ({
-                  ...option,
-                  text: option.option_text // Add text field for mobile compatibility
-                }))
-              }));
+              // Construct full photo URLs and attach options to items
+              const appUrl = process.env.APP_URL || '';
+              const itemsWithOptions = items.map(item => {
+                // Construct full photo URL if it exists and is not already a full URL
+                let photoUrl = item.photo_url;
+                if (photoUrl && !photoUrl.startsWith('http')) {
+                  photoUrl = `${appUrl}${photoUrl}`;
+                }
+                
+                return {
+                  ...item,
+                  photo_url: photoUrl, // Use constructed full URL
+                  options: (optionsByItem[item.item_id] || []).map(option => ({
+                    ...option,
+                    text: option.option_text // Add text field for mobile compatibility
+                  }))
+                };
+              });
               
               res.json({ audit, items: itemsWithOptions, categoryScores });
             }
@@ -485,11 +504,62 @@ router.post('/', authenticate, (req, res) => {
       return res.status(scheduleErr.status).json({ error: scheduleErr.message });
     }
 
-    // Get template and items
-    dbInstance.get('SELECT * FROM checklist_templates WHERE id = ?', [template_id], (err, template) => {
-      if (err || !template) {
-        return res.status(404).json({ error: 'Template not found' });
+    // Check checklist-specific permissions if not from scheduled audit
+    const checkChecklistPermission = (callback) => {
+      if (linkedSchedule) {
+        // Scheduled audits bypass checklist permission check (they have their own permission)
+        return callback(null);
       }
+
+      // Check if user has permission to use this specific checklist
+      getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+        if (permErr) {
+          logger.error('Error fetching permissions:', permErr.message);
+          return callback({ status: 500, message: 'Error checking permissions' });
+        }
+
+        // Check for checklist-specific permission
+        dbInstance.get(
+          `SELECT can_start_audit FROM user_checklist_permissions WHERE user_id = ? AND template_id = ?`,
+          [req.user.id, template_id],
+          (err, permission) => {
+            if (err) {
+              logger.error('Error checking checklist permission:', err);
+              // If table doesn't exist or error, allow access (backward compatible)
+              return callback(null);
+            }
+
+            // If permission record exists and can_start_audit is false, deny access
+            if (permission && permission.can_start_audit === 0) {
+              return callback({ status: 403, message: 'You do not have permission to start audits with this checklist' });
+            }
+
+            // If no specific permission record, check general template permissions
+            const canUseTemplate = isAdminUser(req.user) ||
+              hasPermission(userPermissions, 'display_templates') ||
+              hasPermission(userPermissions, 'view_templates') ||
+              hasPermission(userPermissions, 'manage_templates');
+
+            if (!canUseTemplate) {
+              return callback({ status: 403, message: 'You do not have permission to use this checklist' });
+            }
+
+            callback(null);
+          }
+        );
+      });
+    };
+
+    checkChecklistPermission((permErr) => {
+      if (permErr) {
+        return res.status(permErr.status).json({ error: permErr.message });
+      }
+
+      // Get template and items
+      dbInstance.get('SELECT * FROM checklist_templates WHERE id = ?', [template_id], (err, template) => {
+        if (err || !template) {
+          return res.status(404).json({ error: 'Template not found' });
+        }
 
       dbInstance.all('SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id', 
         [template_id], (err, items) => {
@@ -557,6 +627,7 @@ router.post('/', authenticate, (req, res) => {
           );
         }
       );
+      });
     });
   });
 });

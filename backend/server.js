@@ -143,12 +143,53 @@ if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production')
 // Rate Limiting - More lenient in development
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
+// Custom keyGenerator to handle Azure App Service IP addresses with ports
+// Azure passes IP addresses like "180.151.76.170:55400" which express-rate-limit rejects
+const getClientIp = (req) => {
+  // Try x-forwarded-for header first (Azure App Service)
+  let ip = req.headers['x-forwarded-for'] || 
+           req.headers['x-client-ip'] || 
+           req.headers['x-real-ip'] ||
+           req.connection?.remoteAddress ||
+           req.socket?.remoteAddress ||
+           req.ip ||
+           'unknown';
+  
+  // Handle comma-separated list (x-forwarded-for can have multiple IPs)
+  if (typeof ip === 'string' && ip.includes(',')) {
+    ip = ip.split(',')[0].trim();
+  }
+  
+  // Remove port number if present (Azure App Service includes port)
+  // Format: "180.151.76.170:55400" -> "180.151.76.170"
+  if (typeof ip === 'string' && ip.includes(':')) {
+    // Check if it's IPv6 format [::1]:port or IPv4 format 1.2.3.4:port
+    if (ip.startsWith('[')) {
+      // IPv6: [::1]:port -> extract [::1]
+      const match = ip.match(/^\[([^\]]+)\]/);
+      ip = match ? match[1] : ip.split(']')[0].substring(1);
+    } else {
+      // IPv4: 1.2.3.4:port -> extract 1.2.3.4
+      ip = ip.split(':')[0];
+    }
+  }
+  
+  // Validate IP format (basic check)
+  if (ip === 'unknown' || (!ip.match(/^[\d.]+$/) && !ip.match(/^[0-9a-fA-F:]+$/))) {
+    // Fallback to a default key if IP is invalid
+    return req.headers['user-agent'] || 'unknown-client';
+  }
+  
+  return ip;
+};
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: isDevelopment ? 100 : 5, // More lenient in development
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp, // Use custom IP extractor
   // Skip X-Forwarded-For validation in development to avoid warnings
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
@@ -161,6 +202,7 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp, // Use custom IP extractor
   // Skip X-Forwarded-For validation in development to avoid warnings
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
@@ -174,6 +216,7 @@ const sensitiveOpLimiter = rateLimit({
   message: 'Too many attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp, // Use custom IP extractor
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
@@ -186,6 +229,7 @@ const uploadLimiter = rateLimit({
   message: 'Too many file uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp, // Use custom IP extractor
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
@@ -198,6 +242,7 @@ const auditLimiter = rateLimit({
   message: 'Too many audit requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: getClientIp, // Use custom IP extractor
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },

@@ -534,7 +534,28 @@ const createTables = async () => {
     CREATE INDEX idx_user_locations_user ON user_locations(user_id)`,
 
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_locations_location')
-    CREATE INDEX idx_user_locations_location ON user_locations(location_id)`
+    CREATE INDEX idx_user_locations_location ON user_locations(location_id)`,
+
+    // User-Checklist Permissions table (for checklist-wise permissions)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[user_checklist_permissions]') AND type in (N'U'))
+    CREATE TABLE [dbo].[user_checklist_permissions] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL,
+      [template_id] INT NOT NULL,
+      [can_start_audit] BIT DEFAULT 1,
+      [assigned_by] INT,
+      [assigned_at] DATETIME DEFAULT GETDATE(),
+      FOREIGN KEY ([user_id]) REFERENCES [users]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([template_id]) REFERENCES [checklist_templates]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([assigned_by]) REFERENCES [users]([id]),
+      CONSTRAINT [UK_user_checklist_permissions] UNIQUE ([user_id], [template_id])
+    )`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_checklist_permissions_user')
+    CREATE INDEX idx_user_checklist_permissions_user ON user_checklist_permissions(user_id)`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_checklist_permissions_template')
+    CREATE INDEX idx_user_checklist_permissions_template ON user_checklist_permissions(template_id)`
   ];
 
   try {

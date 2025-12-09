@@ -84,7 +84,17 @@ const AuditDetail = () => {
         axios.get(`/api/actions/audit/${id}`).catch(() => ({ data: { actions: [] } }))
       ]);
       setAudit(auditResponse.data.audit);
-      setItems(auditResponse.data.items || []);
+      
+      // Ensure photo_urls are properly constructed with full URLs
+      const itemsWithPhotos = (auditResponse.data.items || []).map(item => {
+        if (item.photo_url && !item.photo_url.startsWith('http')) {
+          const baseUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || '';
+          item.photo_url = `${baseUrl}${item.photo_url}`;
+        }
+        return item;
+      });
+      
+      setItems(itemsWithPhotos);
       setCategoryScores(auditResponse.data.categoryScores || {});
       setActions(actionsResponse.data.actions || []);
     } catch (error) {
@@ -630,10 +640,16 @@ const AuditDetail = () => {
               {item.photo_url && (
                 <Box sx={{ mt: 2 }}>
                   <img 
-                    src={item.photo_url.startsWith('http') ? item.photo_url : item.photo_url} 
+                    src={item.photo_url.startsWith('http') 
+                      ? item.photo_url 
+                      : `${process.env.REACT_APP_API_URL?.replace('/api', '') || ''}${item.photo_url}`} 
                     alt="Audit evidence"
                     style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px' }}
                     crossOrigin="anonymous"
+                    onError={(e) => {
+                      console.error('Error loading image:', item.photo_url);
+                      e.target.style.display = 'none';
+                    }}
                   />
                 </Box>
               )}

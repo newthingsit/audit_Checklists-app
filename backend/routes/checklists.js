@@ -816,5 +816,131 @@ router.get('/:id/preview', authenticate, async (req, res) => {
   }
 });
 
+// Checklist Permissions Management
+// Assign checklist permission to user
+router.post('/:id/permissions/user/:userId', authenticate, requirePermission('manage_templates', 'manage_users'), (req, res) => {
+  const { id: templateId } = req.params;
+  const { userId } = req.params;
+  const { can_start_audit = true } = req.body;
+  const dbInstance = db.getDb();
+  const assignedBy = req.user.id;
+
+  // Check if template exists
+  dbInstance.get('SELECT id FROM checklist_templates WHERE id = ?', [templateId], (err, template) => {
+    if (err) {
+      logger.error('Error checking template:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!template) {
+      return res.status(404).json({ error: 'Checklist template not found' });
+    }
+
+    // Check if user exists
+    dbInstance.get('SELECT id FROM users WHERE id = ?', [userId], (err, user) => {
+      if (err) {
+        logger.error('Error checking user:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Insert or update permission
+      const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
+      let query, params;
+
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `
+          MERGE INTO user_checklist_permissions AS target
+          USING (SELECT ? AS user_id, ? AS template_id) AS source
+          ON target.user_id = source.user_id AND target.template_id = source.template_id
+          WHEN MATCHED THEN
+            UPDATE SET can_start_audit = ?, assigned_by = ?, assigned_at = GETDATE()
+          WHEN NOT MATCHED THEN
+            INSERT (user_id, template_id, can_start_audit, assigned_by, assigned_at)
+            VALUES (?, ?, ?, ?, GETDATE());
+        `;
+        params = [userId, templateId, can_start_audit ? 1 : 0, assignedBy, userId, templateId, can_start_audit ? 1 : 0, assignedBy];
+      } else {
+        query = `INSERT OR REPLACE INTO user_checklist_permissions (user_id, template_id, can_start_audit, assigned_by, assigned_at)
+                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`;
+        params = [userId, templateId, can_start_audit ? 1 : 0, assignedBy];
+      }
+
+      dbInstance.run(query, params, function(err) {
+        if (err) {
+          logger.error('Error assigning checklist permission:', err);
+          return res.status(500).json({ error: 'Error assigning checklist permission' });
+        }
+        res.json({ 
+          message: `Checklist permission ${can_start_audit ? 'granted' : 'revoked'} successfully`,
+          user_id: userId,
+          template_id: templateId,
+          can_start_audit: can_start_audit ? 1 : 0
+        });
+      });
+    });
+  });
+});
+
+// Get checklist permissions for a user
+router.get('/:id/permissions/user/:userId', authenticate, requirePermission('manage_templates', 'view_users'), (req, res) => {
+  const { id: templateId } = req.params;
+  const { userId } = req.params;
+  const dbInstance = db.getDb();
+
+  dbInstance.get(
+    `SELECT * FROM user_checklist_permissions WHERE user_id = ? AND template_id = ?`,
+    [userId, templateId],
+    (err, permission) => {
+      if (err) {
+        logger.error('Error fetching checklist permission:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ permission: permission || null });
+    }
+  );
+});
+
+// Get all checklist permissions for a user
+router.get('/permissions/user/:userId', authenticate, requirePermission('manage_templates', 'view_users'), (req, res) => {
+  const { userId } = req.params;
+  const dbInstance = db.getDb();
+
+  dbInstance.all(
+    `SELECT ucp.*, ct.name as template_name, ct.category
+     FROM user_checklist_permissions ucp
+     JOIN checklist_templates ct ON ucp.template_id = ct.id
+     WHERE ucp.user_id = ?`,
+    [userId],
+    (err, permissions) => {
+      if (err) {
+        logger.error('Error fetching user checklist permissions:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ permissions: permissions || [] });
+    }
+  );
+});
+
+// Remove checklist permission from user
+router.delete('/:id/permissions/user/:userId', authenticate, requirePermission('manage_templates', 'manage_users'), (req, res) => {
+  const { id: templateId } = req.params;
+  const { userId } = req.params;
+  const dbInstance = db.getDb();
+
+  dbInstance.run(
+    `DELETE FROM user_checklist_permissions WHERE user_id = ? AND template_id = ?`,
+    [userId, templateId],
+    function(err) {
+      if (err) {
+        logger.error('Error removing checklist permission:', err);
+        return res.status(500).json({ error: 'Error removing checklist permission' });
+      }
+      res.json({ message: 'Checklist permission removed successfully' });
+    }
+  );
+});
+
 module.exports = router;
 

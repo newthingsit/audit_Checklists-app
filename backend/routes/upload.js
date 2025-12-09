@@ -32,12 +32,12 @@ const upload = multer({
   fileFilter: fileFilter
 });
 
-// Photo compression settings
+// Photo compression settings - optimized for faster upload
 const PHOTO_CONFIG = {
-  maxWidth: 1920,      // Max width in pixels
-  maxHeight: 1920,     // Max height in pixels
-  quality: 85,         // JPEG quality (1-100)
-  maxFileSizeMB: 2,    // Target max file size after compression
+  maxWidth: 1280,      // Reduced from 1920 for faster processing
+  maxHeight: 1280,     // Reduced from 1920 for faster processing
+  quality: 70,         // Reduced from 85 for faster upload (was 85)
+  maxFileSizeMB: 1.5,  // Target max file size after compression
 };
 
 // Compress and save image
@@ -61,10 +61,18 @@ const compressAndSaveImage = async (buffer, filename) => {
       height = Math.round(height * ratio);
     }
     
-    // Compress and save
+    // Compress and save - optimized for speed
     await sharp(buffer)
-      .resize(width, height, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: PHOTO_CONFIG.quality, progressive: true })
+      .resize(width, height, { 
+        fit: 'inside', 
+        withoutEnlargement: true,
+        fastShrinkOnLoad: true // Faster processing
+      })
+      .jpeg({ 
+        quality: PHOTO_CONFIG.quality, 
+        progressive: false, // Disable progressive for faster encoding
+        mozjpeg: true // Use mozjpeg for better compression/speed
+      })
       .toFile(outputPath);
     
     // Get final file size

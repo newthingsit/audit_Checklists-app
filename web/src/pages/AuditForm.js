@@ -217,7 +217,9 @@ const AuditForm = () => {
 
   const fetchLocations = async () => {
     try {
-      const response = await axios.get('/api/locations').catch(() => ({ data: { locations: [] } }));
+      // If scheduled audit, pass scheduled_audit_id to override store assignments
+      const params = scheduledId ? { scheduled_audit_id: scheduledId } : {};
+      const response = await axios.get('/api/locations', { params }).catch(() => ({ data: { locations: [] } }));
       setLocations(response.data.locations || []);
     } catch (error) {
       console.error('Error fetching locations:', error);

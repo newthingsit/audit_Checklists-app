@@ -193,20 +193,13 @@ const ScheduledAuditsScreen = () => {
   const handleContinueAudit = (schedule) => {
     const auditId = linkedAudits[schedule.id];
     if (auditId) {
-      // Navigate to History tab, then to AuditDetail screen
-      const rootNavigation = navigation.getParent()?.getParent();
-      if (rootNavigation) {
-        rootNavigation.navigate('History', {
-          screen: 'AuditDetail',
-          params: { id: auditId }
-        });
-      } else {
-        // Fallback: navigate directly if root navigation not available
-        navigation.navigate('History', {
-          screen: 'AuditDetail',
-          params: { id: auditId }
-        });
-      }
+      // Navigate to AuditForm to continue editing (preserves state better than AuditDetail)
+      navigation.navigate('AuditForm', {
+        auditId: auditId,
+        templateId: schedule.template_id,
+        scheduledAuditId: schedule.id,
+        locationId: schedule.location_id || null,
+      });
     }
   };
 

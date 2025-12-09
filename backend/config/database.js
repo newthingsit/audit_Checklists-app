@@ -524,6 +524,23 @@ const createTables = () => {
       )`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_user_locations_user ON user_locations(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_user_locations_location ON user_locations(location_id)`);
+      
+      // User-Checklist Permissions table (for checklist-wise permissions)
+      db.run(`CREATE TABLE IF NOT EXISTS user_checklist_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        template_id INTEGER NOT NULL,
+        can_start_audit BOOLEAN DEFAULT 1,
+        assigned_by INTEGER,
+        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (template_id) REFERENCES checklist_templates(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES users(id),
+        UNIQUE(user_id, template_id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_user_checklist_permissions_user ON user_checklist_permissions(user_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_user_checklist_permissions_template ON user_checklist_permissions(template_id)`);
+      
       db.run(`CREATE INDEX IF NOT EXISTS idx_locations_group ON locations(group_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_parent ON store_groups(parent_group_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_type ON store_groups(type)`);

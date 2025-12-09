@@ -27,6 +27,16 @@ const AuditDetailScreen = () => {
     fetchAudit();
   }, [id]);
 
+  // Preserve state when component is focused (e.g., when navigating back)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Refresh audit data when screen comes into focus
+      fetchAudit();
+    });
+
+    return unsubscribe;
+  }, [navigation, id]);
+
   const fetchAudit = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/audits/${id}`);
@@ -289,9 +299,16 @@ const AuditDetailScreen = () => {
           {item.photo_url && (
             <View style={styles.photoContainer}>
               <Image 
-                source={{ uri: item.photo_url.startsWith('http') ? item.photo_url : `${API_BASE_URL.replace('/api', '')}${item.photo_url}` }} 
+                source={{ 
+                  uri: item.photo_url.startsWith('http') 
+                    ? item.photo_url 
+                    : `${API_BASE_URL.replace('/api', '')}${item.photo_url}` 
+                }} 
                 style={styles.itemPhoto}
                 resizeMode="cover"
+                onError={(error) => {
+                  console.error('Error loading image:', item.photo_url, error);
+                }}
               />
             </View>
           )}

@@ -72,6 +72,20 @@ const AuditFormScreen = () => {
     fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
 
+  // Preserve state when component is focused (e.g., when navigating back)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Refresh data when screen comes into focus to ensure state is current
+      if (auditId) {
+        fetchAuditData();
+      } else if (scheduledAuditId && templateId) {
+        checkExistingAudit();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, auditId, scheduledAuditId, templateId]);
+
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
     // Handle initialLocationId from route params
@@ -219,7 +233,9 @@ const AuditFormScreen = () => {
 
   const fetchLocations = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/locations`).catch(() => ({ data: { locations: [] } }));
+      // If scheduled audit, pass scheduled_audit_id to override store assignments
+      const params = scheduledAuditId ? { scheduled_audit_id: scheduledAuditId } : {};
+      const response = await axios.get(`${API_BASE_URL}/locations`, { params }).catch(() => ({ data: { locations: [] } }));
       const locationsData = response.data.locations || [];
       setLocations(locationsData);
       
@@ -378,9 +394,9 @@ const AuditFormScreen = () => {
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7, // Reduced quality for better upload performance
+        allowsEditing: false, // Skip crop option for faster photo capture
+        quality: 0.5, // Further reduced quality for faster upload (was 0.6)
+        exif: false, // Skip EXIF data for faster processing
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -408,7 +424,8 @@ const AuditFormScreen = () => {
         
         console.log('Photo uploaded successfully:', fullPhotoUrl);
         setPhotos({ ...photos, [itemId]: fullPhotoUrl });
-        Alert.alert('Success', 'Photo uploaded successfully!');
+        setUploading({ ...uploading, [itemId]: false });
+        // Don't show alert - just update silently for better UX
       }
     } catch (error) {
       console.error('Error uploading photo:', error);

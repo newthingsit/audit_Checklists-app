@@ -11,10 +11,43 @@ router.get('/', authenticate, requirePermission('view_locations', 'manage_locati
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const userRole = req.user.role;
-  const { all } = req.query; // Admin can pass ?all=true to see all locations
+  const { all, scheduled_audit_id } = req.query; // Admin can pass ?all=true, scheduled_audit_id to override assignments
   
   // Check if user is admin or manager - they can see all locations
   const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
+  
+  // If scheduled_audit_id is provided, allow access to that location regardless of assignments
+  // This allows scheduled audits to override store assignment restrictions
+  if (scheduled_audit_id) {
+    dbInstance.get(
+      `SELECT location_id FROM scheduled_audits WHERE id = ? AND (created_by = ? OR assigned_to = ?)`,
+      [scheduled_audit_id, userId, userId],
+      (err, schedule) => {
+        if (err) {
+          logger.error('Error fetching scheduled audit:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        if (schedule && schedule.location_id) {
+          // Return the scheduled audit's location
+          dbInstance.all(
+            `SELECT * FROM locations WHERE id = ?`,
+            [schedule.location_id],
+            (err, locations) => {
+              if (err) {
+                logger.error('Error fetching scheduled audit location:', err);
+                return res.status(500).json({ error: 'Database error' });
+              }
+              res.json({ locations: locations || [], filtered: false, fromScheduledAudit: true });
+            }
+          );
+        } else {
+          // Scheduled audit not found or no location - fall through to normal logic
+          return res.status(404).json({ error: 'Scheduled audit not found or not assigned to you' });
+        }
+      }
+    );
+    return; // Exit early for scheduled audit case
+  }
   
   if (isAdminOrManager && all === 'true') {
     // Admin/Manager requesting all locations (including inactive)
