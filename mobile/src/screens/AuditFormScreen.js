@@ -139,8 +139,10 @@ const AuditFormScreen = () => {
   const fetchAuditDataById = async (id) => {
     try {
       setLoading(true);
-      // Fetch audit details
-      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${id}`);
+      // Fetch audit details with increased timeout for large audits
+      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${id}`, {
+        timeout: 60000, // 60 seconds timeout for large audits
+      });
       const audit = auditResponse.data.audit;
       const auditItems = auditResponse.data.items || [];
 
@@ -217,11 +219,34 @@ const AuditFormScreen = () => {
 
   const fetchTemplate = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`);
-      setTemplate(response.data.template);
-      setItems(response.data.items || []);
+      setLoading(true);
+      // Increased timeout for large templates (174+ items)
+      const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`, {
+        timeout: 60000, // 60 seconds timeout for large templates
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.data && response.data.template) {
+        setTemplate(response.data.template);
+        setItems(response.data.items || []);
+      } else {
+        throw new Error('Invalid template response');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load template');
+      console.error('Error fetching template:', error);
+      let errorMessage = 'Failed to load template';
+      
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'Template is too large. Please try again or contact support.';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Server error loading template. Please try again.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Template not found.';
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -326,12 +351,16 @@ const AuditFormScreen = () => {
     setComments({ ...comments, [itemId]: comment });
   };
 
-  // Photo upload with retry logic
-  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
+  // Photo upload with retry logic - Optimized for large audits (174+ items)
+  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 5) => {
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        // Create AbortController for timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
         const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
           method: 'POST',
           headers: {
@@ -339,7 +368,10 @@ const AuditFormScreen = () => {
             ...(authToken ? { 'Authorization': authToken } : {}),
           },
           body: formData,
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
 
         if (!uploadResponse.ok) {
           const errorData = await uploadResponse.json().catch(() => ({}));
@@ -348,12 +380,14 @@ const AuditFormScreen = () => {
           } else if (uploadResponse.status === 404) {
             throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
           } else if (uploadResponse.status === 429) {
-            // Rate limited - wait and retry
+            // Rate limited - wait longer and retry with exponential backoff
             if (attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+              const waitTime = Math.min(5000 * attempt, 30000); // Max 30 seconds wait
+              console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
               continue;
             }
-            throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment.' };
+            throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
           } else {
             throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
           }
@@ -366,10 +400,20 @@ const AuditFormScreen = () => {
         // Don't retry on auth or not found errors
         if (error.noRetry) throw error;
         
-        // Network errors - retry
+        // Handle timeout errors
+        if (error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
+          if (attempt < maxRetries) {
+            console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+            continue;
+          }
+          throw { type: 'timeout', message: 'Upload timed out. Please check your connection and try again.' };
+        }
+        
+        // Network errors - retry with exponential backoff
         if (error.message?.includes('Network request failed') && attempt < maxRetries) {
-          console.log(`Upload attempt ${attempt} failed, retrying...`);
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          console.log(`Network error. Retrying ${attempt + 1}/${maxRetries}...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
         
