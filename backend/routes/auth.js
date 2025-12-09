@@ -352,8 +352,9 @@ router.post('/forgot-password', [
 
         // Send reset email
         const emailService = require('../utils/emailService');
-        const appUrl = process.env.APP_URL || 'https://app.litebitefoods.com';
-        const resetLink = `${appUrl}/login?token=${resetToken}`;
+        // Always use app.litebitefoods.com for password reset links (production frontend)
+        // This ensures password reset links always point to the correct production domain
+        const resetLink = `https://app.litebitefoods.com/login?token=${resetToken}`;
 
         const emailSubject = 'Password Reset Request - Audit Pro';
         const emailHtml = `

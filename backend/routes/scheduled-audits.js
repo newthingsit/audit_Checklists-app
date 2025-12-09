@@ -371,6 +371,53 @@ router.post('/', authenticate, requirePermission('manage_scheduled_audits', 'cre
         return res.status(500).json({ error: 'Error creating scheduled audit' });
       }
       const scheduleId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
+      
+      // Send notification (in-app, push, and email) to assigned user if assigned
+      if (assigned_to) {
+        // Get user and template/location details for notification
+        dbInstance.get(
+          `SELECT u.name, u.email, ct.name as template_name, l.name as location_name
+           FROM users u
+           LEFT JOIN checklist_templates ct ON ct.id = ?
+           LEFT JOIN locations l ON l.id = ?
+           WHERE u.id = ?`,
+          [template_id, location_id, assigned_to],
+          async (userErr, userData) => {
+            if (!userErr && userData) {
+              try {
+                const { createNotification } = require('./notifications');
+                const appUrl = process.env.APP_URL || 'https://app.litebitefoods.com';
+                const scheduledAuditUrl = appUrl.includes('litebitefoods.com') 
+                  ? `${appUrl}/scheduled`
+                  : `https://app.litebitefoods.com/scheduled`;
+                
+                // Create notification (includes in-app, push, and email)
+                await createNotification(
+                  assigned_to,
+                  'scheduled_audit',
+                  'New Scheduled Audit Assigned',
+                  `You have been assigned a scheduled audit: "${userData.template_name || 'Scheduled Audit'}" on ${new Date(scheduled_date).toLocaleDateString()}`,
+                  scheduledAuditUrl,
+                  {
+                    template: 'scheduledAuditReminder',
+                    data: [
+                      userData.template_name || 'Scheduled Audit',
+                      scheduled_date,
+                      userData.location_name || 'Not specified'
+                    ]
+                  }
+                );
+                
+                logger.info(`Scheduled audit notification sent to user ${assigned_to} for schedule ${scheduleId}`);
+              } catch (notifErr) {
+                logger.error('Error sending scheduled audit notification:', notifErr);
+                // Don't fail the request if notification fails
+              }
+            }
+          }
+        );
+      }
+      
       res.status(201).json({ id: scheduleId, message: 'Scheduled audit created successfully' });
     }
   );
@@ -399,16 +446,78 @@ router.put('/:id', authenticate, requirePermission('manage_scheduled_audits', 'u
     nextRunDate = date.toISOString().split('T')[0];
   }
 
-  dbInstance.run(
-    `UPDATE scheduled_audits 
-     SET template_id = ?, location_id = ?, assigned_to = ?, scheduled_date = ?, frequency = ?, next_run_date = ?, status = ?
-     WHERE id = ? AND created_by = ?`,
-    [template_id, location_id, assigned_to, scheduled_date, frequency || 'once', nextRunDate, status, id, userId],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Error updating scheduled audit' });
+  // Get current scheduled audit to check if assigned_to changed
+  dbInstance.get(
+    `SELECT assigned_to FROM scheduled_audits WHERE id = ?`,
+    [id],
+    (getErr, currentSchedule) => {
+      if (getErr) {
+        return res.status(500).json({ error: 'Error fetching scheduled audit' });
       }
-      res.json({ message: 'Scheduled audit updated successfully' });
+      
+      dbInstance.run(
+        `UPDATE scheduled_audits 
+         SET template_id = ?, location_id = ?, assigned_to = ?, scheduled_date = ?, frequency = ?, next_run_date = ?, status = ?
+         WHERE id = ? AND created_by = ?`,
+        [template_id, location_id, assigned_to, scheduled_date, frequency || 'once', nextRunDate, status, id, userId],
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Error updating scheduled audit' });
+          }
+          
+          // Send notification if assigned_to changed or was newly assigned
+          const wasAssigned = currentSchedule && currentSchedule.assigned_to;
+          const isNowAssigned = assigned_to && assigned_to !== null;
+          const assignmentChanged = wasAssigned !== isNowAssigned || (isNowAssigned && currentSchedule.assigned_to !== assigned_to);
+          
+          if (isNowAssigned && assignmentChanged) {
+            // Get user and template/location details for notification
+            dbInstance.get(
+              `SELECT u.name, u.email, ct.name as template_name, l.name as location_name
+               FROM users u
+               LEFT JOIN checklist_templates ct ON ct.id = ?
+               LEFT JOIN locations l ON l.id = ?
+               WHERE u.id = ?`,
+              [template_id, location_id, assigned_to],
+              async (userErr, userData) => {
+                if (!userErr && userData) {
+                  try {
+                    const { createNotification } = require('./notifications');
+                    const appUrl = process.env.APP_URL || 'https://app.litebitefoods.com';
+                    const scheduledAuditUrl = appUrl.includes('litebitefoods.com') 
+                      ? `${appUrl}/scheduled`
+                      : `https://app.litebitefoods.com/scheduled`;
+                    
+                    // Create notification (includes in-app, push, and email)
+                    await createNotification(
+                      assigned_to,
+                      'scheduled_audit',
+                      'Scheduled Audit Updated',
+                      `Your scheduled audit "${userData.template_name || 'Scheduled Audit'}" has been updated. Scheduled for ${new Date(scheduled_date).toLocaleDateString()}`,
+                      scheduledAuditUrl,
+                      {
+                        template: 'scheduledAuditReminder',
+                        data: [
+                          userData.template_name || 'Scheduled Audit',
+                          scheduled_date,
+                          userData.location_name || 'Not specified'
+                        ]
+                      }
+                    );
+                    
+                    logger.info(`Scheduled audit notification sent to user ${assigned_to} for schedule ${id}`);
+                  } catch (notifErr) {
+                    logger.error('Error sending scheduled audit notification:', notifErr);
+                    // Don't fail the request if notification fails
+                  }
+                }
+              }
+            );
+          }
+          
+          res.json({ message: 'Scheduled audit updated successfully' });
+        }
+      );
     }
   );
 });

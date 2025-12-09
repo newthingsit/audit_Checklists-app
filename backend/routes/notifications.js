@@ -422,4 +422,82 @@ async function sendPushNotification(userId, title, body, data = {}) {
 // Export the helper function for use in other files
 router.sendPushNotification = sendPushNotification;
 
+/**
+ * Create notification (in-app, push, and email)
+ * @param {number} userId - User ID to send notification to
+ * @param {string} type - Notification type (e.g., 'audit', 'action', 'reminder')
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body/message
+ * @param {string} link - Link to navigate to (optional)
+ * @param {object} emailOptions - Email options (optional)
+ *   - template: Email template name
+ *   - data: Array of data for template
+ */
+async function createNotification(userId, type, title, body, link = null, emailOptions = null) {
+  try {
+    const database = getDb();
+    const dbType = getDbType();
+    
+    // Get user details for email
+    const userQuery = `SELECT name, email FROM users WHERE id = ?`;
+    const user = await new Promise((resolve, reject) => {
+      database.get(userQuery, [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+    
+    if (!user) {
+      logger.warn(`User ${userId} not found for notification`);
+      return { success: false, error: 'User not found' };
+    }
+    
+    // Save in-app notification
+    const insertQuery = dbType === 'mssql'
+      ? `INSERT INTO notifications (user_id, type, title, body, link, [read], created_at) VALUES (?, ?, ?, ?, ?, 0, GETDATE())`
+      : `INSERT INTO notifications (user_id, type, title, body, link, read, created_at) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))`;
+    
+    await new Promise((resolve, reject) => {
+      database.run(insertQuery, [userId, type, title, body, link], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    // Send push notification
+    try {
+      await sendPushNotification(userId, title, body, { type, link });
+    } catch (pushErr) {
+      logger.warn('Push notification failed (non-critical):', pushErr.message);
+    }
+    
+    // Send email notification if template is provided
+    if (emailOptions && emailOptions.template && user.email) {
+      try {
+        const emailService = require('../utils/emailService');
+        const { sendNotificationEmail } = emailService;
+        
+        await sendNotificationEmail(
+          user.email,
+          user.name || 'User',
+          emailOptions.template,
+          emailOptions.data || []
+        );
+        
+        logger.info(`Email notification sent to ${user.email} for ${type} notification`);
+      } catch (emailErr) {
+        logger.error('Email notification failed (non-critical):', emailErr.message);
+      }
+    }
+    
+    return { success: true };
+  } catch (error) {
+    logger.error('Error creating notification:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Export createNotification for use in other files
+router.createNotification = createNotification;
+
 module.exports = router;
