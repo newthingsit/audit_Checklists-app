@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -52,6 +52,7 @@ const StoreAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [summary, setSummary] = useState({});
   const [tabValue, setTabValue] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0); // Force re-render key
   
   // Dialog states
   const [assignDialog, setAssignDialog] = useState({ open: false, type: null, item: null });
@@ -62,25 +63,35 @@ const StoreAssignments = () => {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
+      // Add cache-busting timestamp to ensure fresh data
+      const cacheBuster = `_t=${Date.now()}`;
       const [usersRes, locationsRes, assignmentsRes, summaryRes] = await Promise.all([
-        axios.get('/api/users'),
-        axios.get('/api/locations?all=true'),
-        axios.get('/api/locations/assignments/all'),
-        axios.get('/api/locations/assignments/summary')
+        axios.get(`/api/users?${cacheBuster}`),
+        axios.get(`/api/locations?all=true&${cacheBuster}`),
+        axios.get(`/api/locations/assignments/all?${cacheBuster}`),
+        axios.get(`/api/locations/assignments/summary?${cacheBuster}`)
       ]);
       
       setUsers(usersRes.data.users || []);
       setLocations(locationsRes.data.locations || []);
       setAssignments(assignmentsRes.data.assignments || []);
       setSummary(summaryRes.data.summary || {});
+      // Force re-render by updating refresh key
+      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Error fetching data:', error);
-      showError('Failed to load data');
+      if (showLoading) {
+        showError('Failed to load data');
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -97,14 +108,20 @@ const StoreAssignments = () => {
       showSuccess(response.data.message || 'Stores assigned successfully');
       setAssignDialog({ open: false, type: null, item: null });
       setSelectedItems([]);
-      // Force refresh with a small delay to ensure backend has processed
-      setTimeout(() => {
-        fetchData();
-      }, 300);
+      
+      // Immediate refresh (without loading spinner for better UX)
+      await fetchData(false);
+      
+      // Second refresh after delay to ensure backend has fully processed
+      setTimeout(async () => {
+        await fetchData(false);
+      }, 800);
     } catch (error) {
       console.error('Error assigning stores:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign stores';
       showError(errorMsg);
+      // Refresh on error to ensure UI is in sync
+      fetchData();
     }
   };
 
@@ -121,14 +138,20 @@ const StoreAssignments = () => {
       showSuccess(response.data.message || 'Users assigned successfully');
       setAssignDialog({ open: false, type: null, item: null });
       setSelectedItems([]);
-      // Force refresh with a small delay to ensure backend has processed
-      setTimeout(() => {
-        fetchData();
-      }, 300);
+      
+      // Immediate refresh (without loading spinner for better UX)
+      await fetchData(false);
+      
+      // Second refresh after delay to ensure backend has fully processed
+      setTimeout(async () => {
+        await fetchData(false);
+      }, 800);
     } catch (error) {
       console.error('Error assigning users:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign users';
       showError(errorMsg);
+      // Refresh on error to ensure UI is in sync
+      fetchData();
     }
   };
 
@@ -138,14 +161,20 @@ const StoreAssignments = () => {
     try {
       await axios.delete(`/api/locations/assignments/user/${userId}/location/${locationId}`);
       showSuccess('Assignment removed');
-      // Force refresh with a small delay
-      setTimeout(() => {
-        fetchData();
-      }, 300);
+      
+      // Immediate refresh (without loading spinner for better UX)
+      await fetchData(false);
+      
+      // Second refresh after delay to ensure backend has fully processed
+      setTimeout(async () => {
+        await fetchData(false);
+      }, 800);
     } catch (error) {
       console.error('Error removing assignment:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignment';
       showError(errorMsg);
+      // Refresh on error to ensure UI is in sync
+      fetchData();
     }
   };
 
@@ -155,61 +184,73 @@ const StoreAssignments = () => {
     try {
       const response = await axios.delete(`/api/locations/assignments/user/${userId}`);
       showSuccess(response.data.message || 'All assignments removed');
-      // Force refresh with a small delay
-      setTimeout(() => {
-        fetchData();
-      }, 300);
+      
+      // Immediate refresh (without loading spinner for better UX)
+      await fetchData(false);
+      
+      // Second refresh after delay to ensure backend has fully processed
+      setTimeout(async () => {
+        await fetchData(false);
+      }, 800);
     } catch (error) {
       console.error('Error removing assignments:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignments';
       showError(errorMsg);
+      // Refresh on error to ensure UI is in sync
+      fetchData();
     }
   };
 
-  // Group assignments by user
-  const assignmentsByUser = assignments.reduce((acc, a) => {
-    if (!acc[a.user_id]) {
-      acc[a.user_id] = {
-        user_id: a.user_id,
-        user_name: a.user_name,
-        user_email: a.user_email,
-        user_role: a.user_role,
-        locations: []
-      };
-    }
-    acc[a.user_id].locations.push({
-      id: a.location_id,
-      name: a.location_name,
-      store_number: a.store_number,
-      access_type: a.access_type,
-      assigned_at: a.assigned_at
-    });
-    return acc;
-  }, {});
-
-  // Group assignments by location
-  const assignmentsByLocation = assignments.reduce((acc, a) => {
-    if (!acc[a.location_id]) {
-      acc[a.location_id] = {
-        location_id: a.location_id,
-        location_name: a.location_name,
+  // Group assignments by user (memoized for performance and proper updates)
+  const assignmentsByUser = useMemo(() => {
+    return assignments.reduce((acc, a) => {
+      if (!acc[a.user_id]) {
+        acc[a.user_id] = {
+          user_id: a.user_id,
+          user_name: a.user_name,
+          user_email: a.user_email,
+          user_role: a.user_role,
+          locations: []
+        };
+      }
+      acc[a.user_id].locations.push({
+        id: a.location_id,
+        name: a.location_name,
         store_number: a.store_number,
-        users: []
-      };
-    }
-    acc[a.location_id].users.push({
-      id: a.user_id,
-      name: a.user_name,
-      email: a.user_email,
-      role: a.user_role,
-      access_type: a.access_type,
-      assigned_at: a.assigned_at
-    });
-    return acc;
-  }, {});
+        access_type: a.access_type,
+        assigned_at: a.assigned_at
+      });
+      return acc;
+    }, {});
+  }, [assignments, refreshKey]);
 
-  // Filter users for assignment (non-admin only)
-  const assignableUsers = users.filter(u => u.role !== 'admin' && u.role !== 'manager');
+  // Group assignments by location (memoized for performance and proper updates)
+  const assignmentsByLocation = useMemo(() => {
+    return assignments.reduce((acc, a) => {
+      if (!acc[a.location_id]) {
+        acc[a.location_id] = {
+          location_id: a.location_id,
+          location_name: a.location_name,
+          store_number: a.store_number,
+          users: []
+        };
+      }
+      acc[a.location_id].users.push({
+        id: a.user_id,
+        name: a.user_name,
+        email: a.user_email,
+        role: a.user_role,
+        access_type: a.access_type,
+        assigned_at: a.assigned_at
+      });
+      return acc;
+    }, {});
+  }, [assignments, refreshKey]);
+
+  // Filter users for assignment (non-admin only) - memoized
+  const assignableUsers = useMemo(() => {
+    return users.filter(u => u.role !== 'admin' && u.role !== 'manager');
+  }, [users, refreshKey]);
 
   if (loading) {
     return (
