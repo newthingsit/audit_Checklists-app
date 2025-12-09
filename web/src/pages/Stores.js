@@ -211,6 +211,11 @@ const Stores = () => {
     setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
   };
 
+  // Helper function to check if store is inactive
+  const isStoreInactive = (store) => {
+    return store.is_active === 0 || store.is_active === false;
+  };
+
   const handleToggleActive = async (store) => {
     try {
       const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
@@ -222,9 +227,11 @@ const Stores = () => {
     }
   };
 
-  // Filter stores based on active status
-  const filteredStores = showInactive ? stores : stores.filter(s => s.is_active !== 0);
-  const inactiveCount = stores.filter(s => s.is_active === 0).length;
+  // Filter stores based on active status (handle null/undefined as active for backward compatibility)
+  const filteredStores = showInactive 
+    ? stores 
+    : stores.filter(s => !isStoreInactive(s));
+  const inactiveCount = stores.filter(s => isStoreInactive(s)).length;
 
   // Improved CSV parser that handles quoted fields
   const parseCSVLine = (line) => {
@@ -584,13 +591,13 @@ const Stores = () => {
                   sx={{
                     height: '100%',
                     border: '1px solid',
-                    borderColor: store.is_active === 0 ? 'error.light' : 'divider',
+                    borderColor: isStoreInactive(store) ? 'error.light' : 'divider',
                     transition: 'all 0.3s ease',
-                    opacity: store.is_active === 0 ? 0.7 : 1,
+                    opacity: isStoreInactive(store) ? 0.7 : 1,
                     '&:hover': {
                       transform: 'translateY(-4px)',
                       boxShadow: 6,
-                      borderColor: store.is_active === 0 ? 'error.main' : 'primary.main'
+                      borderColor: isStoreInactive(store) ? 'error.main' : 'primary.main'
                     }
                   }}
                 >
@@ -619,8 +626,8 @@ const Stores = () => {
                               </Typography>
                             )}
                             <Chip
-                              label={store.is_active === 0 ? 'Inactive' : 'Active'}
-                              color={store.is_active === 0 ? 'error' : 'success'}
+                              label={isStoreInactive(store) ? 'Inactive' : 'Active'}
+                              color={isStoreInactive(store) ? 'error' : 'success'}
                               size="small"
                               sx={{ height: 20, fontSize: '0.65rem' }}
                             />
@@ -652,13 +659,13 @@ const Stores = () => {
                         </Box>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Tooltip title={store.is_active === 0 ? 'Activate Store' : 'Deactivate Store'}>
+                        <Tooltip title={isStoreInactive(store) ? 'Activate Store' : 'Deactivate Store'}>
                           <IconButton
                             size="small"
                             onClick={() => handleToggleActive(store)}
-                            sx={{ color: store.is_active === 0 ? 'error.main' : 'success.main' }}
+                            sx={{ color: isStoreInactive(store) ? 'error.main' : 'success.main' }}
                           >
-                            {store.is_active === 0 ? <CancelIcon /> : <CheckCircleIcon />}
+                            {isStoreInactive(store) ? <CancelIcon /> : <CheckCircleIcon />}
                           </IconButton>
                         </Tooltip>
                         <IconButton
@@ -718,8 +725,8 @@ const Stores = () => {
                       <TableRow key={store.id} hover>
                         <TableCell>
                           <Chip
-                            label={store.is_active === 0 ? 'Inactive' : 'Active'}
-                            color={store.is_active === 0 ? 'error' : 'success'}
+                            label={isStoreInactive(store) ? 'Inactive' : 'Active'}
+                            color={isStoreInactive(store) ? 'error' : 'success'}
                             size="small"
                           />
                         </TableCell>
@@ -741,13 +748,13 @@ const Stores = () => {
                         <TableCell>{store.email || '-'}</TableCell>
                         <TableCell align="center">
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
-                            <Tooltip title={store.is_active === 0 ? 'Activate Store' : 'Deactivate Store'}>
+                            <Tooltip title={isStoreInactive(store) ? 'Activate Store' : 'Deactivate Store'}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleToggleActive(store)}
-                                sx={{ color: store.is_active === 0 ? 'error.main' : 'success.main' }}
+                                sx={{ color: isStoreInactive(store) ? 'error.main' : 'success.main' }}
                               >
-                                {store.is_active === 0 ? <CancelIcon /> : <CheckCircleIcon />}
+                                {isStoreInactive(store) ? <CancelIcon /> : <CheckCircleIcon />}
                               </IconButton>
                             </Tooltip>
                             <IconButton

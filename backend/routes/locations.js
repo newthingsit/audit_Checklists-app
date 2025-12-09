@@ -182,14 +182,17 @@ router.patch('/:id/toggle-active', authenticate, requirePermission('manage_locat
       return res.status(404).json({ error: 'Location not found' });
     }
 
-    const newStatus = location.is_active ? 0 : 1;
+    // Handle NULL/undefined as active (1) for backward compatibility
+    const currentStatus = location.is_active === null || location.is_active === undefined ? 1 : location.is_active;
+    const newStatus = (currentStatus === 1 || currentStatus === true) ? 0 : 1;
+    
     dbInstance.run('UPDATE locations SET is_active = ? WHERE id = ?', [newStatus, id], function(err) {
       if (err) {
         logger.error('Error toggling location status:', err);
         return res.status(500).json({ error: 'Error updating location status' });
       }
       res.json({ 
-        message: newStatus ? 'Store activated' : 'Store deactivated',
+        message: newStatus === 1 ? 'Store activated' : 'Store deactivated',
         is_active: newStatus === 1
       });
     });
