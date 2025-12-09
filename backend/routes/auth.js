@@ -115,12 +115,32 @@ router.post('/login', [
       { expiresIn: '7d' }
     );
 
-    // Get user permissions from role
+    // Optimize permissions fetching - admins get all permissions immediately without DB query
+    const { isAdminUser } = require('../middleware/permissions');
+    const role = user.role ? user.role.toLowerCase() : '';
+    
+    // Fast path for admin users - no database query needed
+    if (role === 'admin' || role === 'superadmin') {
+      logger.security('login_success', { userId: user.id });
+      return res.json({
+        token,
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          name: user.name, 
+          role: user.role, 
+          permissions: ['*'] // Admin has all permissions
+        }
+      });
+    }
+
+    // For non-admin users, fetch permissions (but don't block login if it fails)
     const { getUserPermissions } = require('../middleware/permissions');
     getUserPermissions(user.id, user.role, (permErr, permissions) => {
       if (permErr) {
         logger.error('Error fetching permissions:', permErr.message);
-        // Return user without permissions if error
+        // Return user without permissions if error - don't block login
+        logger.security('login_success', { userId: user.id });
         return res.json({
           token,
           user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
@@ -293,6 +313,160 @@ router.put('/change-password', require('../middleware/auth').authenticate, [
       return res.status(500).json({ error: 'Error updating password' });
     }
   });
+});
+
+// Forgot Password - Send reset link
+router.post('/forgot-password', [
+  body('email').isEmail().normalizeEmail()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: 'Please provide a valid email address' });
+  }
+
+  const { email } = req.body;
+  const dbInstance = db.getDb();
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Find user by email
+  dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], async (err, user) => {
+    if (err) {
+      logger.error('Error finding user for password reset:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    // Always return success to prevent email enumeration
+    // But only send email if user exists
+    if (user) {
+      try {
+        // Generate reset token (valid for 1 hour)
+        const resetToken = jwt.sign(
+          { userId: user.id, email: user.email, type: 'password_reset' },
+          JWT_SECRET,
+          { expiresIn: '1h' }
+        );
+
+        // Store reset token in database (or use a separate table for password_reset_tokens)
+        // For simplicity, we'll use the token directly and verify it on reset
+        // In production, you might want to store tokens in a separate table with expiration
+
+        // Send reset email
+        const emailService = require('../utils/emailService');
+        const appUrl = process.env.APP_URL || 'https://app.litebitefoods.com';
+        const resetLink = `${appUrl}/login?token=${resetToken}`;
+
+        const emailSubject = 'Password Reset Request - Audit Pro';
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Password Reset</title>
+          </head>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #c41e3a 0%, #d32f2f 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0;">Password Reset Request</h1>
+            </div>
+            <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+              <p>Hello ${user.name || 'User'},</p>
+              <p>You requested to reset your password for your Audit Pro account.</p>
+              <p>Click the button below to reset your password. This link will expire in 1 hour.</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetLink}" style="background: linear-gradient(135deg, #c41e3a 0%, #d32f2f 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">Reset Password</a>
+              </div>
+              <p style="font-size: 12px; color: #666;">If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
+              <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser:</p>
+              <p style="font-size: 12px; color: #666; word-break: break-all;">${resetLink}</p>
+            </div>
+            <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+              <p>© 2025 Lite Bite Foods Audit Pro. All rights reserved.</p>
+            </div>
+          </body>
+          </html>
+        `;
+
+        const emailSent = await emailService.sendEmail(user.email, emailSubject, emailHtml);
+        
+        if (emailSent) {
+          logger.security('password_reset_requested', { userId: user.id });
+        } else {
+          logger.warn('Password reset email failed to send', { userId: user.id });
+        }
+      } catch (error) {
+        logger.error('Error sending password reset email:', error);
+        // Still return success to prevent email enumeration
+      }
+    }
+
+    // Always return success message (security best practice - prevents email enumeration)
+    res.json({ 
+      message: 'If an account with that email exists, a password reset link has been sent.' 
+    });
+  });
+});
+
+// Reset Password - Verify token and update password
+router.post('/reset-password', [
+  body('token').notEmpty().withMessage('Reset token is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0]?.msg || 'Invalid request' });
+  }
+
+  const { token, password } = req.body;
+  const dbInstance = db.getDb();
+
+  try {
+    // Verify and decode token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Check if token is for password reset
+    if (decoded.type !== 'password_reset') {
+      return res.status(400).json({ error: 'Invalid reset token' });
+    }
+
+    // Find user
+    dbInstance.get('SELECT * FROM users WHERE id = ?', [decoded.userId], async (err, user) => {
+      if (err) {
+        logger.error('Error finding user for password reset:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid reset token' });
+      }
+
+      // Verify email matches (additional security check)
+      if (user.email.toLowerCase() !== decoded.email.toLowerCase()) {
+        return res.status(400).json({ error: 'Invalid reset token' });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Update password
+      dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id], function(err) {
+        if (err) {
+          logger.error('Error updating password:', err);
+          return res.status(500).json({ error: 'Error updating password' });
+        }
+
+        logger.security('password_reset_completed', { userId: user.id });
+        res.json({ message: 'Password reset successfully' });
+      });
+    });
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(400).json({ error: 'Invalid reset token' });
+    }
+    logger.error('Error resetting password:', error);
+    return res.status(500).json({ error: 'Error resetting password' });
+  }
 });
 
 module.exports = router;

@@ -10,7 +10,11 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
-  IconButton
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import LockIcon from '@mui/icons-material/Lock';
@@ -18,8 +22,9 @@ import EmailIcon from '@mui/icons-material/Email';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { useAuth } from '../context/AuthContext';
-import { showError } from '../utils/toast';
+import { showError, showSuccess } from '../utils/toast';
 import { themeConfig } from '../config/theme';
+import axios from 'axios';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -28,6 +33,13 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -51,6 +63,66 @@ const Login = () => {
       setLoading(false);
     }
   };
+
+  const handleForgotPassword = async () => {
+    if (!forgotPasswordEmail || !forgotPasswordEmail.includes('@')) {
+      showError('Please enter a valid email address');
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    try {
+      await axios.post('/api/auth/forgot-password', { email: forgotPasswordEmail });
+      showSuccess('Password reset link has been sent to your email. Please check your inbox.');
+      setShowForgotPassword(false);
+      setForgotPasswordEmail('');
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Failed to send reset link';
+      showError(errorMsg);
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showError('Password must be at least 6 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showError('Passwords do not match');
+      return;
+    }
+
+    setForgotPasswordLoading(true);
+    try {
+      await axios.post('/api/auth/reset-password', {
+        token: resetToken,
+        password: newPassword
+      });
+      showSuccess('Password reset successfully! Please login with your new password.');
+      setShowResetPassword(false);
+      setResetToken('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Failed to reset password';
+      showError(errorMsg);
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  // Check if reset token is in URL (from email link)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      setResetToken(token);
+      setShowResetPassword(true);
+    }
+  }, []);
 
   return (
     <Box sx={{ 
@@ -327,6 +399,25 @@ const Login = () => {
                 )}
               </Button>
 
+              {/* Forgot Password Link */}
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Button
+                  onClick={() => setShowForgotPassword(true)}
+                  sx={{
+                    color: themeConfig.primary.main,
+                    textTransform: 'none',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    '&:hover': {
+                      backgroundColor: 'transparent',
+                      textDecoration: 'underline',
+                    },
+                  }}
+                >
+                  Forgot Password?
+                </Button>
+              </Box>
+
 {/* Sign Up link hidden - registration disabled */}
             </form>
           </Paper>
@@ -343,6 +434,136 @@ const Login = () => {
           </Typography>
         </Box>
       </Container>
+
+      {/* Forgot Password Dialog */}
+      <Dialog
+        open={showForgotPassword}
+        onClose={() => {
+          setShowForgotPassword(false);
+          setForgotPasswordEmail('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Forgot Password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Enter your email address and we'll send you a link to reset your password.
+          </Typography>
+          <TextField
+            fullWidth
+            label="Email Address"
+            type="email"
+            value={forgotPasswordEmail}
+            onChange={(e) => setForgotPasswordEmail(e.target.value)}
+            margin="normal"
+            autoFocus
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon sx={{ color: themeConfig.text.secondary }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setShowForgotPassword(false);
+              setForgotPasswordEmail('');
+            }}
+            disabled={forgotPasswordLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleForgotPassword}
+            variant="contained"
+            disabled={forgotPasswordLoading || !forgotPasswordEmail}
+            sx={{
+              background: `linear-gradient(135deg, ${themeConfig.primary.main} 0%, ${themeConfig.primary.light} 100%)`,
+            }}
+          >
+            {forgotPasswordLoading ? <CircularProgress size={20} /> : 'Send Reset Link'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={showResetPassword}
+        onClose={() => {
+          setShowResetPassword(false);
+          setResetToken('');
+          setNewPassword('');
+          setConfirmPassword('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Reset Password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Enter your new password below.
+          </Typography>
+          <TextField
+            fullWidth
+            label="New Password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            margin="normal"
+            autoFocus
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LockIcon sx={{ color: themeConfig.text.secondary }} />
+                </InputAdornment>
+              ),
+            }}
+            helperText="Password must be at least 6 characters"
+          />
+          <TextField
+            fullWidth
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            margin="normal"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LockIcon sx={{ color: themeConfig.text.secondary }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setShowResetPassword(false);
+              setResetToken('');
+              setNewPassword('');
+              setConfirmPassword('');
+            }}
+            disabled={forgotPasswordLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleResetPassword}
+            variant="contained"
+            disabled={forgotPasswordLoading || !newPassword || !confirmPassword}
+            sx={{
+              background: `linear-gradient(135deg, ${themeConfig.primary.main} 0%, ${themeConfig.primary.light} 100%)`,
+            }}
+          >
+            {forgotPasswordLoading ? <CircularProgress size={20} /> : 'Reset Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

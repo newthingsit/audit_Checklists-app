@@ -115,7 +115,7 @@ const Stores = () => {
         district: store.district || '',
         latitude: store.latitude || '',
         longitude: store.longitude || '',
-        is_active: store.is_active !== undefined ? store.is_active : 1
+        is_active: store.is_active !== undefined && store.is_active !== null ? (store.is_active ? 1 : 0) : 1
       });
     } else {
       setEditingStore(null);
@@ -145,17 +145,26 @@ const Stores = () => {
 
   const handleSave = async () => {
     try {
+      // Ensure is_active is included in formData (default to 1 if not set)
+      const dataToSend = {
+        ...formData,
+        is_active: formData.is_active !== undefined ? (formData.is_active ? 1 : 0) : 1
+      };
+      
       if (editingStore) {
-        await axios.put(`/api/locations/${editingStore.id}`, formData);
+        await axios.put(`/api/locations/${editingStore.id}`, dataToSend);
+        showSuccess('Store updated successfully!');
       } else {
-        await axios.post('/api/locations', formData);
+        await axios.post('/api/locations', dataToSend);
+        showSuccess('Store created successfully!');
       }
       handleCloseDialog();
-      showSuccess(editingStore ? 'Store updated successfully!' : 'Store created successfully!');
-      fetchStores();
+      // Refresh stores list immediately
+      await fetchStores();
     } catch (error) {
       console.error('Error saving store:', error);
-      showError('Error saving store. Make sure the backend API is implemented.');
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Error saving store';
+      showError(errorMsg);
     }
   };
 
@@ -186,7 +195,8 @@ const Stores = () => {
       }
       
       setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
-      fetchStores();
+      // Refresh stores list immediately
+      await fetchStores();
     } catch (error) {
       console.error('Error deleting store:', error);
       
@@ -220,10 +230,12 @@ const Stores = () => {
     try {
       const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
       showSuccess(response.data.message);
-      fetchStores();
+      // Refresh stores list immediately
+      await fetchStores();
     } catch (error) {
       console.error('Error toggling store status:', error);
-      showError('Failed to update store status');
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update store status';
+      showError(errorMsg);
     }
   };
 
