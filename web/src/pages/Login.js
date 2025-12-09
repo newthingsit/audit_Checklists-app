@@ -444,6 +444,7 @@ const Login = () => {
         }}
         maxWidth="sm"
         fullWidth
+        disableEnforceFocus
       >
         <DialogTitle>Forgot Password</DialogTitle>
         <DialogContent>
@@ -501,6 +502,7 @@ const Login = () => {
         }}
         maxWidth="sm"
         fullWidth
+        disableEnforceFocus
       >
         <DialogTitle>Reset Password</DialogTitle>
         <DialogContent>

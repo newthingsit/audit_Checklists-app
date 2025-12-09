@@ -181,40 +181,45 @@ const Stores = () => {
     const { store } = deleteConfirmDialog;
     if (!store) return;
 
-    try {
-      const url = forceDelete 
-        ? `/api/locations/${store.id}?force=true` 
-        : `/api/locations/${store.id}`;
-      
-      const response = await axios.delete(url);
-      
-      if (response.data.deletedAudits) {
-        showSuccess(`Store and ${response.data.deletedAudits} audit(s) deleted successfully!`);
-      } else {
-        showSuccess('Store deleted successfully!');
+    // Close dialog immediately for better UX, then perform async operation
+    setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
+
+    // Use setTimeout to defer the async operation and prevent blocking the UI thread
+    setTimeout(async () => {
+      try {
+        const url = forceDelete 
+          ? `/api/locations/${store.id}?force=true` 
+          : `/api/locations/${store.id}`;
+        
+        const response = await axios.delete(url);
+        
+        if (response.data.deletedAudits) {
+          showSuccess(`Store and ${response.data.deletedAudits} audit(s) deleted successfully!`);
+        } else {
+          showSuccess('Store deleted successfully!');
+        }
+        
+        // Refresh stores list immediately
+        await fetchStores();
+      } catch (error) {
+        console.error('Error deleting store:', error);
+        
+        // Handle 409 Conflict - store has audits
+        if (error.response?.status === 409 && error.response?.data?.canForceDelete) {
+          setDeleteConfirmDialog(prev => ({
+            open: true,
+            store: prev.store || store,
+            auditCount: error.response.data.auditCount,
+            isForceDelete: true
+          }));
+          return; // Reopen dialog with force delete option
+        }
+        
+        // Show specific error message from server
+        const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error deleting store';
+        showError(errorMessage);
       }
-      
-      setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
-      // Refresh stores list immediately
-      await fetchStores();
-    } catch (error) {
-      console.error('Error deleting store:', error);
-      
-      // Handle 409 Conflict - store has audits
-      if (error.response?.status === 409 && error.response?.data?.canForceDelete) {
-        setDeleteConfirmDialog(prev => ({
-          ...prev,
-          auditCount: error.response.data.auditCount,
-          isForceDelete: true
-        }));
-        return; // Don't close dialog, show force delete option
-      }
-      
-      // Show specific error message from server
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Error deleting store';
-      showError(errorMessage);
-      setDeleteConfirmDialog({ open: false, store: null, auditCount: 0, isForceDelete: false });
-    }
+    }, 0);
   };
 
   const handleDeleteCancel = () => {
@@ -227,16 +232,19 @@ const Stores = () => {
   };
 
   const handleToggleActive = async (store) => {
-    try {
-      const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
-      showSuccess(response.data.message);
-      // Refresh stores list immediately
-      await fetchStores();
-    } catch (error) {
-      console.error('Error toggling store status:', error);
-      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update store status';
-      showError(errorMsg);
-    }
+    // Use setTimeout to defer the async operation and prevent blocking the UI thread
+    setTimeout(async () => {
+      try {
+        const response = await axios.patch(`/api/locations/${store.id}/toggle-active`);
+        showSuccess(response.data.message);
+        // Refresh stores list immediately
+        await fetchStores();
+      } catch (error) {
+        console.error('Error toggling store status:', error);
+        const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update store status';
+        showError(errorMsg);
+      }
+    }, 0);
   };
 
   // Filter stores based on active status (handle null/undefined as active for backward compatibility)
@@ -799,6 +807,7 @@ const Stores = () => {
           onClose={handleCloseDialog}
           maxWidth="md"
           fullWidth
+          disableEnforceFocus
           PaperProps={{
             sx: {
               borderRadius: 2,
@@ -1079,6 +1088,7 @@ const Stores = () => {
           onClose={handleCloseImportDialog}
           maxWidth="lg"
           fullWidth
+          disableEnforceFocus
           PaperProps={{
             sx: {
               borderRadius: 2,
@@ -1265,6 +1275,8 @@ const Stores = () => {
           onClose={handleDeleteCancel}
           maxWidth="sm"
           fullWidth
+          disableEnforceFocus
+          disableAutoFocus
           PaperProps={{
             sx: {
               borderRadius: 2,
