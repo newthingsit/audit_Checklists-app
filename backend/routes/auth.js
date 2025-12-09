@@ -469,5 +469,98 @@ router.post('/reset-password', [
   }
 });
 
+// Test Email Configuration Endpoint (Admin only)
+router.get('/test-email', authenticate, async (req, res) => {
+  // Only allow admins to test email
+  if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Only administrators can test email configuration' });
+  }
+
+  const { email } = req.query;
+  const testEmail = email || req.user.email;
+  
+  if (!testEmail || !testEmail.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+
+  const emailService = require('../utils/emailService');
+  const { isConfigured } = emailService;
+
+  // Check if email service is configured
+  if (!isConfigured()) {
+    return res.status(503).json({ 
+      error: 'Email service is not configured',
+      details: 'Please set SMTP_USER and SMTP_PASSWORD environment variables in Azure App Service Configuration'
+    });
+  }
+
+  // Send test email
+  const testSubject = 'Test Email - Audit Pro Email Configuration';
+  const testHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Test Email</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0;">✅ Email Configuration Test</h1>
+      </div>
+      <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+        <p>Hello,</p>
+        <p>This is a test email from your Audit Pro application.</p>
+        <p><strong>If you received this email, your email configuration is working correctly!</strong></p>
+        <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Configuration Details:</strong></p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>SMTP Host: ${process.env.SMTP_HOST || 'Not set'}</li>
+            <li>SMTP Port: ${process.env.SMTP_PORT || 'Not set'}</li>
+            <li>SMTP User: ${process.env.SMTP_USER ? process.env.SMTP_USER.substring(0, 3) + '***' : 'Not set'}</li>
+            <li>From Email: ${process.env.SMTP_FROM || process.env.SMTP_USER || 'Not set'}</li>
+          </ul>
+        </div>
+        <p style="font-size: 12px; color: #666;">This email was sent at ${new Date().toLocaleString()}.</p>
+      </div>
+      <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+        <p>© 2025 Lite Bite Foods Audit Pro. All rights reserved.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const emailSent = await emailService.sendEmail(testEmail, testSubject, testHtml);
+    
+    if (emailSent) {
+      res.json({ 
+        success: true,
+        message: `Test email sent successfully to ${testEmail}`,
+        note: 'Please check your inbox (and spam folder) for the test email.'
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to send test email',
+        details: 'Check server logs for detailed error information. Common issues:',
+        troubleshooting: [
+          '1. Verify SMTP_USER and SMTP_PASSWORD are correct',
+          '2. For Office 365 with MFA, use App Password instead of regular password',
+          '3. Check SMTP_HOST (should be smtp.office365.com)',
+          '4. Check SMTP_PORT (should be 587 for Office 365)',
+          '5. Verify firewall allows outbound SMTP connections',
+          '6. Check Azure App Service logs for detailed error messages'
+        ]
+      });
+    }
+  } catch (error) {
+    logger.error('Error in test email endpoint:', error);
+    res.status(500).json({ 
+      error: 'Error sending test email',
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;
 

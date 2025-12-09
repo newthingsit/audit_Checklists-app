@@ -13,29 +13,62 @@ const emailConfig = {
 
 // Create transporter (only if email is configured)
 let transporter = null;
+let emailServiceReady = false;
 
 if (emailConfig.auth.user && emailConfig.auth.pass) {
+  // Office 365 specific configuration
+  const isOffice365 = emailConfig.host && emailConfig.host.includes('office365.com');
+  
   transporter = nodemailer.createTransport({
     host: emailConfig.host,
     port: emailConfig.port,
-    secure: emailConfig.secure,
+    secure: emailConfig.secure, // false for 587, true for 465
     auth: emailConfig.auth,
     tls: {
-      rejectUnauthorized: false // Allow self-signed certificates
-    }
+      // Office 365 requires proper TLS configuration
+      ciphers: isOffice365 ? 'SSLv3' : undefined,
+      rejectUnauthorized: false // Allow self-signed certificates (needed for some Office 365 setups)
+    },
+    // Office 365 requires STARTTLS on port 587
+    requireTLS: isOffice365 && emailConfig.port === 587,
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000
   });
 
-  // Verify connection
+  // Verify connection with better error handling
   transporter.verify((error, success) => {
     if (error) {
-      console.log('Email service configuration error:', error.message);
-      console.log('Email notifications will be disabled. Please check SMTP settings.');
+      console.error('❌ Email service configuration error:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Error command:', error.command);
+      if (error.response) {
+        console.error('SMTP Response:', error.response);
+      }
+      console.error('Email notifications will be disabled. Please check SMTP settings.');
+      emailServiceReady = false;
+      
+      // Provide helpful error messages for common issues
+      if (error.code === 'EAUTH') {
+        console.error('⚠️  Authentication failed. Check:');
+        console.error('   1. SMTP_USER and SMTP_PASSWORD are correct');
+        console.error('   2. For Office 365 with MFA, use App Password instead of regular password');
+        console.error('   3. Account may be locked or require security verification');
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+        console.error('⚠️  Connection failed. Check:');
+        console.error('   1. SMTP_HOST is correct (smtp.office365.com)');
+        console.error('   2. SMTP_PORT is correct (587 for Office 365)');
+        console.error('   3. Firewall/network allows outbound SMTP connections');
+      }
     } else {
-      console.log('Email service is ready to send emails');
+      console.log('✅ Email service is ready to send emails');
+      console.log(`   Host: ${emailConfig.host}:${emailConfig.port}`);
+      console.log(`   User: ${emailConfig.auth.user}`);
+      emailServiceReady = true;
     }
   });
 } else {
-  console.log('Email service not configured. Set SMTP_USER and SMTP_PASSWORD environment variables to enable email notifications.');
+  console.log('⚠️  Email service not configured. Set SMTP_USER and SMTP_PASSWORD environment variables to enable email notifications.');
 }
 
 /**
@@ -50,6 +83,13 @@ const sendEmail = async (to, subject, htmlBody, textBody = null) => {
   // If email is not configured, skip silently
   if (!transporter || !emailConfig.auth.user || !emailConfig.auth.pass) {
     console.log(`[Email Service] Skipping email to ${to} - Email service not configured`);
+    return false;
+  }
+
+  // Check if email service is ready
+  if (!emailServiceReady) {
+    console.error(`[Email Service] Email service not ready. Skipping email to ${to}`);
+    console.error(`[Email Service] Please check email configuration and restart the server.`);
     return false;
   }
 
@@ -71,11 +111,31 @@ const sendEmail = async (to, subject, htmlBody, textBody = null) => {
       text: textBody || htmlBody.replace(/<[^>]*>/g, '') // Strip HTML tags for text version
     };
 
+    console.log(`[Email Service] Attempting to send email to ${to}...`);
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email Service] Email sent successfully to ${to}:`, info.messageId);
+    console.log(`✅ [Email Service] Email sent successfully to ${to}`);
+    console.log(`   Message ID: ${info.messageId}`);
+    console.log(`   Response: ${info.response || 'No response'}`);
     return true;
   } catch (error) {
-    console.error(`[Email Service] Error sending email to ${to}:`, error.message);
+    console.error(`❌ [Email Service] Error sending email to ${to}:`);
+    console.error(`   Error: ${error.message}`);
+    console.error(`   Code: ${error.code || 'N/A'}`);
+    if (error.response) {
+      console.error(`   SMTP Response: ${error.response}`);
+    }
+    if (error.responseCode) {
+      console.error(`   Response Code: ${error.responseCode}`);
+    }
+    
+    // Provide helpful error messages
+    if (error.code === 'EAUTH') {
+      console.error(`   ⚠️  Authentication failed. Check SMTP_USER and SMTP_PASSWORD.`);
+      console.error(`   For Office 365 with MFA, use App Password.`);
+    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+      console.error(`   ⚠️  Connection failed. Check SMTP_HOST and SMTP_PORT.`);
+    }
+    
     return false;
   }
 };
