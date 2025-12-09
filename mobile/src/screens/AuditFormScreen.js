@@ -58,16 +58,21 @@ const AuditFormScreen = () => {
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
 
   // Fetch previous audit failures when location and template are available
+  // This works for both regular audits and scheduled audits (same location + same checklist)
   useEffect(() => {
-    if (templateId && locationId && parseInt(locationId) > 0 && items.length > 0) {
-      fetchPreviousFailures();
+    // For scheduled audits, locationId might come from initialLocationId
+    const effectiveLocationId = locationId || initialLocationId;
+    
+    if (templateId && effectiveLocationId && parseInt(effectiveLocationId) > 0 && items.length > 0) {
+      // Use the effective location ID for fetching previous failures
+      fetchPreviousFailures(effectiveLocationId);
     } else {
       // Reset previous failures when location changes
       setPreviousFailures([]);
       setFailedItemIds(new Set());
       setPreviousAuditInfo(null);
     }
-  }, [templateId, locationId, items.length]);
+  }, [templateId, locationId, initialLocationId, items.length]);
 
   useEffect(() => {
     if (auditId) {
@@ -100,12 +105,13 @@ const AuditFormScreen = () => {
 
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
-    // Handle initialLocationId from route params
+    // Handle initialLocationId from route params (for scheduled audits)
     if (initialLocationId && locations.length > 0 && !selectedLocation) {
       const location = locations.find(l => l.id === parseInt(initialLocationId));
       if (location) {
         setSelectedLocation(location);
         setLocationId(initialLocationId.toString());
+        // Previous failures will be fetched automatically by the other useEffect
       }
     }
     // Handle locationId set from audit data (when resuming)
@@ -113,6 +119,7 @@ const AuditFormScreen = () => {
       const location = locations.find(l => l.id === parseInt(locationId));
       if (location) {
         setSelectedLocation(location);
+        // Previous failures will be fetched automatically by the other useEffect
       }
     }
   }, [initialLocationId, locationId, locations, selectedLocation]);
@@ -269,13 +276,15 @@ const AuditFormScreen = () => {
   };
 
   // Fetch previous audit failures for recurring failures indicator
-  const fetchPreviousFailures = async () => {
-    if (!templateId || !locationId) return;
+  // Works for both regular audits and scheduled audits (same location + same checklist)
+  const fetchPreviousFailures = async (effectiveLocationId = null) => {
+    const locId = effectiveLocationId || locationId || initialLocationId;
+    if (!templateId || !locId) return;
     
     try {
       setLoadingPreviousFailures(true);
       const response = await axios.get(
-        `${API_BASE_URL}/audits/previous-failures/${templateId}/${locationId}`
+        `${API_BASE_URL}/audits/previous-failures/${templateId}/${locId}`
       );
       
       if (response.data && response.data.failedItems) {
