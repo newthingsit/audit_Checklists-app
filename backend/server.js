@@ -21,9 +21,17 @@ const defaultOrigins = [
   'https://www.litebitefoods.com'
 ];
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? [...new Set([...process.env.ALLOWED_ORIGINS.split(','), ...defaultOrigins])]
-  : defaultOrigins;
+// Parse ALLOWED_ORIGINS from environment, trim whitespace, and merge with defaults
+const envOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(o => o)
+  : [];
+  
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
+// Log allowed origins in production for debugging
+if (process.env.NODE_ENV === 'production') {
+  logger.info('CORS allowed origins:', { allowedOrigins });
+}
 
 // CRITICAL: Add CORS headers to EVERY response FIRST (before any other middleware)
 // This ensures CORS headers are present even when errors occur
@@ -31,27 +39,42 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   const isProduction = process.env.NODE_ENV === 'production';
   
+  // Normalize origin (remove trailing slashes, lowercase for comparison)
+  const normalizedOrigin = origin ? origin.toLowerCase().replace(/\/$/, '') : null;
+  const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
+  
   // Determine if origin is allowed:
   // 1. No origin (mobile apps, Postman, etc.) - always allow
   // 2. Origin is in the allowlist - always allow
   // 3. Development mode - allow all for easier testing
-  // Note: strictCORS only affects whether to LOG or BLOCK in production (handled in backup middleware)
-  const isAllowed = !origin || allowedOrigins.includes(origin) || !isProduction;
+  const isAllowed = !origin || normalizedAllowedOrigins.includes(normalizedOrigin) || !isProduction;
   
-  if (isAllowed) {
+  // ALWAYS set CORS headers for OPTIONS requests (preflight) so browser can see the response
+  // For other requests, only set if allowed
+  const shouldSetHeaders = req.method === 'OPTIONS' || isAllowed;
+  
+  if (shouldSetHeaders) {
     // Use specific origin when sending credentials; never send credentials with "*"
     let corsOrigin = '*';
     let allowCredentials = false;
 
-    if (origin && allowedOrigins.includes(origin)) {
-      corsOrigin = origin;
-      allowCredentials = true;
-    } else if (!isProduction && origin) {
-      // In development allow any origin, but still only allow credentials for explicit origin
-      corsOrigin = origin;
-      allowCredentials = true;
+    if (origin) {
+      const originInList = normalizedAllowedOrigins.includes(normalizedOrigin);
+      if (originInList) {
+        // Use the original origin (not normalized) to preserve case
+        corsOrigin = origin;
+        allowCredentials = true;
+      } else if (!isProduction) {
+        // In development allow any origin, but still only allow credentials for explicit origin
+        corsOrigin = origin;
+        allowCredentials = true;
+      } else {
+        // Production and not in allowlist: use "*" but no credentials
+        corsOrigin = '*';
+        allowCredentials = false;
+      }
     } else {
-      // No origin (mobile/Postman) or not in allowlist: keep "*" and no credentials
+      // No origin (mobile/Postman): use "*" and no credentials
       corsOrigin = '*';
       allowCredentials = false;
     }
@@ -59,17 +82,29 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
     if (allowCredentials) {
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     res.setHeader('Access-Control-Max-Age', '86400');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
   }
   
-  // Handle preflight immediately
+  // Handle preflight immediately - always return 204 for OPTIONS if headers are set
   if (req.method === 'OPTIONS') {
-    return res.status(isAllowed ? 204 : 403).end();
+    if (shouldSetHeaders) {
+      return res.status(204).end();
+    } else {
+      // If headers weren't set, still return 204 but log it
+      logger.warn('OPTIONS request from disallowed origin:', { origin, allowedOrigins });
+      return res.status(204).end();
+    }
+  }
+  
+  // For non-OPTIONS requests, only proceed if allowed
+  if (!isAllowed && isProduction) {
+    logger.security('cors_blocked', { origin, allowedOrigins, method: req.method, path: req.path });
+    return res.status(403).json({ error: 'Not allowed by CORS policy' });
   }
   
   next();
@@ -239,10 +274,11 @@ const sensitiveOpLimiter = rateLimit({
   },
 });
 
-// File upload rate limiter
+// File upload rate limiter - Significantly increased for large audits (174+ items)
+// Mobile apps need to upload many photos quickly during audits
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 100 : 100, // Increased to 100 uploads per 15 min (audits often have many photos)
+  max: isDevelopment ? 500 : 500, // Increased to 500 uploads per 15 min for large audits (was 100)
   message: 'Too many file uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -250,6 +286,11 @@ const uploadLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
+  // Skip rate limiting for uploads if user is authenticated (trust authenticated users more)
+  skip: (req) => {
+    // Allow more uploads for authenticated users (they're doing legitimate audits)
+    return false; // Still rate limit, but with higher limit above
+  }
 });
 
 // Audit operations rate limiter (more lenient - mobile apps make many requests per audit)
@@ -282,9 +323,9 @@ app.use('/api/audits', auditLimiter);
 // Apply general rate limiting to all API routes
 app.use('/api/', apiLimiter);
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Body parsing middleware - Increased limits for large templates
+app.use(express.json({ limit: '50mb' })); // Increased from 10mb for large templates
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Increased from 10mb
 
 // Serve uploaded files statically with caching headers
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
