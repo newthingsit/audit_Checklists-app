@@ -52,7 +52,6 @@ const StoreAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [summary, setSummary] = useState({});
   const [tabValue, setTabValue] = useState(0);
-  const [refreshKey, setRefreshKey] = useState(0); // Force re-render key
   
   // Dialog states
   const [assignDialog, setAssignDialog] = useState({ open: false, type: null, item: null });
@@ -81,8 +80,6 @@ const StoreAssignments = () => {
       setLocations(locationsRes.data.locations || []);
       setAssignments(assignmentsRes.data.assignments || []);
       setSummary(summaryRes.data.summary || {});
-      // Force re-render by updating refresh key
-      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Error fetching data:', error);
       if (showLoading) {
@@ -120,8 +117,10 @@ const StoreAssignments = () => {
       console.error('Error assigning stores:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign stores';
       showError(errorMsg);
-      // Refresh on error to ensure UI is in sync
-      fetchData();
+      // Refresh on error to ensure UI is in sync (without loading spinner)
+      await fetchData(false).catch(err => {
+        console.error('Error refreshing data after assignment failure:', err);
+      });
     }
   };
 
@@ -150,8 +149,10 @@ const StoreAssignments = () => {
       console.error('Error assigning users:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign users';
       showError(errorMsg);
-      // Refresh on error to ensure UI is in sync
-      fetchData();
+      // Refresh on error to ensure UI is in sync (without loading spinner)
+      await fetchData(false).catch(err => {
+        console.error('Error refreshing data after assignment failure:', err);
+      });
     }
   };
 
@@ -173,8 +174,10 @@ const StoreAssignments = () => {
       console.error('Error removing assignment:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignment';
       showError(errorMsg);
-      // Refresh on error to ensure UI is in sync
-      fetchData();
+      // Refresh on error to ensure UI is in sync (without loading spinner)
+      await fetchData(false).catch(err => {
+        console.error('Error refreshing data after removal failure:', err);
+      });
     }
   };
 
@@ -196,8 +199,10 @@ const StoreAssignments = () => {
       console.error('Error removing assignments:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignments';
       showError(errorMsg);
-      // Refresh on error to ensure UI is in sync
-      fetchData();
+      // Refresh on error to ensure UI is in sync (without loading spinner)
+      await fetchData(false).catch(err => {
+        console.error('Error refreshing data after removal failure:', err);
+      });
     }
   };
 
@@ -222,7 +227,7 @@ const StoreAssignments = () => {
       });
       return acc;
     }, {});
-  }, [assignments, refreshKey]);
+  }, [assignments]);
 
   // Group assignments by location (memoized for performance and proper updates)
   const assignmentsByLocation = useMemo(() => {
@@ -245,12 +250,12 @@ const StoreAssignments = () => {
       });
       return acc;
     }, {});
-  }, [assignments, refreshKey]);
+  }, [assignments]);
 
   // Filter users for assignment (non-admin only) - memoized
   const assignableUsers = useMemo(() => {
     return users.filter(u => u.role !== 'admin' && u.role !== 'manager');
-  }, [users, refreshKey]);
+  }, [users]);
 
   if (loading) {
     return (
