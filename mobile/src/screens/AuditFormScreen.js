@@ -336,56 +336,6 @@ const AuditFormScreen = () => {
     }
   };
 
-  // Fetch previous audit failures to highlight recurring issues
-  const fetchPreviousFailures = async (tmplId, locId) => {
-    if (!tmplId || !locId) return;
-    
-    setLoadingPreviousFailures(true);
-    try {
-      const response = await axios.get(`${API_BASE_URL}/audits/previous-failures`, {
-        params: { template_id: tmplId, location_id: locId, months_back: 3 }
-      });
-      
-      const data = response.data;
-      setPreviousFailures(data.failedItems || []);
-      setFailedItemIds(new Set((data.failedItems || []).map(f => f.item_id)));
-      setPreviousAuditInfo(data.previousAudit);
-      
-      // Show alert if there are recurring failures
-      if (data.recurringFailures && data.recurringFailures.length > 0) {
-        Alert.alert(
-          '⚠️ Recurring Issues Found',
-          `${data.recurringFailures.length} item(s) have failed 3+ times in the last 6 months. These will be highlighted in red during the audit.`,
-          [{ text: 'OK', style: 'default' }]
-        );
-      } else if (data.failedItems && data.failedItems.length > 0) {
-        const dateStr = data.previousAudit?.date 
-          ? new Date(data.previousAudit.date).toLocaleDateString()
-          : 'previously';
-        Alert.alert(
-          '📋 Previous Failures',
-          `${data.failedItems.length} item(s) failed in the last audit${dateStr !== 'previously' ? ` on ${dateStr}` : ''}. These will be highlighted during the audit.`,
-          [{ text: 'OK', style: 'default' }]
-        );
-      }
-    } catch (error) {
-      console.error('Error fetching previous failures:', error);
-      // Don't show error to user, just continue without highlighting
-    } finally {
-      setLoadingPreviousFailures(false);
-    }
-  };
-
-  // Fetch previous failures when template and location are selected
-  useEffect(() => {
-    const tmplId = template?.id || templateId;
-    const locId = selectedLocation?.id || locationId;
-    
-    if (tmplId && locId && !isEditing) {
-      fetchPreviousFailures(tmplId, locId);
-    }
-  }, [template?.id, templateId, selectedLocation?.id, locationId, isEditing]);
-
   const handleResponseChange = (itemId, status) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
