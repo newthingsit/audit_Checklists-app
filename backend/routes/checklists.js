@@ -194,13 +194,21 @@ router.get('/:id', authenticate, (req, res) => {
           const itemIds = items.map(item => item.id);
           const placeholders = itemIds.map(() => '?').join(',');
           
+          // For large templates (100+ items), use streaming or pagination approach
+          // For now, increase timeout and handle large datasets
+          const startTime = Date.now();
+          
           dbInstance.all(
             `SELECT * FROM checklist_item_options WHERE item_id IN (${placeholders}) ORDER BY item_id, order_index, id`,
             itemIds,
             (err, options) => {
               if (err) {
-                return res.status(500).json({ error: 'Database error' });
+                logger.error(`Error fetching options for template ${templateId}:`, err);
+                return res.status(500).json({ error: 'Database error loading template options' });
               }
+              
+              const fetchTime = Date.now() - startTime;
+              logger.debug(`Fetched ${options.length} options for ${items.length} items in ${fetchTime}ms`);
               
               // Group options by item_id
               const optionsByItem = {};
@@ -219,6 +227,10 @@ router.get('/:id', authenticate, (req, res) => {
                   text: option.option_text // Add text field for mobile compatibility
                 }))
               }));
+              
+              // Log template size for monitoring
+              const templateSize = JSON.stringify({ template, items: itemsWithOptions }).length;
+              logger.debug(`Template ${templateId} size: ${(templateSize / 1024).toFixed(2)} KB (${items.length} items)`);
               
               res.json({ template, items: itemsWithOptions });
             }

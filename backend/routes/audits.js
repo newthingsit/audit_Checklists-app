@@ -1839,5 +1839,80 @@ router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) 
   });
 });
 
+// Get previous audit failures for recurring failures indicator
+// Returns items that failed in the last completed audit for the same location and template
+router.get('/previous-failures/:templateId/:locationId', authenticate, (req, res) => {
+  const dbInstance = db.getDb();
+  const templateId = parseInt(req.params.templateId, 10);
+  const locationId = parseInt(req.params.locationId, 10);
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  if (isNaN(templateId) || isNaN(locationId)) {
+    return res.status(400).json({ error: 'Invalid template or location ID' });
+  }
+
+  // Find the most recent completed audit for this location and template
+  const lastAuditQuery = isSqlServer
+    ? `SELECT TOP 1 a.id, a.completed_at
+       FROM audits a
+       WHERE a.template_id = ? AND a.location_id = ? AND a.status = 'completed'
+       ${isAdmin ? '' : 'AND a.user_id = ?'}
+       ORDER BY a.completed_at DESC`
+    : `SELECT a.id, a.completed_at
+       FROM audits a
+       WHERE a.template_id = ? AND a.location_id = ? AND a.status = 'completed'
+       ${isAdmin ? '' : 'AND a.user_id = ?'}
+       ORDER BY a.completed_at DESC
+       LIMIT 1`;
+
+  const lastAuditParams = isAdmin ? [templateId, locationId] : [templateId, locationId, userId];
+
+  dbInstance.get(lastAuditQuery, lastAuditParams, (err, lastAudit) => {
+    if (err) {
+      logger.error('Error fetching last audit for recurring failures:', err.message);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!lastAudit) {
+      // No previous audit found
+      return res.json({ failedItems: [], lastAuditDate: null });
+    }
+
+    // Get all failed items from the last audit
+    // Failed items are those with status 'failed' or selected option with negative mark (No, N/A, etc.)
+    const failedItemsQuery = `
+      SELECT ai.item_id, ci.title, ci.description, ci.order_index,
+             ai.status, ai.selected_option_id, cio.option_text, cio.mark,
+             ai.comment, ai.photo_url
+      FROM audit_items ai
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+      WHERE ai.audit_id = ?
+        AND (
+          ai.status = 'failed'
+          OR (cio.mark IS NOT NULL AND (cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F'))
+          OR (ai.status = 'completed' AND cio.mark IS NOT NULL AND cio.mark NOT IN ('Yes', 'Y', 'Pass', 'P', 'OK')))
+        )
+      ORDER BY ci.order_index, ci.id
+    `;
+
+    dbInstance.all(failedItemsQuery, [lastAudit.id], (itemsErr, failedItems) => {
+      if (itemsErr) {
+        logger.error('Error fetching failed items:', itemsErr.message);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      res.json({
+        failedItems: failedItems || [],
+        lastAuditDate: lastAudit.completed_at,
+        lastAuditId: lastAudit.id
+      });
+    });
+  });
+});
+
 module.exports = router;
 

@@ -11,15 +11,28 @@ const init = () => {
       // Default encrypt to true for Azure SQL Database (required for cloud connections)
       const shouldEncrypt = process.env.MSSQL_ENCRYPT !== 'false';
       
+      // Detect if connecting to localhost/local SQL Server
+      const server = process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS';
+      const isLocalServer = server.toLowerCase().includes('localhost') || 
+                           server.toLowerCase().includes('127.0.0.1') ||
+                           server.toLowerCase().includes('local') ||
+                           process.env.NODE_ENV !== 'production';
+      
+      // For local development, trust self-signed certificates
+      // For production, only trust if explicitly set or encryption is disabled
+      const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
+                             !shouldEncrypt || 
+                             isLocalServer;
+      
       const config = {
-        server: process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS',
+        server: server,
         port: parseInt(process.env.DB_PORT || process.env.MSSQL_PORT || '1433'),
         database: process.env.DB_NAME || process.env.MSSQL_DATABASE || 'audit_checklists',
         user: process.env.DB_USER || process.env.MSSQL_USER || 'sa',
         password: process.env.DB_PASSWORD || process.env.MSSQL_PASSWORD,
         options: {
           encrypt: shouldEncrypt,
-          trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
+          trustServerCertificate: shouldTrustCert,
           enableArithAbort: true,
           connectionTimeout: 60000, // Increased for Azure cold starts
           requestTimeout: 60000
@@ -105,15 +118,28 @@ const ensureConnection = async (forceReconnect = false) => {
       try {
         const shouldEncrypt = process.env.MSSQL_ENCRYPT !== 'false';
         
+        // Detect if connecting to localhost/local SQL Server
+        const server = process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS';
+        const isLocalServer = server.toLowerCase().includes('localhost') || 
+                             server.toLowerCase().includes('127.0.0.1') ||
+                             server.toLowerCase().includes('local') ||
+                             process.env.NODE_ENV !== 'production';
+        
+        // For local development, trust self-signed certificates
+        // For production, only trust if explicitly set or encryption is disabled
+        const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
+                               !shouldEncrypt || 
+                               isLocalServer;
+        
         const config = {
-          server: process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS',
+          server: server,
           port: parseInt(process.env.DB_PORT || process.env.MSSQL_PORT || '1433'),
           database: process.env.DB_NAME || process.env.MSSQL_DATABASE || 'audit_checklists',
           user: process.env.DB_USER || process.env.MSSQL_USER || 'sa',
           password: process.env.DB_PASSWORD || process.env.MSSQL_PASSWORD,
           options: {
             encrypt: shouldEncrypt,
-            trustServerCertificate: process.env.MSSQL_TRUST_CERT === 'true' || !shouldEncrypt,
+            trustServerCertificate: shouldTrustCert,
             enableArithAbort: true,
             connectionTimeout: 60000, // Increased for Azure cold starts
             requestTimeout: 60000

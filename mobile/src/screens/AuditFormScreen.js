@@ -57,6 +57,18 @@ const AuditFormScreen = () => {
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
 
+  // Fetch previous audit failures when location and template are available
+  useEffect(() => {
+    if (templateId && locationId && parseInt(locationId) > 0 && items.length > 0) {
+      fetchPreviousFailures();
+    } else {
+      // Reset previous failures when location changes
+      setPreviousFailures([]);
+      setFailedItemIds(new Set());
+      setPreviousAuditInfo(null);
+    }
+  }, [templateId, locationId, items.length]);
+
   useEffect(() => {
     if (auditId) {
       // Editing existing audit
@@ -254,6 +266,45 @@ const AuditFormScreen = () => {
 
   const fetchAuditData = async () => {
     await fetchAuditDataById(auditId);
+  };
+
+  // Fetch previous audit failures for recurring failures indicator
+  const fetchPreviousFailures = async () => {
+    if (!templateId || !locationId) return;
+    
+    try {
+      setLoadingPreviousFailures(true);
+      const response = await axios.get(
+        `${API_BASE_URL}/audits/previous-failures/${templateId}/${locationId}`
+      );
+      
+      if (response.data && response.data.failedItems) {
+        const failures = response.data.failedItems;
+        setPreviousFailures(failures);
+        setPreviousAuditInfo({
+          date: response.data.lastAuditDate,
+          auditId: response.data.lastAuditId
+        });
+        
+        // Create a Set of failed item IDs for quick lookup
+        const failedIds = new Set(failures.map(item => item.item_id));
+        setFailedItemIds(failedIds);
+        
+        // Show alert if there are recurring failures
+        if (failures.length > 0) {
+          Alert.alert(
+            '⚠️ Recurring Failures Detected',
+            `${failures.length} item(s) failed in the last audit for this location. These items are highlighted in red to help you focus on recurring issues.`,
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching previous failures:', error);
+      // Silently fail - this is not critical functionality
+    } finally {
+      setLoadingPreviousFailures(false);
+    }
   };
 
   const fetchLocations = async () => {
@@ -901,15 +952,10 @@ const AuditFormScreen = () => {
                 {/* Previous failure warning banner */}
                 {isPreviousFailure && (
                   <View style={styles.previousFailureWarning}>
-                    <Icon name="warning" size={16} color={themeConfig.error.dark} />
+                    <Icon name="warning" size={18} color="#d32f2f" />
                     <Text style={styles.previousFailureWarningText}>
-                      Failed in last audit {failureInfo?.failure_count > 1 ? `(${failureInfo.failure_count}x in 6 months)` : ''}
+                      ⚠️ Failed in last audit for this location
                     </Text>
-                    {failureInfo?.is_recurring && (
-                      <View style={styles.recurringBadge}>
-                        <Text style={styles.recurringBadgeText}>RECURRING</Text>
-                      </View>
-                    )}
                   </View>
                 )}
                 

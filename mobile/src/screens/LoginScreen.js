@@ -208,6 +208,15 @@ const LoginScreen = () => {
                 </LinearGradient>
               </TouchableOpacity>
 
+              {/* Forgot Password Link */}
+              <TouchableOpacity
+                style={styles.forgotPasswordContainer}
+                onPress={() => navigation.navigate('ForgotPassword')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+
               {/* Biometric Login Button */}
               {isEnabled && canUseBiometric && (
                 <>
@@ -408,6 +417,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: themeConfig.primary.main,
+  },
+  forgotPasswordContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    color: themeConfig.primary.main,
+    fontSize: 14,
+    fontWeight: '600',
   },
   footer: {
     color: 'rgba(255, 255, 255, 0.4)',
