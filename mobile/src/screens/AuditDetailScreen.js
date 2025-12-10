@@ -300,9 +300,18 @@ const AuditDetailScreen = () => {
             <View style={styles.photoContainer}>
               <Image 
                 source={{ 
-                  uri: item.photo_url.startsWith('http') 
-                    ? item.photo_url 
-                    : `${API_BASE_URL.replace('/api', '')}${item.photo_url}` 
+                  uri: (() => {
+                    let photoUrl = item.photo_url;
+                    if (!photoUrl.startsWith('http')) {
+                      const baseUrl = API_BASE_URL.replace('/api', '');
+                      if (photoUrl.startsWith('/')) {
+                        photoUrl = `${baseUrl}${photoUrl}`;
+                      } else {
+                        photoUrl = `${baseUrl}/${photoUrl}`;
+                      }
+                    }
+                    return photoUrl;
+                  })()
                 }} 
                 style={styles.itemPhoto}
                 resizeMode="cover"

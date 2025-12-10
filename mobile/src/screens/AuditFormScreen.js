@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -213,10 +213,16 @@ const AuditFormScreen = () => {
           commentsData[auditItem.item_id] = auditItem.comment;
         }
         if (auditItem.photo_url) {
-          // Construct full URL if needed
-          const photoUrl = auditItem.photo_url.startsWith('http') 
-            ? auditItem.photo_url 
-            : `${API_BASE_URL.replace('/api', '')}${auditItem.photo_url}`;
+          // Construct full URL if needed - handle both full URLs and paths
+          let photoUrl = auditItem.photo_url;
+          if (!photoUrl.startsWith('http')) {
+            const baseUrl = API_BASE_URL.replace('/api', '');
+            if (photoUrl.startsWith('/')) {
+              photoUrl = `${baseUrl}${photoUrl}`;
+            } else {
+              photoUrl = `${baseUrl}/${photoUrl}`;
+            }
+          }
           photosData[auditItem.item_id] = photoUrl;
         }
       });
@@ -336,40 +342,41 @@ const AuditFormScreen = () => {
     }
   };
 
-  const handleResponseChange = (itemId, status) => {
+  // Optimized handlers with useCallback to prevent unnecessary re-renders
+  const handleResponseChange = useCallback((itemId, status) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setResponses({ ...responses, [itemId]: status });
-  };
+    setResponses(prev => ({ ...prev, [itemId]: status }));
+  }, [auditStatus]);
 
-  const handleOptionChange = (itemId, optionId) => {
+  const handleOptionChange = useCallback((itemId, optionId) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setSelectedOptions({ ...selectedOptions, [itemId]: optionId });
-    setResponses({ ...responses, [itemId]: 'completed' });
-  };
+    setSelectedOptions(prev => ({ ...prev, [itemId]: optionId }));
+    setResponses(prev => ({ ...prev, [itemId]: 'completed' }));
+  }, [auditStatus]);
 
-  const handleCommentChange = (itemId, comment) => {
+  const handleCommentChange = useCallback((itemId, comment) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setComments({ ...comments, [itemId]: comment });
-  };
+    setComments(prev => ({ ...prev, [itemId]: comment }));
+  }, [auditStatus]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
-  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 5) => {
+  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (reduced from 30s)
         
         const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
           method: 'POST',
@@ -434,7 +441,8 @@ const AuditFormScreen = () => {
     throw lastError;
   };
 
-  const handlePhotoUpload = async (itemId) => {
+  // Optimized photo upload handler
+  const handlePhotoUpload = useCallback(async (itemId) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -449,14 +457,19 @@ const AuditFormScreen = () => {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false, // Skip crop option for faster photo capture
-        quality: 0.5, // Further reduced quality for faster upload (was 0.6)
+        quality: 0.3, // Reduced quality for faster upload and smaller file size
         exif: false, // Skip EXIF data for faster processing
+        base64: false, // Don't include base64 for faster processing
       });
 
       if (!result.canceled && result.assets[0]) {
-        setUploading({ ...uploading, [itemId]: true });
+        // Show immediate feedback - set uploading state first
+        setUploading(prev => ({ ...prev, [itemId]: true }));
         
         let imageUri = result.assets[0].uri;
+        
+        // Optimistic update - show local image immediately while uploading
+        setPhotos(prev => ({ ...prev, [itemId]: imageUri }));
         
         const formData = new FormData();
         formData.append('photo', {
@@ -472,14 +485,27 @@ const AuditFormScreen = () => {
 
         const photoUrl = responseData.photo_url;
         const baseUrl = API_BASE_URL.replace('/api', '');
-        const fullPhotoUrl = photoUrl.startsWith('http') 
-          ? photoUrl 
-          : `${baseUrl}${photoUrl}`;
+        // Ensure photo URL is properly formatted
+        let fullPhotoUrl;
+        if (photoUrl.startsWith('http')) {
+          fullPhotoUrl = photoUrl;
+        } else if (photoUrl.startsWith('/')) {
+          // Path starting with / - add base URL
+          fullPhotoUrl = `${baseUrl}${photoUrl}`;
+        } else {
+          // Path without / - add both
+          fullPhotoUrl = `${baseUrl}/${photoUrl}`;
+        }
         
         console.log('Photo uploaded successfully:', fullPhotoUrl);
-        setPhotos({ ...photos, [itemId]: fullPhotoUrl });
-        setUploading({ ...uploading, [itemId]: false });
-        // Don't show alert - just update silently for better UX
+        // Update with server URL (replaces local URI)
+        setPhotos(prev => ({ ...prev, [itemId]: fullPhotoUrl }));
+        setUploading(prev => ({ ...prev, [itemId]: false }));
+        
+        // Show success feedback (non-blocking)
+        setTimeout(() => {
+          Alert.alert('Success', 'Photo uploaded successfully', [{ text: 'OK' }]);
+        }, 100);
       }
     } catch (error) {
       console.error('Error uploading photo:', error);
@@ -505,9 +531,9 @@ const AuditFormScreen = () => {
         ]
       );
     } finally {
-      setUploading({ ...uploading, [itemId]: false });
+      setUploading(prev => ({ ...prev, [itemId]: false }));
     }
-  };
+  }, [auditStatus, photos, uploading]);
 
   const handleNext = () => {
     if (currentStep === 0) {
@@ -646,9 +672,24 @@ const AuditFormScreen = () => {
           if (photos[item.id]) {
             // Extract just the path if it's a full URL
             const photoUrl = photos[item.id];
-            updateData.photo_url = photoUrl.startsWith('http') 
-              ? photoUrl.replace(/^https?:\/\/[^\/]+/, '') // Remove domain, keep path
-              : photoUrl;
+            // Ensure we save the path correctly - backend expects path starting with /
+            if (photoUrl.startsWith('http')) {
+              // Extract path from full URL
+              try {
+                const urlObj = new URL(photoUrl);
+                updateData.photo_url = urlObj.pathname;
+              } catch (e) {
+                // If URL parsing fails, try to extract path manually
+                const pathMatch = photoUrl.match(/\/uploads\/[^?]+/);
+                updateData.photo_url = pathMatch ? pathMatch[0] : photoUrl.replace(/^https?:\/\/[^\/]+/, '');
+              }
+            } else if (photoUrl.startsWith('/')) {
+              // Already a path starting with /, use as is
+              updateData.photo_url = photoUrl;
+            } else {
+              // Path without /, add it
+              updateData.photo_url = `/${photoUrl}`;
+            }
           }
 
           return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
@@ -842,14 +883,14 @@ const AuditFormScreen = () => {
             />
             
             <FlatList
-              data={locations.filter(loc => {
+              data={useMemo(() => locations.filter(loc => {
                 if (!storeSearchText) return true;
                 const search = storeSearchText.toLowerCase();
                 return (
                   loc.name.toLowerCase().includes(search) ||
                   (loc.store_number && loc.store_number.toLowerCase().includes(search))
                 );
-              })}
+              }), [locations, storeSearchText])}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity

@@ -195,6 +195,33 @@ This version focuses on enhancing the mobile app user experience with functional
 | Backend | 1.7.1 | 1.7.2 |
 | Web App | 1.8.0 | 1.8.1 |
 
+## Mobile App Build Information
+
+### Android (APK/AAB)
+- **App Version:** 2.1.1
+- **Version Code:** 10 (Latest Production Build)
+- **Package Name:** com.auditpro.app
+- **Build Type:** Production (APK)
+- **SDK Version:** 54.0.0
+- **Latest APK:** https://expo.dev/artifacts/eas/2n65NXjCxFwhPMR8QGLBSt.apk
+- **Build ID:** 0b0ae3ea-398c-4eb6-9573-64384a7e0ffb
+- **Build Date:** December 10, 2025
+
+### iOS
+- **App Version:** 2.1.1
+- **Build Number:** 6 (Latest)
+- **Bundle Identifier:** com.auditpro.app
+- **Build Type:** Production (App Store) / Preview (Ad-hoc)
+- **SDK Version:** 54.0.0
+- **Supports Tablet:** Yes
+
+### Recent Updates (December 10, 2025)
+- ✅ **Photo Capture Optimization**: Reduced quality to 0.3, timeout to 15s, retries to 3
+- ✅ **Photo Display Fix**: Fixed photo URL handling for proper display after save
+- ✅ **Performance Optimizations**: Added useCallback and useMemo for faster rendering
+- ✅ **Optimistic Updates**: Photos show immediately while uploading
+- ✅ **OTA Update Published**: Production branch updated with latest changes
+
 ## Migration Notes
 
 ### For Developers
