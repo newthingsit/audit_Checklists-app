@@ -95,6 +95,9 @@ const Dashboard = () => {
                         hasPermission(userPermissions, 'view_own_audits') ||
                         isAdmin(user);
   const canViewAnalytics = hasPermission(userPermissions, 'view_analytics') || isAdmin(user);
+  const canViewScheduleAdherence = hasPermission(userPermissions, 'view_schedule_adherence') || 
+                                    hasPermission(userPermissions, 'view_analytics') || 
+                                    isAdmin(user);
 
   useEffect(() => {
     fetchData();
@@ -398,7 +401,7 @@ const Dashboard = () => {
               </Grid>
 
               {/* Schedule Adherence Card */}
-              {canManageScheduled && analytics?.scheduleAdherence !== undefined && (
+              {canViewScheduleAdherence && analytics?.scheduleAdherence !== undefined && (
                 <Grid item xs={12} sm={6} md={3}>
                   <Fade in timeout={1400}>
                     <Card sx={{ 

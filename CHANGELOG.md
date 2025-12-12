@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced Reschedule UI**: Updated reschedule interface to support backdated dates
 
 ### Added - Mobile App
+- **Schedule Adherence Card**: New dashboard card displaying schedule adherence percentage and statistics with permission-based visibility
+- **Same-Day Validation**: Added validation to prevent starting scheduled audits before/after scheduled date with user-friendly error messages
 - **Per-Checklist Reschedule Tracking**: Mobile app now checks reschedule count per checklist (not per user)
 - **Backdated Reschedule Support**: Date picker now allows selection of past dates
 - **Improved Error Messages**: Better error handling and user-friendly messages for login and API errors
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error Messages**: Improved error messages for invalid credentials and validation failures
 
 ### Changed - Mobile App
+- **Dashboard Analytics**: Added analytics API call to fetch schedule adherence data
 - **Reschedule Logic**: Updated to fetch and check reschedule count per scheduled audit ID
 - **Date Picker**: Removed restriction on past dates for rescheduling
 - **API Service**: Enhanced error handling to prevent retries on client errors (400, 429)
@@ -47,7 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Date Validation**: Fixed scheduled audit opening to enforce same-day rule
 - **Permission Checks**: Updated role management to include checklist assignment permissions
 
+### Fixed - Web App
+- **Schedule Adherence Permission**: Fixed Schedule Adherence card to check `view_schedule_adherence` permission instead of `manage_scheduled_audits`
+
 ### Fixed - Mobile App
+- **Schedule Adherence Permission**: Fixed Schedule Adherence card to check `view_schedule_adherence` permission instead of `manage_scheduled_audits`
+- **Same-Day Validation**: Added frontend validation to prevent starting scheduled audits on wrong dates
 - **Login Errors**: Fixed 400/429 errors during login by improving rate limit handling
 - **Reschedule Count**: Fixed incorrect reschedule count display (was showing per-user, now per-checklist)
 - **Error Messages**: Fixed unclear error messages during login failures

@@ -27,6 +27,7 @@ const cardWidth = (width - 48) / 2;
 const DashboardScreen = () => {
   const [stats, setStats] = useState({ templates: 0, audits: 0, completed: 0, pendingActions: 0 });
   const [recentAudits, setRecentAudits] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
@@ -49,6 +50,10 @@ const DashboardScreen = () => {
                            hasPermission(userPermissions, 'view_templates') ||
                            hasPermission(userPermissions, 'manage_templates') ||
                            isAdmin(user);
+  const canViewAnalytics = hasPermission(userPermissions, 'view_analytics') || isAdmin(user);
+  const canViewScheduleAdherence = hasPermission(userPermissions, 'view_schedule_adherence') || 
+                                    hasPermission(userPermissions, 'view_analytics') || 
+                                    isAdmin(user);
 
   // Refresh user data when screen is focused
   useFocusEffect(
@@ -80,6 +85,7 @@ const DashboardScreen = () => {
     const canViewActionsNow = hasPermission(currentPermissions, 'view_actions') ||
                              hasPermission(currentPermissions, 'manage_actions') ||
                              isAdmin(user);
+    const canViewAnalyticsNow = hasPermission(currentPermissions, 'view_analytics') || isAdmin(user);
 
     try {
       const fetchPromises = [
@@ -91,10 +97,13 @@ const DashboardScreen = () => {
           : Promise.resolve({ data: { audits: [] } }),
         canViewActionsNow 
           ? axios.get(`${API_BASE_URL}/actions`).catch(() => ({ data: { actions: [] } }))
-          : Promise.resolve({ data: { actions: [] } })
+          : Promise.resolve({ data: { actions: [] } }),
+        canViewAnalyticsNow
+          ? axios.get(`${API_BASE_URL}/analytics/dashboard`).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null })
       ];
 
-      const [templatesRes, auditsRes, actionsRes] = await Promise.all(fetchPromises);
+      const [templatesRes, auditsRes, actionsRes, analyticsRes] = await Promise.all(fetchPromises);
 
       const audits = auditsRes.data.audits || [];
       const completed = audits.filter(a => a.status === 'completed').length;
@@ -108,6 +117,7 @@ const DashboardScreen = () => {
       });
 
       setRecentAudits(audits.slice(0, 5));
+      setAnalytics(analyticsRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -270,6 +280,31 @@ const DashboardScreen = () => {
               </LinearGradient>
             </View>
           </>
+        )}
+
+        {/* Schedule Adherence Card */}
+        {canViewScheduleAdherence && analytics?.scheduleAdherence !== undefined && (
+          <View style={styles.statCardWrapper}>
+            <LinearGradient
+              colors={['#667eea', '#764ba2']}
+              style={styles.statCard}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.statIconBg}>
+                <Icon name="schedule" size={24} color="#fff" />
+              </View>
+              <Text style={styles.statNumber}>
+                {analytics.scheduleAdherence.adherence || analytics.scheduleAdherence.percentage || 0}%
+              </Text>
+              <Text style={styles.statLabel}>Schedule Adherence</Text>
+              {analytics.scheduleAdherence.total > 0 && (
+                <Text style={styles.statSubtext}>
+                  {analytics.scheduleAdherence.onTime || analytics.scheduleAdherence.completedOnTime || 0} / {analytics.scheduleAdherence.total || analytics.scheduleAdherence.totalScheduled || 0} on time
+                </Text>
+              )}
+            </LinearGradient>
+          </View>
         )}
       </View>
 
@@ -512,6 +547,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.85)',
     marginTop: 2,
     fontWeight: '500',
+  },
+  statSubtext: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 4,
+    fontWeight: '400',
   },
   section: {
     paddingHorizontal: 16,
