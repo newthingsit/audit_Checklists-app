@@ -74,7 +74,20 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
     
-    // Retry logic for network errors and server errors
+    // Handle 400 Bad Request - don't retry (likely invalid credentials or bad request)
+    if (error.response?.status === 400) {
+      return Promise.reject(error);
+    }
+    
+    // Handle 429 Too Many Requests - don't retry (rate limited)
+    if (error.response?.status === 429) {
+      if (__DEV__) {
+        console.warn('Rate limited:', config?.url);
+      }
+      return Promise.reject(error);
+    }
+    
+    // Retry logic for network errors and server errors (but not auth errors)
     if (
       !config._retry &&
       (config._retryCount || 0) < RETRY_CONFIG.maxRetries &&

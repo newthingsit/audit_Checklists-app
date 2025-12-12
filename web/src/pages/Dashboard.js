@@ -396,6 +396,55 @@ const Dashboard = () => {
                   </Card>
                 </Fade>
               </Grid>
+
+              {/* Schedule Adherence Card */}
+              {canManageScheduled && analytics?.scheduleAdherence !== undefined && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <Fade in timeout={1400}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
+                        <ScheduleIcon sx={{ fontSize: 120 }} />
+                      </Box>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                            <ScheduleIcon />
+                          </Avatar>
+                          <Box>
+                            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                              {analytics.scheduleAdherence.adherence || 0}%
+                            </Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                              Schedule Adherence
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={analytics.scheduleAdherence.adherence || 0} 
+                          sx={{ 
+                            mt: 1, 
+                            height: 6, 
+                            borderRadius: 3,
+                            bgcolor: 'rgba(255,255,255,0.2)',
+                            '& .MuiLinearProgress-bar': {
+                              bgcolor: 'white'
+                            }
+                          }} 
+                        />
+                        <Typography variant="caption" sx={{ opacity: 0.8, mt: 1, display: 'block' }}>
+                          {analytics.scheduleAdherence.onTime || 0} of {analytics.scheduleAdherence.total || 0} on time
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Fade>
+                </Grid>
+              )}
             </>
           )}
         </Grid>

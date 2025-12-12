@@ -18,6 +18,7 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
@@ -233,22 +234,29 @@ const ScheduledAuditsScreen = () => {
     }, duration);
   };
 
-  const handleOpenRescheduleModal = (schedule) => {
-    if (rescheduleCount.count >= rescheduleCount.limit) {
-      showToast(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
-      return;
+  const handleOpenRescheduleModal = async (schedule) => {
+    // Check reschedule count for this specific scheduled audit (checklist)
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits/reschedule-count?scheduled_audit_id=${schedule.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const countData = response.data;
+      if (countData.count >= countData.limit) {
+        showToast(`This checklist has already been rescheduled ${countData.count} times. Each checklist can be rescheduled up to ${countData.limit} times individually.`);
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking reschedule count:', error);
+      // Continue anyway - don't block user if check fails
     }
+    
     setReschedulingSchedule(schedule);
     // Set the initial date for the picker - use scheduled_date or default to today
+    // Allow both backdated and future dates
     let initialDate;
     if (schedule.scheduled_date) {
       initialDate = new Date(schedule.scheduled_date);
-      // Ensure it's not in the past - if it is, use today instead
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (initialDate < today) {
-        initialDate = new Date(today);
-      }
     } else {
       // Default to today's date if no scheduled date
       initialDate = new Date();

@@ -160,6 +160,61 @@ router.get('/dashboard', authenticate, (req, res) => {
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
+    // Schedule Adherence - percentage of scheduled audits completed on time
+    new Promise((resolve, reject) => {
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      let query;
+      const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
+      const params = isAdmin ? [] : [userId, userId];
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE sa.status = 'completed' OR a.id IS NOT NULL
+        ${whereClause}`;
+      } else if (dbType === 'mysql') {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE sa.status = 'completed' OR a.id IS NOT NULL
+        ${whereClause}`;
+      } else {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE sa.status = 'completed' OR a.id IS NOT NULL
+        ${whereClause}`;
+      }
+      dbInstance.get(query, params, (err, row) => {
+        if (err) return reject(err);
+        const total = row?.total_scheduled || 0;
+        const onTime = row?.completed_on_time || 0;
+        const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;
+        resolve({ total, onTime, adherence });
+      });
+    }),
     // Current month stats for comparison
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
@@ -279,9 +334,64 @@ router.get('/dashboard', authenticate, (req, res) => {
          LIMIT 5`;
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+    }),
+    // Schedule Adherence - percentage of scheduled audits completed on time
+    new Promise((resolve, reject) => {
+      const dbType = process.env.DB_TYPE || 'sqlite';
+      let query;
+      const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
+      const params = isAdmin ? [] : [userId, userId];
+      
+      if (dbType === 'mssql' || dbType === 'sqlserver') {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        ${whereClause}`;
+      } else if (dbType === 'mysql') {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        ${whereClause}`;
+      } else {
+        query = `SELECT 
+          COUNT(*) as total_scheduled,
+          SUM(CASE 
+            WHEN a.id IS NOT NULL AND a.status = 'completed' 
+              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+            THEN 1 
+            ELSE 0 
+          END) as completed_on_time
+        FROM scheduled_audits sa
+        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        ${whereClause}`;
+      }
+      dbInstance.get(query, params, (err, row) => {
+        if (err) return reject(err);
+        const total = row?.total_scheduled || 0;
+        const onTime = row?.completed_on_time || 0;
+        const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;
+        resolve({ total, onTime, adherence });
+      });
     })
   ])
-    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topUsers, recent, currentMonthStats, lastMonthStats, topStores]) => {
+    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topUsers, recent, currentMonthStats, lastMonthStats, topStores, scheduleAdherence]) => {
       // Calculate month-over-month changes
       const monthChange = {
         total: currentMonthStats.total - lastMonthStats.total,
@@ -309,7 +419,8 @@ router.get('/dashboard', authenticate, (req, res) => {
           avgScore: Math.round((lastMonthStats.avg_score || 0) * 100) / 100
         },
         monthChange,
-        topStores
+        topStores,
+        scheduleAdherence: scheduleAdherence || { total: 0, onTime: 0, adherence: 0 }
       });
     })
     .catch(err => {

@@ -60,15 +60,24 @@ router.post('/register', [
 
 // Login
 router.post('/login', [
-  body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
+  body('email').isEmail().withMessage('Invalid email format').normalizeEmail(),
+  body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    const errorMessages = errors.array().map(e => e.msg || e.param).join(', ');
+    logger.error('Login validation error:', errorMessages);
+    return res.status(400).json({ 
+      error: 'Validation failed', 
+      details: errorMessages,
+      errors: errors.array() 
+    });
   }
 
   const { email, password } = req.body;
+  
+  // Log login attempt (without password)
+  logger.info('Login attempt:', { email: email.toLowerCase().trim() });
   
   if (!db || !db.getDb) {
     logger.error('Database module not loaded correctly');
@@ -95,18 +104,24 @@ router.post('/login', [
   // For case-insensitive comparison across all databases, we'll compare the normalized values
   dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], async (err, user) => {
     if (err) {
-      logger.error('Login database error');
-      return res.status(500).json({ error: 'Database error' });
+      logger.error('Login database error:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
     }
     if (!user) {
-      logger.security('login_failed', { reason: 'user_not_found' });
-      return res.status(400).json({ error: 'Invalid credentials' });
+      logger.security('login_failed', { reason: 'user_not_found', email: normalizedEmail });
+      return res.status(400).json({ 
+        error: 'Invalid credentials',
+        message: 'Email or password is incorrect'
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      logger.security('login_failed', { reason: 'password_mismatch', userId: user.id });
-      return res.status(400).json({ error: 'Invalid credentials' });
+      logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
+      return res.status(400).json({ 
+        error: 'Invalid credentials',
+        message: 'Email or password is incorrect'
+      });
     }
 
     const token = jwt.sign(

@@ -92,8 +92,8 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
         { id: 'create_scheduled_audits', name: 'Create Scheduled Audits', description: 'Create new scheduled audits' },
         { id: 'update_scheduled_audits', name: 'Update Scheduled Audits', description: 'Update scheduled audits' },
         { id: 'delete_scheduled_audits', name: 'Delete Scheduled Audits', description: 'Remove scheduled audits' },
-        { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits' },
-        { id: 'reschedule_scheduled_audits', name: 'Reschedule Scheduled Audits', description: 'Reschedule audits (limited per user)' }
+        { id: 'start_scheduled_audits', name: 'Start Scheduled Audits', description: 'Start audits from scheduled audits (only on scheduled date)' },
+        { id: 'reschedule_scheduled_audits', name: 'Reschedule Scheduled Audits', description: 'Reschedule audits (limited to 2 times per checklist individually, allows backdated and future dates)' }
       ]
     },
     
@@ -108,7 +108,9 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
         { id: 'view_templates', name: 'View Template Details', description: 'View template items and details' },
         { id: 'create_templates', name: 'Create Templates', description: 'Add new templates' },
         { id: 'edit_templates', name: 'Edit Templates', description: 'Update existing templates' },
-        { id: 'delete_templates', name: 'Delete Templates', description: 'Remove templates' }
+        { id: 'delete_templates', name: 'Delete Templates', description: 'Remove templates' },
+        { id: 'assign_checklists', name: 'Assign Checklists to Users', description: 'Assign specific checklists to users (user-wise assignment)' },
+        { id: 'assign_checklists', name: 'Assign Checklists to Users', description: 'Assign specific checklists to users (user-wise assignment)' }
       ]
     },
     
@@ -161,10 +163,11 @@ router.get('/permissions/list', authenticate, requireAdmin, (req, res) => {
       description: 'Access to analytics and reporting features',
       category: 'Reports',
       children: [
-        { id: 'view_analytics', name: 'View Analytics', description: 'Access analytics dashboards' },
+        { id: 'view_analytics', name: 'View Analytics', description: 'Access analytics dashboards (includes Schedule Adherence)' },
         { id: 'view_store_analytics', name: 'Store Analytics', description: 'View store-wise analytics' },
         { id: 'view_location_verification', name: 'Location Verification', description: 'View GPS location verification reports' },
         { id: 'view_monthly_scorecard', name: 'Monthly Scorecard', description: 'View monthly scorecard reports' },
+        { id: 'view_schedule_adherence', name: 'Schedule Adherence', description: 'View schedule adherence metrics in dashboard' },
         { id: 'export_data', name: 'Export Data', description: 'Export audits and reports to CSV/Excel/PDF' }
       ]
     },

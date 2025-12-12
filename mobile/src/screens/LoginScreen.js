@@ -59,7 +59,16 @@ const LoginScreen = () => {
       let errorMessage = 'Invalid credentials';
       
       if (error.response) {
-        errorMessage = error.response.data?.error || error.response.data?.message || `Server error: ${error.response.status}`;
+        const status = error.response.status;
+        
+        // Handle rate limiting specifically
+        if (status === 429) {
+          errorMessage = 'Too many login attempts. Please wait a few minutes before trying again.';
+        } else if (status === 400) {
+          errorMessage = error.response.data?.error || error.response.data?.message || 'Invalid email or password';
+        } else {
+          errorMessage = error.response.data?.error || error.response.data?.message || `Server error: ${status}`;
+        }
       } else if (error.request) {
         errorMessage = 'Cannot connect to server. Please check:\n\n1. Backend server is running\n2. Correct IP address in API config\n3. Device and computer are on same network';
       } else {

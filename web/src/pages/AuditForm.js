@@ -95,16 +95,16 @@ const AuditForm = () => {
         setLocationId(schedule.location_id.toString());
       }
       
-      // Check if current date is before scheduled date
+      // Check if current date matches scheduled date (scheduled audits can only be opened on the same day)
       if (schedule.scheduled_date) {
         const scheduledDate = new Date(schedule.scheduled_date);
         scheduledDate.setHours(0, 0, 0, 0);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        if (today < scheduledDate) {
+        if (scheduledDate.getTime() !== today.getTime()) {
           setIsBeforeScheduledDate(true);
-          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. You cannot start it before the scheduled date.`);
+          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. Scheduled audits can only be opened on the scheduled date.`);
         }
       }
     } catch (error) {

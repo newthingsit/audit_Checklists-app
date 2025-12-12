@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2025-01-XX - Audit Scheduling & Role Management Enhancements
+
+### Added - Backend
+- **Individual Checklist Rescheduling**: Each checklist can now be rescheduled up to 2 times individually (not per-user-per-month)
+- **Backdated Rescheduling**: Ability to reschedule audits to both past and future dates
+- **Same-Day Validation**: Scheduled audits can only be opened on their scheduled date
+- **Schedule Adherence Metric**: New dashboard metric showing percentage of audits completed on time
+- **Checklist Assignment User-Wise**: Enhanced checklist assignment functionality for user-specific permissions
+- **Rate Limit Improvements**: Increased login rate limit from 20 to 100 attempts (production) to prevent mobile app login issues
+- **Role Management Updates**: Added `assign_checklists` permission to role management system
+
+### Added - Web App
+- **Schedule Adherence Card**: New dashboard card displaying schedule adherence percentage and statistics
+- **Same-Day Validation UI**: User-friendly error messages when trying to open scheduled audits on wrong date
+- **Enhanced Reschedule UI**: Updated reschedule interface to support backdated dates
+
+### Added - Mobile App
+- **Per-Checklist Reschedule Tracking**: Mobile app now checks reschedule count per checklist (not per user)
+- **Backdated Reschedule Support**: Date picker now allows selection of past dates
+- **Improved Error Messages**: Better error handling and user-friendly messages for login and API errors
+- **Rate Limit Handling**: Mobile app no longer retries on 400/429 errors to prevent unnecessary requests
+
+### Changed - Backend
+- **Reschedule Tracking**: Changed from per-user-per-month to per-checklist tracking in `reschedule_tracking` table
+- **Reschedule Count Endpoint**: Updated `/api/scheduled-audits/reschedule-count` to accept `scheduled_audit_id` parameter
+- **Audit Creation Validation**: Added validation to prevent opening scheduled audits before/after scheduled date
+- **Analytics Endpoint**: Added schedule adherence calculation to dashboard analytics
+- **Login Rate Limits**: Increased from 20 to 100 attempts per 15 minutes in production
+- **Error Messages**: Improved error messages for invalid credentials and validation failures
+
+### Changed - Mobile App
+- **Reschedule Logic**: Updated to fetch and check reschedule count per scheduled audit ID
+- **Date Picker**: Removed restriction on past dates for rescheduling
+- **API Service**: Enhanced error handling to prevent retries on client errors (400, 429)
+- **Login Screen**: Improved error messages for better user feedback
+
+### Fixed - Backend
+- **Rate Limit Issues**: Fixed mobile app login failures due to rate limiting
+- **Reschedule Logic**: Fixed issue where rescheduling one checklist affected all checklists
+- **Date Validation**: Fixed scheduled audit opening to enforce same-day rule
+- **Permission Checks**: Updated role management to include checklist assignment permissions
+
+### Fixed - Mobile App
+- **Login Errors**: Fixed 400/429 errors during login by improving rate limit handling
+- **Reschedule Count**: Fixed incorrect reschedule count display (was showing per-user, now per-checklist)
+- **Error Messages**: Fixed unclear error messages during login failures
+
+### Technical Details
+- **Database**: No schema changes required (uses existing `reschedule_tracking` and `user_checklist_permissions` tables)
+- **Backward Compatible**: All changes are backward compatible with existing data
+- **API Changes**: 
+  - `/api/scheduled-audits/reschedule-count` now accepts `scheduled_audit_id` query parameter
+  - `/api/analytics/dashboard` now includes `scheduleAdherence` object in response
+  - `/api/roles/permissions/list` now includes `assign_checklists` permission
+
+### Components Version
+- **Backend:** 1.8.0
+- **Web App:** 1.9.0
+- **Mobile App:** 1.14.0
+
+---
+
 ## [1.13.0] - 2025-12-03 - Mobile App Profile & Navigation Enhancements
 
 ### Added - Mobile App

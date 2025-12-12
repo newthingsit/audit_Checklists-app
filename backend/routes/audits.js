@@ -493,6 +493,24 @@ router.post('/', authenticate, (req, res) => {
           if (schedule.status === 'completed') {
             return callback({ status: 400, message: 'Scheduled audit is already completed' });
           }
+          
+          // Validate that scheduled audit can only be opened on the scheduled date (same day)
+          if (schedule.scheduled_date) {
+            const scheduledDate = new Date(schedule.scheduled_date);
+            scheduledDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            // Check if dates are the same
+            if (scheduledDate.getTime() !== today.getTime()) {
+              const scheduledDateStr = scheduledDate.toLocaleDateString();
+              return callback({ 
+                status: 400, 
+                message: `This audit is scheduled for ${scheduledDateStr}. Scheduled audits can only be opened on the scheduled date.` 
+              });
+            }
+          }
+          
           callback(null, schedule);
         }
       );

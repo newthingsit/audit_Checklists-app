@@ -144,9 +144,13 @@ router.get('/', authenticate, (req, res) => {
   });
 });
 
-// Get reschedule count for current user in current month
+// Get reschedule count for a specific scheduled audit (checklist)
+// If scheduled_audit_id is provided, returns count for that specific checklist
+// Otherwise returns 0 (since we now track per-checklist, not per-user)
 // IMPORTANT: This route MUST be defined BEFORE /:id to prevent Express from matching "reschedule-count" as an ID
-router.get('/reschedule-count', (req, res) => {
+router.get('/reschedule-count', authenticate, (req, res) => {
+  const { scheduled_audit_id } = req.query;
+  
   // Default response - sent on any error
   const defaultResponse = {
     rescheduleCount: 0,
@@ -155,6 +159,11 @@ router.get('/reschedule-count', (req, res) => {
     count: 0,
     remaining: 2
   };
+  
+  // If no scheduled_audit_id provided, return 0 (per-checklist tracking requires an ID)
+  if (!scheduled_audit_id) {
+    return res.status(200).json(defaultResponse);
+  }
 
   // Helper to send response - ALWAYS returns 200
   const sendResponse = (countVal = 0) => {
@@ -219,8 +228,11 @@ router.get('/reschedule-count', (req, res) => {
       return sendResponse(0);
     }
 
-    // Query database
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    // Query database - count reschedules for this specific scheduled audit (checklist)
+    const scheduledAuditId = parseInt(scheduled_audit_id, 10);
+    if (isNaN(scheduledAuditId)) {
+      return sendResponse(0);
+    }
     
     // Timeout protection
     let responded = false;
@@ -233,8 +245,8 @@ router.get('/reschedule-count', (req, res) => {
 
     try {
       const queryResult = dbInstance.get(
-        `SELECT COUNT(*) as count FROM reschedule_tracking WHERE user_id = ? AND reschedule_month = ?`,
-        [userId, currentMonth],
+        `SELECT COUNT(*) as count FROM reschedule_tracking WHERE scheduled_audit_id = ?`,
+        [scheduledAuditId],
         (err, result) => {
           if (responded) return;
           responded = true;
@@ -1159,15 +1171,8 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
     return res.status(400).json({ error: 'Invalid date format' });
   }
 
-  // Validate that the new date is not in the past
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const newDateOnly = new Date(newDate);
-  newDateOnly.setHours(0, 0, 0, 0);
-  
-  if (newDateOnly < today) {
-    return res.status(400).json({ error: 'Cannot reschedule to a past date' });
-  }
+  // Allow both backdated and future dates for rescheduling
+  // No date restriction - users can reschedule to any date
 
   // Get the scheduled audit
   dbInstance.get(
@@ -1201,23 +1206,21 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
         return res.status(403).json({ error: 'You do not have permission to reschedule this audit' });
       }
 
-      // Get current month in YYYY-MM format
-      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-
-      // Count how many times this user has rescheduled this month
+      // Count how many times this specific scheduled audit (checklist) has been rescheduled
+      // Each checklist can be rescheduled up to 2 times individually
       const dbType = process.env.DB_TYPE || 'sqlite';
       let countQuery;
       if (dbType === 'mssql' || dbType === 'sqlserver') {
         countQuery = `SELECT COUNT(*) as count 
                       FROM reschedule_tracking 
-                      WHERE user_id = ? AND reschedule_month = ?`;
+                      WHERE scheduled_audit_id = ?`;
       } else {
         countQuery = `SELECT COUNT(*) as count 
                       FROM reschedule_tracking 
-                      WHERE user_id = ? AND reschedule_month = ?`;
+                      WHERE scheduled_audit_id = ?`;
       }
 
-      dbInstance.get(countQuery, [userId, currentMonth], (countErr, countResult) => {
+      dbInstance.get(countQuery, [id], (countErr, countResult) => {
         let rescheduleCount = 0;
         
         if (countErr) {
@@ -1243,7 +1246,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
         if (rescheduleCount >= 2) {
           return res.status(400).json({ 
             error: 'Reschedule limit reached', 
-            message: 'You have already rescheduled 2 audits this month. The limit is 2 reschedules per month.',
+            message: 'This checklist has already been rescheduled 2 times. Each checklist can be rescheduled up to 2 times individually.',
             rescheduleCount: rescheduleCount,
             limit: 2
           });
@@ -1251,6 +1254,9 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
 
         // Get the old date
         const oldDate = scheduledAudit.scheduled_date;
+        
+        // Get current month in YYYY-MM format for tracking (kept for historical purposes)
+        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
 
         // Update the scheduled audit
         const updateQuery = `UPDATE scheduled_audits 
@@ -1284,7 +1290,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
-              // Record the reschedule
+              // Record the reschedule (tracking per scheduled_audit_id, not per user per month)
               dbInstance.run(
                 `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
                  VALUES (?, ?, ?, ?, ?)`,
@@ -1323,7 +1329,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
-              // Record the reschedule
+              // Record the reschedule (tracking per scheduled_audit_id, not per user per month)
               dbInstance.run(
                 `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
                  VALUES (?, ?, ?, ?, ?)`,
@@ -1382,7 +1388,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                 return res.status(500).json({ error: 'Database error', details: updateErr.message });
               }
 
-              // Record the reschedule
+              // Record the reschedule (tracking per scheduled_audit_id, not per user per month)
               dbInstance.run(
                 `INSERT INTO reschedule_tracking (scheduled_audit_id, user_id, old_date, new_date, reschedule_month)
                  VALUES (?, ?, ?, ?, ?)`,

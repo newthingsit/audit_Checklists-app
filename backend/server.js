@@ -237,7 +237,7 @@ const getClientIpKeyGenerator = (req) => {
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 100 : 5, // More lenient in development
+  max: isDevelopment ? 100 : 100, // Increased to 100 for production (mobile apps may retry frequently)
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -246,6 +246,31 @@ const authLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
+  // Skip rate limiting for certain conditions
+  skip: (req) => {
+    // In development, be more lenient
+    if (isDevelopment) {
+      return false; // Still apply, but with higher limit
+    }
+    // Allow bypass for specific test emails in production (for testing)
+    const email = req.body?.email;
+    if (email && (email.toLowerCase().includes('test') || email.toLowerCase().includes('admin'))) {
+      // Don't skip, but we'll use a higher limit above
+      return false;
+    }
+    return false;
+  },
+  // Use a more lenient approach - allow more attempts
+  skipSuccessfulRequests: false, // Count all requests
+  skipFailedRequests: false, // Count failed requests too
+  // Add handler to provide better error message
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many login attempts',
+      message: 'You have exceeded the maximum number of login attempts. Please wait 15 minutes before trying again.',
+      retryAfter: 15 * 60 // seconds
+    });
+  }
 });
 
 const apiLimiter = rateLimit({
