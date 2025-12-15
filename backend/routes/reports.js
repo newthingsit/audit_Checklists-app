@@ -3,7 +3,8 @@ const PDFDocument = require('pdfkit');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
-const { exportAuditsToExcel, exportStoreAnalyticsToExcel, exportMonthlyScorecardToExcel } = require('../utils/excelExport');
+const { exportAuditsToExcel, exportStoreAnalyticsToExcel, exportMonthlyScorecardToExcel, exportDashboardReportToExcel } = require('../utils/excelExport');
+const { createEnhancedDashboardReport } = require('../utils/enhancedDashboardReport');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -1594,6 +1595,578 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
       });
     }
   });
+});
+
+// Enhanced Dashboard Report - Detailed audit report matching Excel structure
+router.get('/dashboard/enhanced', authenticate, requirePermission('view_analytics', 'manage_analytics'), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const isAdmin = isAdminUser(req.user);
+    const { date_from, date_to } = req.query;
+    
+    const buffer = await createEnhancedDashboardReport(userId, isAdmin, date_from, date_to);
+    
+    const filename = `enhanced-dashboard-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    
+    res.send(buffer);
+  } catch (error) {
+    logger.error('Error generating enhanced dashboard report:', error);
+    res.status(500).json({ 
+      error: 'Error generating enhanced dashboard report', 
+      details: error.message 
+    });
+  }
+});
+
+// Dashboard Report - Export comprehensive dashboard analytics to Excel
+router.get('/dashboard/excel', authenticate, requirePermission('view_analytics', 'manage_analytics'), async (req, res) => {
+  try {
+    // Fetch data directly using the same queries as analytics/dashboard
+    // but we need to get the data first, then export it
+    const userId = req.user.id;
+    const isAdmin = isAdminUser(req.user);
+    const dbInstance = db.getDb();
+
+    // Get dashboard analytics data (similar to /api/analytics/dashboard)
+    const userFilter = isAdmin ? '' : 'WHERE user_id = ?';
+    const userParams = isAdmin ? [] : [userId];
+    
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const dbType = process.env.DB_TYPE || 'sqlite';
+
+    // Fetch all dashboard data in parallel
+    const [
+      total,
+      completed,
+      inProgress,
+      avgScore,
+      byStatus,
+      byMonth,
+      topUsers,
+      recent,
+      currentMonthStats,
+      lastMonthStats,
+      topStores,
+      scheduleAdherence
+    ] = await Promise.all([
+      // Total audits
+      new Promise((resolve, reject) => {
+        const query = isAdmin 
+          ? 'SELECT COUNT(*) as total FROM audits'
+          : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ?';
+        dbInstance.get(query, userParams, (err, row) => {
+          if (err) {
+            logger.error('Error fetching total audits:', err);
+            return reject(err);
+          }
+          resolve(row?.total || 0);
+        });
+      }),
+      // Completed audits
+      new Promise((resolve, reject) => {
+        const query = isAdmin
+          ? 'SELECT COUNT(*) as total FROM audits WHERE status = ?'
+          : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?';
+        const params = isAdmin ? ['completed'] : [userId, 'completed'];
+        dbInstance.get(query, params, (err, row) => err ? reject(err) : resolve(row.total));
+      }),
+      // In progress audits
+      new Promise((resolve, reject) => {
+        const query = isAdmin
+          ? 'SELECT COUNT(*) as total FROM audits WHERE status = ?'
+          : 'SELECT COUNT(*) as total FROM audits WHERE user_id = ? AND status = ?';
+        const params = isAdmin ? ['in_progress'] : [userId, 'in_progress'];
+        dbInstance.get(query, params, (err, row) => {
+          if (err) {
+            logger.error('Error fetching in progress audits:', err);
+            return reject(err);
+          }
+          resolve(row?.total || 0);
+        });
+      }),
+      // Average score
+      new Promise((resolve, reject) => {
+        const query = isAdmin
+          ? 'SELECT AVG(score) as avg FROM audits WHERE score IS NOT NULL'
+          : 'SELECT AVG(score) as avg FROM audits WHERE user_id = ? AND score IS NOT NULL';
+        dbInstance.get(query, userParams, (err, row) => {
+          if (err) {
+            logger.error('Error fetching average score:', err);
+            return reject(err);
+          }
+          resolve(row?.avg || 0);
+        });
+      }),
+      // By status
+      new Promise((resolve, reject) => {
+        const query = isAdmin
+          ? `SELECT status, COUNT(*) as count FROM audits GROUP BY status`
+          : `SELECT status, COUNT(*) as count FROM audits WHERE user_id = ? GROUP BY status`;
+        dbInstance.all(query, userParams, (err, rows) => {
+          if (err) {
+            logger.error('Error fetching audits by status:', err);
+            return reject(err);
+          }
+          const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+          resolve((rows || []).map(r => ({
+            status: r.status || '',
+            count: r.count || 0,
+            percentage: total > 0 ? Math.round((r.count / total) * 100) : 0
+          })));
+        });
+      }),
+      // By month (last 12 months)
+      new Promise((resolve, reject) => {
+        let query;
+        if (dbType === 'mssql' || dbType === 'sqlserver') {
+          query = isAdmin
+            ? `SELECT FORMAT(created_at, 'yyyy-MM') as month, COUNT(*) as total, 
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE created_at >= DATEADD(MONTH, -12, GETDATE())
+               GROUP BY FORMAT(created_at, 'yyyy-MM')
+               ORDER BY month DESC`
+            : `SELECT FORMAT(created_at, 'yyyy-MM') as month, COUNT(*) as total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE user_id = ? AND created_at >= DATEADD(MONTH, -12, GETDATE())
+               GROUP BY FORMAT(created_at, 'yyyy-MM')
+               ORDER BY month DESC`;
+        } else if (dbType === 'mysql') {
+          query = isAdmin
+            ? `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+               GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+               ORDER BY month DESC`
+            : `SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+               GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+               ORDER BY month DESC`;
+        } else {
+          query = isAdmin
+            ? `SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE created_at >= datetime('now', '-12 months')
+               GROUP BY strftime('%Y-%m', created_at)
+               ORDER BY month DESC`
+            : `SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN status = 'completed' AND score IS NOT NULL THEN score ELSE NULL END) as avgScore
+               FROM audits 
+               WHERE user_id = ? AND created_at >= datetime('now', '-12 months')
+               GROUP BY strftime('%Y-%m', created_at)
+               ORDER BY month DESC`;
+        }
+        dbInstance.all(query, userParams, (err, rows) => {
+          if (err) {
+            logger.error('Error fetching monthly trends:', err);
+            logger.error('Query:', query);
+            return reject(err);
+          }
+          resolve((rows || []).map(r => ({
+            month: r.month || '',
+            total: r.total || 0,
+            completed: r.completed || 0,
+            avgScore: r.avgScore ? Math.round(r.avgScore * 100) / 100 : 0
+          })));
+        });
+      }),
+      // Top users
+      new Promise((resolve, reject) => {
+        const dbType = process.env.DB_TYPE || 'sqlite';
+        const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+        let query;
+        const params = isAdmin ? [] : [userId];
+        
+        if (isMssql) {
+          query = isAdmin
+            ? `SELECT TOP 10 u.id, u.name, u.email, COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN CAST(a.score AS FLOAT) ELSE NULL END) as avgScore
+               FROM users u
+               LEFT JOIN audits a ON u.id = a.user_id
+               GROUP BY u.id, u.name, u.email
+               HAVING COUNT(a.id) > 0
+               ORDER BY total DESC`
+            : `SELECT u.id, u.name, u.email, COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN CAST(a.score AS FLOAT) ELSE NULL END) as avgScore
+               FROM users u
+               LEFT JOIN audits a ON u.id = a.user_id
+               WHERE u.id = ?
+               GROUP BY u.id, u.name, u.email
+               ORDER BY total DESC`;
+        } else {
+          query = isAdmin
+            ? `SELECT u.id, u.name, u.email, COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN a.score ELSE NULL END) as avgScore
+               FROM users u
+               LEFT JOIN audits a ON u.id = a.user_id
+               GROUP BY u.id, u.name, u.email
+               HAVING COUNT(a.id) > 0
+               ORDER BY total DESC
+               LIMIT 10`
+            : `SELECT u.id, u.name, u.email, COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN a.score ELSE NULL END) as avgScore
+               FROM users u
+               LEFT JOIN audits a ON u.id = a.user_id
+               WHERE u.id = ?
+               GROUP BY u.id, u.name, u.email
+               ORDER BY total DESC`;
+        }
+        
+        dbInstance.all(query, params, (err, rows) => {
+          if (err) {
+            logger.error('Error fetching top users:', err);
+            logger.error('Query:', query);
+            return reject(err);
+          }
+          resolve((rows || []).map(r => ({
+            id: r.id,
+            name: r.name || '',
+            email: r.email || '',
+            total: r.total || 0,
+            completed: r.completed || 0,
+            avgScore: r.avgScore ? Math.round(r.avgScore * 100) / 100 : 0
+          })));
+        });
+      }),
+      // Recent audits
+      new Promise((resolve, reject) => {
+        const dbType = process.env.DB_TYPE || 'sqlite';
+        const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+        let query;
+        
+        if (isMssql) {
+          // SQL Server: Cast NTEXT to NVARCHAR(MAX) for compatibility
+          query = isAdmin
+            ? `SELECT TOP 20 a.id, a.restaurant_name, CAST(a.location AS NVARCHAR(MAX)) as location, a.location_id,
+               a.template_id, a.status, a.score, a.created_at, a.completed_at,
+               ct.name as template_name, ct.category, u.name as user_name
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN users u ON a.user_id = u.id
+               ORDER BY a.created_at DESC`
+            : `SELECT TOP 20 a.id, a.restaurant_name, CAST(a.location AS NVARCHAR(MAX)) as location, a.location_id,
+               a.template_id, a.status, a.score, a.created_at, a.completed_at,
+               ct.name as template_name, ct.category, u.name as user_name
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE a.user_id = ?
+               ORDER BY a.created_at DESC`;
+        } else {
+          query = isAdmin
+            ? `SELECT a.id, a.restaurant_name, a.location, a.location_id,
+               a.template_id, a.status, a.score, a.created_at, a.completed_at,
+               ct.name as template_name, ct.category, u.name as user_name
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN users u ON a.user_id = u.id
+               ORDER BY a.created_at DESC
+               LIMIT 20`
+            : `SELECT a.id, a.restaurant_name, a.location, a.location_id,
+               a.template_id, a.status, a.score, a.created_at, a.completed_at,
+               ct.name as template_name, ct.category, u.name as user_name
+               FROM audits a
+               JOIN checklist_templates ct ON a.template_id = ct.id
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE a.user_id = ?
+               ORDER BY a.created_at DESC
+               LIMIT 20`;
+        }
+        
+        dbInstance.all(query, userParams, (err, rows) => {
+          if (err) {
+            logger.error('Error fetching recent audits:', err);
+            logger.error('Query:', query);
+            return reject(err);
+          }
+          resolve(rows || []);
+        });
+      }),
+      // Current month stats
+      new Promise((resolve, reject) => {
+        let query;
+        const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+        const params = isAdmin ? [] : [userId];
+        
+        if (dbType === 'mssql' || dbType === 'sqlserver') {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND YEAR', 'WHERE YEAR');
+          }
+          params.push(currentYear, currentMonth);
+        } else if (dbType === 'mysql') {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND YEAR', 'WHERE YEAR');
+          }
+          params.push(currentYear, currentMonth);
+        } else {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND strftime', 'WHERE strftime');
+          }
+          params.push(String(currentYear), String(currentMonth).padStart(2, '0'));
+        }
+        dbInstance.get(query, params, (err, row) => {
+          if (err) return reject(err);
+          resolve(row || { total: 0, completed: 0, avg_score: 0 });
+        });
+      }),
+      // Last month stats
+      new Promise((resolve, reject) => {
+        let query;
+        const whereClause = isAdmin ? '' : 'WHERE a.user_id = ?';
+        const params = isAdmin ? [] : [userId];
+        
+        if (dbType === 'mssql' || dbType === 'sqlserver') {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND YEAR', 'WHERE YEAR');
+          }
+          params.push(lastMonthYear, lastMonth);
+        } else if (dbType === 'mysql') {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND YEAR', 'WHERE YEAR');
+          }
+          params.push(lastMonthYear, lastMonth);
+        } else {
+          query = `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+            AVG(a.score) as avg_score
+           FROM audits a
+           ${whereClause} AND strftime('%Y', a.created_at) = ? AND strftime('%m', a.created_at) = ?`;
+          if (isAdmin) {
+            query = query.replace('AND strftime', 'WHERE strftime');
+          }
+          params.push(String(lastMonthYear), String(lastMonth).padStart(2, '0'));
+        }
+        dbInstance.get(query, params, (err, row) => {
+          if (err) return reject(err);
+          resolve(row || { total: 0, completed: 0, avg_score: 0 });
+        });
+      }),
+      // Top stores
+      new Promise((resolve, reject) => {
+        const dbType = process.env.DB_TYPE || 'sqlite';
+        const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+        let query;
+        
+        if (isMssql) {
+          // SQL Server: Can't use NTEXT (a.location) in GROUP BY, so use l.name only
+          query = isAdmin
+            ? `SELECT TOP 10
+               COALESCE(l.name, a.restaurant_name, '') as store_name,
+               COALESCE(l.name, '') as location,
+               COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN CAST(a.score AS FLOAT) ELSE NULL END) as avgScore
+               FROM audits a
+               LEFT JOIN locations l ON a.location_id = l.id
+               WHERE a.restaurant_name IS NOT NULL OR l.name IS NOT NULL
+               GROUP BY COALESCE(l.name, a.restaurant_name, ''), COALESCE(l.name, '')
+               ORDER BY total DESC`
+            : `SELECT TOP 10
+               COALESCE(l.name, a.restaurant_name, '') as store_name,
+               COALESCE(l.name, '') as location,
+               COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN CAST(a.score AS FLOAT) ELSE NULL END) as avgScore
+               FROM audits a
+               LEFT JOIN locations l ON a.location_id = l.id
+               WHERE a.user_id = ? AND (a.restaurant_name IS NOT NULL OR l.name IS NOT NULL)
+               GROUP BY COALESCE(l.name, a.restaurant_name, ''), COALESCE(l.name, '')
+               ORDER BY total DESC`;
+        } else {
+          query = isAdmin
+            ? `SELECT 
+               COALESCE(l.name, a.restaurant_name, '') as store_name,
+               COALESCE(l.name, a.location, '') as location,
+               COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN a.score ELSE NULL END) as avgScore
+               FROM audits a
+               LEFT JOIN locations l ON a.location_id = l.id
+               WHERE a.restaurant_name IS NOT NULL OR l.name IS NOT NULL
+               GROUP BY COALESCE(l.name, a.restaurant_name, ''), COALESCE(l.name, a.location, '')
+               ORDER BY total DESC
+               LIMIT 10`
+            : `SELECT 
+               COALESCE(l.name, a.restaurant_name, '') as store_name,
+               COALESCE(l.name, a.location, '') as location,
+               COUNT(a.id) as total,
+               SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
+               AVG(CASE WHEN a.status = 'completed' AND a.score IS NOT NULL THEN a.score ELSE NULL END) as avgScore
+               FROM audits a
+               LEFT JOIN locations l ON a.location_id = l.id
+               WHERE a.user_id = ? AND (a.restaurant_name IS NOT NULL OR l.name IS NOT NULL)
+               GROUP BY COALESCE(l.name, a.restaurant_name, ''), COALESCE(l.name, a.location, '')
+               ORDER BY total DESC
+               LIMIT 10`;
+        }
+        
+        dbInstance.all(query, userParams, (err, rows) => {
+          if (err) {
+            logger.error('Error fetching top stores:', err);
+            logger.error('Query:', query);
+            return reject(err);
+          }
+          resolve((rows || []).map(r => ({
+            store_name: r.store_name || '',
+            location: r.location || '',
+            total: r.total || 0,
+            completed: r.completed || 0,
+            avgScore: r.avgScore ? Math.round(r.avgScore * 100) / 100 : 0
+          })));
+        });
+      }),
+      // Schedule adherence
+      new Promise((resolve, reject) => {
+        const dbType = process.env.DB_TYPE || 'sqlite';
+        let query;
+        const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
+        const params = isAdmin ? [] : [userId, userId];
+
+        if (dbType === 'mssql' || dbType === 'sqlserver') {
+          query = `
+            SELECT
+              COUNT(DISTINCT sa.id) as total_scheduled,
+              SUM(CASE
+                WHEN a.id IS NOT NULL AND a.status = 'completed'
+                  AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+                THEN 1
+                ELSE 0
+              END) as completed_on_time
+            FROM scheduled_audits sa
+            LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+            WHERE sa.status = 'completed' OR a.id IS NOT NULL
+            ${whereClause}`;
+        } else {
+          query = `
+            SELECT
+              COUNT(DISTINCT sa.id) as total_scheduled,
+              SUM(CASE
+                WHEN a.id IS NOT NULL AND a.status = 'completed'
+                  AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+                THEN 1
+                ELSE 0
+              END) as completed_on_time
+            FROM scheduled_audits sa
+            LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+            WHERE sa.status = 'completed' OR a.id IS NOT NULL
+            ${whereClause}`;
+        }
+        dbInstance.get(query, params, (err, row) => {
+          if (err) return reject(err);
+          const total = row?.total_scheduled || 0;
+          const onTime = row?.completed_on_time || 0;
+          const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;
+          resolve({ total, onTime, adherence });
+        });
+      })
+    ]).catch(err => {
+      logger.error('Error fetching dashboard data:', err);
+      throw err;
+    });
+
+    // Calculate month-over-month changes
+    const monthChange = {
+      total: (currentMonthStats?.total || 0) - (lastMonthStats?.total || 0),
+      completed: (currentMonthStats?.completed || 0) - (lastMonthStats?.completed || 0),
+      avgScore: ((currentMonthStats?.avg_score || 0) - (lastMonthStats?.avg_score || 0))
+    };
+
+    // Prepare dashboard data
+    const dashboardData = {
+      total,
+      completed,
+      inProgress,
+      avgScore: Math.round(avgScore * 100) / 100,
+      byStatus,
+      byMonth,
+      topUsers,
+      recent,
+      currentMonthStats: {
+        total: currentMonthStats.total || 0,
+        completed: currentMonthStats.completed || 0,
+        avgScore: Math.round((currentMonthStats.avg_score || 0) * 100) / 100
+      },
+      lastMonthStats: {
+        total: lastMonthStats.total || 0,
+        completed: lastMonthStats.completed || 0,
+        avgScore: Math.round((lastMonthStats.avg_score || 0) * 100) / 100
+      },
+      monthChange,
+      topStores,
+      scheduleAdherence: scheduleAdherence || { total: 0, onTime: 0, adherence: 0 }
+    };
+
+    // Generate Excel file
+    const buffer = await exportDashboardReportToExcel(dashboardData);
+    
+    // Set response headers
+    const filename = `dashboard-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    
+    // Send the buffer
+    res.send(buffer);
+  } catch (error) {
+    logger.error('Error generating dashboard report:', error);
+    logger.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Error generating dashboard report', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
 });
 
 // Location Verification Report - Compare Store Location vs GPS Location by User

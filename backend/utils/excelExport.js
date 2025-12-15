@@ -307,10 +307,176 @@ const formatDateForExcel = (dateString) => {
   return `${day}-${month}-${year}`;
 };
 
+/**
+ * Export dashboard analytics to Excel
+ * @param {Object} dashboardData - Dashboard analytics data
+ * @returns {Promise<Buffer>} - Excel file buffer
+ */
+const exportDashboardReportToExcel = async (dashboardData) => {
+  const sheets = [];
+  
+  // Summary Sheet
+  if (dashboardData) {
+    sheets.push({
+      name: 'Summary',
+      headers: [
+        { header: 'Metric', key: 'metric', width: 30 },
+        { header: 'Value', key: 'value', width: 20 }
+      ],
+      rows: [
+        ['Total Audits', dashboardData.total || 0],
+        ['Completed Audits', dashboardData.completed || 0],
+        ['In Progress Audits', dashboardData.inProgress || 0],
+        ['Average Score', dashboardData.avgScore ? `${dashboardData.avgScore}%` : 'N/A'],
+        ['Schedule Adherence', dashboardData.scheduleAdherence ? `${dashboardData.scheduleAdherence.adherence || 0}%` : 'N/A'],
+        ['On-Time Completions', dashboardData.scheduleAdherence ? `${dashboardData.scheduleAdherence.onTime || 0} of ${dashboardData.scheduleAdherence.total || 0}` : 'N/A'],
+        ['Current Month - Total', dashboardData.currentMonthStats?.total || 0],
+        ['Current Month - Completed', dashboardData.currentMonthStats?.completed || 0],
+        ['Current Month - Avg Score', dashboardData.currentMonthStats?.avgScore ? `${dashboardData.currentMonthStats.avgScore}%` : 'N/A'],
+        ['Last Month - Total', dashboardData.lastMonthStats?.total || 0],
+        ['Last Month - Completed', dashboardData.lastMonthStats?.completed || 0],
+        ['Last Month - Avg Score', dashboardData.lastMonthStats?.avgScore ? `${dashboardData.lastMonthStats.avgScore}%` : 'N/A'],
+        ['Month Change - Total', dashboardData.monthChange?.total || 0],
+        ['Month Change - Completed', dashboardData.monthChange?.completed || 0],
+        ['Month Change - Avg Score', dashboardData.monthChange?.avgScore ? `${dashboardData.monthChange.avgScore}%` : 'N/A']
+      ]
+    });
+  }
+
+  // Status Breakdown Sheet
+  if (dashboardData?.byStatus && dashboardData.byStatus.length > 0) {
+    sheets.push({
+      name: 'Status Breakdown',
+      headers: [
+        { header: 'Status', key: 'status', width: 20 },
+        { header: 'Count', key: 'count', width: 15 },
+        { header: 'Percentage', key: 'percentage', width: 15 }
+      ],
+      rows: dashboardData.byStatus.map(s => [
+        s.status || 'N/A',
+        s.count || 0,
+        s.percentage ? `${s.percentage}%` : '0%'
+      ])
+    });
+  }
+
+  // Monthly Trends Sheet
+  if (dashboardData?.byMonth && dashboardData.byMonth.length > 0) {
+    sheets.push({
+      name: 'Monthly Trends',
+      headers: [
+        { header: 'Month', key: 'month', width: 20 },
+        { header: 'Total Audits', key: 'total', width: 15 },
+        { header: 'Completed', key: 'completed', width: 15 },
+        { header: 'Average Score', key: 'avgScore', width: 15 }
+      ],
+      rows: dashboardData.byMonth.map(m => [
+        m.month || 'N/A',
+        m.total || 0,
+        m.completed || 0,
+        m.avgScore ? `${m.avgScore}%` : 'N/A'
+      ])
+    });
+  }
+
+  // Top Stores Sheet
+  if (dashboardData?.topStores && dashboardData.topStores.length > 0) {
+    sheets.push({
+      name: 'Top Stores',
+      headers: [
+        { header: 'Store Name', key: 'store_name', width: 25 },
+        { header: 'Location', key: 'location', width: 25 },
+        { header: 'Total Audits', key: 'total', width: 15 },
+        { header: 'Completed', key: 'completed', width: 15 },
+        { header: 'Average Score', key: 'avgScore', width: 15 }
+      ],
+      rows: dashboardData.topStores.map(store => [
+        store.store_name || 'N/A',
+        store.location || 'N/A',
+        store.total || 0,
+        store.completed || 0,
+        store.avgScore ? `${store.avgScore}%` : 'N/A'
+      ])
+    });
+  }
+
+  // Top Users/Auditors Sheet
+  if (dashboardData?.topUsers && dashboardData.topUsers.length > 0) {
+    sheets.push({
+      name: 'Top Auditors',
+      headers: [
+        { header: 'Auditor Name', key: 'name', width: 25 },
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Total Audits', key: 'total', width: 15 },
+        { header: 'Completed', key: 'completed', width: 15 },
+        { header: 'Average Score', key: 'avgScore', width: 15 }
+      ],
+      rows: dashboardData.topUsers.map(user => [
+        user.name || 'N/A',
+        user.email || 'N/A',
+        user.total || 0,
+        user.completed || 0,
+        user.avgScore ? `${user.avgScore}%` : 'N/A'
+      ])
+    });
+  }
+
+  // Recent Audits Sheet
+  if (dashboardData?.recent && dashboardData.recent.length > 0) {
+    sheets.push({
+      name: 'Recent Audits',
+      headers: [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Restaurant', key: 'restaurant', width: 25 },
+        { header: 'Store Number', key: 'store_number', width: 15 },
+        { header: 'Location', key: 'location', width: 25 },
+        { header: 'Template', key: 'template', width: 20 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Score', key: 'score', width: 12 },
+        { header: 'Auditor', key: 'auditor', width: 20 },
+        { header: 'Created Date', key: 'created_at', width: 18 },
+        { header: 'Completed Date', key: 'completed_at', width: 18 }
+      ],
+      rows: dashboardData.recent.map(audit => [
+        audit.id || '',
+        audit.restaurant_name || 'N/A',
+        audit.store_number || 'N/A',
+        audit.location_name || 'N/A',
+        audit.template_name || 'N/A',
+        audit.status || 'N/A',
+        audit.score !== null ? `${audit.score}%` : 'N/A',
+        audit.user_name || 'N/A',
+        audit.created_at ? formatDateForExcel(audit.created_at) : 'N/A',
+        audit.completed_at ? formatDateForExcel(audit.completed_at) : 'N/A'
+      ])
+    });
+  }
+
+  // Schedule Adherence Details Sheet
+  if (dashboardData?.scheduleAdherence) {
+    sheets.push({
+      name: 'Schedule Adherence',
+      headers: [
+        { header: 'Metric', key: 'metric', width: 30 },
+        { header: 'Value', key: 'value', width: 20 }
+      ],
+      rows: [
+        ['Total Scheduled Audits', dashboardData.scheduleAdherence.total || 0],
+        ['Completed On Time', dashboardData.scheduleAdherence.onTime || 0],
+        ['Adherence Percentage', `${dashboardData.scheduleAdherence.adherence || 0}%`],
+        ['Not Completed On Time', (dashboardData.scheduleAdherence.total || 0) - (dashboardData.scheduleAdherence.onTime || 0)]
+      ]
+    });
+  }
+
+  return await createExcelWorkbook(sheets);
+};
+
 module.exports = {
   createExcelWorkbook,
   exportAuditsToExcel,
   exportStoreAnalyticsToExcel,
-  exportMonthlyScorecardToExcel
+  exportMonthlyScorecardToExcel,
+  exportDashboardReportToExcel
 };
 

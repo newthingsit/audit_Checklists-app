@@ -42,12 +42,24 @@ router.get('/preferences', authenticate, async (req, res) => {
     // Query user preferences from the column-based table
     const query = `SELECT * FROM user_preferences WHERE user_id = ?`;
 
-    const userPrefs = await new Promise((resolve, reject) => {
-      database.get(query, [userId], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
+    let userPrefs = null;
+    try {
+      userPrefs = await new Promise((resolve, reject) => {
+        database.get(query, [userId], (err, row) => {
+          if (err) {
+            // If table doesn't exist or other error, just return null (use defaults)
+            logger.warn('Error fetching user preferences (using defaults):', err.message);
+            resolve(null);
+          } else {
+            resolve(row);
+          }
+        });
       });
-    });
+    } catch (error) {
+      // If query fails completely, just use defaults
+      logger.warn('Error in preferences query (using defaults):', error.message);
+      userPrefs = null;
+    }
 
     // If user has preferences, merge them with defaults
     if (userPrefs) {

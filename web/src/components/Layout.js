@@ -77,6 +77,7 @@ const Layout = ({ children }) => {
     ] : []),
     ...(hasPermission(userPermissions, 'view_analytics') || isAdmin(user) ? [
       { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
+      { text: 'Dashboard Report', icon: <DashboardIcon />, path: '/dashboard-report' },
       { text: 'Store Analytics', icon: <StorefrontIcon />, path: '/store-analytics' },
       { text: 'Recurring Failures', icon: <WarningAmberIcon />, path: '/recurring-failures' },
       { text: 'Location Verification', icon: <GpsFixedIcon />, path: '/location-verification' },

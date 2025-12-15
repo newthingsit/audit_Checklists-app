@@ -57,6 +57,18 @@ const AuditFormScreen = () => {
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
 
+  // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
+  const filteredLocations = useMemo(() => {
+    return locations.filter(loc => {
+      if (!storeSearchText) return true;
+      const search = storeSearchText.toLowerCase();
+      return (
+        loc.name.toLowerCase().includes(search) ||
+        (loc.store_number && loc.store_number.toLowerCase().includes(search))
+      );
+    });
+  }, [locations, storeSearchText]);
+
   // Fetch previous audit failures when location and template are available
   // This works for both regular audits and scheduled audits (same location + same checklist)
   useEffect(() => {
@@ -883,14 +895,7 @@ const AuditFormScreen = () => {
             />
             
             <FlatList
-              data={useMemo(() => locations.filter(loc => {
-                if (!storeSearchText) return true;
-                const search = storeSearchText.toLowerCase();
-                return (
-                  loc.name.toLowerCase().includes(search) ||
-                  (loc.store_number && loc.store_number.toLowerCase().includes(search))
-                );
-              }), [locations, storeSearchText])}
+              data={filteredLocations}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity

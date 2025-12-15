@@ -30,6 +30,7 @@ const RoleManagement = lazy(() => import('./pages/RoleManagement'));
 const MonthlyScorecard = lazy(() => import('./pages/MonthlyScorecard'));
 const ScheduledAuditsReport = lazy(() => import('./pages/ScheduledAuditsReport'));
 const StoreAnalytics = lazy(() => import('./pages/StoreAnalytics'));
+const DashboardReport = lazy(() => import('./pages/DashboardReport'));
 const LocationVerificationReport = lazy(() => import('./pages/LocationVerificationReport'));
 const StoreGroups = lazy(() => import('./pages/StoreGroups'));
 const RecurringFailures = lazy(() => import('./pages/RecurringFailures'));
@@ -369,6 +370,16 @@ function ThemeWrapper() {
                 element={
                   <PrivateRoute>
                     <StoreAnalytics />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/dashboard-report"
+                element={
+                  <PrivateRoute>
+                    <PermissionRoute permissions={['view_analytics']}>
+                      <DashboardReport />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
