@@ -330,7 +330,7 @@ router.get('/:id', authenticate, (req, res) => {
           // Extract time tracking data from ai.* if columns exist
           // SQLite/SQL Server will include all columns in ai.*, so we can access them directly
           
-          // Calculate time statistics
+          // Calculate time statistics (handle missing columns gracefully)
           const timeStats = {
             totalTime: 0,
             averageTime: 0,
@@ -339,11 +339,21 @@ router.get('/:id', authenticate, (req, res) => {
           };
           
           if (items.length > 0) {
-            const itemsWithTime = items.filter(item => item.time_taken_minutes !== null && item.time_taken_minutes !== undefined);
-            if (itemsWithTime.length > 0) {
-              timeStats.itemsWithTime = itemsWithTime.length;
-              timeStats.totalTime = itemsWithTime.reduce((sum, item) => sum + (parseFloat(item.time_taken_minutes) || 0), 0);
-              timeStats.averageTime = Math.round((timeStats.totalTime / itemsWithTime.length) * 100) / 100; // Round to 2 decimals
+            // Check if time_taken_minutes column exists by checking if any item has the property
+            // If column doesn't exist, items won't have this property
+            const hasTimeColumn = items.some(item => 'time_taken_minutes' in item);
+            
+            if (hasTimeColumn) {
+              const itemsWithTime = items.filter(item => 
+                item.time_taken_minutes !== null && 
+                item.time_taken_minutes !== undefined && 
+                item.time_taken_minutes !== ''
+              );
+              if (itemsWithTime.length > 0) {
+                timeStats.itemsWithTime = itemsWithTime.length;
+                timeStats.totalTime = itemsWithTime.reduce((sum, item) => sum + (parseFloat(item.time_taken_minutes) || 0), 0);
+                timeStats.averageTime = Math.round((timeStats.totalTime / itemsWithTime.length) * 100) / 100; // Round to 2 decimals
+              }
             }
           }
           
