@@ -310,11 +310,11 @@ router.get('/:id', authenticate, (req, res) => {
         return res.status(404).json({ error: 'Audit not found' });
       }
 
+      // Check if time tracking columns exist, then build query accordingly
       dbInstance.all(
         `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
                 COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-                cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark,
-                ai.time_taken_minutes, ai.started_at
+                cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
          FROM audit_items ai
          JOIN checklist_items ci ON ai.item_id = ci.id
          LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
@@ -323,8 +323,12 @@ router.get('/:id', authenticate, (req, res) => {
         [auditId],
         (err, items) => {
           if (err) {
-            return res.status(500).json({ error: 'Database error' });
+            logger.error('Error fetching audit items:', err.message);
+            return res.status(500).json({ error: 'Database error', details: err.message });
           }
+          
+          // Extract time tracking data from ai.* if columns exist
+          // SQLite/SQL Server will include all columns in ai.*, so we can access them directly
           
           // Calculate time statistics
           const timeStats = {
