@@ -313,7 +313,8 @@ router.get('/:id', authenticate, (req, res) => {
       dbInstance.all(
         `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
                 COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-                cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
+                cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark,
+                ai.time_taken_minutes, ai.started_at
          FROM audit_items ai
          JOIN checklist_items ci ON ai.item_id = ci.id
          LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
@@ -325,9 +326,26 @@ router.get('/:id', authenticate, (req, res) => {
             return res.status(500).json({ error: 'Database error' });
           }
           
+          // Calculate time statistics
+          const timeStats = {
+            totalTime: 0,
+            averageTime: 0,
+            itemsWithTime: 0,
+            totalItems: items.length
+          };
+          
+          if (items.length > 0) {
+            const itemsWithTime = items.filter(item => item.time_taken_minutes !== null && item.time_taken_minutes !== undefined);
+            if (itemsWithTime.length > 0) {
+              timeStats.itemsWithTime = itemsWithTime.length;
+              timeStats.totalTime = itemsWithTime.reduce((sum, item) => sum + (parseFloat(item.time_taken_minutes) || 0), 0);
+              timeStats.averageTime = Math.round((timeStats.totalTime / itemsWithTime.length) * 100) / 100; // Round to 2 decimals
+            }
+          }
+          
           // Fetch all options for items
           if (items.length === 0) {
-            return res.json({ audit, items: [], categoryScores: {} });
+            return res.json({ audit, items: [], categoryScores: {}, timeStats });
           }
           
           // Construct full photo URLs if they exist
@@ -435,7 +453,7 @@ router.get('/:id', authenticate, (req, res) => {
                 };
               });
               
-              res.json({ audit, items: itemsWithOptions, categoryScores });
+              res.json({ audit, items: itemsWithOptions, categoryScores, timeStats });
             }
           );
         }
@@ -794,7 +812,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
     return res.status(400).json({ error: 'Invalid audit ID or item ID' });
   }
   
-  const { status, comment, photo_url, selected_option_id, mark } = req.body;
+  const { status, comment, photo_url, selected_option_id, mark, time_taken_minutes, started_at } = req.body;
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
@@ -857,6 +875,18 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
             insertValues.push(comment || null, photo_url || null, validSelectedOptionId, finalMark || null);
             insertPlaceholders.push('?', '?', '?', '?');
             
+            // Add time tracking fields if provided
+            if (time_taken_minutes !== undefined) {
+              insertFields.push('time_taken_minutes');
+              insertValues.push(time_taken_minutes || null);
+              insertPlaceholders.push('?');
+            }
+            if (started_at !== undefined) {
+              insertFields.push('started_at');
+              insertValues.push(started_at || null);
+              insertPlaceholders.push('?');
+            }
+            
             dbInstance.run(
               `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`,
               insertValues,
@@ -884,9 +914,23 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               updateValues.push(finalMark || null);
             }
             
+            // Add time tracking fields if provided
+            if (time_taken_minutes !== undefined) {
+              updateFields.push('time_taken_minutes = ?');
+              updateValues.push(time_taken_minutes || null);
+            }
+            if (started_at !== undefined) {
+              updateFields.push('started_at = ?');
+              updateValues.push(started_at || null);
+            }
+            
             // Only update completed_at if status is completed
             if (status === 'completed') {
               updateFields.push('completed_at = CURRENT_TIMESTAMP');
+              // If time_taken_minutes not provided but started_at exists, calculate it
+              if (time_taken_minutes === undefined && started_at) {
+                updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
+              }
             }
             
             updateValues.push(auditId, itemId);
@@ -1146,7 +1190,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       // Process all items in parallel using Promise.all
       const updatePromises = items.map(item => {
         return new Promise((resolve, reject) => {
-          const { status, comment, photo_url, mark } = item;
+          const { status, comment, photo_url, mark, time_taken_minutes, started_at } = item;
           // Parse itemId and selected_option_id to integer for MSSQL compatibility
           const itemId = parseInt(item.itemId, 10);
           const selected_option_id = item.selected_option_id ? parseInt(item.selected_option_id, 10) : null;
@@ -1164,10 +1208,26 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
 
               if (!existingItem) {
                 // Insert new item
+                const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
+                const insertValues = [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null];
+                const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
+                
+                // Add time tracking fields if provided
+                if (time_taken_minutes !== undefined) {
+                  insertFields.push('time_taken_minutes');
+                  insertValues.push(time_taken_minutes || null);
+                  insertPlaceholders.push('?');
+                }
+                if (started_at !== undefined) {
+                  insertFields.push('started_at');
+                  insertValues.push(started_at || null);
+                  insertPlaceholders.push('?');
+                }
+                
                 dbInstance.run(
-                  `INSERT INTO audit_items (audit_id, item_id, status, comment, photo_url, selected_option_id, mark) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                  [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null],
+                  `INSERT INTO audit_items (${insertFields.join(', ')}) 
+                   VALUES (${insertPlaceholders.join(', ')})`,
+                  insertValues,
                   function(err) {
                     if (err) return reject(err);
                     resolve({ itemId, action: 'inserted' });
@@ -1186,8 +1246,20 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   updateFields.push('mark = ?');
                   updateValues.push(mark || null);
                 }
+                if (time_taken_minutes !== undefined) {
+                  updateFields.push('time_taken_minutes = ?');
+                  updateValues.push(time_taken_minutes || null);
+                }
+                if (started_at !== undefined) {
+                  updateFields.push('started_at = ?');
+                  updateValues.push(started_at || null);
+                }
                 if (status === 'completed') {
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
+                  // If time_taken_minutes not provided but started_at exists, calculate it
+                  if (time_taken_minutes === undefined && started_at) {
+                    updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
+                  }
                 }
                 
                 updateValues.push(auditId, itemId);

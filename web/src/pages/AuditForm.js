@@ -73,6 +73,11 @@ const AuditForm = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [showFailuresAlert, setShowFailuresAlert] = useState(false);
+  
+  // Time tracking state for Item Making Performance
+  const [itemStartTimes, setItemStartTimes] = useState({});
+  const [itemElapsedTimes, setItemElapsedTimes] = useState({});
+  const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({});
 
   useEffect(() => {
     fetchLocations();
@@ -259,11 +264,80 @@ const AuditForm = () => {
     }
   }, [template?.id, templateId, locationId, isEditing, fetchPreviousFailures]);
 
+  // Time tracking functions for Item Making Performance
+  const startItemTimer = (itemId) => {
+    if (itemStartTimes[itemId]) {
+      return;
+    }
+    
+    const startTime = new Date().toISOString();
+    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime }));
+    
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => {
+        const start = itemStartTimes[itemId] || startTime;
+        const elapsed = Math.floor((new Date() - new Date(start)) / 1000 / 60);
+        return { ...prev, [itemId]: elapsed };
+      });
+    }, 10000);
+    
+    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
+  };
+
+  const stopItemTimer = (itemId) => {
+    if (timeTrackingIntervals[itemId]) {
+      clearInterval(timeTrackingIntervals[itemId]);
+      setTimeTrackingIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[itemId];
+        return newIntervals;
+      });
+    }
+    
+    if (itemStartTimes[itemId]) {
+      const startTime = new Date(itemStartTimes[itemId]);
+      const endTime = new Date();
+      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100;
+      
+      setItemElapsedTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+      
+      return {
+        time_taken_minutes: timeTakenMinutes,
+        started_at: itemStartTimes[itemId]
+      };
+    }
+    return null;
+  };
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(timeTrackingIntervals).forEach(interval => {
+        if (interval) clearInterval(interval);
+      });
+    };
+  }, [timeTrackingIntervals]);
+
   const handleResponseChange = (itemId, status) => {
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
     }
+    
+    // Start timer when user first interacts with item
+    if (!itemStartTimes[itemId] && status !== 'pending') {
+      startItemTimer(itemId);
+    }
+    
+    // Stop timer when item is completed
+    if (status === 'completed' && itemStartTimes[itemId]) {
+      stopItemTimer(itemId);
+    }
+    
     setResponses({ ...responses, [itemId]: status });
   };
 
@@ -272,6 +346,12 @@ const AuditForm = () => {
       showError('Cannot modify items in a completed audit');
       return;
     }
+    
+    // Start timer when user first interacts with item
+    if (!itemStartTimes[itemId]) {
+      startItemTimer(itemId);
+    }
+    
     setSelectedOptions({ ...selectedOptions, [itemId]: optionId });
     // Also update status to 'completed' when an option is selected
     setResponses({ ...responses, [itemId]: 'completed' });
@@ -444,6 +524,15 @@ const AuditForm = () => {
             itemData.photo_url = photoUrl.startsWith('http') 
               ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
               : photoUrl;
+          }
+          
+          // Add time tracking data if available
+          if (itemStartTimes[item.id]) {
+            const timeData = stopItemTimer(item.id);
+            if (timeData) {
+              itemData.time_taken_minutes = timeData.time_taken_minutes;
+              itemData.started_at = timeData.started_at;
+            }
           }
 
           return itemData;
@@ -810,6 +899,16 @@ const AuditForm = () => {
                           size="small" 
                           color="error" 
                           sx={{ fontSize: '0.65rem', height: 20 }} 
+                        />
+                      )}
+                      {/* Time tracking display */}
+                      {(itemStartTimes[item.id] || itemElapsedTimes[item.id]) && (
+                        <Chip 
+                          label={`⏱️ ${itemElapsedTimes[item.id] || 0} min`}
+                          size="small"
+                          sx={{ fontSize: '0.65rem', height: 20, ml: 1 }}
+                          color="info"
+                          variant="outlined"
                         />
                       )}
                     </Typography>

@@ -56,6 +56,11 @@ const AuditFormScreen = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
+  
+  // Time tracking state for Item Making Performance
+  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when user starts working on each item
+  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for display
+  const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({}); // Store interval IDs
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -356,6 +361,15 @@ const AuditFormScreen = () => {
 
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
+    // Start timer when user first interacts with item
+    if (!itemStartTimes[itemId] && status !== 'pending') {
+      startItemTimer(itemId);
+    }
+    
+    // Stop timer and calculate time when item is completed
+    if (status === 'completed' && itemStartTimes[itemId]) {
+      stopItemTimer(itemId);
+    }
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -364,6 +378,10 @@ const AuditFormScreen = () => {
   }, [auditStatus]);
 
   const handleOptionChange = useCallback((itemId, optionId) => {
+    // Start timer when user first interacts with item
+    if (!itemStartTimes[itemId]) {
+      startItemTimer(itemId);
+    }
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -700,6 +718,15 @@ const AuditFormScreen = () => {
               updateData.photo_url = `/${photoUrl}`;
             }
           }
+          
+          // Add time tracking data if available
+          if (itemStartTimes[item.id]) {
+            const timeData = stopItemTimer(item.id);
+            if (timeData) {
+              updateData.time_taken_minutes = timeData.time_taken_minutes;
+              updateData.started_at = timeData.started_at;
+            }
+          }
 
           return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
         } catch (itemError) {
@@ -730,6 +757,68 @@ const AuditFormScreen = () => {
       setSaving(false);
     }
   };
+
+  // Time tracking functions for Item Making Performance
+  const startItemTimer = (itemId) => {
+    // If timer already started, don't restart
+    if (itemStartTimes[itemId]) {
+      return;
+    }
+    
+    const startTime = new Date().toISOString();
+    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime }));
+    
+    // Start interval to update elapsed time display
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => {
+        const start = itemStartTimes[itemId] || startTime;
+        const elapsed = Math.floor((new Date() - new Date(start)) / 1000 / 60); // minutes
+        return { ...prev, [itemId]: elapsed };
+      });
+    }, 10000); // Update every 10 seconds
+    
+    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
+  };
+
+  const stopItemTimer = (itemId) => {
+    // Clear interval
+    if (timeTrackingIntervals[itemId]) {
+      clearInterval(timeTrackingIntervals[itemId]);
+      setTimeTrackingIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[itemId];
+        return newIntervals;
+      });
+    }
+    
+    // Calculate final time
+    if (itemStartTimes[itemId]) {
+      const startTime = new Date(itemStartTimes[itemId]);
+      const endTime = new Date();
+      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100; // Round to 2 decimals
+      
+      setItemElapsedTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+      
+      return {
+        time_taken_minutes: timeTakenMinutes,
+        started_at: itemStartTimes[itemId]
+      };
+    }
+    return null;
+  };
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(timeTrackingIntervals).forEach(interval => {
+        if (interval) clearInterval(interval);
+      });
+    };
+  }, []);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -969,10 +1058,18 @@ const AuditFormScreen = () => {
                 )}
                 
                 <View style={styles.itemHeader}>
-                  <Text style={styles.itemTitle}>
-                    {index + 1}. {item.title}
-                    {item.required && <Text style={styles.required}> *</Text>}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemTitle}>
+                      {index + 1}. {item.title}
+                      {item.required && <Text style={styles.required}> *</Text>}
+                    </Text>
+                    {/* Time tracking display */}
+                    {(itemStartTimes[item.id] || itemElapsedTimes[item.id]) && (
+                      <Text style={styles.timeTrackingText}>
+                        ⏱️ {itemElapsedTimes[item.id] || 0} min
+                      </Text>
+                    )}
+                  </View>
                   {getStatusIcon(responses[item.id])}
                 </View>
                 {item.description && (
@@ -1270,6 +1367,12 @@ const styles = StyleSheet.create({
   },
   required: {
     color: themeConfig.error.main,
+  },
+  timeTrackingText: {
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   optionsContainer: {
     flexDirection: 'row',

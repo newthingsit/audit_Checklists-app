@@ -49,6 +49,7 @@ const AuditDetail = () => {
   const [items, setItems] = useState([]);
   const [actions, setActions] = useState([]);
   const [categoryScores, setCategoryScores] = useState({});
+  const [timeStats, setTimeStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showActionDialog, setShowActionDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
@@ -96,6 +97,7 @@ const AuditDetail = () => {
       
       setItems(itemsWithPhotos);
       setCategoryScores(auditResponse.data.categoryScores || {});
+      setTimeStats(auditResponse.data.timeStats || null);
       setActions(actionsResponse.data.actions || []);
     } catch (error) {
       console.error('Error fetching audit:', error);
@@ -415,6 +417,34 @@ const AuditDetail = () => {
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                 Weighted Score (accounts for item importance)
               </Typography>
+              {/* Time Statistics */}
+              {timeStats && timeStats.itemsWithTime > 0 && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    ⏱️ Item Making Performance
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Average Time per Item</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        {timeStats.averageTime} min
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Total Time</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        {timeStats.totalTime} min
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Items Tracked</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        {timeStats.itemsWithTime} / {timeStats.totalItems}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              )}
               <Typography variant="h5" sx={{ fontWeight: 600, color: audit.weighted_score >= 80 ? 'success.main' : audit.weighted_score >= 60 ? 'warning.main' : 'error.main' }}>
                 {audit.weighted_score}%
               </Typography>
