@@ -31,6 +31,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AddIcon from '@mui/icons-material/Add';
+import PrintIcon from '@mui/icons-material/Print';
+import EmailIcon from '@mui/icons-material/Email';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -470,6 +472,33 @@ const AuditHistory = () => {
                         </Typography>
                       </Box>
                     </CardContent>
+                    <Box sx={{ display: 'flex', gap: 1, p: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Button
+                        size="small"
+                        startIcon={<PrintIcon />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/audit/${audit.id}`);
+                          setTimeout(() => {
+                            window.print();
+                          }, 500);
+                        }}
+                        sx={{ flex: 1 }}
+                      >
+                        Print
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<EmailIcon />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/audit/${audit.id}`);
+                        }}
+                        sx={{ flex: 1 }}
+                      >
+                        Email
+                      </Button>
+                    </Box>
                   </Card>
                 </Grid>
               ))}

@@ -40,7 +40,47 @@ router.get('/', authenticate, (req, res) => {
       logger.error('Templates error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
-    res.json({ templates });
+    
+    // Get categories for each template from checklist_items
+    if (templates && templates.length > 0) {
+      const templateIds = templates.map(t => t.id);
+      const placeholders = templateIds.map(() => '?').join(',');
+      
+      // Get unique categories for each template
+      const categoryQuery = `SELECT DISTINCT template_id, category 
+                            FROM checklist_items 
+                            WHERE template_id IN (${placeholders}) 
+                            AND category IS NOT NULL 
+                            AND category != ''`;
+      
+      dbInstance.all(categoryQuery, templateIds, (catErr, categoryRows) => {
+        if (catErr) {
+          logger.error('Category query error:', catErr);
+          return res.json({ templates });
+        }
+        
+        // Group categories by template_id
+        const categoriesByTemplate = {};
+        categoryRows.forEach(row => {
+          if (!categoriesByTemplate[row.template_id]) {
+            categoriesByTemplate[row.template_id] = [];
+          }
+          if (!categoriesByTemplate[row.template_id].includes(row.category)) {
+            categoriesByTemplate[row.template_id].push(row.category);
+          }
+        });
+        
+        // Add categories array to each template
+        const templatesWithCategories = templates.map(template => ({
+          ...template,
+          categories: categoriesByTemplate[template.id] || []
+        }));
+        
+        res.json({ templates: templatesWithCategories });
+      });
+    } else {
+      res.json({ templates: [] });
+    }
   });
 });
 

@@ -1,3 +1,9 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "57d2046c-9e50-459f-8f41-006b79f6bca3"
+      }
+    }
+  }
 }

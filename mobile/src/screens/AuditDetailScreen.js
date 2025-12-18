@@ -6,7 +6,8 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
-  Image
+  Image,
+  Alert
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
@@ -14,10 +15,12 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
 import { LocationDisplay } from '../components/LocationCapture';
+import { useLocation } from '../context/LocationContext';
 
 const AuditDetailScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
+  const { getCurrentLocation, calculateDistance } = useLocation();
   const { id } = route.params;
   const [audit, setAudit] = useState(null);
   const [items, setItems] = useState([]);
@@ -165,7 +168,42 @@ const AuditDetailScreen = () => {
         <View style={styles.actionContainer}>
           <TouchableOpacity
             style={styles.continueButton}
-            onPress={() => {
+            onPress={async () => {
+              // Check proximity before continuing audit
+              if (audit.location_id) {
+                try {
+                  // Get location details
+                  const locationResponse = await axios.get(`${API_BASE_URL}/locations/${audit.location_id}`);
+                  const location = locationResponse.data.location;
+                  
+                  if (location && location.latitude && location.longitude) {
+                    // Get current location
+                    const currentLocationResult = await getCurrentLocation();
+                    
+                    if (currentLocationResult.success) {
+                      const distance = calculateDistance(
+                        currentLocationResult.location.latitude,
+                        currentLocationResult.location.longitude,
+                        parseFloat(location.latitude),
+                        parseFloat(location.longitude)
+                      );
+                      
+                      if (distance > 100) {
+                        Alert.alert(
+                          'Location Too Far',
+                          `You are ${Math.round(distance)}m from the audit location. You must be within 100 meters to continue the audit.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error checking location:', error);
+                  // Continue anyway if check fails
+                }
+              }
+              
               // Navigate to AuditForm in the same stack
               navigation.navigate('AuditForm', { 
                 auditId: audit.id, 

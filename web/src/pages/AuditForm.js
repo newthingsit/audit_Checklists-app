@@ -312,7 +312,7 @@ const AuditForm = () => {
       });
 
       setPhotos({ ...photos, [itemId]: uploadResponse.data.photo_url });
-      showSuccess('Photo uploaded successfully!');
+      // Photo upload notification removed as per requirement
     } catch (error) {
       console.error('Error uploading photo:', error);
       showError('Failed to upload photo');

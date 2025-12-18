@@ -77,3 +77,14 @@ This would allow normal GROUP BY and COALESCE operations without CAST.
 **Status:** ✅ Code fixes complete - Restart backend server!
 
 
+
+
+
+
+
+
+
+
+
+
+

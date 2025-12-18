@@ -514,10 +514,7 @@ const AuditFormScreen = () => {
         setPhotos(prev => ({ ...prev, [itemId]: fullPhotoUrl }));
         setUploading(prev => ({ ...prev, [itemId]: false }));
         
-        // Show success feedback (non-blocking)
-        setTimeout(() => {
-          Alert.alert('Success', 'Photo uploaded successfully', [{ text: 'OK' }]);
-        }, 100);
+        // Photo upload notification removed as per requirement
       }
     } catch (error) {
       console.error('Error uploading photo:', error);
@@ -834,17 +831,16 @@ const AuditFormScreen = () => {
                   latitude: parseFloat(selectedLocation.latitude),
                   longitude: parseFloat(selectedLocation.longitude),
                 }}
-                maxDistance={500}
+                maxDistance={100}
                 locationName={selectedLocation.name}
                 onVerificationComplete={(result) => {
                   setLocationVerified(result.verified);
                   if (!result.verified) {
                     Alert.alert(
                       'Location Mismatch',
-                      `You are ${result.distance}m from ${selectedLocation.name}. The maximum allowed distance is ${result.maxDistance}m.\n\nDo you want to continue anyway?`,
+                      `You are ${result.distance}m from ${selectedLocation.name}. The maximum allowed distance is ${result.maxDistance}m.\n\nYou must be within 100 meters to start or continue an audit.`,
                       [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Continue', onPress: () => setLocationVerified(true) },
+                        { text: 'OK', style: 'cancel' },
                       ]
                     );
                   }
