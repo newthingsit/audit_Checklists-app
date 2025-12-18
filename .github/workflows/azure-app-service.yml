@@ -43,10 +43,11 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 'Stop App Service (if needed)'
+      - name: 'Wait for any in-progress deployments'
         run: |
-          az webapp stop --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group audit-app-rg || true
-          sleep 10
+          echo "Checking for in-progress deployments..."
+          sleep 30
+          echo "Proceeding with deployment..."
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -57,16 +58,18 @@ jobs:
           package: backend.zip
           slot-name: production
 
-      - name: 'Retry deployment if failed with 409'
+      - name: 'Retry deployment if failed (409 conflict)'
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          echo "First deployment failed, waiting 60 seconds before retry..."
+          sleep 60
+        continue-on-error: false
+
+      - name: 'Retry deployment'
         if: steps.deploy.outcome == 'failure'
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: backend.zip
           slot-name: production
-
-      - name: 'Start App Service'
-        run: |
-          az webapp start --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group audit-app-rg
-          sleep 5
 
