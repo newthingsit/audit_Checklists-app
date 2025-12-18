@@ -35,6 +35,8 @@ const LocationVerificationReport = lazy(() => import('./pages/LocationVerificati
 const StoreGroups = lazy(() => import('./pages/StoreGroups'));
 const RecurringFailures = lazy(() => import('./pages/RecurringFailures'));
 const StoreAssignments = lazy(() => import('./pages/StoreAssignments'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const ActionPlans = lazy(() => import('./pages/ActionPlans'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -486,6 +488,26 @@ function ThemeWrapper() {
                   <PermissionRoute requiredPermissions={['manage_locations']}>
                     <StoreAssignments />
                   </PermissionRoute>
+                }
+              />
+              <Route
+                path="/tasks"
+                element={
+                  <PrivateRoute>
+                    <PermissionRoute requiredPermissions={['view_tasks', 'manage_tasks']}>
+                      <Tasks />
+                    </PermissionRoute>
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/actions"
+                element={
+                  <PrivateRoute>
+                    <PermissionRoute requiredPermissions={['view_actions', 'create_actions', 'manage_actions']}>
+                      <ActionPlans />
+                    </PermissionRoute>
+                  </PrivateRoute>
                 }
               />
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

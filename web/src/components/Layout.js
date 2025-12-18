@@ -43,6 +43,8 @@ import GpsFixedIcon from '@mui/icons-material/GpsFixed';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import TaskIcon from '@mui/icons-material/Task';
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useThemeMode } from '../context/ThemeContext';
@@ -74,6 +76,12 @@ const Layout = ({ children }) => {
     ] : []),
     ...(hasPermission(userPermissions, 'view_locations') || isAdmin(user) ? [
       { text: 'Stores', icon: <StorefrontIcon />, path: '/stores' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_tasks') || hasPermission(userPermissions, 'manage_tasks') || isAdmin(user) ? [
+      { text: 'Tasks', icon: <TaskIcon />, path: '/tasks' }
+    ] : []),
+    ...(hasPermission(userPermissions, 'view_actions') || hasPermission(userPermissions, 'create_actions') || hasPermission(userPermissions, 'manage_actions') || isAdmin(user) ? [
+      { text: 'Action Plans', icon: <AssignmentIcon />, path: '/actions' }
     ] : []),
     ...(hasPermission(userPermissions, 'view_analytics') || isAdmin(user) ? [
       { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
@@ -148,6 +156,8 @@ const Layout = ({ children }) => {
       '/store-analytics': 'Store Analytics',
       '/recurring-failures': 'Recurring Failures',
       '/location-verification': 'Location Verification',
+      '/tasks': 'Tasks & Workflows',
+      '/actions': 'Action Plans',
     };
     return titles[location.pathname] || 'Dashboard';
   };

@@ -437,6 +437,17 @@ const createTables = () => {
               if (alterErr) console.error('Error adding mark column:', alterErr);
             });
           }
+          // Add time tracking columns for Item Making Performance
+          if (!columnNames.includes('time_taken_minutes')) {
+            db.run(`ALTER TABLE audit_items ADD COLUMN time_taken_minutes REAL`, (alterErr) => {
+              if (alterErr) console.error('Error adding time_taken_minutes column:', alterErr);
+            });
+          }
+          if (!columnNames.includes('started_at')) {
+            db.run(`ALTER TABLE audit_items ADD COLUMN started_at DATETIME`, (alterErr) => {
+              if (alterErr) console.error('Error adding started_at column:', alterErr);
+            });
+          }
         }
       });
 
