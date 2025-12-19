@@ -447,16 +447,48 @@ const AuditForm = () => {
   };
 
   const handleNext = () => {
-    if (!validateStep(activeStep)) {
-      setTouched({ ...touched, [activeStep]: true });
-      return;
+    if (activeStep === 0) {
+      if (!locationId) {
+        setErrors({ ...errors, locationId: 'Please select a store' });
+        setTouched({ ...touched, 0: true });
+        return;
+      }
+      // If multiple categories, go to category selection, otherwise go to checklist
+      if (categories.length > 1) {
+        setActiveStep(1);
+      } else {
+        setActiveStep(1); // For single category or no categories, go directly to checklist
+      }
+    } else if (activeStep === 1 && categories.length > 1) {
+      // Category selection step
+      if (!selectedCategory) {
+        setError('Please select a category');
+        return;
+      }
+      setActiveStep(2);
+    } else {
+      // Regular step progression
+      if (!validateStep(activeStep)) {
+        setTouched({ ...touched, [activeStep]: true });
+        return;
+      }
+      setError('');
+      setActiveStep(activeStep + 1);
     }
-    setError('');
-    setActiveStep(activeStep + 1);
   };
 
   const handleBack = () => {
-    setActiveStep(activeStep - 1);
+    if (activeStep === (categories.length > 1 ? 2 : 1) && categories.length > 1) {
+      setActiveStep(1);
+    } else {
+      setActiveStep(activeStep - 1);
+    }
+  };
+  
+  const handleCategorySelect = (category) => {
+    setSelectedCategory(category);
+    const filtered = items.filter(item => item.category === category);
+    setFilteredItems(filtered);
   };
 
   const handleSubmit = async () => {
