@@ -57,72 +57,132 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             return res.status(500).json({ error: 'Database error', details: err.message });
           }
 
-          // Create PDF
-          const doc = new PDFDocument({ margin: 50 });
+          // Create PDF with enhanced formatting matching web UI
+          const doc = new PDFDocument({ margin: 40, size: 'A4' });
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename=audit-${auditId}.pdf`);
           doc.pipe(res);
 
-          // Header
-          doc.fontSize(20).text('Restaurant Audit Report', { align: 'center' });
+          // Helper function to get score color
+          const getScoreColor = (score) => {
+            if (score >= 80) return '#22c55e'; // Green
+            if (score >= 60) return '#f59e0b'; // Orange
+            return '#ef4444'; // Red
+          };
+
+          // Header with restaurant name and status
+          const storeName = audit.restaurant_name || audit.location || 'Restaurant';
+          doc.fontSize(24).fillColor('#1976d2').text(storeName, { align: 'center' });
+          doc.fontSize(12).fillColor('#666').text(`Store: ${audit.location || 'N/A'}`, { align: 'center' });
+          doc.moveDown(0.5);
+          
+          // Status badge and score
+          const statusColor = audit.status === 'completed' ? '#22c55e' : '#f59e0b';
+          doc.fontSize(12).fillColor(statusColor).text(audit.status?.toUpperCase() || 'IN PROGRESS', { align: 'center' });
+          
+          if (audit.score !== null && audit.score !== undefined) {
+            const scoreColor = getScoreColor(audit.score);
+            doc.fontSize(36).fillColor(scoreColor).text(`${audit.score}%`, { align: 'center' });
+            doc.fontSize(10).fillColor('#666').text(`${items.length} / ${items.length} items completed`, { align: 'center' });
+          }
           doc.moveDown();
 
-          // Audit Information
-          doc.fontSize(14).text('Audit Information', { underline: true });
-          doc.fontSize(12);
-          doc.text(`Restaurant: ${audit.restaurant_name || 'N/A'}`);
-          doc.text(`Location: ${audit.location || 'N/A'}`);
-          doc.text(`Template: ${audit.template_name || 'N/A'}`);
-          doc.text(`Auditor: ${audit.user_name || 'N/A'}`);
-          doc.text(`Date: ${new Date(audit.created_at).toLocaleDateString()}`);
-          doc.text(`Status: ${audit.status || 'N/A'}`);
-          if (audit.score !== null) {
-            doc.text(`Overall Score: ${audit.score}%`);
+          // Audit Information Box
+          doc.rect(40, doc.y, 515, 80).fill('#f5f5f5');
+          const infoY = doc.y + 10;
+          doc.fontSize(10).fillColor('#333');
+          doc.text(`Template: ${audit.template_name || 'N/A'}`, 50, infoY);
+          doc.text(`Auditor: ${audit.user_name || 'N/A'}`, 50, infoY + 15);
+          doc.text(`Created: ${new Date(audit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, infoY + 30);
+          if (audit.completed_at) {
+            doc.text(`Completed: ${new Date(audit.completed_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, infoY + 45);
           }
+          doc.text(`Category: ${audit.category || 'N/A'}`, 300, infoY);
+          doc.y = infoY + 70;
           doc.moveDown();
 
           // Notes
           if (audit.notes) {
-            doc.fontSize(14).text('Notes', { underline: true });
-            doc.fontSize(12).text(audit.notes);
+            doc.fontSize(12).fillColor('#1976d2').text('Notes', { underline: true });
+            doc.fontSize(10).fillColor('#333').text(audit.notes);
             doc.moveDown();
           }
 
-          // Calculate category-wise scores
-          const categoryScores = {};
-          const categoryTotals = {};
+          // Calculate category-wise scores with enhanced data
+          const categoryData = {};
           items.forEach(item => {
             const cat = item.category || 'Uncategorized';
-            if (!categoryScores[cat]) {
-              categoryScores[cat] = 0;
-              categoryTotals[cat] = 0;
+            if (!categoryData[cat]) {
+              categoryData[cat] = { totalScore: 0, maxScore: 0, count: 0, completed: 0, items: [] };
             }
-            if (item.mark !== null && item.mark !== undefined) {
-              categoryScores[cat] += parseFloat(item.mark) || 0;
-              categoryTotals[cat] += 1;
-            }
+            categoryData[cat].items.push(item);
+            categoryData[cat].count++;
+            if (item.status === 'completed') categoryData[cat].completed++;
+            
+            const mark = parseFloat(item.mark) || 0;
+            const maxMark = parseFloat(item.selected_mark) || 3; // Default max mark
+            categoryData[cat].totalScore += mark;
+            categoryData[cat].maxScore += maxMark;
           });
 
-          // Category-wise Summary
-          if (Object.keys(categoryScores).length > 0) {
-            doc.fontSize(14).text('Category-wise Scores', { underline: true });
-            doc.moveDown(0.5);
-            Object.keys(categoryScores).forEach(cat => {
-              const avgScore = categoryTotals[cat] > 0 
-                ? Math.round((categoryScores[cat] / categoryTotals[cat]) * 100) / 100 
-                : 0;
-              doc.fontSize(11);
-              doc.text(`${cat}: ${avgScore}% (${categoryTotals[cat]} items)`, { indent: 20 });
-            });
-            doc.moveDown();
-          }
+          // Category Scores Section (visual boxes like web UI)
+          doc.fontSize(14).fillColor('#333').text('Category Scores', { underline: true });
+          doc.moveDown(0.5);
 
-          // Checklist Items
-          doc.fontSize(14).text('Checklist Items', { underline: true });
+          let boxX = 40;
+          let boxY = doc.y;
+          const boxWidth = 165;
+          const boxHeight = 70;
+          let boxCount = 0;
+
+          Object.keys(categoryData).sort().forEach(cat => {
+            const data = categoryData[cat];
+            const percentage = data.maxScore > 0 ? Math.round((data.totalScore / data.maxScore) * 100) : 0;
+            const bgColor = getScoreColor(percentage);
+            
+            // Check if we need a new row
+            if (boxCount > 0 && boxCount % 3 === 0) {
+              boxX = 40;
+              boxY += boxHeight + 10;
+              
+              // Check if we need a new page
+              if (boxY > 700) {
+                doc.addPage();
+                boxY = 50;
+              }
+            }
+            
+            // Draw category box
+            doc.rect(boxX, boxY, boxWidth, boxHeight).fill(bgColor);
+            doc.fontSize(9).fillColor('white').text(cat.toUpperCase(), boxX + 10, boxY + 10, { width: boxWidth - 20 });
+            doc.fontSize(24).text(`${percentage}%`, boxX + 10, boxY + 30);
+            doc.fontSize(8).text(`${data.completed}/${data.count} items`, boxX + 10, boxY + 55);
+            
+            boxX += boxWidth + 10;
+            boxCount++;
+          });
+
+          // Move past the category boxes
+          doc.y = boxY + boxHeight + 20;
+          if (doc.y > 700) {
+            doc.addPage();
+          }
+          
+          doc.moveDown();
+
+          // Checklist Items Section
+          doc.fontSize(14).fillColor('#333').text('Checklist Items', { underline: true });
           doc.moveDown(0.5);
 
           let currentCategory = null;
-          items.forEach((item, index) => {
+          let itemIndex = 1;
+          
+          for (const item of items) {
+            // Check if we need a new page
+            if (doc.y > 700) {
+              doc.addPage();
+            }
+            
             // Group by category
             const itemCategory = item.category || 'Uncategorized';
             if (currentCategory !== itemCategory) {
@@ -130,56 +190,65 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
                 doc.moveDown(0.5);
               }
               currentCategory = itemCategory;
-              doc.fontSize(13).fillColor('#1976d2').text(itemCategory, { underline: true });
+              
+              // Category header with score
+              const catData = categoryData[itemCategory];
+              const catScore = catData && catData.maxScore > 0 
+                ? Math.round((catData.totalScore / catData.maxScore) * 100) 
+                : 0;
+              const catColor = getScoreColor(catScore);
+              
+              doc.fontSize(12).fillColor(catColor).text(`${itemCategory} (${catScore}%)`, { underline: true });
               doc.fillColor('black');
               doc.moveDown(0.3);
             }
 
-            doc.fontSize(11);
-            doc.text(`${index + 1}. ${item.title}`, { continued: false });
+            // Item title with status indicator
+            const statusIcon = item.status === 'completed' ? '✓' : '○';
+            const itemColor = item.mark && parseFloat(item.mark) > 0 ? '#22c55e' : '#ef4444';
             
-            // Status and Score
-            doc.fontSize(10).fillColor('gray');
-            let statusText = `Status: ${item.status || 'N/A'}`;
+            doc.fontSize(11).fillColor('#333');
+            doc.text(`${itemIndex}. ${item.title}`, { continued: false });
+            
+            // Status chips
+            doc.fontSize(9).fillColor('#666');
+            let statusLine = `   [${item.category || 'N/A'}] [${item.status || 'pending'}]`;
             if (item.mark !== null && item.mark !== undefined) {
-              statusText += ` | Score: ${item.mark}`;
+              statusLine += ` [Mark: ${item.mark}]`;
             }
             if (item.selected_option_text) {
-              statusText += ` | Selected: ${item.selected_option_text}`;
+              statusLine += ` [${item.selected_option_text}]`;
             }
-            doc.text(`   ${statusText}`);
+            doc.text(statusLine);
             
-            if (item.description) {
-              doc.text(`   ${item.description}`);
-            }
-            
+            // Comment
             if (item.comment) {
-              doc.fillColor('blue');
+              doc.fontSize(9).fillColor('#1976d2');
               doc.text(`   Comment: ${item.comment}`);
             }
             
-            // Add photo if available
+            // Photo evidence with URL
             if (item.photo_url) {
-              try {
-                const appUrl = process.env.APP_URL || '';
-                let photoPath = item.photo_url;
-                if (!photoPath.startsWith('http')) {
-                  photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
-                }
-                
-                // For URLs, add link text (PDFKit can't directly embed remote images without downloading)
-                doc.fillColor('blue');
-                doc.text(`   Photo: ${photoPath}`);
-              } catch (imgErr) {
-                logger.warn('Error processing photo URL:', imgErr);
-                doc.fillColor('blue');
-                doc.text(`   Photo: Available`);
+              const appUrl = process.env.APP_URL || 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net';
+              let photoPath = item.photo_url;
+              if (!photoPath.startsWith('http')) {
+                photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
               }
+              
+              doc.fontSize(9).fillColor('#1976d2');
+              doc.text(`   📷 Photo Evidence: `, { continued: true });
+              doc.fillColor('blue').text(photoPath, { link: photoPath, underline: true });
             }
             
             doc.fillColor('black');
             doc.moveDown(0.4);
-          });
+            itemIndex++;
+          }
+
+          // Footer
+          doc.fontSize(8).fillColor('#999');
+          doc.text(`Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, 780);
+          doc.text('Audit Pro - Restaurant Audit System', 450, 780);
 
           doc.end();
         }

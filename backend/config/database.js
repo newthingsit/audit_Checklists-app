@@ -448,6 +448,18 @@ const createTables = () => {
               if (alterErr) console.error('Error adding started_at column:', alterErr);
             });
           }
+          // Add multi-time entries for Item Making Performance (stores JSON array of times)
+          if (!columnNames.includes('time_entries')) {
+            db.run(`ALTER TABLE audit_items ADD COLUMN time_entries TEXT`, (alterErr) => {
+              if (alterErr) console.error('Error adding time_entries column:', alterErr);
+            });
+          }
+          // Add average time from multiple entries
+          if (!columnNames.includes('average_time_minutes')) {
+            db.run(`ALTER TABLE audit_items ADD COLUMN average_time_minutes REAL`, (alterErr) => {
+              if (alterErr) console.error('Error adding average_time_minutes column:', alterErr);
+            });
+          }
         }
       });
 

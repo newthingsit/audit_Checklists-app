@@ -79,6 +79,10 @@ const AuditForm = () => {
   const [itemElapsedTimes, setItemElapsedTimes] = useState({});
   const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({});
   
+  // Multi-time entries for Item Making Performance (e.g., timing product making 5 times)
+  const [multiTimeEntries, setMultiTimeEntries] = useState({}); // { itemId: [time1, time2, ...] }
+  const [currentTimerRunning, setCurrentTimerRunning] = useState(null); // itemId of currently running timer
+  
   // Category selection state
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -341,6 +345,79 @@ const AuditForm = () => {
     };
   }, [timeTrackingIntervals]);
 
+  // Multi-time entry functions for Item Making Performance (e.g., timing product making multiple times)
+  const startMultiTimer = (itemId) => {
+    const startTime = new Date();
+    setCurrentTimerRunning(itemId);
+    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime.toISOString() }));
+    
+    // Update elapsed time every second
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => ({
+        ...prev,
+        [itemId]: Math.floor((new Date() - startTime) / 1000)
+      }));
+    }, 1000);
+    
+    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
+  };
+
+  const stopMultiTimer = (itemId) => {
+    if (timeTrackingIntervals[itemId]) {
+      clearInterval(timeTrackingIntervals[itemId]);
+      setTimeTrackingIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[itemId];
+        return newIntervals;
+      });
+    }
+    
+    if (itemStartTimes[itemId]) {
+      const startTime = new Date(itemStartTimes[itemId]);
+      const endTime = new Date();
+      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100;
+      
+      // Add to multi-time entries
+      setMultiTimeEntries(prev => ({
+        ...prev,
+        [itemId]: [...(prev[itemId] || []), timeTakenMinutes]
+      }));
+      
+      // Clear current item tracking
+      setItemStartTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+      setItemElapsedTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+      setCurrentTimerRunning(null);
+    }
+  };
+
+  const removeTimeEntry = (itemId, index) => {
+    setMultiTimeEntries(prev => ({
+      ...prev,
+      [itemId]: prev[itemId]?.filter((_, i) => i !== index) || []
+    }));
+  };
+
+  const getAverageTime = (itemId) => {
+    const entries = multiTimeEntries[itemId] || [];
+    if (entries.length === 0) return 0;
+    const avg = entries.reduce((sum, t) => sum + t, 0) / entries.length;
+    return Math.round(avg * 100) / 100;
+  };
+
+  const formatElapsedTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleResponseChange = (itemId, status) => {
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
@@ -584,6 +661,12 @@ const AuditForm = () => {
               itemData.time_taken_minutes = timeData.time_taken_minutes;
               itemData.started_at = timeData.started_at;
             }
+          }
+          
+          // Add multi-time entries for Item Making Performance
+          if (multiTimeEntries[item.id] && multiTimeEntries[item.id].length > 0) {
+            itemData.time_entries = multiTimeEntries[item.id];
+            itemData.average_time_minutes = getAverageTime(item.id);
           }
 
           return itemData;
@@ -1152,6 +1235,88 @@ const AuditForm = () => {
                   </FormControl>
                   )}
 
+                  {/* Item Making Performance - Multiple Time Entries */}
+                  <Box sx={{ 
+                    mt: 2, 
+                    mb: 2, 
+                    p: 2, 
+                    bgcolor: 'grey.50', 
+                    borderRadius: 2,
+                    border: '1px dashed',
+                    borderColor: 'grey.300'
+                  }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      ⏱️ Item Making Performance
+                      <Chip 
+                        label={`${(multiTimeEntries[item.id] || []).length} entries`} 
+                        size="small" 
+                        variant="outlined"
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    </Typography>
+                    
+                    {/* Time entries display */}
+                    {(multiTimeEntries[item.id] || []).length > 0 && (
+                      <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {(multiTimeEntries[item.id] || []).map((time, idx) => (
+                          <Chip
+                            key={idx}
+                            label={`#${idx + 1}: ${time} min`}
+                            onDelete={() => removeTimeEntry(item.id, idx)}
+                            size="small"
+                            color="info"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    
+                    {/* Timer controls */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {currentTimerRunning === item.id ? (
+                        <>
+                          <Typography variant="h6" sx={{ minWidth: 60, fontFamily: 'monospace', color: 'error.main' }}>
+                            {formatElapsedTime(itemElapsedTimes[item.id] || 0)}
+                          </Typography>
+                          <Button
+                            variant="contained"
+                            color="error"
+                            size="small"
+                            onClick={() => stopMultiTimer(item.id)}
+                            sx={{ minWidth: 100 }}
+                          >
+                            ⏹️ Stop
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          size="small"
+                          onClick={() => startMultiTimer(item.id)}
+                          disabled={currentTimerRunning !== null && currentTimerRunning !== item.id}
+                          sx={{ minWidth: 120 }}
+                        >
+                          ⏱️ Start Timer
+                        </Button>
+                      )}
+                      
+                      {/* Average display */}
+                      {(multiTimeEntries[item.id] || []).length > 0 && (
+                        <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+                          <Typography variant="caption" color="text.secondary">Average Time</Typography>
+                          <Typography variant="h6" color="success.main" sx={{ fontWeight: 600 }}>
+                            {getAverageTime(item.id)} min
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      Use this to time product making (e.g., how long it takes to make a beverage). Record multiple times to get an average.
+                    </Typography>
+                  </Box>
+
                   <TextField
                     fullWidth
                     label="Add Comment"
@@ -1161,7 +1326,7 @@ const AuditForm = () => {
                     multiline
                     rows={2}
                     size="small"
-                    sx={{ mb: 2, mt: 2 }}
+                    sx={{ mb: 2 }}
                   />
 
                   <Box sx={{ 

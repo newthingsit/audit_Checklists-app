@@ -683,23 +683,13 @@ const AuditDetail = () => {
                   />
                 </Box>
               )}
-              {(item.status === 'failed' || item.status === 'warning') && (
-                <Box sx={{ mt: 2 }}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={() => handleCreateAction(item)}
-                  >
-                    Create Action Item
-                  </Button>
-                </Box>
-              )}
+              {/* Action item creation is handled in Action Plans page - removed from audit detail for cleaner view */}
             </CardContent>
           </Card>
         ))}
 
-        {actions.length > 0 && (
+        {/* Action Items section - hidden for cleaner audit view. Actions can be managed in Action Plans page */}
+        {false && actions.length > 0 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" gutterBottom sx={{ fontWeight: 600, color: '#333', mb: 2 }}>
               Action Items ({actions.length})

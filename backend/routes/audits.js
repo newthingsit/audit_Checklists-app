@@ -1204,7 +1204,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       // Process all items in parallel using Promise.all
       const updatePromises = items.map(item => {
         return new Promise((resolve, reject) => {
-          const { status, comment, photo_url, mark, time_taken_minutes, started_at } = item;
+          const { status, comment, photo_url, mark, time_taken_minutes, started_at, time_entries, average_time_minutes } = item;
           // Parse itemId and selected_option_id to integer for MSSQL compatibility
           const itemId = parseInt(item.itemId, 10);
           const selected_option_id = item.selected_option_id ? parseInt(item.selected_option_id, 10) : null;
@@ -1236,6 +1236,17 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 if (started_at !== undefined && started_at !== null) {
                   insertFields.push('started_at');
                   insertValues.push(started_at);
+                  insertPlaceholders.push('?');
+                }
+                // Multi-time entries for Item Making Performance
+                if (time_entries !== undefined && time_entries !== null) {
+                  insertFields.push('time_entries');
+                  insertValues.push(typeof time_entries === 'string' ? time_entries : JSON.stringify(time_entries));
+                  insertPlaceholders.push('?');
+                }
+                if (average_time_minutes !== undefined && average_time_minutes !== null) {
+                  insertFields.push('average_time_minutes');
+                  insertValues.push(average_time_minutes);
                   insertPlaceholders.push('?');
                 }
                 
@@ -1297,6 +1308,15 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 if (started_at !== undefined && started_at !== null) {
                   updateFields.push('started_at = ?');
                   updateValues.push(started_at);
+                }
+                // Multi-time entries for Item Making Performance
+                if (time_entries !== undefined && time_entries !== null) {
+                  updateFields.push('time_entries = ?');
+                  updateValues.push(typeof time_entries === 'string' ? time_entries : JSON.stringify(time_entries));
+                }
+                if (average_time_minutes !== undefined && average_time_minutes !== null) {
+                  updateFields.push('average_time_minutes = ?');
+                  updateValues.push(average_time_minutes);
                 }
                 if (status === 'completed') {
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
