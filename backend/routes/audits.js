@@ -1226,15 +1226,16 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 const insertValues = [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null];
                 const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
                 
-                // Add time tracking fields if provided
-                if (time_taken_minutes !== undefined) {
+                // Add time tracking fields if provided (only if columns exist)
+                // Note: These columns may not exist in all databases yet
+                if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
                   insertFields.push('time_taken_minutes');
-                  insertValues.push(time_taken_minutes || null);
+                  insertValues.push(time_taken_minutes);
                   insertPlaceholders.push('?');
                 }
-                if (started_at !== undefined) {
+                if (started_at !== undefined && started_at !== null) {
                   insertFields.push('started_at');
-                  insertValues.push(started_at || null);
+                  insertValues.push(started_at);
                   insertPlaceholders.push('?');
                 }
                 
@@ -1243,7 +1244,12 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                    VALUES (${insertPlaceholders.join(', ')})`,
                   insertValues,
                   function(err) {
-                    if (err) return reject(err);
+                    if (err) {
+                      logger.error(`[Batch Update] Error inserting item ${itemId}:`, err);
+                      logger.error(`[Batch Update] Insert SQL: INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`);
+                      logger.error(`[Batch Update] Insert values:`, insertValues);
+                      return reject(err);
+                    }
                     resolve({ itemId, action: 'inserted' });
                   }
                 );
@@ -1260,13 +1266,13 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   updateFields.push('mark = ?');
                   updateValues.push(mark || null);
                 }
-                if (time_taken_minutes !== undefined) {
+                if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
                   updateFields.push('time_taken_minutes = ?');
-                  updateValues.push(time_taken_minutes || null);
+                  updateValues.push(time_taken_minutes);
                 }
-                if (started_at !== undefined) {
+                if (started_at !== undefined && started_at !== null) {
                   updateFields.push('started_at = ?');
-                  updateValues.push(started_at || null);
+                  updateValues.push(started_at);
                 }
                 if (status === 'completed') {
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
@@ -1287,12 +1293,53 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 
                 updateValues.push(auditId, itemId);
                 
+                // Try to update, but handle column errors gracefully
                 dbInstance.run(
                   `UPDATE audit_items SET ${updateFields.join(', ')} WHERE audit_id = ? AND item_id = ?`,
                   updateValues,
                   function(err) {
-                    if (err) return reject(err);
-                    resolve({ itemId, action: 'updated' });
+                    if (err) {
+                      // If error is about missing column, try without time tracking columns
+                      if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
+                        logger.warn(`[Batch Update] Time tracking columns may not exist, retrying without them for item ${itemId}`);
+                        // Retry without time tracking columns
+                        const basicFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
+                        const basicValues = [status || 'pending', comment || null, photo_url || null];
+                        
+                        if (selected_option_id !== undefined) {
+                          basicFields.push('selected_option_id = ?');
+                          basicValues.push(selected_option_id || null);
+                        }
+                        if (mark !== undefined) {
+                          basicFields.push('mark = ?');
+                          basicValues.push(mark || null);
+                        }
+                        if (status === 'completed') {
+                          basicFields.push('completed_at = CURRENT_TIMESTAMP');
+                        }
+                        
+                        basicValues.push(auditId, itemId);
+                        
+                        dbInstance.run(
+                          `UPDATE audit_items SET ${basicFields.join(', ')} WHERE audit_id = ? AND item_id = ?`,
+                          basicValues,
+                          function(retryErr) {
+                            if (retryErr) {
+                              logger.error(`[Batch Update] Error updating item ${itemId} (retry):`, retryErr);
+                              return reject(retryErr);
+                            }
+                            resolve({ itemId, action: 'updated' });
+                          }
+                        );
+                      } else {
+                        logger.error(`[Batch Update] Error updating item ${itemId}:`, err);
+                        logger.error(`[Batch Update] Update SQL: UPDATE audit_items SET ${updateFields.join(', ')} WHERE audit_id = ? AND item_id = ?`);
+                        logger.error(`[Batch Update] Update values:`, updateValues);
+                        return reject(err);
+                      }
+                    } else {
+                      resolve({ itemId, action: 'updated' });
+                    }
                   }
                 );
               }
@@ -1301,12 +1348,14 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         });
       });
 
-      await Promise.all(updatePromises);
+      const results = await Promise.all(updatePromises);
+      logger.debug(`[Batch Update] Successfully processed ${results.length} items`);
 
       // Calculate score once after all updates
       calculateAndUpdateScore(dbInstance, auditId, audit.template_id, (err, scoreData) => {
         if (err) {
-          logger.error('Error calculating score:', err.message);
+          logger.error('Error calculating score:', err);
+          // Still return success for item updates, but log the score calculation error
         }
         
         if (scoreData && scoreData.status === 'completed') {
@@ -1323,8 +1372,22 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
 
     } catch (error) {
       logger.error('Error in batch update:', error);
+      logger.error('Error message:', error.message);
       logger.error('Error stack:', error.stack);
-      res.status(500).json({ error: 'Error updating audit items', details: error.message });
+      
+      // Provide more detailed error information
+      const errorDetails = {
+        message: error.message,
+        auditId: auditId,
+        itemCount: items?.length || 0,
+        firstItemId: items?.[0]?.itemId || 'N/A'
+      };
+      
+      res.status(500).json({ 
+        error: 'Error updating audit items', 
+        details: error.message,
+        debug: errorDetails
+      });
     }
   });
 });
