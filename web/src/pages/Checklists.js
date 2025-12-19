@@ -642,217 +642,140 @@ const Checklists = () => {
           )}
         </Box>
 
-        {/* Category-based view - show categories first, then templates */}
-        {selectedCategory ? (
-          <>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-              <Button
-                startIcon={<ArrowBackIcon />}
-                onClick={() => setSelectedCategory(null)}
-                sx={{ mr: 2 }}
-              >
-                Back to Categories
-              </Button>
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                {selectedCategory.name} ({selectedCategory.count} templates)
-              </Typography>
-            </Box>
-            <Grid container spacing={3} sx={{ mt: 2 }}>
-              {selectedCategory.templates.length === 0 ? (
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" align="center">
-                        No templates in this category
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ) : (
-                selectedCategory.templates.map((template, index) => {
-                  const templateId = getTemplateId(template) ?? index;
-                  return (
-                    <Grid item xs={12} sm={6} md={4} key={templateId}>
-                      <Card sx={{ 
-                        height: '100%', 
-                        display: 'flex', 
-                        flexDirection: 'column',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        transition: 'all 0.3s ease',
-                        '&:hover': { 
-                          transform: 'translateY(-4px)',
-                          boxShadow: 6,
-                          borderColor: 'primary.main'
-                        }
-                      }}>
-                        <CardContent sx={{ flexGrow: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
-                            <Box sx={{ 
-                              width: 56, 
-                              height: 56, 
-                              borderRadius: 2,
-                              bgcolor: 'primary.light',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              mr: 2
-                            }}>
-                              <ChecklistIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                            </Box>
-                            <Box sx={{ flexGrow: 1 }}>
-                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                                {template.name}
-                              </Typography>
+        {/* Templates Grid - Direct view without category selection */}
+        <Grid container spacing={3} sx={{ mt: 2 }}>
+          {templates.length === 0 ? (
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography color="text.secondary" align="center">
+                    No templates available. Click "+ Add Template" to create one.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ) : (
+            templates.map((template, index) => {
+              const templateId = getTemplateId(template) ?? index;
+              const templateCategories = template.categories || [];
+              return (
+                <Grid item xs={12} sm={6} md={4} key={templateId}>
+                  <Card sx={{ 
+                    height: '100%', 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    transition: 'all 0.3s ease',
+                    '&:hover': { 
+                      transform: 'translateY(-4px)',
+                      boxShadow: 6,
+                      borderColor: 'primary.main'
+                    }
+                  }}>
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
+                        <Box sx={{ 
+                          width: 56, 
+                          height: 56, 
+                          borderRadius: 2,
+                          bgcolor: 'primary.light',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mr: 2
+                        }}>
+                          <ChecklistIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+                        </Box>
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                            {template.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {templateCategories.slice(0, 2).map((cat, idx) => (
                               <Chip
-                                label={selectedCategory.name}
+                                key={idx}
+                                label={cat}
                                 size="small"
                                 color="primary"
                                 variant="outlined"
-                                sx={{ fontWeight: 500 }}
+                                sx={{ fontWeight: 500, fontSize: '0.7rem' }}
                               />
-                            </Box>
-                          </Box>
-                          {template.description && (
-                            <Typography variant="body2" color="text.secondary" paragraph>
-                              {template.description}
-                            </Typography>
-                          )}
-                          <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            mt: 2,
-                            p: 1.5,
-                            borderRadius: 2,
-                            bgcolor: 'grey.50'
-                          }}>
-                            <InfoIcon fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
-                            <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                              {template.item_count || 0} checklist items
-                            </Typography>
-                          </Box>
-                        </CardContent>
-                        <CardActions sx={{ p: 2, pt: 0, gap: 1 }}>
-                          <Button
-                            fullWidth
-                            variant="contained"
-                            startIcon={<PlayArrowIcon />}
-                            onClick={() => handleStartAudit(getTemplateId(template))}
-                            sx={{
-                              background: themeConfig.dashboardCards.card2,
-                              '&:hover': {
-                                background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)',
-                                transform: 'translateY(-1px)',
-                                boxShadow: '0 4px 12px rgba(67, 56, 202, 0.4)',
-                              },
-                              transition: 'all 0.2s ease',
-                            }}
-                          >
-                            Start Audit
-                          </Button>
-                          {canEdit && (
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEditTemplate(getTemplateId(template))}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          )}
-                          {canDelete && (
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDeleteTemplate(getTemplateId(template))}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          )}
-                        </CardActions>
-                      </Card>
-                    </Grid>
-                  );
-                })
-              )}
-            </Grid>
-          </>
-        ) : (
-          <>
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-              Select a Category
-            </Typography>
-            <Grid container spacing={3} sx={{ mt: 2 }}>
-              {categories.length === 0 ? (
-                <Grid item xs={12}>
-                  <Card>
-                    <CardContent>
-                      <Typography color="text.secondary" align="center">
-                        No categories available
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ) : (
-                categories.map((category) => (
-                  <Grid item xs={12} sm={6} md={4} key={category.name}>
-                    <Card
-                      sx={{
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        transition: 'all 0.3s ease',
-                        cursor: 'pointer',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 6,
-                          borderColor: 'primary.main'
-                        }
-                      }}
-                      onClick={() => setSelectedCategory(category)}
-                    >
-                      <CardContent sx={{ flexGrow: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
-                          <Box sx={{
-                            width: 56,
-                            height: 56,
-                            borderRadius: 2,
-                            bgcolor: 'primary.light',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            mr: 2
-                          }}>
-                            <ChecklistIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                          </Box>
-                          <Box sx={{ flexGrow: 1 }}>
-                            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                              {category.name}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {category.count} template{category.count !== 1 ? 's' : ''}
-                            </Typography>
+                            ))}
+                            {templateCategories.length > 2 && (
+                              <Chip
+                                label={`+${templateCategories.length - 2}`}
+                                size="small"
+                                color="default"
+                                variant="outlined"
+                                sx={{ fontWeight: 500, fontSize: '0.7rem' }}
+                              />
+                            )}
                           </Box>
                         </Box>
-                      </CardContent>
-                      <CardActions sx={{ p: 2, pt: 0 }}>
-                        <Button
-                          fullWidth
-                          variant="outlined"
-                          endIcon={<PlayArrowIcon />}
-                          onClick={() => setSelectedCategory(category)}
+                      </Box>
+                      {template.description && (
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                          {template.description}
+                        </Typography>
+                      )}
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        mt: 2,
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor: 'grey.50'
+                      }}>
+                        <InfoIcon fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
+                        <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                          {template.item_count || 0} checklist items
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                    <CardActions sx={{ p: 2, pt: 0, gap: 1 }}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        startIcon={<PlayArrowIcon />}
+                        onClick={() => handleStartAudit(getTemplateId(template))}
+                        sx={{
+                          background: themeConfig.dashboardCards.card2,
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)',
+                            transform: 'translateY(-1px)',
+                            boxShadow: '0 4px 12px rgba(67, 56, 202, 0.4)',
+                          },
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        Start Audit
+                      </Button>
+                      {canEdit && (
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => handleEditTemplate(getTemplateId(template))}
                         >
-                          View Templates
-                        </Button>
-                      </CardActions>
-                    </Card>
-                  </Grid>
-                ))
-              )}
-            </Grid>
-          </>
-        )}
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      {canDelete && (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteTemplate(getTemplateId(template))}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </CardActions>
+                  </Card>
+                </Grid>
+              );
+            })
+          )}
+        </Grid>
 
         {/* Add Template Dialog */}
         <Dialog 
@@ -1016,12 +939,28 @@ const Checklists = () => {
                           value=""
                           label="Apply Preset"
                           onChange={(e) => handleApplyPreset(index, e.target.value)}
+                          MenuProps={{
+                            PaperProps: {
+                              style: {
+                                maxHeight: 300,
+                                overflow: 'auto'
+                              }
+                            },
+                            anchorOrigin: {
+                              vertical: 'bottom',
+                              horizontal: 'left'
+                            },
+                            transformOrigin: {
+                              vertical: 'top',
+                              horizontal: 'left'
+                            }
+                          }}
                         >
                           {Object.entries(scoringPresets).map(([key, preset]) => (
-                            <MenuItem key={key} value={key}>
+                            <MenuItem key={key} value={key} sx={{ py: 1 }}>
                               <Box>
-                                <Typography variant="body2">{preset.name}</Typography>
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>{preset.name}</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                   {preset.description}
                                 </Typography>
                               </Box>
