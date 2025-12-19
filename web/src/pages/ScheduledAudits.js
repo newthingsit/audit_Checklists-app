@@ -344,7 +344,11 @@ const ScheduledAudits = () => {
       return;
     }
     setReschedulingSchedule(schedule);
-    setNewRescheduleDate(schedule.scheduled_date || '');
+    // Convert ISO date to yyyy-MM-dd format for date input
+    const dateValue = schedule.scheduled_date 
+      ? new Date(schedule.scheduled_date).toISOString().split('T')[0] 
+      : '';
+    setNewRescheduleDate(dateValue);
     setOpenRescheduleDialog(true);
   };
 
