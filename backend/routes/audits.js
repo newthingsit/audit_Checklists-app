@@ -1239,18 +1239,42 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   insertPlaceholders.push('?');
                 }
                 
+                // Try to insert, but handle column errors gracefully
                 dbInstance.run(
                   `INSERT INTO audit_items (${insertFields.join(', ')}) 
                    VALUES (${insertPlaceholders.join(', ')})`,
                   insertValues,
                   function(err) {
                     if (err) {
-                      logger.error(`[Batch Update] Error inserting item ${itemId}:`, err);
-                      logger.error(`[Batch Update] Insert SQL: INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`);
-                      logger.error(`[Batch Update] Insert values:`, insertValues);
-                      return reject(err);
+                      // If error is about missing column, try without time tracking columns
+                      if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
+                        logger.warn(`[Batch Update] Time tracking columns may not exist, retrying without them for item ${itemId}`);
+                        // Retry without time tracking columns
+                        const basicFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
+                        const basicValues = [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null];
+                        const basicPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
+                        
+                        dbInstance.run(
+                          `INSERT INTO audit_items (${basicFields.join(', ')}) 
+                           VALUES (${basicPlaceholders.join(', ')})`,
+                          basicValues,
+                          function(retryErr) {
+                            if (retryErr) {
+                              logger.error(`[Batch Update] Error inserting item ${itemId} (retry):`, retryErr);
+                              return reject(retryErr);
+                            }
+                            resolve({ itemId, action: 'inserted' });
+                          }
+                        );
+                      } else {
+                        logger.error(`[Batch Update] Error inserting item ${itemId}:`, err);
+                        logger.error(`[Batch Update] Insert SQL: INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`);
+                        logger.error(`[Batch Update] Insert values:`, insertValues);
+                        return reject(err);
+                      }
+                    } else {
+                      resolve({ itemId, action: 'inserted' });
                     }
-                    resolve({ itemId, action: 'inserted' });
                   }
                 );
               } else {
