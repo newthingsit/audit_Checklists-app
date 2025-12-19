@@ -1269,10 +1269,19 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   updateValues.push(started_at || null);
                 }
                 if (status === 'completed') {
+                  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+                  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+                  
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
                   // If time_taken_minutes not provided but started_at exists, calculate it
                   if (time_taken_minutes === undefined && started_at) {
-                    updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
+                    if (isSqlServer) {
+                      // SQL Server: Use DATEDIFF in minutes
+                      updateFields.push(`time_taken_minutes = DATEDIFF(MINUTE, CAST('${started_at}' AS DATETIME), GETDATE())`);
+                    } else {
+                      // SQLite: Use julianday
+                      updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
+                    }
                   }
                 }
                 
@@ -1313,8 +1322,9 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       });
 
     } catch (error) {
-      logger.error('Error in batch update:', error.message);
-      res.status(500).json({ error: 'Error updating audit items' });
+      logger.error('Error in batch update:', error);
+      logger.error('Error stack:', error.stack);
+      res.status(500).json({ error: 'Error updating audit items', details: error.message });
     }
   });
 });
@@ -1605,8 +1615,13 @@ router.get('/previous-failures', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const { template_id, location_id, months_back = 1 } = req.query;
   
-  if (!template_id || !location_id) {
-    return res.status(400).json({ error: 'template_id and location_id are required' });
+  // Parse and validate IDs
+  const templateId = parseInt(template_id, 10);
+  const locationId = parseInt(location_id, 10);
+  const monthsBack = parseInt(months_back, 10) || 1;
+  
+  if (!template_id || !location_id || isNaN(templateId) || isNaN(locationId)) {
+    return res.status(400).json({ error: 'template_id and location_id are required and must be valid numbers' });
   }
   
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
@@ -1643,7 +1658,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
     `;
   }
   
-  dbInstance.get(previousAuditQuery, [template_id, location_id, months_back], (err, previousAudit) => {
+  dbInstance.get(previousAuditQuery, [templateId, locationId, monthsBack], (err, previousAudit) => {
     if (err) {
       logger.error('Error fetching previous audit:', err);
       return res.status(500).json({ error: 'Database error' });
