@@ -865,7 +865,7 @@ const AuditForm = () => {
                 </Typography>
                 <LinearProgress 
                   variant="determinate" 
-                  value={(completedItems / items.length) * 100} 
+                  value={(completedItems / itemsToDisplay.length) * 100} 
                   sx={{ 
                     flex: 1, 
                     height: 8, 
@@ -877,7 +877,7 @@ const AuditForm = () => {
                   }}
                 />
                 <Typography variant="body2" sx={{ color: 'info.dark', fontWeight: 500, minWidth: 'fit-content' }}>
-                  {Math.round((completedItems / items.length) * 100)}%
+                  {Math.round((completedItems / itemsToDisplay.length) * 100)}%
                 </Typography>
               </Box>
             </Paper>
