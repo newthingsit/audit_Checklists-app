@@ -616,8 +616,11 @@ const AuditForm = () => {
     );
   }
 
-  const steps = ['Store Information', 'Audit Checklist'];
+  const steps = categories.length > 1 ? ['Store Information', 'Select Category', 'Audit Checklist'] : ['Store Information', 'Audit Checklist'];
   const completedItems = Object.values(responses).filter(r => r === 'completed').length;
+  
+  // Use filteredItems for display when on checklist step
+  const itemsToDisplay = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
 
   return (
     <Layout>
