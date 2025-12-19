@@ -1293,6 +1293,9 @@ const AuditForm = () => {
                   {(() => {
                     const timeScore = calculateTimeBasedScore(item.id, item);
                     const isTimeBased = item.is_time_based && (item.min_time_minutes || item.max_time_minutes || item.target_time_minutes);
+                    const entriesCount = (multiTimeEntries[item.id] || []).length;
+                    const recommendedEntries = 5;
+                    const hasEnoughEntries = entriesCount >= 4;
                     
                     return (
                       <Box sx={{ 
@@ -1304,122 +1307,184 @@ const AuditForm = () => {
                         border: isTimeBased ? '2px solid' : '1px dashed',
                         borderColor: isTimeBased ? 'info.main' : 'grey.300'
                       }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          ⏱️ Item Making Performance
-                          <Chip 
-                            label={`${(multiTimeEntries[item.id] || []).length} entries`} 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem' }}
-                          />
-                          {isTimeBased && (
+                        {/* Header with progress */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            ⏱️ Time Tracking
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {/* Progress indicator */}
                             <Chip 
-                              label={`${item.min_time_minutes || '0'}-${item.max_time_minutes || '∞'} min`} 
+                              label={`${entriesCount}/${recommendedEntries} times`}
                               size="small" 
-                              color="info"
-                              sx={{ fontSize: '0.7rem' }}
+                              color={hasEnoughEntries ? 'success' : 'warning'}
+                              sx={{ fontSize: '0.75rem', fontWeight: 600 }}
                             />
-                          )}
-                        </Typography>
-                        
-                        {/* Time entries display */}
-                        {(multiTimeEntries[item.id] || []).length > 0 && (
-                          <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {(multiTimeEntries[item.id] || []).map((time, idx) => (
-                              <Chip
-                                key={idx}
-                                label={`#${idx + 1}: ${time} min`}
-                                onDelete={() => removeTimeEntry(item.id, idx)}
-                                size="small"
+                            {isTimeBased && (
+                              <Chip 
+                                label={`Range: ${item.min_time_minutes || '0'}-${item.max_time_minutes || '∞'} min`} 
+                                size="small" 
                                 color="info"
                                 variant="outlined"
+                                sx={{ fontSize: '0.7rem' }}
                               />
-                            ))}
+                            )}
                           </Box>
-                        )}
+                        </Box>
+
+                        {/* Instructions */}
+                        <Alert severity={hasEnoughEntries ? "success" : "info"} sx={{ mb: 2, py: 0.5 }}>
+                          <Typography variant="body2">
+                            {hasEnoughEntries 
+                              ? `✅ ${entriesCount} times recorded. Average: ${getAverageTime(item.id)} min`
+                              : `Record the time 4-5 times while observing the item being made. (${entriesCount} of ${recommendedEntries} done)`
+                            }
+                          </Typography>
+                        </Alert>
                         
-                        {/* Timer controls */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                        {/* Time entries display - as numbered cards */}
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                            Recorded Times:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {[1, 2, 3, 4, 5].map((num) => {
+                              const entryTime = (multiTimeEntries[item.id] || [])[num - 1];
+                              return (
+                                <Box 
+                                  key={num}
+                                  sx={{ 
+                                    width: 70,
+                                    height: 50,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: '2px solid',
+                                    borderColor: entryTime ? 'success.main' : 'grey.300',
+                                    borderRadius: 2,
+                                    bgcolor: entryTime ? 'success.light' : 'grey.100',
+                                    position: 'relative',
+                                    cursor: entryTime ? 'pointer' : 'default'
+                                  }}
+                                  onClick={() => entryTime && removeTimeEntry(item.id, num - 1)}
+                                  title={entryTime ? 'Click to remove' : ''}
+                                >
+                                  <Typography variant="caption" sx={{ fontWeight: 600, color: entryTime ? 'success.dark' : 'grey.500' }}>
+                                    #{num}
+                                  </Typography>
+                                  {entryTime ? (
+                                    <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                      {entryTime} min
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary">
+                                      --
+                                    </Typography>
+                                  )}
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        </Box>
+                        
+                        {/* Timer controls + Manual entry */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
                           {currentTimerRunning === item.id ? (
                             <>
-                              <Typography variant="h6" sx={{ minWidth: 60, fontFamily: 'monospace', color: 'error.main' }}>
+                              <Typography variant="h5" sx={{ minWidth: 80, fontFamily: 'monospace', color: 'error.main', fontWeight: 700 }}>
                                 {formatElapsedTime(itemElapsedTimes[item.id] || 0)}
                               </Typography>
                               <Button
                                 variant="contained"
                                 color="error"
-                                size="small"
+                                size="medium"
                                 onClick={() => stopMultiTimer(item.id)}
-                                sx={{ minWidth: 100 }}
+                                sx={{ minWidth: 120 }}
                               >
-                                ⏹️ Stop
+                                ⏹️ Stop & Save
                               </Button>
                             </>
                           ) : (
-                            <Button
-                              variant="outlined"
-                              color="primary"
-                              size="small"
-                              onClick={() => startMultiTimer(item.id)}
-                              disabled={currentTimerRunning !== null && currentTimerRunning !== item.id}
-                              sx={{ minWidth: 120 }}
-                            >
-                              ⏱️ Start Timer
-                            </Button>
-                          )}
-                          
-                          {/* Average display with score indicator */}
-                          {(multiTimeEntries[item.id] || []).length > 0 && (
-                            <Box sx={{ ml: 'auto', textAlign: 'right' }}>
-                              <Typography variant="caption" color="text.secondary">Average Time</Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 600, color: timeScore ? getTimeScoreColor(timeScore.status) : 'success.main' }}>
-                                {getAverageTime(item.id)} min
-                              </Typography>
-                            </Box>
+                            <>
+                              <Button
+                                variant="contained"
+                                color="primary"
+                                size="medium"
+                                onClick={() => startMultiTimer(item.id)}
+                                disabled={(currentTimerRunning !== null && currentTimerRunning !== item.id) || entriesCount >= 10}
+                                sx={{ minWidth: 140 }}
+                              >
+                                ⏱️ Start Timer #{entriesCount + 1}
+                              </Button>
+                              
+                              {/* Manual time entry */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="body2" color="text.secondary">or</Typography>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  placeholder="Enter time"
+                                  inputProps={{ min: 0.1, step: 0.1, style: { width: 70 } }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const value = parseFloat(e.target.value);
+                                      if (value > 0 && entriesCount < 10) {
+                                        setMultiTimeEntries(prev => ({
+                                          ...prev,
+                                          [item.id]: [...(prev[item.id] || []), Math.round(value * 100) / 100]
+                                        }));
+                                        e.target.value = '';
+                                      }
+                                    }
+                                  }}
+                                />
+                                <Typography variant="caption" color="text.secondary">min (press Enter)</Typography>
+                              </Box>
+                            </>
                           )}
                         </Box>
                         
-                        {/* Score indicator for time-based items */}
-                        {isTimeBased && timeScore && (
+                        {/* Average and Score display */}
+                        {entriesCount > 0 && (
                           <Box sx={{ 
-                            mt: 2, 
                             p: 1.5, 
-                            bgcolor: timeScore.status === 'excellent' ? 'success.light' : 
-                                     timeScore.status === 'fast' ? 'info.light' : 'warning.light',
-                            borderRadius: 1,
+                            bgcolor: timeScore?.status === 'excellent' ? 'success.light' : 
+                                     timeScore?.status === 'fast' ? 'warning.light' : 
+                                     timeScore?.status === 'slow' ? 'error.light' : 'grey.100',
+                            borderRadius: 2,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between'
                           }}>
                             <Box>
                               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {timeScore.status === 'excellent' ? '✅ Excellent!' : 
-                                 timeScore.status === 'fast' ? '⚡ Fast' : '⏰ Needs Improvement'}
+                                Average: {getAverageTime(item.id)} min
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {timeScore.message}
-                              </Typography>
+                              {isTimeBased && timeScore && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {timeScore.status === 'excellent' ? '✅ Within acceptable range' : 
+                                   timeScore.status === 'fast' ? '⚡ Too fast - may indicate rushing' : 
+                                   timeScore.status === 'slow' ? '⏰ Too slow - needs improvement' : timeScore.message}
+                                </Typography>
+                              )}
                             </Box>
-                            <Box sx={{ 
-                              bgcolor: timeScore.status === 'excellent' ? 'success.main' : 
-                                       timeScore.status === 'fast' ? 'info.main' : 'warning.main',
-                              color: 'white',
-                              px: 2,
-                              py: 0.5,
-                              borderRadius: 2,
-                              fontWeight: 700,
-                              fontSize: '1.1rem'
-                            }}>
-                              {timeScore.score}%
-                            </Box>
+                            {isTimeBased && timeScore && (
+                              <Box sx={{ 
+                                bgcolor: timeScore.status === 'excellent' ? 'success.main' : 
+                                         timeScore.status === 'fast' ? 'warning.main' : 'error.main',
+                                color: 'white',
+                                px: 2,
+                                py: 0.5,
+                                borderRadius: 2,
+                                fontWeight: 700,
+                                fontSize: '1.2rem'
+                              }}>
+                                {timeScore.score}%
+                              </Box>
+                            )}
                           </Box>
                         )}
-                        
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                          {isTimeBased 
-                            ? `Record multiple times to measure performance. Acceptable range: ${item.min_time_minutes || '0'} - ${item.max_time_minutes || '∞'} min`
-                            : 'Use this to time product making (e.g., how long it takes to make a beverage). Record multiple times to get an average.'}
-                        </Typography>
                       </Box>
                     );
                   })()}
