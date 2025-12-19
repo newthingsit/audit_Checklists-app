@@ -1269,19 +1269,19 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   updateValues.push(started_at || null);
                 }
                 if (status === 'completed') {
-                  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
-                  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
-                  
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
                   // If time_taken_minutes not provided but started_at exists, calculate it
+                  // Note: For SQL Server, we skip auto-calculation to avoid SQL injection
+                  // The frontend should send time_taken_minutes when available
                   if (time_taken_minutes === undefined && started_at) {
-                    if (isSqlServer) {
-                      // SQL Server: Use DATEDIFF in minutes
-                      updateFields.push(`time_taken_minutes = DATEDIFF(MINUTE, CAST('${started_at}' AS DATETIME), GETDATE())`);
-                    } else {
+                    const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+                    const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+                    
+                    if (!isSqlServer) {
                       // SQLite: Use julianday
                       updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
                     }
+                    // For SQL Server, skip auto-calculation - frontend should calculate and send time_taken_minutes
                   }
                 }
                 

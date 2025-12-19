@@ -600,13 +600,31 @@ const AuditFormScreen = () => {
     }
   }, [auditStatus, photos, uploading]);
 
+  const handleCategorySelect = (category) => {
+    setSelectedCategory(category);
+    const filtered = items.filter(item => item.category === category);
+    setFilteredItems(filtered);
+  };
+
   const handleNext = () => {
     if (currentStep === 0) {
       if (!locationId || !selectedLocation) {
         Alert.alert('Error', 'Please select a store');
         return;
       }
-      setCurrentStep(1);
+      // If no categories or only one category, skip category selection
+      if (categories.length <= 1) {
+        setCurrentStep(2);
+      } else {
+        setCurrentStep(1);
+      }
+    } else if (currentStep === 1) {
+      // Category selection step - proceed to checklist
+      if (!selectedCategory) {
+        Alert.alert('Error', 'Please select a category');
+        return;
+      }
+      setCurrentStep(2);
     }
   };
 
@@ -1048,8 +1066,13 @@ const AuditFormScreen = () => {
 
       {currentStep === 1 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.title}>Select Category</Text>
-          <Text style={styles.subtitle}>{template?.name}</Text>
+          <View style={{ marginBottom: 20 }}>
+            <Text style={styles.title}>Select Category</Text>
+            <Text style={styles.subtitle}>{template?.name}</Text>
+            <Text style={{ fontSize: 14, color: themeConfig.text.secondary, marginTop: 8 }}>
+              Choose a category to start auditing items
+            </Text>
+          </View>
           
           {categories.map((category, index) => {
             const categoryItems = items.filter(item => item.category === category);
@@ -1061,14 +1084,18 @@ const AuditFormScreen = () => {
                   selectedCategory === category && styles.categoryCardSelected
                 ]}
                 onPress={() => handleCategorySelect(category)}
+                activeOpacity={0.7}
               >
                 <View style={styles.categoryCardContent}>
                   <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
-                  <Text style={styles.categoryCount}>{categoryItems.length} items</Text>
+                  <Text style={styles.categoryCount}>{categoryItems.length} item{categoryItems.length !== 1 ? 's' : ''}</Text>
                 </View>
                 {selectedCategory === category && (
-                  <Icon name="check-circle" size={24} color={themeConfig.primary.main} />
+                  <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
                 )}
+                {!selectedCategory || selectedCategory !== category ? (
+                  <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
+                ) : null}
               </TouchableOpacity>
             );
           })}
