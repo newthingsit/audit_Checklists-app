@@ -778,7 +778,68 @@ const AuditForm = () => {
           </Paper>
         )}
 
-        {activeStep === 1 && (
+        {activeStep === 1 && categories.length > 1 && (
+          <Paper sx={{ p: isMobile ? 2 : 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+              Select Category
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {template?.name}
+            </Typography>
+            
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
+              {categories.map((category, index) => {
+                const categoryItems = items.filter(item => item.category === category);
+                return (
+                  <Card
+                    key={category || `no-category-${index}`}
+                    sx={{
+                      cursor: 'pointer',
+                      border: 2,
+                      borderColor: selectedCategory === category ? 'primary.main' : 'divider',
+                      bgcolor: selectedCategory === category ? 'primary.light' : 'background.paper',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        bgcolor: 'action.hover'
+                      }
+                    }}
+                    onClick={() => handleCategorySelect(category)}
+                  >
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                        {category || 'Uncategorized'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {categoryItems.length} items
+                      </Typography>
+                      {selectedCategory === category && (
+                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
+                          <CheckCircleIcon sx={{ fontSize: 20, mr: 0.5 }} />
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>Selected</Typography>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+              <Button onClick={() => setActiveStep(0)} variant="outlined">
+                Back
+              </Button>
+              <Button 
+                onClick={handleNext} 
+                variant="contained"
+                disabled={!selectedCategory}
+              >
+                Next: Start Audit
+              </Button>
+            </Box>
+          </Paper>
+        )}
+
+        {activeStep === (categories.length > 1 ? 2 : 1) && (
           <Box className={isMobile ? 'has-bottom-actions' : ''}>
             {/* Sticky Progress Bar for Mobile */}
             <Paper 
@@ -799,8 +860,9 @@ const AuditForm = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
-                  {completedItems} / {items.length}
-              </Typography>
+                  {completedItems} / {itemsToDisplay.length}
+                  {selectedCategory && ` (${selectedCategory})`}
+                </Typography>
                 <LinearProgress 
                   variant="determinate" 
                   value={(completedItems / items.length) * 100} 
