@@ -1616,12 +1616,16 @@ router.get('/previous-failures', authenticate, (req, res) => {
   const { template_id, location_id, months_back = 1 } = req.query;
   
   // Parse and validate IDs
+  if (!template_id || !location_id) {
+    return res.status(400).json({ error: 'template_id and location_id are required' });
+  }
+  
   const templateId = parseInt(template_id, 10);
   const locationId = parseInt(location_id, 10);
   const monthsBack = parseInt(months_back, 10) || 1;
   
-  if (!template_id || !location_id || isNaN(templateId) || isNaN(locationId)) {
-    return res.status(400).json({ error: 'template_id and location_id are required and must be valid numbers' });
+  if (isNaN(templateId) || isNaN(locationId) || templateId <= 0 || locationId <= 0) {
+    return res.status(400).json({ error: 'template_id and location_id must be valid positive numbers' });
   }
   
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
