@@ -415,32 +415,35 @@ const AuditForm = () => {
   // Calculate time-based score for Item Making Performance
   const calculateTimeBasedScore = (itemId, item) => {
     const avgTime = getAverageTime(itemId);
-    if (!avgTime || !item.target_time_minutes) return null;
+    if (!avgTime) return null;
     
-    const targetTime = parseFloat(item.target_time_minutes);
-    const tolerance = (item.time_tolerance_percent || 20) / 100;
+    // Get min/max times from item configuration
+    const minTime = parseFloat(item.min_time_minutes) || 0;
+    const maxTime = parseFloat(item.max_time_minutes) || Infinity;
+    const targetTime = parseFloat(item.target_time_minutes) || ((minTime + maxTime) / 2);
     
-    // Calculate acceptable range
-    const minAcceptable = targetTime * (1 - tolerance);
-    const maxAcceptable = targetTime * (1 + tolerance);
+    // If no time constraints set, just return the average
+    if (!item.min_time_minutes && !item.max_time_minutes && !item.target_time_minutes) {
+      return { score: 100, status: 'recorded', message: `Average: ${avgTime} min` };
+    }
     
-    // If within tolerance, return 100%
-    if (avgTime >= minAcceptable && avgTime <= maxAcceptable) {
-      return { score: 100, status: 'excellent', message: 'Within target range!' };
+    // If within min-max range, return 100%
+    if (avgTime >= minTime && avgTime <= maxTime) {
+      return { score: 100, status: 'excellent', message: `Within acceptable range (${minTime}-${maxTime} min)` };
     }
     
     // Calculate score based on deviation
     let score;
-    if (avgTime < minAcceptable) {
-      // Faster than expected - could be good but might indicate rushing
-      const deviation = (minAcceptable - avgTime) / targetTime;
-      score = Math.max(0, 100 - (deviation * 50)); // Slight penalty for being too fast
-      return { score: Math.round(score), status: 'fast', message: `Faster than target (${avgTime} < ${targetTime} min)` };
+    if (avgTime < minTime) {
+      // Faster than minimum - may indicate rushing
+      const deviation = (minTime - avgTime) / minTime;
+      score = Math.max(0, 100 - (deviation * 50)); // Penalty for being too fast
+      return { score: Math.round(score), status: 'fast', message: `Too fast (${avgTime} min < ${minTime} min minimum)` };
     } else {
-      // Slower than expected
-      const deviation = (avgTime - maxAcceptable) / targetTime;
+      // Slower than maximum - needs improvement
+      const deviation = (avgTime - maxTime) / maxTime;
       score = Math.max(0, 100 - (deviation * 100)); // Higher penalty for being slow
-      return { score: Math.round(score), status: 'slow', message: `Slower than target (${avgTime} > ${targetTime} min)` };
+      return { score: Math.round(score), status: 'slow', message: `Too slow (${avgTime} min > ${maxTime} min maximum)` };
     }
   };
 
@@ -710,8 +713,8 @@ const AuditForm = () => {
             itemData.time_entries = multiTimeEntries[item.id];
             itemData.average_time_minutes = getAverageTime(item.id);
             
-            // Calculate time-based score if item has target time
-            if (item.is_time_based && item.target_time_minutes) {
+            // Calculate time-based score if item has time constraints
+            if (item.is_time_based && (item.min_time_minutes || item.max_time_minutes || item.target_time_minutes)) {
               const timeScore = calculateTimeBasedScore(item.id, item);
               if (timeScore) {
                 itemData.time_based_score = timeScore.score;
@@ -1289,7 +1292,7 @@ const AuditForm = () => {
                   {/* Item Making Performance - Multiple Time Entries */}
                   {(() => {
                     const timeScore = calculateTimeBasedScore(item.id, item);
-                    const isTimeBased = item.is_time_based && item.target_time_minutes;
+                    const isTimeBased = item.is_time_based && (item.min_time_minutes || item.max_time_minutes || item.target_time_minutes);
                     
                     return (
                       <Box sx={{ 
@@ -1311,7 +1314,7 @@ const AuditForm = () => {
                           />
                           {isTimeBased && (
                             <Chip 
-                              label={`Target: ${item.target_time_minutes} min`} 
+                              label={`${item.min_time_minutes || '0'}-${item.max_time_minutes || '∞'} min`} 
                               size="small" 
                               color="info"
                               sx={{ fontSize: '0.7rem' }}
@@ -1414,7 +1417,7 @@ const AuditForm = () => {
                         
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                           {isTimeBased 
-                            ? `Record multiple times to measure performance. Target: ${item.target_time_minutes} min (±${item.time_tolerance_percent || 20}% tolerance)`
+                            ? `Record multiple times to measure performance. Acceptable range: ${item.min_time_minutes || '0'} - ${item.max_time_minutes || '∞'} min`
                             : 'Use this to time product making (e.g., how long it takes to make a beverage). Record multiple times to get an average.'}
                         </Typography>
                       </Box>

@@ -149,8 +149,9 @@ const createEmptyItem = (category = '') => ({
   weight: 1, // Default weight
   is_critical: false, // Critical items can auto-fail the audit
   is_time_based: false, // Enable time-based scoring for Item Making Performance
-  target_time_minutes: '', // Target time in minutes for time-based items
-  time_tolerance_percent: 20, // Tolerance percentage (e.g., 20% means ±20% of target is acceptable)
+  target_time_minutes: '', // Target/ideal time in minutes for time-based items
+  min_time_minutes: '', // Minimum acceptable time (if faster, may indicate rushing)
+  max_time_minutes: '', // Maximum acceptable time (if slower, needs improvement)
   options: defaultOptions.map(option => ({ ...option }))
 });
 
@@ -363,7 +364,8 @@ const Checklists = () => {
         is_critical: item.is_critical || false,
         is_time_based: item.is_time_based || false,
         target_time_minutes: item.is_time_based ? parseFloat(item.target_time_minutes) || null : null,
-        time_tolerance_percent: item.time_tolerance_percent || 20,
+        min_time_minutes: item.is_time_based ? parseFloat(item.min_time_minutes) || null : null,
+        max_time_minutes: item.is_time_based ? parseFloat(item.max_time_minutes) || null : null,
         order_index: index,
         options: (item.options || []).map((option, optionIndex) => ({
           option_text: option.option_text || '',
@@ -410,7 +412,8 @@ const Checklists = () => {
         is_critical: item.is_critical === 1 || item.is_critical === true,
         is_time_based: item.is_time_based === 1 || item.is_time_based === true,
         target_time_minutes: item.target_time_minutes || '',
-        time_tolerance_percent: item.time_tolerance_percent || 20,
+        min_time_minutes: item.min_time_minutes || '',
+        max_time_minutes: item.max_time_minutes || '',
         options: (item.options || []).map(option => ({
           option_text: option.option_text || option.title || '',
           mark: option.mark ?? ''
@@ -971,7 +974,23 @@ const Checklists = () => {
                   
                   {item.is_time_based && (
                     <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          label="Min Time (minutes)"
+                          value={item.min_time_minutes || ''}
+                          onChange={(e) => handleItemChange(index, 'min_time_minutes', e.target.value)}
+                          placeholder="e.g., 2"
+                          InputProps={{
+                            startAdornment: <TimerIcon sx={{ mr: 1, color: 'warning.main', fontSize: 18 }} />,
+                            inputProps: { min: 0.1, step: 0.1 }
+                          }}
+                          helperText="Minimum acceptable time"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
                         <TextField
                           fullWidth
                           size="small"
@@ -981,35 +1000,37 @@ const Checklists = () => {
                           onChange={(e) => handleItemChange(index, 'target_time_minutes', e.target.value)}
                           placeholder="e.g., 3"
                           InputProps={{
-                            startAdornment: <TimerIcon sx={{ mr: 1, color: 'info.main', fontSize: 18 }} />,
+                            startAdornment: <TimerIcon sx={{ mr: 1, color: 'success.main', fontSize: 18 }} />,
                             inputProps: { min: 0.1, step: 0.1 }
                           }}
-                          helperText="Expected time to complete this item"
+                          helperText="Ideal/expected time"
                         />
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel>Tolerance</InputLabel>
-                          <Select
-                            value={item.time_tolerance_percent || 20}
-                            label="Tolerance"
-                            onChange={(e) => handleItemChange(index, 'time_tolerance_percent', e.target.value)}
-                          >
-                            <MenuItem value={10}>±10% (Strict)</MenuItem>
-                            <MenuItem value={20}>±20% (Normal)</MenuItem>
-                            <MenuItem value={30}>±30% (Lenient)</MenuItem>
-                            <MenuItem value={50}>±50% (Very Lenient)</MenuItem>
-                          </Select>
-                        </FormControl>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          label="Max Time (minutes)"
+                          value={item.max_time_minutes || ''}
+                          onChange={(e) => handleItemChange(index, 'max_time_minutes', e.target.value)}
+                          placeholder="e.g., 5"
+                          InputProps={{
+                            startAdornment: <TimerIcon sx={{ mr: 1, color: 'error.main', fontSize: 18 }} />,
+                            inputProps: { min: 0.1, step: 0.1 }
+                          }}
+                          helperText="Maximum acceptable time"
+                        />
                       </Grid>
                       <Grid item xs={12}>
                         <Alert severity="info" sx={{ fontSize: '0.75rem' }}>
-                          <strong>How it works:</strong> Auditor records multiple time entries while observing the task. 
-                          Score is calculated based on how the average time compares to the target.
+                          <strong>How it works:</strong> Auditor records multiple time entries while observing the task.
                           <br />
-                          • Within tolerance: 100% score
+                          • <strong style={{color: '#2e7d32'}}>Within Min-Max range:</strong> 100% score
                           <br />
-                          • Outside tolerance: Score reduces proportionally
+                          • <strong style={{color: '#ed6c02'}}>Below Min time:</strong> May indicate rushing - score reduces
+                          <br />
+                          • <strong style={{color: '#d32f2f'}}>Above Max time:</strong> Needs improvement - score reduces
                         </Alert>
                       </Grid>
                     </Grid>

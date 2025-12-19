@@ -109,7 +109,8 @@ const createTables = () => {
       // Add time-based scoring columns to checklist_items (migration for Item Making Performance)
       db.run(`ALTER TABLE checklist_items ADD COLUMN is_time_based BOOLEAN DEFAULT 0`, () => {});
       db.run(`ALTER TABLE checklist_items ADD COLUMN target_time_minutes REAL`, () => {});
-      db.run(`ALTER TABLE checklist_items ADD COLUMN time_tolerance_percent INTEGER DEFAULT 20`, () => {});
+      db.run(`ALTER TABLE checklist_items ADD COLUMN min_time_minutes REAL`, () => {});
+      db.run(`ALTER TABLE checklist_items ADD COLUMN max_time_minutes REAL`, () => {});
       
       // Add critical failure tracking to audits (migration)
       db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});
