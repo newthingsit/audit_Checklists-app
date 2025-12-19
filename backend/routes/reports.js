@@ -42,15 +42,19 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
       }
 
       dbInstance.all(
-        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required
+        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
+                cio.option_text as selected_option_text, cio.mark as selected_mark,
+                ai.photo_url, ai.mark, ai.status, ai.comment
          FROM audit_items ai
          JOIN checklist_items ci ON ai.item_id = ci.id
+         LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
          WHERE ai.audit_id = ?
          ORDER BY ci.order_index, ci.id`,
         [auditId],
         (err, items) => {
           if (err) {
-            return res.status(500).json({ error: 'Database error' });
+            logger.error('Error fetching audit items for PDF:', err);
+            return res.status(500).json({ error: 'Database error', details: err.message });
           }
 
           // Create PDF
@@ -66,14 +70,14 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           // Audit Information
           doc.fontSize(14).text('Audit Information', { underline: true });
           doc.fontSize(12);
-          doc.text(`Restaurant: ${audit.restaurant_name}`);
+          doc.text(`Restaurant: ${audit.restaurant_name || 'N/A'}`);
           doc.text(`Location: ${audit.location || 'N/A'}`);
-          doc.text(`Template: ${audit.template_name}`);
-          doc.text(`Auditor: ${audit.user_name}`);
+          doc.text(`Template: ${audit.template_name || 'N/A'}`);
+          doc.text(`Auditor: ${audit.user_name || 'N/A'}`);
           doc.text(`Date: ${new Date(audit.created_at).toLocaleDateString()}`);
-          doc.text(`Status: ${audit.status}`);
+          doc.text(`Status: ${audit.status || 'N/A'}`);
           if (audit.score !== null) {
-            doc.text(`Score: ${audit.score}%`);
+            doc.text(`Overall Score: ${audit.score}%`);
           }
           doc.moveDown();
 
@@ -84,24 +88,97 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             doc.moveDown();
           }
 
+          // Calculate category-wise scores
+          const categoryScores = {};
+          const categoryTotals = {};
+          items.forEach(item => {
+            const cat = item.category || 'Uncategorized';
+            if (!categoryScores[cat]) {
+              categoryScores[cat] = 0;
+              categoryTotals[cat] = 0;
+            }
+            if (item.mark !== null && item.mark !== undefined) {
+              categoryScores[cat] += parseFloat(item.mark) || 0;
+              categoryTotals[cat] += 1;
+            }
+          });
+
+          // Category-wise Summary
+          if (Object.keys(categoryScores).length > 0) {
+            doc.fontSize(14).text('Category-wise Scores', { underline: true });
+            doc.moveDown(0.5);
+            Object.keys(categoryScores).forEach(cat => {
+              const avgScore = categoryTotals[cat] > 0 
+                ? Math.round((categoryScores[cat] / categoryTotals[cat]) * 100) / 100 
+                : 0;
+              doc.fontSize(11);
+              doc.text(`${cat}: ${avgScore}% (${categoryTotals[cat]} items)`, { indent: 20 });
+            });
+            doc.moveDown();
+          }
+
           // Checklist Items
           doc.fontSize(14).text('Checklist Items', { underline: true });
           doc.moveDown(0.5);
 
+          let currentCategory = null;
           items.forEach((item, index) => {
-            doc.fontSize(12);
+            // Group by category
+            const itemCategory = item.category || 'Uncategorized';
+            if (currentCategory !== itemCategory) {
+              if (currentCategory !== null) {
+                doc.moveDown(0.5);
+              }
+              currentCategory = itemCategory;
+              doc.fontSize(13).fillColor('#1976d2').text(itemCategory, { underline: true });
+              doc.fillColor('black');
+              doc.moveDown(0.3);
+            }
+
+            doc.fontSize(11);
             doc.text(`${index + 1}. ${item.title}`, { continued: false });
+            
+            // Status and Score
             doc.fontSize(10).fillColor('gray');
-            doc.text(`   Status: ${item.status} | Category: ${item.category}`);
+            let statusText = `Status: ${item.status || 'N/A'}`;
+            if (item.mark !== null && item.mark !== undefined) {
+              statusText += ` | Score: ${item.mark}`;
+            }
+            if (item.selected_option_text) {
+              statusText += ` | Selected: ${item.selected_option_text}`;
+            }
+            doc.text(`   ${statusText}`);
+            
             if (item.description) {
               doc.text(`   ${item.description}`);
             }
+            
             if (item.comment) {
               doc.fillColor('blue');
               doc.text(`   Comment: ${item.comment}`);
             }
+            
+            // Add photo if available
+            if (item.photo_url) {
+              try {
+                const appUrl = process.env.APP_URL || '';
+                let photoPath = item.photo_url;
+                if (!photoPath.startsWith('http')) {
+                  photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
+                }
+                
+                // For URLs, add link text (PDFKit can't directly embed remote images without downloading)
+                doc.fillColor('blue');
+                doc.text(`   Photo: ${photoPath}`);
+              } catch (imgErr) {
+                logger.warn('Error processing photo URL:', imgErr);
+                doc.fillColor('blue');
+                doc.text(`   Photo: Available`);
+              }
+            }
+            
             doc.fillColor('black');
-            doc.moveDown(0.5);
+            doc.moveDown(0.4);
           });
 
           doc.end();

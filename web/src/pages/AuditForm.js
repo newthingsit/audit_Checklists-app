@@ -78,6 +78,11 @@ const AuditForm = () => {
   const [itemStartTimes, setItemStartTimes] = useState({});
   const [itemElapsedTimes, setItemElapsedTimes] = useState({});
   const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({});
+  
+  // Category selection state
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
 
   useEffect(() => {
     fetchLocations();
@@ -211,7 +216,21 @@ const AuditForm = () => {
     try {
       const response = await axios.get(`/api/checklists/${templateId}`);
       setTemplate(response.data.template);
-      setItems(response.data.items || []);
+      const allItems = response.data.items || [];
+      setItems(allItems);
+      
+      // Extract unique categories from items
+      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      setCategories(uniqueCategories);
+      
+      // If only one category, auto-select it
+      if (uniqueCategories.length === 1) {
+        setSelectedCategory(uniqueCategories[0]);
+        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+      } else if (uniqueCategories.length === 0) {
+        // No categories, show all items
+        setFilteredItems(allItems);
+      }
     } catch (error) {
       console.error('Error fetching template:', error);
       setError('Failed to load template');
@@ -718,7 +737,7 @@ const AuditForm = () => {
                   fontSize: isMobile ? '1rem' : '0.875rem'
                 }}
               >
-                Next: Start Audit
+                {categories.length > 1 ? 'Next: Select Category' : 'Next: Start Audit'}
               </Button>
             </Box>
           </Paper>
@@ -792,7 +811,7 @@ const AuditForm = () => {
             )}
 
             {(() => {
-              const requiredItems = items.filter(item => item.required);
+              const requiredItems = itemsToDisplay.filter(item => item.required);
               const missingRequired = requiredItems.filter(item => {
                 if (item.options && item.options.length > 0) {
                   return !selectedOptions[item.id];
@@ -805,7 +824,7 @@ const AuditForm = () => {
                 </Alert>
               ) : null;
             })()}
-            {items.map((item, index) => {
+            {itemsToDisplay.map((item, index) => {
               const isPreviousFailure = failedItemIds.has(item.id);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               

@@ -60,12 +60,14 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
               'Accept': 'text/csv'
             }
           });
-          const blob = new Blob([response.data], { type: 'text/csv' });
+          const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
           const downloadUrl = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = downloadUrl;
           link.download = filename;
+          document.body.appendChild(link);
           link.click();
+          document.body.removeChild(link);
           window.URL.revokeObjectURL(downloadUrl);
         } else if (format === 'excel') {
           url = `/api/reports/audits/excel?ids=${auditId}`;
@@ -81,7 +83,9 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
           const link = document.createElement('a');
           link.href = downloadUrl;
           link.download = filename;
+          document.body.appendChild(link);
           link.click();
+          document.body.removeChild(link);
           window.URL.revokeObjectURL(downloadUrl);
         }
       } else {

@@ -41,9 +41,12 @@ const AuditFormScreen = () => {
   const [locations, setLocations] = useState([]);
   const [showStorePicker, setShowStorePicker] = useState(false);
   const [storeSearchText, setStoreSearchText] = useState('');
-  const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: checklist
+  const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: category selection, 2: checklist
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
+  const [selectedCategory, setSelectedCategory] = useState(null); // Selected category for filtering items
+  const [categories, setCategories] = useState([]); // Available categories
+  const [filteredItems, setFilteredItems] = useState([]); // Items filtered by selected category
   
   // GPS Location state
   const { getCurrentLocation, permissionGranted, settings: locationSettings } = useLocation();
@@ -212,6 +215,22 @@ const AuditFormScreen = () => {
       setTemplate(templateResponse.data.template);
       const allItems = templateResponse.data.items || [];
       setItems(allItems);
+      
+      // Extract unique categories from items
+      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      setCategories(uniqueCategories);
+      
+      // If only one category, auto-select it
+      if (uniqueCategories.length === 1) {
+        setSelectedCategory(uniqueCategories[0]);
+        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+      } else if (uniqueCategories.length === 0) {
+        // No categories, show all items
+        setFilteredItems(allItems);
+      } else {
+        // Multiple categories - show all items initially (user can filter later)
+        setFilteredItems(allItems);
+      }
 
       // Populate responses from audit items
       const responsesData = {};
@@ -250,7 +269,12 @@ const AuditFormScreen = () => {
       setPhotos(photosData);
 
       // Start at checklist step since we already have the info
-      setCurrentStep(1);
+      // If multiple categories exist, go to category selection, otherwise go to checklist
+      if (uniqueCategories.length > 1) {
+        setCurrentStep(1);
+      } else {
+        setCurrentStep(2);
+      }
     } catch (error) {
       console.error('Error fetching audit data:', error);
       Alert.alert('Error', 'Failed to load audit data');
@@ -272,7 +296,21 @@ const AuditFormScreen = () => {
       
       if (response.data && response.data.template) {
         setTemplate(response.data.template);
-        setItems(response.data.items || []);
+        const allItems = response.data.items || [];
+        setItems(allItems);
+        
+        // Extract unique categories from items
+        const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+        setCategories(uniqueCategories);
+        
+        // If only one category, auto-select it
+        if (uniqueCategories.length === 1) {
+          setSelectedCategory(uniqueCategories[0]);
+          setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        } else if (uniqueCategories.length === 0) {
+          // No categories, show all items
+          setFilteredItems(allItems);
+        }
       } else {
         throw new Error('Invalid template response');
       }
@@ -682,7 +720,7 @@ const AuditFormScreen = () => {
       }
 
       // Update all audit items - handle errors gracefully
-      const updatePromises = items.map(async (item) => {
+      const updatePromises = filteredItems.map(async (item) => {
         try {
           const updateData = {
             status: responses[item.id] || 'pending',
@@ -1009,10 +1047,56 @@ const AuditFormScreen = () => {
       </Modal>
 
       {currentStep === 1 && (
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.title}>Select Category</Text>
+          <Text style={styles.subtitle}>{template?.name}</Text>
+          
+          {categories.map((category, index) => {
+            const categoryItems = items.filter(item => item.category === category);
+            return (
+              <TouchableOpacity
+                key={category || `no-category-${index}`}
+                style={[
+                  styles.categoryCard,
+                  selectedCategory === category && styles.categoryCardSelected
+                ]}
+                onPress={() => handleCategorySelect(category)}
+              >
+                <View style={styles.categoryCardContent}>
+                  <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
+                  <Text style={styles.categoryCount}>{categoryItems.length} items</Text>
+                </View>
+                {selectedCategory === category && (
+                  <Icon name="check-circle" size={24} color={themeConfig.primary.main} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+          
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonSecondary]}
+              onPress={() => setCurrentStep(0)}
+            >
+              <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={handleNext}
+              disabled={!selectedCategory}
+            >
+              <Text style={styles.buttonText}>Next: Start Audit</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+
+      {currentStep === 2 && (
         <View style={styles.container}>
           <View style={styles.progressBar}>
             <Text style={styles.progressText}>
-              Progress: {completedItems} / {items.length} items
+              Progress: {completedItems} / {filteredItems.length} items
+              {selectedCategory && ` (${selectedCategory})`}
             </Text>
           </View>
 
@@ -1027,7 +1111,7 @@ const AuditFormScreen = () => {
               </View>
             )}
             
-            {items.map((item, index) => {
+            {filteredItems.map((item, index) => {
               const isPreviousFailure = failedItemIds.has(item.id);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               
@@ -1178,7 +1262,13 @@ const AuditFormScreen = () => {
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setCurrentStep(0)}
+                onPress={() => {
+                  if (categories.length > 1) {
+                    setCurrentStep(1);
+                  } else {
+                    setCurrentStep(0);
+                  }
+                }}
               >
                 <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Back</Text>
               </TouchableOpacity>
