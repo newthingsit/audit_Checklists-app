@@ -2213,7 +2213,8 @@ router.get('/dashboard/excel', authenticate, requirePermission('view_analytics',
           })));
         });
       }),
-      // Schedule adherence
+      // Schedule adherence - uses original_scheduled_date from audits table for accurate tracking
+      // This handles rescheduled audits correctly by comparing against the scheduled date at audit creation
       new Promise((resolve, reject) => {
         const dbType = process.env.DB_TYPE || 'sqlite';
         let query;
@@ -2226,13 +2227,19 @@ router.get('/dashboard/excel', authenticate, requirePermission('view_analytics',
               COUNT(DISTINCT sa.id) as total_scheduled,
               SUM(CASE
                 WHEN a.id IS NOT NULL AND a.status = 'completed'
-                  AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+                  AND (
+                    -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                    CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+                    OR 
+                    -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
+                    CAST(a.created_at AS DATE) = CAST(a.completed_at AS DATE)
+                  )
                 THEN 1
                 ELSE 0
               END) as completed_on_time
             FROM scheduled_audits sa
             LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-            WHERE sa.status = 'completed' OR a.id IS NOT NULL
+            WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
             ${whereClause}`;
         } else {
           query = `
@@ -2240,20 +2247,30 @@ router.get('/dashboard/excel', authenticate, requirePermission('view_analytics',
               COUNT(DISTINCT sa.id) as total_scheduled,
               SUM(CASE
                 WHEN a.id IS NOT NULL AND a.status = 'completed'
-                  AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+                  AND (
+                    -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                    DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
+                    OR 
+                    -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
+                    DATE(a.created_at) = DATE(a.completed_at)
+                  )
                 THEN 1
                 ELSE 0
               END) as completed_on_time
             FROM scheduled_audits sa
             LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-            WHERE sa.status = 'completed' OR a.id IS NOT NULL
+            WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
             ${whereClause}`;
         }
         dbInstance.get(query, params, (err, row) => {
-          if (err) return reject(err);
+          if (err) {
+            logger.error('Error calculating schedule adherence:', err);
+            return reject(err);
+          }
           const total = row?.total_scheduled || 0;
           const onTime = row?.completed_on_time || 0;
           const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;
+          logger.debug(`Schedule Adherence: Total=${total}, OnTime=${onTime}, Adherence=${adherence}%`);
           resolve({ total, onTime, adherence });
         });
       })

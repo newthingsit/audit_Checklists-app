@@ -493,6 +493,11 @@ const createTables = () => {
           if (!columnNames.includes('location_verified')) {
             db.run(`ALTER TABLE audits ADD COLUMN location_verified BOOLEAN DEFAULT 0`, () => {});
           }
+          // Add original_scheduled_date to track the actual scheduled date when audit was started
+          // This is needed for Schedule Adherence tracking when dates are rescheduled
+          if (!columnNames.includes('original_scheduled_date')) {
+            db.run(`ALTER TABLE audits ADD COLUMN original_scheduled_date DATETIME`, () => {});
+          }
         }
       });
 

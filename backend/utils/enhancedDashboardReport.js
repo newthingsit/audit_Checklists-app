@@ -93,7 +93,8 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
         a.created_at,
         a.completed_at,
         a.scheduled_audit_id,
-        sa.scheduled_date,
+        COALESCE(a.original_scheduled_date, sa.scheduled_date) as scheduled_date,
+        a.original_scheduled_date,
         u.id as user_id,
         u.name as auditor_name,
         u.email as auditor_email,
@@ -127,7 +128,8 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
         a.created_at,
         a.completed_at,
         a.scheduled_audit_id,
-        sa.scheduled_date,
+        COALESCE(a.original_scheduled_date, sa.scheduled_date) as scheduled_date,
+        a.original_scheduled_date,
         u.id as user_id,
         u.name as auditor_name,
         u.email as auditor_email,
@@ -310,12 +312,25 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
       const apStrikeRate = auditsWithActions > 0 ? Math.round((completedActions / auditsWithActions) * 100) : 0;
       const apAdherence = auditsWithActions > 0 ? Math.round((completedActions / auditsWithActions) * 100) : 0;
       
-      // Schedule adherence
+      // Schedule adherence - uses original_scheduled_date for accurate tracking
       const onTimeAudits = auditData.filter(a => {
-        if (!a.scheduled_date || !a.actual_date) return false;
-        return calculateDeviation(a.scheduled_date, a.actual_date) === 0;
+        // Only count audits that were from scheduled audits
+        if (!a.scheduled_audit_id) return false;
+        
+        // Use original_scheduled_date or fallback to scheduled_date
+        const scheduledDate = a.original_scheduled_date || a.scheduled_date;
+        const completedDate = a.completed_at || a.actual_date;
+        
+        if (!scheduledDate || !completedDate) return false;
+        
+        // Compare dates (just the date part, not time)
+        const deviation = calculateDeviation(scheduledDate, completedDate);
+        return deviation === 0; // 0 days deviation means on-time
       }).length;
-      const scheduleAdherence = totalAudits > 0 ? Math.round((onTimeAudits / totalAudits) * 100) : 0;
+      
+      // Total scheduled audits (only count audits from scheduled audits)
+      const scheduledAuditsCount = auditData.filter(a => a.scheduled_audit_id).length;
+      const scheduleAdherence = scheduledAuditsCount > 0 ? Math.round((onTimeAudits / scheduledAuditsCount) * 100) : 0;
       
       summarySheet.columns = [
         { header: 'Metric', key: 'metric', width: 30 },
@@ -340,7 +355,8 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
         ['VD Strike Rate', `${vdStrikeRate}%`],
         ['Action Plan', auditsWithActions],
         ['AP Strike Rate', `${apStrikeRate}%`],
-        ['Schedule Adherence', onTimeAudits],
+        ['Scheduled Audits', scheduledAuditsCount],
+        ['Schedule Adherence (On-Time)', onTimeAudits],
         ['Schedule Adherence %', `${scheduleAdherence}%`],
         ['AP Adherence', completedActions],
         ['AP Adherence %', `${apAdherence}%`]
@@ -350,7 +366,7 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
       const vdStrikeRow = summarySheet.getRow(6);
       vdStrikeRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFADD8E6' } };
       
-      const scheduleAdherenceRow = summarySheet.getRow(10);
+      const scheduleAdherenceRow = summarySheet.getRow(11);
       scheduleAdherenceRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
       
       const apAdherenceRow = summarySheet.getRow(12);
