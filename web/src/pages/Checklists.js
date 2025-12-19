@@ -46,6 +46,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ScaleIcon from '@mui/icons-material/Scale';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import TimerIcon from '@mui/icons-material/Timer';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -147,6 +148,9 @@ const createEmptyItem = (category = '') => ({
   required: true,
   weight: 1, // Default weight
   is_critical: false, // Critical items can auto-fail the audit
+  is_time_based: false, // Enable time-based scoring for Item Making Performance
+  target_time_minutes: '', // Target time in minutes for time-based items
+  time_tolerance_percent: 20, // Tolerance percentage (e.g., 20% means ±20% of target is acceptable)
   options: defaultOptions.map(option => ({ ...option }))
 });
 
@@ -357,6 +361,9 @@ const Checklists = () => {
         required: item.required !== false,
         weight: item.weight || 1,
         is_critical: item.is_critical || false,
+        is_time_based: item.is_time_based || false,
+        target_time_minutes: item.is_time_based ? parseFloat(item.target_time_minutes) || null : null,
+        time_tolerance_percent: item.time_tolerance_percent || 20,
         order_index: index,
         options: (item.options || []).map((option, optionIndex) => ({
           option_text: option.option_text || '',
@@ -401,6 +408,9 @@ const Checklists = () => {
         required: item.required !== 0,
         weight: item.weight || 1,
         is_critical: item.is_critical === 1 || item.is_critical === true,
+        is_time_based: item.is_time_based === 1 || item.is_time_based === true,
+        target_time_minutes: item.target_time_minutes || '',
+        time_tolerance_percent: item.time_tolerance_percent || 20,
         options: (item.options || []).map(option => ({
           option_text: option.option_text || option.title || '',
           mark: option.mark ?? ''
@@ -928,6 +938,83 @@ const Checklists = () => {
                     </Tooltip>
                   </Grid>
                 </Grid>
+                
+                {/* Time-Based Scoring Section for Item Making Performance */}
+                <Paper 
+                  elevation={0} 
+                  sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: item.is_time_based ? 'info.light' : 'grey.50',
+                    border: '1px solid',
+                    borderColor: item.is_time_based ? 'info.main' : 'grey.300',
+                    borderRadius: 2
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: item.is_time_based ? 2 : 0 }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={item.is_time_based || false}
+                          onChange={(e) => handleItemChange(index, 'is_time_based', e.target.checked)}
+                          color="info"
+                        />
+                      }
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <TimerIcon sx={{ fontSize: 18, color: item.is_time_based ? 'info.main' : 'action.active' }} />
+                          <span style={{ fontWeight: 500 }}>Time-Based Item (Item Making Performance)</span>
+                        </Box>
+                      }
+                    />
+                  </Box>
+                  
+                  {item.is_time_based && (
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          label="Target Time (minutes)"
+                          value={item.target_time_minutes || ''}
+                          onChange={(e) => handleItemChange(index, 'target_time_minutes', e.target.value)}
+                          placeholder="e.g., 3"
+                          InputProps={{
+                            startAdornment: <TimerIcon sx={{ mr: 1, color: 'info.main', fontSize: 18 }} />,
+                            inputProps: { min: 0.1, step: 0.1 }
+                          }}
+                          helperText="Expected time to complete this item"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Tolerance</InputLabel>
+                          <Select
+                            value={item.time_tolerance_percent || 20}
+                            label="Tolerance"
+                            onChange={(e) => handleItemChange(index, 'time_tolerance_percent', e.target.value)}
+                          >
+                            <MenuItem value={10}>±10% (Strict)</MenuItem>
+                            <MenuItem value={20}>±20% (Normal)</MenuItem>
+                            <MenuItem value={30}>±30% (Lenient)</MenuItem>
+                            <MenuItem value={50}>±50% (Very Lenient)</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Alert severity="info" sx={{ fontSize: '0.75rem' }}>
+                          <strong>How it works:</strong> Auditor records multiple time entries while observing the task. 
+                          Score is calculated based on how the average time compares to the target.
+                          <br />
+                          • Within tolerance: 100% score
+                          <br />
+                          • Outside tolerance: Score reduces proportionally
+                        </Alert>
+                      </Grid>
+                    </Grid>
+                  )}
+                </Paper>
                 
                 <Box sx={{ mt: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
