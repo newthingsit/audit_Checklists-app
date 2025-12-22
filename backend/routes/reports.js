@@ -620,7 +620,7 @@ router.get('/audits/pdf', authenticate, (req, res) => {
   const { ids } = req.query; // Optional: comma-separated audit IDs
   const dbInstance = db.getDb();
 
-  let query = `SELECT a.id, a.restaurant_name, a.location, a.status, a.score, 
+  let query = `SELECT a.id, a.restaurant_name, a.location, a.location_id, a.template_id, a.status, a.score, 
      a.completed_items, a.total_items, ct.name as template_name,
      a.created_at, a.completed_at, u.name as user_name
      FROM audits a
@@ -651,7 +651,7 @@ router.get('/audits/pdf', authenticate, (req, res) => {
   
   query += ` ORDER BY a.created_at DESC`;
 
-  dbInstance.all(query, params, (err, audits) => {
+  dbInstance.all(query, params, async (err, audits) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -684,11 +684,121 @@ router.get('/audits/pdf', authenticate, (req, res) => {
     doc.text(`Average Score: ${avgScore}%`);
     doc.moveDown();
 
-    // Audit Details
+    // Audit Details with Failed Items
     doc.fontSize(16).text('Audit Details', { underline: true });
     doc.moveDown(0.5);
 
-    audits.forEach((audit, index) => {
+    // Process audits sequentially to fetch failed items
+    for (let index = 0; index < audits.length; index++) {
+      const audit = audits[index];
+      
+      // Fetch failed items for this audit
+      let failedItems = [];
+      let recurringFailures = [];
+      
+      if (audit.status === 'completed' && audit.template_id && audit.location_id) {
+        try {
+          // Get failed items from this audit
+          const failedItemsQuery = `
+            SELECT ai.item_id, ci.title, ai.status, ai.comment
+            FROM audit_items ai
+            JOIN checklist_items ci ON ai.item_id = ci.id
+            WHERE ai.audit_id = ?
+              AND (
+                ai.status = 'failed'
+                OR (ai.selected_option_id IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM checklist_item_options cio 
+                  WHERE cio.id = ai.selected_option_id 
+                  AND (cio.mark = '0' OR cio.mark = 'No' OR cio.mark = 'Fail' OR cio.mark = 'N/A')
+                ))
+              )
+            ORDER BY ci.order_index
+          `;
+          
+          failedItems = await new Promise((resolve, reject) => {
+            dbInstance.all(failedItemsQuery, [audit.id], (err, items) => {
+              if (err) reject(err);
+              else resolve(items || []);
+            });
+          });
+
+          // Check for recurring failures (same items failed in previous audit)
+          if (failedItems.length > 0 && audit.template_id && audit.location_id) {
+            const dbType = process.env.DB_TYPE || 'sqlite';
+            const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+            
+            let recurringQuery;
+            if (isSqlServer) {
+              recurringQuery = `
+                SELECT TOP 1 a.id, a.completed_at
+                FROM audits a
+                WHERE a.template_id = ? 
+                  AND a.location_id = ?
+                  AND a.status = 'completed'
+                  AND a.id < ?
+                  AND a.completed_at < ?
+                ORDER BY a.completed_at DESC
+              `;
+            } else {
+              recurringQuery = `
+                SELECT a.id, a.completed_at
+                FROM audits a
+                WHERE a.template_id = ? 
+                  AND a.location_id = ?
+                  AND a.status = 'completed'
+                  AND a.id < ?
+                  AND a.completed_at < ?
+                ORDER BY a.completed_at DESC
+                LIMIT 1
+              `;
+            }
+            
+            const previousAudit = await new Promise((resolve, reject) => {
+              dbInstance.get(recurringQuery, [
+                audit.template_id, 
+                audit.location_id, 
+                audit.id,
+                audit.completed_at || audit.created_at
+              ], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+              });
+            });
+
+            if (previousAudit) {
+              // Get failed items from previous audit
+              const previousFailedQuery = `
+                SELECT ai.item_id
+                FROM audit_items ai
+                WHERE ai.audit_id = ?
+                  AND (
+                    ai.status = 'failed'
+                    OR (ai.selected_option_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM checklist_item_options cio 
+                      WHERE cio.id = ai.selected_option_id 
+                      AND (cio.mark = '0' OR cio.mark = 'No' OR cio.mark = 'Fail' OR cio.mark = 'N/A')
+                    ))
+                  )
+              `;
+              
+              const previousFailed = await new Promise((resolve, reject) => {
+                dbInstance.all(previousFailedQuery, [previousAudit.id], (err, items) => {
+                  if (err) reject(err);
+                  else resolve((items || []).map(i => i.item_id));
+                });
+              });
+              
+              // Find items that failed in both audits (recurring)
+              const previousFailedSet = new Set(previousFailed);
+              recurringFailures = failedItems.filter(item => previousFailedSet.has(item.item_id));
+            }
+          }
+        } catch (error) {
+          logger.error('Error fetching failed items for audit history:', error);
+          // Continue without failed items
+        }
+      }
+
       doc.fontSize(11);
       doc.text(`${index + 1}. ${audit.restaurant_name}`, { continued: false });
       doc.fontSize(10).fillColor('gray');
@@ -702,9 +812,31 @@ router.get('/audits/pdf', authenticate, (req, res) => {
       if (audit.completed_at) {
         doc.text(`   Completed: ${new Date(audit.completed_at).toLocaleDateString()}`);
       }
+      
+      // Show failed items
+      if (failedItems.length > 0) {
+        doc.fillColor('red');
+        doc.text(`   Failed Items: ${failedItems.length}`);
+        if (recurringFailures.length > 0) {
+          doc.text(`   ⚠️ Recurring Failures: ${recurringFailures.length} items (highlighted below)`);
+        }
+        doc.fillColor('black');
+        
+        // List failed items
+        failedItems.slice(0, 10).forEach((item, idx) => {
+          const isRecurring = recurringFailures.some(rf => rf.item_id === item.item_id);
+          doc.fillColor(isRecurring ? 'red' : 'black');
+          doc.text(`     ${idx + 1}. ${item.title}${isRecurring ? ' ⚠️ (Recurring)' : ''}`);
+        });
+        if (failedItems.length > 10) {
+          doc.text(`     ... and ${failedItems.length - 10} more`);
+        }
+        doc.fillColor('black');
+      }
+      
       doc.fillColor('black');
       doc.moveDown(0.5);
-    });
+    }
 
     doc.end();
   });

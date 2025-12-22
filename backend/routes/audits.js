@@ -1783,6 +1783,8 @@ router.get('/previous-failures', authenticate, (req, res) => {
   const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
   
   // Get the most recent completed audit for this template and location
+  // Look back up to 12 months to find previous audits
+  const maxMonthsBack = Math.min(monthsBack, 12);
   let previousAuditQuery;
   if (isSqlServer) {
     previousAuditQuery = `
@@ -1794,8 +1796,8 @@ router.get('/previous-failures', authenticate, (req, res) => {
       WHERE a.template_id = ? 
         AND a.location_id = ? 
         AND a.status = 'completed'
-        AND a.created_at >= DATEADD(month, -?, GETDATE())
-      ORDER BY a.created_at DESC
+        AND a.completed_at >= DATEADD(month, -?, GETDATE())
+      ORDER BY a.completed_at DESC, a.created_at DESC
     `;
   } else {
     previousAuditQuery = `
@@ -1807,8 +1809,8 @@ router.get('/previous-failures', authenticate, (req, res) => {
       WHERE a.template_id = ? 
         AND a.location_id = ? 
         AND a.status = 'completed'
-        AND a.created_at >= date('now', '-' || ? || ' months')
-      ORDER BY a.created_at DESC
+        AND a.completed_at >= date('now', '-' || ? || ' months')
+      ORDER BY a.completed_at DESC, a.created_at DESC
       LIMIT 1
     `;
   }
@@ -2129,17 +2131,20 @@ router.get('/previous-failures/:templateId/:locationId', authenticate, (req, res
   }
 
   // Find the most recent completed audit for this location and template
+  // Look for audits from the last 12 months
   const lastAuditQuery = isSqlServer
-    ? `SELECT TOP 1 a.id, a.completed_at
+    ? `SELECT TOP 1 a.id, a.completed_at, a.created_at
        FROM audits a
        WHERE a.template_id = ? AND a.location_id = ? AND a.status = 'completed'
+         AND a.completed_at >= DATEADD(month, -12, GETDATE())
        ${isAdmin ? '' : 'AND a.user_id = ?'}
-       ORDER BY a.completed_at DESC`
-    : `SELECT a.id, a.completed_at
+       ORDER BY a.completed_at DESC, a.created_at DESC`
+    : `SELECT a.id, a.completed_at, a.created_at
        FROM audits a
        WHERE a.template_id = ? AND a.location_id = ? AND a.status = 'completed'
+         AND a.completed_at >= date('now', '-12 months')
        ${isAdmin ? '' : 'AND a.user_id = ?'}
-       ORDER BY a.completed_at DESC
+       ORDER BY a.completed_at DESC, a.created_at DESC
        LIMIT 1`;
 
   const lastAuditParams = isAdmin ? [templateId, locationId] : [templateId, locationId, userId];

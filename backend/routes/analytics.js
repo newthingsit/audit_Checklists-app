@@ -347,7 +347,13 @@ router.get('/dashboard', authenticate, (req, res) => {
           COUNT(*) as total_scheduled,
           SUM(CASE 
             WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+              AND (
+                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+                OR 
+                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
+                CAST(a.created_at AS DATE) = CAST(a.completed_at AS DATE)
+              )
             THEN 1 
             ELSE 0 
           END) as completed_on_time
@@ -360,7 +366,13 @@ router.get('/dashboard', authenticate, (req, res) => {
           COUNT(*) as total_scheduled,
           SUM(CASE 
             WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+              AND (
+                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
+                OR 
+                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
+                DATE(a.created_at) = DATE(a.completed_at)
+              )
             THEN 1 
             ELSE 0 
           END) as completed_on_time
@@ -373,7 +385,13 @@ router.get('/dashboard', authenticate, (req, res) => {
           COUNT(*) as total_scheduled,
           SUM(CASE 
             WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
+              AND (
+                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
+                OR 
+                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
+                DATE(a.created_at) = DATE(a.completed_at)
+              )
             THEN 1 
             ELSE 0 
           END) as completed_on_time
