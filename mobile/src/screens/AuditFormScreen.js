@@ -107,6 +107,17 @@ const AuditFormScreen = () => {
     },
   ];
 
+  // Helper function to sort items: Standard items first, time-based items at the end
+  const sortItemsWithTimeBasedLast = (itemsList) => {
+    return [...itemsList].sort((a, b) => {
+      const aIsTimeBased = a.is_time_based && (a.min_time_minutes || a.max_time_minutes || a.target_time_minutes);
+      const bIsTimeBased = b.is_time_based && (b.min_time_minutes || b.max_time_minutes || b.target_time_minutes);
+      if (aIsTimeBased && !bIsTimeBased) return 1; // Time-based goes after standard
+      if (!aIsTimeBased && bIsTimeBased) return -1; // Standard goes before time-based
+      return 0; // Keep original order for same type
+    });
+  };
+
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
     return locations.filter(loc => {
@@ -265,13 +276,14 @@ const AuditFormScreen = () => {
       // If only one category, auto-select it
       if (uniqueCategories.length === 1) {
         setSelectedCategory(uniqueCategories[0]);
-        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+        setFilteredItems(sortItemsWithTimeBasedLast(filtered));
       } else if (uniqueCategories.length === 0) {
         // No categories, show all items
-        setFilteredItems(allItems);
+        setFilteredItems(sortItemsWithTimeBasedLast(allItems));
       } else {
         // Multiple categories - show all items initially (user can filter later)
-        setFilteredItems(allItems);
+        setFilteredItems(sortItemsWithTimeBasedLast(allItems));
       }
 
       // Populate responses from audit items
@@ -363,10 +375,11 @@ const AuditFormScreen = () => {
         // If only one category, auto-select it
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
-          setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+          const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+          setFilteredItems(sortItemsWithTimeBasedLast(filtered));
         } else if (uniqueCategories.length === 0) {
           // No categories, show all items
-          setFilteredItems(allItems);
+          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
         }
       } else {
         throw new Error('Invalid template response');
@@ -660,7 +673,8 @@ const AuditFormScreen = () => {
   const handleCategorySelect = (category) => {
     setSelectedCategory(category);
     const filtered = items.filter(item => item.category === category);
-    setFilteredItems(filtered);
+    const sorted = sortItemsWithTimeBasedLast(filtered);
+    setFilteredItems(sorted);
   };
 
   const handleNext = () => {
