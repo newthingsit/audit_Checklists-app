@@ -1475,87 +1475,89 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                {/* Multi-Time Entry Section - Like Scoring Options with Presets */}
-                <View style={styles.timeEntryContainer}>
-                  <View style={styles.timeEntryHeader}>
-                    <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
-                    
-                    {/* Apply Preset Dropdown - Like Scoring Options */}
-                    <TouchableOpacity
-                      style={styles.timePresetButton}
-                      onPress={() => {
-                        setTimePresetItemId(item.id);
-                        setShowTimePresetModal(true);
-                      }}
-                    >
-                      <Text style={styles.timePresetButtonText}>Apply Preset</Text>
-                      <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  {/* 5 Time entry slots - Exactly like Scoring Options structure */}
-                  <View style={styles.timeEntriesColumn}>
-                    {[...Array(5)].map((_, idx) => {
-                      const entries = multiTimeEntries[item.id] || [];
-                      const value = entries[idx];
-                      const hasValue = value !== undefined && value !== null;
+                {/* Multi-Time Entry Section - Only show for time-based items */}
+                {item.is_time_based && (item.min_time_minutes || item.max_time_minutes || item.target_time_minutes) && (
+                  <View style={styles.timeEntryContainer}>
+                    <View style={styles.timeEntryHeader}>
+                      <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
                       
-                      return (
-                        <View key={idx} style={styles.timeEntryRow}>
-                          <Text style={styles.timeEntryRowLabel}>Entry {idx + 1}</Text>
-                          <TextInput
-                            style={[
-                              styles.timeEntryInput,
-                              hasValue && styles.timeEntryInputFilled
-                            ]}
-                            placeholder="Enter minutes"
-                            placeholderTextColor="#999"
-                            keyboardType="decimal-pad"
-                            value={hasValue ? value.toString() : ''}
-                            onChangeText={(text) => {
-                              const numValue = parseFloat(text);
-                              setMultiTimeEntries(prev => {
-                                const currentEntries = [...(prev[item.id] || [])];
-                                if (text === '' || isNaN(numValue)) {
+                      {/* Apply Preset Dropdown - Like Scoring Options */}
+                      <TouchableOpacity
+                        style={styles.timePresetButton}
+                        onPress={() => {
+                          setTimePresetItemId(item.id);
+                          setShowTimePresetModal(true);
+                        }}
+                      >
+                        <Text style={styles.timePresetButtonText}>Apply Preset</Text>
+                        <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {/* 5 Time entry slots - Exactly like Scoring Options structure */}
+                    <View style={styles.timeEntriesColumn}>
+                      {[...Array(5)].map((_, idx) => {
+                        const entries = multiTimeEntries[item.id] || [];
+                        const value = entries[idx];
+                        const hasValue = value !== undefined && value !== null;
+                        
+                        return (
+                          <View key={idx} style={styles.timeEntryRow}>
+                            <Text style={styles.timeEntryRowLabel}>Entry {idx + 1}</Text>
+                            <TextInput
+                              style={[
+                                styles.timeEntryInput,
+                                hasValue && styles.timeEntryInputFilled
+                              ]}
+                              placeholder="Enter minutes"
+                              placeholderTextColor="#999"
+                              keyboardType="decimal-pad"
+                              value={hasValue ? value.toString() : ''}
+                              onChangeText={(text) => {
+                                const numValue = parseFloat(text);
+                                setMultiTimeEntries(prev => {
+                                  const currentEntries = [...(prev[item.id] || [])];
+                                  if (text === '' || isNaN(numValue)) {
+                                    currentEntries[idx] = undefined;
+                                  } else {
+                                    currentEntries[idx] = numValue;
+                                  }
+                                  return { ...prev, [item.id]: currentEntries };
+                                });
+                              }}
+                            />
+                            <TouchableOpacity
+                              style={styles.timeEntryDeleteButton}
+                              onPress={() => {
+                                setMultiTimeEntries(prev => {
+                                  const currentEntries = [...(prev[item.id] || [])];
                                   currentEntries[idx] = undefined;
-                                } else {
-                                  currentEntries[idx] = numValue;
-                                }
-                                return { ...prev, [item.id]: currentEntries };
-                              });
-                            }}
-                          />
-                          <TouchableOpacity
-                            style={styles.timeEntryDeleteButton}
-                            onPress={() => {
-                              setMultiTimeEntries(prev => {
-                                const currentEntries = [...(prev[item.id] || [])];
-                                currentEntries[idx] = undefined;
-                                return { ...prev, [item.id]: currentEntries };
-                              });
-                            }}
-                          >
-                            <Icon name="delete" size={20} color={themeConfig.error.main} />
-                          </TouchableOpacity>
+                                  return { ...prev, [item.id]: currentEntries };
+                                });
+                              }}
+                            >
+                              <Icon name="delete" size={20} color={themeConfig.error.main} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    
+                    {/* Average display */}
+                    {(() => {
+                      const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e !== null && e > 0);
+                      if (entries.length === 0) return null;
+                      const avg = entries.reduce((a, b) => a + b, 0) / entries.length;
+                      return (
+                        <View style={styles.averageDisplay}>
+                          <Text style={styles.averageLabel}>Average:</Text>
+                          <Text style={styles.averageValue}>{avg.toFixed(1)} min</Text>
+                          <Text style={styles.entriesCount}>({entries.length}/5 entries)</Text>
                         </View>
                       );
-                    })}
+                    })()}
                   </View>
-                  
-                  {/* Average display */}
-                  {(() => {
-                    const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e !== null && e > 0);
-                    if (entries.length === 0) return null;
-                    const avg = entries.reduce((a, b) => a + b, 0) / entries.length;
-                    return (
-                      <View style={styles.averageDisplay}>
-                        <Text style={styles.averageLabel}>Average:</Text>
-                        <Text style={styles.averageValue}>{avg.toFixed(1)} min</Text>
-                        <Text style={styles.entriesCount}>({entries.length}/5 entries)</Text>
-                      </View>
-                    );
-                  })()}
-                </View>
+                )}
 
                 <View style={styles.commentContainer}>
                   <Text style={styles.commentLabel}>Comment (optional)</Text>
