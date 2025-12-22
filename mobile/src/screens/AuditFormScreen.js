@@ -67,6 +67,12 @@ const AuditFormScreen = () => {
   
   // Multi-time entries for Item Making Performance (4-5 times per item)
   const [multiTimeEntries, setMultiTimeEntries] = useState({}); // { itemId: [time1, time2, ...] }
+  
+  // Time input modal state
+  const [showTimeInputModal, setShowTimeInputModal] = useState(false);
+  const [timeInputItemId, setTimeInputItemId] = useState(null);
+  const [timeInputSlotIndex, setTimeInputSlotIndex] = useState(null);
+  const [timeInputValue, setTimeInputValue] = useState('');
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -240,6 +246,7 @@ const AuditFormScreen = () => {
       const optionsData = {};
       const commentsData = {};
       const photosData = {};
+      const timeEntriesData = {};
 
       auditItems.forEach(auditItem => {
         if (auditItem.status) {
@@ -264,12 +271,26 @@ const AuditFormScreen = () => {
           }
           photosData[auditItem.item_id] = photoUrl;
         }
+        // Load time entries from saved audit
+        if (auditItem.time_entries) {
+          try {
+            const entries = typeof auditItem.time_entries === 'string' 
+              ? JSON.parse(auditItem.time_entries) 
+              : auditItem.time_entries;
+            if (Array.isArray(entries) && entries.length > 0) {
+              timeEntriesData[auditItem.item_id] = entries;
+            }
+          } catch (e) {
+            console.log('Error parsing time_entries:', e);
+          }
+        }
       });
 
       setResponses(responsesData);
       setSelectedOptions(optionsData);
       setComments(commentsData);
       setPhotos(photosData);
+      setMultiTimeEntries(timeEntriesData);
 
       // Start at checklist step since we already have the info
       // If multiple categories exist, go to category selection, otherwise go to checklist
@@ -1088,6 +1109,80 @@ const AuditFormScreen = () => {
         </View>
       </Modal>
 
+      {/* Time Input Modal */}
+      <Modal
+        visible={showTimeInputModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowTimeInputModal(false)}
+      >
+        <View style={styles.timeInputModalOverlay}>
+          <View style={styles.timeInputModalContent}>
+            <Text style={styles.timeInputModalTitle}>
+              Entry #{timeInputSlotIndex !== null ? timeInputSlotIndex + 1 : ''}
+            </Text>
+            <Text style={styles.timeInputModalSubtitle}>Enter time in minutes</Text>
+            
+            <TextInput
+              style={styles.timeInputModalField}
+              placeholder="0"
+              placeholderTextColor="#999"
+              keyboardType="decimal-pad"
+              value={timeInputValue}
+              onChangeText={setTimeInputValue}
+              autoFocus={true}
+            />
+            
+            <View style={styles.timeInputModalButtons}>
+              <TouchableOpacity
+                style={[styles.timeInputModalButton, styles.timeInputModalButtonClear]}
+                onPress={() => {
+                  if (timeInputItemId !== null && timeInputSlotIndex !== null) {
+                    setMultiTimeEntries(prev => {
+                      const currentEntries = [...(prev[timeInputItemId] || [])];
+                      currentEntries[timeInputSlotIndex] = undefined;
+                      return { ...prev, [timeInputItemId]: currentEntries };
+                    });
+                  }
+                  setShowTimeInputModal(false);
+                  setTimeInputValue('');
+                }}
+              >
+                <Text style={styles.timeInputModalButtonTextClear}>Clear</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.timeInputModalButton, styles.timeInputModalButtonCancel]}
+                onPress={() => {
+                  setShowTimeInputModal(false);
+                  setTimeInputValue('');
+                }}
+              >
+                <Text style={styles.timeInputModalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.timeInputModalButton, styles.timeInputModalButtonSave]}
+                onPress={() => {
+                  const numValue = parseFloat(timeInputValue);
+                  if (!isNaN(numValue) && numValue > 0 && timeInputItemId !== null && timeInputSlotIndex !== null) {
+                    setMultiTimeEntries(prev => {
+                      const currentEntries = [...(prev[timeInputItemId] || [])];
+                      currentEntries[timeInputSlotIndex] = numValue;
+                      return { ...prev, [timeInputItemId]: currentEntries };
+                    });
+                  }
+                  setShowTimeInputModal(false);
+                  setTimeInputValue('');
+                }}
+              >
+                <Text style={styles.timeInputModalButtonTextSave}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {currentStep === 1 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={{ marginBottom: 20 }}>
@@ -1294,57 +1389,87 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                {/* Multi-Time Entry Section for Item Making Performance */}
+                {/* Multi-Time Entry Section - Button Style like Scoring Options */}
                 <View style={styles.timeEntryContainer}>
                   <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
+                  <Text style={styles.timeEntryHint}>Tap to record times. Tap again to change.</Text>
                   
-                  {/* 5 Input fields for time entries */}
-                  <View style={styles.timeInputsRow}>
+                  {/* 5 Time entry slots as buttons */}
+                  <View style={styles.timeButtonsRow}>
                     {[...Array(5)].map((_, idx) => {
                       const entries = multiTimeEntries[item.id] || [];
-                      const value = entries[idx] !== undefined ? entries[idx].toString() : '';
+                      const value = entries[idx];
+                      const hasValue = value !== undefined && value !== null;
+                      
                       return (
-                        <View key={idx} style={styles.timeInputWrapper}>
-                          <Text style={styles.timeInputLabel}>#{idx + 1}</Text>
-                          <TextInput
-                            style={[
-                              styles.timeInputField,
-                              value ? styles.timeInputFieldFilled : {}
-                            ]}
-                            placeholder="0"
-                            placeholderTextColor={themeConfig.text.disabled}
-                            keyboardType="decimal-pad"
-                            value={value}
-                            onChangeText={(text) => {
-                              const numValue = parseFloat(text);
-                              setMultiTimeEntries(prev => {
-                                const currentEntries = [...(prev[item.id] || [])];
-                                if (text === '' || isNaN(numValue)) {
-                                  // Remove entry if empty
-                                  currentEntries[idx] = undefined;
-                                } else {
-                                  currentEntries[idx] = numValue;
-                                }
-                                // Filter out undefined values but keep array indices
-                                return { ...prev, [item.id]: currentEntries };
-                              });
-                            }}
-                          />
-                        </View>
+                        <TouchableOpacity
+                          key={idx}
+                          style={[
+                            styles.timeSlotButton,
+                            hasValue && styles.timeSlotButtonFilled
+                          ]}
+                          onPress={() => {
+                            // Open time input modal
+                            setTimeInputItemId(item.id);
+                            setTimeInputSlotIndex(idx);
+                            setTimeInputValue(hasValue ? value.toString() : '');
+                            setShowTimeInputModal(true);
+                          }}
+                        >
+                          <Text style={styles.timeSlotLabel}>#{idx + 1}</Text>
+                          <Text style={[
+                            styles.timeSlotValue,
+                            hasValue && styles.timeSlotValueFilled
+                          ]}>
+                            {hasValue ? `${value}` : '--'}
+                          </Text>
+                          <Text style={styles.timeSlotUnit}>min</Text>
+                        </TouchableOpacity>
                       );
                     })}
                   </View>
                   
+                  {/* Quick time buttons for common values */}
+                  <View style={styles.quickTimeSection}>
+                    <Text style={styles.quickTimeLabel}>Quick Add:</Text>
+                    <View style={styles.quickTimeButtons}>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 10, 15].map((mins) => (
+                        <TouchableOpacity
+                          key={mins}
+                          style={styles.quickTimeButton}
+                          onPress={() => {
+                            // Add to next available slot
+                            setMultiTimeEntries(prev => {
+                              const currentEntries = [...(prev[item.id] || [])];
+                              // Find first empty slot
+                              let slotIndex = currentEntries.findIndex(e => e === undefined || e === null);
+                              if (slotIndex === -1 && currentEntries.length < 5) {
+                                slotIndex = currentEntries.length;
+                              }
+                              if (slotIndex !== -1 && slotIndex < 5) {
+                                currentEntries[slotIndex] = mins;
+                                return { ...prev, [item.id]: currentEntries };
+                              }
+                              return prev;
+                            });
+                          }}
+                        >
+                          <Text style={styles.quickTimeButtonText}>{mins}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  
                   {/* Average display */}
                   {(() => {
-                    const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e > 0);
+                    const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e !== null && e > 0);
                     if (entries.length === 0) return null;
                     const avg = entries.reduce((a, b) => a + b, 0) / entries.length;
                     return (
                       <View style={styles.averageDisplay}>
                         <Text style={styles.averageLabel}>Average:</Text>
                         <Text style={styles.averageValue}>{avg.toFixed(1)} min</Text>
-                        <Text style={styles.entriesCount}>({entries.length} entries)</Text>
+                        <Text style={styles.entriesCount}>({entries.length}/5 entries)</Text>
                       </View>
                     );
                   })()}
@@ -1819,7 +1944,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontWeight: '500',
   },
-  // Multi-time entry styles - Simple input fields
+  // Multi-time entry styles - Button style like scoring options
   timeEntryContainer: {
     marginTop: 15,
     padding: 12,
@@ -1832,43 +1957,85 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: themeConfig.text.primary,
-    marginBottom: 10,
+    marginBottom: 4,
   },
-  timeInputsRow: {
+  timeEntryHint: {
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    marginBottom: 12,
+  },
+  timeButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
+    marginBottom: 12,
   },
-  timeInputWrapper: {
+  timeSlotButton: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    minHeight: 70,
   },
-  timeInputLabel: {
-    fontSize: 11,
+  timeSlotButtonFilled: {
+    backgroundColor: themeConfig.success.light + '30',
+    borderColor: themeConfig.success.main,
+  },
+  timeSlotLabel: {
+    fontSize: 10,
     color: themeConfig.text.secondary,
-    marginBottom: 4,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  timeSlotValue: {
+    fontSize: 18,
+    color: '#999',
+    fontWeight: '700',
+  },
+  timeSlotValueFilled: {
+    color: themeConfig.success.main,
+  },
+  timeSlotUnit: {
+    fontSize: 10,
+    color: themeConfig.text.secondary,
+    marginTop: 2,
+  },
+  quickTimeSection: {
+    marginBottom: 10,
+  },
+  quickTimeLabel: {
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    marginBottom: 6,
     fontWeight: '500',
   },
-  timeInputField: {
-    width: '100%',
-    height: 40,
-    borderWidth: 1,
-    borderColor: themeConfig.border.default,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    fontSize: 14,
-    textAlign: 'center',
-    backgroundColor: '#fff',
-    color: themeConfig.text.primary,
+  quickTimeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  timeInputFieldFilled: {
-    borderColor: themeConfig.success.main,
-    backgroundColor: themeConfig.success.light + '20',
+  quickTimeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: themeConfig.primary.light + '20',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: themeConfig.primary.light,
+  },
+  quickTimeButtonText: {
+    fontSize: 13,
+    color: themeConfig.primary.main,
+    fontWeight: '600',
   },
   averageDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: themeConfig.border.default,
@@ -1888,6 +2055,82 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: themeConfig.text.secondary,
     marginLeft: 8,
+  },
+  // Time Input Modal styles
+  timeInputModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  timeInputModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 300,
+    alignItems: 'center',
+  },
+  timeInputModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: themeConfig.text.primary,
+    marginBottom: 4,
+  },
+  timeInputModalSubtitle: {
+    fontSize: 14,
+    color: themeConfig.text.secondary,
+    marginBottom: 20,
+  },
+  timeInputModalField: {
+    width: '100%',
+    height: 56,
+    borderWidth: 2,
+    borderColor: themeConfig.primary.main,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 24,
+    textAlign: 'center',
+    backgroundColor: '#f9f9f9',
+    color: themeConfig.text.primary,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  timeInputModalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  timeInputModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  timeInputModalButtonClear: {
+    backgroundColor: themeConfig.error.light + '30',
+  },
+  timeInputModalButtonCancel: {
+    backgroundColor: '#f0f0f0',
+  },
+  timeInputModalButtonSave: {
+    backgroundColor: themeConfig.primary.main,
+  },
+  timeInputModalButtonTextClear: {
+    color: themeConfig.error.main,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  timeInputModalButtonTextCancel: {
+    color: themeConfig.text.secondary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  timeInputModalButtonTextSave: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 
