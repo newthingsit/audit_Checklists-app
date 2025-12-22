@@ -1493,7 +1493,7 @@ const AuditFormScreen = () => {
                     </TouchableOpacity>
                   </View>
                   
-                  {/* 5 Time entry slots - Like Label inputs in Scoring Options */}
+                  {/* 5 Time entry slots - Exactly like Scoring Options structure */}
                   <View style={styles.timeEntriesColumn}>
                     {[...Array(5)].map((_, idx) => {
                       const entries = multiTimeEntries[item.id] || [];
@@ -1503,41 +1503,40 @@ const AuditFormScreen = () => {
                       return (
                         <View key={idx} style={styles.timeEntryRow}>
                           <Text style={styles.timeEntryRowLabel}>Entry {idx + 1}</Text>
-                          <View style={styles.timeEntryInputWrapper}>
-                            <TouchableOpacity
-                              style={[
-                                styles.timeEntryInput,
-                                hasValue && styles.timeEntryInputFilled
-                              ]}
-                              onPress={() => {
-                                setTimeInputItemId(item.id);
-                                setTimeInputSlotIndex(idx);
-                                setTimeInputValue(hasValue ? value.toString() : '');
-                                setShowTimeInputModal(true);
-                              }}
-                            >
-                              <Text style={[
-                                styles.timeEntryInputText,
-                                hasValue && styles.timeEntryInputTextFilled
-                              ]}>
-                                {hasValue ? `${value} min` : 'Tap to enter'}
-                              </Text>
-                            </TouchableOpacity>
-                            {hasValue && (
-                              <TouchableOpacity
-                                style={styles.timeEntryDeleteButton}
-                                onPress={() => {
-                                  setMultiTimeEntries(prev => {
-                                    const currentEntries = [...(prev[item.id] || [])];
-                                    currentEntries[idx] = undefined;
-                                    return { ...prev, [item.id]: currentEntries };
-                                  });
-                                }}
-                              >
-                                <Icon name="delete" size={20} color={themeConfig.error.main} />
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                          <TextInput
+                            style={[
+                              styles.timeEntryInput,
+                              hasValue && styles.timeEntryInputFilled
+                            ]}
+                            placeholder="Enter minutes"
+                            placeholderTextColor="#999"
+                            keyboardType="decimal-pad"
+                            value={hasValue ? value.toString() : ''}
+                            onChangeText={(text) => {
+                              const numValue = parseFloat(text);
+                              setMultiTimeEntries(prev => {
+                                const currentEntries = [...(prev[item.id] || [])];
+                                if (text === '' || isNaN(numValue)) {
+                                  currentEntries[idx] = undefined;
+                                } else {
+                                  currentEntries[idx] = numValue;
+                                }
+                                return { ...prev, [item.id]: currentEntries };
+                              });
+                            }}
+                          />
+                          <TouchableOpacity
+                            style={styles.timeEntryDeleteButton}
+                            onPress={() => {
+                              setMultiTimeEntries(prev => {
+                                const currentEntries = [...(prev[item.id] || [])];
+                                currentEntries[idx] = undefined;
+                                return { ...prev, [item.id]: currentEntries };
+                              });
+                            }}
+                          >
+                            <Icon name="delete" size={20} color={themeConfig.error.main} />
+                          </TouchableOpacity>
                         </View>
                       );
                     })}
@@ -2040,7 +2039,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   timeEntryLabel: {
     fontSize: 14,
@@ -2051,11 +2052,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: themeConfig.primary.main,
     borderRadius: 6,
     backgroundColor: '#fff',
+    gap: 4,
   },
   timePresetButtonText: {
     fontSize: 13,
@@ -2063,48 +2065,39 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   timeEntriesColumn: {
-    gap: 10,
+    gap: 8,
+    marginTop: 8,
   },
   timeEntryRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   timeEntryRowLabel: {
     width: 70,
-    fontSize: 13,
+    fontSize: 14,
     color: themeConfig.text.secondary,
     fontWeight: '500',
   },
-  timeEntryInputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   timeEntryInput: {
     flex: 1,
-    height: 44,
+    height: 40,
     borderWidth: 1,
     borderColor: themeConfig.border.default,
-    borderRadius: 8,
+    borderRadius: 6,
     paddingHorizontal: 12,
     backgroundColor: '#fff',
-    justifyContent: 'center',
+    fontSize: 14,
+    color: themeConfig.text.primary,
   },
   timeEntryInputFilled: {
-    borderColor: themeConfig.success.main,
-    backgroundColor: themeConfig.success.light + '15',
-  },
-  timeEntryInputText: {
-    fontSize: 14,
-    color: '#999',
-  },
-  timeEntryInputTextFilled: {
-    color: themeConfig.text.primary,
-    fontWeight: '500',
+    borderColor: themeConfig.primary.main,
+    backgroundColor: '#fff',
   },
   timeEntryDeleteButton: {
     padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   averageDisplay: {
     flexDirection: 'row',
