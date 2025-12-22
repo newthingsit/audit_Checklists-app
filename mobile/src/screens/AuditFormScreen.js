@@ -73,6 +73,39 @@ const AuditFormScreen = () => {
   const [timeInputItemId, setTimeInputItemId] = useState(null);
   const [timeInputSlotIndex, setTimeInputSlotIndex] = useState(null);
   const [timeInputValue, setTimeInputValue] = useState('');
+  
+  // Time preset modal state
+  const [showTimePresetModal, setShowTimePresetModal] = useState(false);
+  const [timePresetItemId, setTimePresetItemId] = useState(null);
+  
+  // Time presets - like Scoring Option presets
+  const TIME_PRESETS = [
+    { 
+      name: 'Quick (1-5 min)', 
+      description: 'Fast items under 5 minutes',
+      values: [1, 2, 3, 4, 5] 
+    },
+    { 
+      name: 'Standard (2-10 min)', 
+      description: 'Standard preparation time',
+      values: [2, 4, 6, 8, 10] 
+    },
+    { 
+      name: 'Extended (5-15 min)', 
+      description: 'Items requiring more time',
+      values: [5, 8, 10, 12, 15] 
+    },
+    { 
+      name: 'Long (10-30 min)', 
+      description: 'Complex items',
+      values: [10, 15, 20, 25, 30] 
+    },
+    { 
+      name: 'Custom Entry', 
+      description: 'Enter your own times',
+      values: [] 
+    },
+  ];
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -1183,6 +1216,59 @@ const AuditFormScreen = () => {
         </View>
       </Modal>
 
+      {/* Time Preset Modal - Like Scoring Options Preset Dropdown */}
+      <Modal
+        visible={showTimePresetModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTimePresetModal(false)}
+      >
+        <View style={styles.timePresetModalOverlay}>
+          <View style={styles.timePresetModalContent}>
+            <View style={styles.timePresetModalHeader}>
+              <Text style={styles.timePresetModalTitle}>Apply Preset</Text>
+              <TouchableOpacity onPress={() => setShowTimePresetModal(false)}>
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.timePresetList}>
+              {TIME_PRESETS.map((preset, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.timePresetOption}
+                  onPress={() => {
+                    if (preset.values.length > 0 && timePresetItemId !== null) {
+                      // Apply preset values to the item
+                      setMultiTimeEntries(prev => ({
+                        ...prev,
+                        [timePresetItemId]: [...preset.values]
+                      }));
+                    }
+                    setShowTimePresetModal(false);
+                  }}
+                >
+                  <View style={styles.timePresetOptionContent}>
+                    <Text style={styles.timePresetOptionName}>{preset.name}</Text>
+                    <Text style={styles.timePresetOptionDescription}>{preset.description}</Text>
+                    {preset.values.length > 0 && (
+                      <View style={styles.timePresetValuesRow}>
+                        {preset.values.map((val, i) => (
+                          <View key={i} style={styles.timePresetValueChip}>
+                            <Text style={styles.timePresetValueText}>{val}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                  <Icon name="chevron-right" size={24} color="#ccc" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {currentStep === 1 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={{ marginBottom: 20 }}>
@@ -1389,75 +1475,72 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                {/* Multi-Time Entry Section - Button Style like Scoring Options */}
+                {/* Multi-Time Entry Section - Like Scoring Options with Presets */}
                 <View style={styles.timeEntryContainer}>
-                  <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
-                  <Text style={styles.timeEntryHint}>Tap to record times. Tap again to change.</Text>
+                  <View style={styles.timeEntryHeader}>
+                    <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
+                    
+                    {/* Apply Preset Dropdown - Like Scoring Options */}
+                    <TouchableOpacity
+                      style={styles.timePresetButton}
+                      onPress={() => {
+                        setTimePresetItemId(item.id);
+                        setShowTimePresetModal(true);
+                      }}
+                    >
+                      <Text style={styles.timePresetButtonText}>Apply Preset</Text>
+                      <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
+                    </TouchableOpacity>
+                  </View>
                   
-                  {/* 5 Time entry slots as buttons */}
-                  <View style={styles.timeButtonsRow}>
+                  {/* 5 Time entry slots - Like Label inputs in Scoring Options */}
+                  <View style={styles.timeEntriesColumn}>
                     {[...Array(5)].map((_, idx) => {
                       const entries = multiTimeEntries[item.id] || [];
                       const value = entries[idx];
                       const hasValue = value !== undefined && value !== null;
                       
                       return (
-                        <TouchableOpacity
-                          key={idx}
-                          style={[
-                            styles.timeSlotButton,
-                            hasValue && styles.timeSlotButtonFilled
-                          ]}
-                          onPress={() => {
-                            // Open time input modal
-                            setTimeInputItemId(item.id);
-                            setTimeInputSlotIndex(idx);
-                            setTimeInputValue(hasValue ? value.toString() : '');
-                            setShowTimeInputModal(true);
-                          }}
-                        >
-                          <Text style={styles.timeSlotLabel}>#{idx + 1}</Text>
-                          <Text style={[
-                            styles.timeSlotValue,
-                            hasValue && styles.timeSlotValueFilled
-                          ]}>
-                            {hasValue ? `${value}` : '--'}
-                          </Text>
-                          <Text style={styles.timeSlotUnit}>min</Text>
-                        </TouchableOpacity>
+                        <View key={idx} style={styles.timeEntryRow}>
+                          <Text style={styles.timeEntryRowLabel}>Entry {idx + 1}</Text>
+                          <View style={styles.timeEntryInputWrapper}>
+                            <TouchableOpacity
+                              style={[
+                                styles.timeEntryInput,
+                                hasValue && styles.timeEntryInputFilled
+                              ]}
+                              onPress={() => {
+                                setTimeInputItemId(item.id);
+                                setTimeInputSlotIndex(idx);
+                                setTimeInputValue(hasValue ? value.toString() : '');
+                                setShowTimeInputModal(true);
+                              }}
+                            >
+                              <Text style={[
+                                styles.timeEntryInputText,
+                                hasValue && styles.timeEntryInputTextFilled
+                              ]}>
+                                {hasValue ? `${value} min` : 'Tap to enter'}
+                              </Text>
+                            </TouchableOpacity>
+                            {hasValue && (
+                              <TouchableOpacity
+                                style={styles.timeEntryDeleteButton}
+                                onPress={() => {
+                                  setMultiTimeEntries(prev => {
+                                    const currentEntries = [...(prev[item.id] || [])];
+                                    currentEntries[idx] = undefined;
+                                    return { ...prev, [item.id]: currentEntries };
+                                  });
+                                }}
+                              >
+                                <Icon name="delete" size={20} color={themeConfig.error.main} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
                       );
                     })}
-                  </View>
-                  
-                  {/* Quick time buttons for common values */}
-                  <View style={styles.quickTimeSection}>
-                    <Text style={styles.quickTimeLabel}>Quick Add:</Text>
-                    <View style={styles.quickTimeButtons}>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 10, 15].map((mins) => (
-                        <TouchableOpacity
-                          key={mins}
-                          style={styles.quickTimeButton}
-                          onPress={() => {
-                            // Add to next available slot
-                            setMultiTimeEntries(prev => {
-                              const currentEntries = [...(prev[item.id] || [])];
-                              // Find first empty slot
-                              let slotIndex = currentEntries.findIndex(e => e === undefined || e === null);
-                              if (slotIndex === -1 && currentEntries.length < 5) {
-                                slotIndex = currentEntries.length;
-                              }
-                              if (slotIndex !== -1 && slotIndex < 5) {
-                                currentEntries[slotIndex] = mins;
-                                return { ...prev, [item.id]: currentEntries };
-                              }
-                              return prev;
-                            });
-                          }}
-                        >
-                          <Text style={styles.quickTimeButtonText}>{mins}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
                   </View>
                   
                   {/* Average display */}
@@ -1944,7 +2027,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontWeight: '500',
   },
-  // Multi-time entry styles - Button style like scoring options
+  // Multi-time entry styles - Like Scoring Options layout
   timeEntryContainer: {
     marginTop: 15,
     padding: 12,
@@ -1953,90 +2036,81 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: themeConfig.border.default,
   },
+  timeEntryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   timeEntryLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: themeConfig.text.primary,
-    marginBottom: 4,
   },
-  timeEntryHint: {
-    fontSize: 12,
-    color: themeConfig.text.secondary,
-    marginBottom: 12,
-  },
-  timeButtonsRow: {
+  timePresetButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 6,
-    marginBottom: 12,
-  },
-  timeSlotButton: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#ddd',
-    minHeight: 70,
-  },
-  timeSlotButtonFilled: {
-    backgroundColor: themeConfig.success.light + '30',
-    borderColor: themeConfig.success.main,
-  },
-  timeSlotLabel: {
-    fontSize: 10,
-    color: themeConfig.text.secondary,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  timeSlotValue: {
-    fontSize: 18,
-    color: '#999',
-    fontWeight: '700',
-  },
-  timeSlotValueFilled: {
-    color: themeConfig.success.main,
-  },
-  timeSlotUnit: {
-    fontSize: 10,
-    color: themeConfig.text.secondary,
-    marginTop: 2,
-  },
-  quickTimeSection: {
-    marginBottom: 10,
-  },
-  quickTimeLabel: {
-    fontSize: 12,
-    color: themeConfig.text.secondary,
-    marginBottom: 6,
-    fontWeight: '500',
-  },
-  quickTimeButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  quickTimeButton: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: themeConfig.primary.light + '20',
-    borderRadius: 16,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: themeConfig.primary.light,
+    borderColor: themeConfig.primary.main,
+    borderRadius: 6,
+    backgroundColor: '#fff',
   },
-  quickTimeButtonText: {
+  timePresetButtonText: {
     fontSize: 13,
     color: themeConfig.primary.main,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  timeEntriesColumn: {
+    gap: 10,
+  },
+  timeEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  timeEntryRowLabel: {
+    width: 70,
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    fontWeight: '500',
+  },
+  timeEntryInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timeEntryInput: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+  },
+  timeEntryInputFilled: {
+    borderColor: themeConfig.success.main,
+    backgroundColor: themeConfig.success.light + '15',
+  },
+  timeEntryInputText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  timeEntryInputTextFilled: {
+    color: themeConfig.text.primary,
+    fontWeight: '500',
+  },
+  timeEntryDeleteButton: {
+    padding: 8,
   },
   averageDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: themeConfig.border.default,
   },
@@ -2055,6 +2129,72 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: themeConfig.text.secondary,
     marginLeft: 8,
+  },
+  // Time Preset Modal styles
+  timePresetModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  timePresetModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  timePresetModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  timePresetModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+  },
+  timePresetList: {
+    paddingBottom: 20,
+  },
+  timePresetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  timePresetOptionContent: {
+    flex: 1,
+  },
+  timePresetOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginBottom: 2,
+  },
+  timePresetOptionDescription: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    marginBottom: 6,
+  },
+  timePresetValuesRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  timePresetValueChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: themeConfig.primary.light + '20',
+    borderRadius: 12,
+  },
+  timePresetValueText: {
+    fontSize: 12,
+    color: themeConfig.primary.main,
+    fontWeight: '600',
   },
   // Time Input Modal styles
   timeInputModalOverlay: {
