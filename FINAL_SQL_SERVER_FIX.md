@@ -91,3 +91,6 @@ This would allow normal GROUP BY and COALESCE operations without CAST.
 
 
 
+
+
+

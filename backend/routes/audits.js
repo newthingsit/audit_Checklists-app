@@ -623,15 +623,51 @@ router.post('/', authenticate, (req, res) => {
           // Store original_scheduled_date for Schedule Adherence tracking
           const originalScheduledDate = linkedSchedule ? linkedSchedule.scheduled_date : null;
           
+          // Build INSERT query dynamically to handle optional columns
+          const insertColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id', 'gps_latitude', 'gps_longitude', 'gps_accuracy', 'gps_timestamp', 'location_verified'];
+          const insertValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null, gps_latitude || null, gps_longitude || null, gps_accuracy || null, gps_timestamp || null, location_verified ? 1 : 0];
+          
+          // Try to include original_scheduled_date if the column exists
+          if (originalScheduledDate) {
+            insertColumns.push('original_scheduled_date');
+            insertValues.push(originalScheduledDate);
+          }
+          
+          const placeholders = insertColumns.map(() => '?').join(', ');
+          
           dbInstance.run(
-            `INSERT INTO audits (template_id, user_id, restaurant_name, location, location_id, team_id, notes, total_items, scheduled_audit_id, gps_latitude, gps_longitude, gps_accuracy, gps_timestamp, location_verified, original_scheduled_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null, gps_latitude || null, gps_longitude || null, gps_accuracy || null, gps_timestamp || null, location_verified ? 1 : 0, originalScheduledDate],
+            `INSERT INTO audits (${insertColumns.join(', ')}) VALUES (${placeholders})`,
+            insertValues,
             function(err, result) {
               if (err) {
+                // If error is about missing column, retry without optional columns
+                if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
+                  logger.warn('Some columns may not exist, retrying with basic columns only');
+                  const basicColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id'];
+                  const basicValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null];
+                  const basicPlaceholders = basicColumns.map(() => '?').join(', ');
+                  
+                  dbInstance.run(
+                    `INSERT INTO audits (${basicColumns.join(', ')}) VALUES (${basicPlaceholders})`,
+                    basicValues,
+                    function(retryErr, retryResult) {
+                      if (retryErr) {
+                        logger.error('Error creating audit (retry):', retryErr);
+                        return res.status(500).json({ error: 'Error creating audit', details: retryErr.message });
+                      }
+                      // Continue with audit items creation
+                      const auditId = (retryResult && retryResult.lastID) ? retryResult.lastID : (this.lastID || 0);
+                      if (!auditId || auditId === 0) {
+                        logger.error('Failed to get audit ID after insert (retry)');
+                        return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
+                      }
+                      createAuditItems(auditId, items, linkedSchedule);
+                    }
+                  );
+                  return;
+                }
                 logger.error('Error creating audit:', err);
-                logger.error('Error creating audit:', err);
-                return res.status(500).json({ error: 'Error creating audit' });
+                return res.status(500).json({ error: 'Error creating audit', details: err.message });
               }
 
               // Handle both SQL Server (result.lastID) and SQLite (this.lastID)
@@ -642,6 +678,12 @@ router.post('/', authenticate, (req, res) => {
                 return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
               }
 
+              createAuditItems(auditId, items, linkedSchedule);
+            }
+          );
+          
+          // Helper function to create audit items
+          function createAuditItems(auditId, items, linkedSchedule) {
               if (linkedSchedule) {
                 markScheduledAuditInProgress(dbInstance, linkedSchedule.id);
               }
@@ -676,8 +718,7 @@ router.post('/', authenticate, (req, res) => {
               } else {
                 res.status(201).json({ id: auditId, message: 'Audit created successfully' });
               }
-            }
-          );
+          }
         }
       );
       });

@@ -64,6 +64,11 @@ const AuditFormScreen = () => {
   const [itemStartTimes, setItemStartTimes] = useState({}); // Track when user starts working on each item
   const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for display
   const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({}); // Store interval IDs
+  
+  // Multi-time entries for Item Making Performance (4-5 times per item)
+  const [multiTimeEntries, setMultiTimeEntries] = useState({}); // { itemId: [time1, time2, ...] }
+  const [currentTimerRunning, setCurrentTimerRunning] = useState(null); // Track which item's timer is running
+  const [manualTimeInput, setManualTimeInput] = useState({}); // For manual time entry
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -737,70 +742,83 @@ const AuditFormScreen = () => {
         currentAuditId = auditResponse.data.id;
       }
 
-      // Update all audit items - handle errors gracefully
-      const updatePromises = filteredItems.map(async (item) => {
-        try {
-          const updateData = {
-            status: responses[item.id] || 'pending',
-          };
-          
-          if (selectedOptions[item.id]) {
-            updateData.selected_option_id = selectedOptions[item.id];
-          }
-          
-          if (comments[item.id]) {
-            updateData.comment = comments[item.id];
-          }
-          
-          if (photos[item.id]) {
-            // Extract just the path if it's a full URL
-            const photoUrl = photos[item.id];
-            // Ensure we save the path correctly - backend expects path starting with /
-            if (photoUrl.startsWith('http')) {
-              // Extract path from full URL
-              try {
-                const urlObj = new URL(photoUrl);
-                updateData.photo_url = urlObj.pathname;
-              } catch (e) {
-                // If URL parsing fails, try to extract path manually
-                const pathMatch = photoUrl.match(/\/uploads\/[^?]+/);
-                updateData.photo_url = pathMatch ? pathMatch[0] : photoUrl.replace(/^https?:\/\/[^\/]+/, '');
-              }
-            } else if (photoUrl.startsWith('/')) {
-              // Already a path starting with /, use as is
-              updateData.photo_url = photoUrl;
-            } else {
-              // Path without /, add it
-              updateData.photo_url = `/${photoUrl}`;
-            }
-          }
-          
-          // Add time tracking data if available
-          if (itemStartTimes[item.id]) {
-            const timeData = stopItemTimer(item.id);
-            if (timeData) {
-              updateData.time_taken_minutes = timeData.time_taken_minutes;
-              updateData.started_at = timeData.started_at;
-            }
-          }
-
-          return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${item.id}`, updateData);
-        } catch (itemError) {
-          // Log error but don't fail the entire save
-          console.warn(`Failed to update item ${item.id}:`, itemError);
-          return { error: itemError, itemId: item.id };
+      // Use batch update for faster saves - prepare all items
+      const batchItems = filteredItems.map((item) => {
+        const updateData = {
+          itemId: item.id,
+          status: responses[item.id] || 'pending',
+        };
+        
+        if (selectedOptions[item.id]) {
+          updateData.selected_option_id = selectedOptions[item.id];
         }
+        
+        if (comments[item.id]) {
+          updateData.comment = comments[item.id];
+        }
+        
+        if (photos[item.id]) {
+          // Extract just the path if it's a full URL
+          const photoUrl = photos[item.id];
+          // Ensure we save the path correctly - backend expects path starting with /
+          if (photoUrl.startsWith('http')) {
+            // Extract path from full URL
+            try {
+              const urlObj = new URL(photoUrl);
+              updateData.photo_url = urlObj.pathname;
+            } catch (e) {
+              // If URL parsing fails, try to extract path manually
+              const pathMatch = photoUrl.match(/\/uploads\/[^?]+/);
+              updateData.photo_url = pathMatch ? pathMatch[0] : photoUrl.replace(/^https?:\/\/[^\/]+/, '');
+            }
+          } else if (photoUrl.startsWith('/')) {
+            // Already a path starting with /, use as is
+            updateData.photo_url = photoUrl;
+          } else {
+            // Path without /, add it
+            updateData.photo_url = `/${photoUrl}`;
+          }
+        }
+        
+        // Add multi-time entries if available
+        if (multiTimeEntries[item.id] && multiTimeEntries[item.id].length > 0) {
+          updateData.time_entries = multiTimeEntries[item.id];
+          updateData.average_time_minutes = getAverageTime(item.id);
+        }
+        
+        // Add time tracking data if available (single timer)
+        if (itemStartTimes[item.id]) {
+          const timeData = stopItemTimer(item.id);
+          if (timeData) {
+            updateData.time_taken_minutes = timeData.time_taken_minutes;
+            updateData.started_at = timeData.started_at;
+          }
+        }
+
+        return updateData;
       });
 
-      const results = await Promise.all(updatePromises);
-      
-      // Check if there were any critical errors
-      const errors = results.filter(r => r && r.error);
-      if (errors.length > 0 && errors.length === results.length) {
-        // All items failed - this is a critical error
-        throw new Error(`Failed to save ${errors.length} items`);
+      // Send batch update request
+      try {
+        await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/batch`, { items: batchItems });
+      } catch (batchError) {
+        console.warn('Batch update failed, trying individual updates:', batchError);
+        // Fallback to individual updates if batch fails
+        const updatePromises = batchItems.map(async (updateData) => {
+          try {
+            return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${updateData.itemId}`, updateData);
+          } catch (itemError) {
+            console.warn(`Failed to update item ${updateData.itemId}:`, itemError);
+            return { error: itemError, itemId: updateData.itemId };
+          }
+        });
+        
+        const results = await Promise.all(updatePromises);
+        const errors = results.filter(r => r && r.error);
+        if (errors.length > 0 && errors.length === results.length) {
+          throw new Error(`Failed to save ${errors.length} items`);
+        }
       }
-      // Some items may have failed, but continue if at least some succeeded
 
       Alert.alert('Success', isEditing ? 'Audit updated successfully' : 'Audit saved successfully', [
         { text: 'OK', onPress: () => navigation.goBack() }
@@ -865,6 +883,96 @@ const AuditFormScreen = () => {
       };
     }
     return null;
+  };
+  
+  // Multi-time entry functions for Item Making Performance (4-5 times per item)
+  const startMultiTimer = (itemId) => {
+    setCurrentTimerRunning(itemId);
+    const startTime = new Date().toISOString();
+    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime }));
+    
+    // Start interval to update elapsed time display (every second for accuracy)
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => {
+        const start = itemStartTimes[itemId] || startTime;
+        const elapsed = Math.floor((new Date() - new Date(start)) / 1000); // seconds
+        return { ...prev, [itemId]: elapsed };
+      });
+    }, 1000);
+    
+    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
+  };
+  
+  const stopMultiTimer = (itemId) => {
+    // Clear interval
+    if (timeTrackingIntervals[itemId]) {
+      clearInterval(timeTrackingIntervals[itemId]);
+      setTimeTrackingIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[itemId];
+        return newIntervals;
+      });
+    }
+    
+    // Calculate time and add to entries
+    if (itemStartTimes[itemId]) {
+      const startTime = new Date(itemStartTimes[itemId]);
+      const endTime = new Date();
+      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100; // Round to 2 decimals
+      
+      // Add to multi-time entries
+      addTimeEntry(itemId, timeTakenMinutes);
+      
+      // Clear start time
+      setItemStartTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+      
+      setItemElapsedTimes(prev => {
+        const newTimes = { ...prev };
+        delete newTimes[itemId];
+        return newTimes;
+      });
+    }
+    
+    setCurrentTimerRunning(null);
+  };
+  
+  const addTimeEntry = (itemId, timeMinutes) => {
+    if (timeMinutes <= 0) return;
+    
+    setMultiTimeEntries(prev => {
+      const currentEntries = prev[itemId] || [];
+      // Limit to 5 entries
+      if (currentEntries.length >= 5) {
+        Alert.alert('Maximum Entries', 'You can record up to 5 time entries per item.');
+        return prev;
+      }
+      return { ...prev, [itemId]: [...currentEntries, timeMinutes] };
+    });
+  };
+  
+  const removeTimeEntry = (itemId, index) => {
+    setMultiTimeEntries(prev => {
+      const currentEntries = prev[itemId] || [];
+      const newEntries = currentEntries.filter((_, i) => i !== index);
+      return { ...prev, [itemId]: newEntries };
+    });
+  };
+  
+  const getAverageTime = (itemId) => {
+    const entries = multiTimeEntries[itemId] || [];
+    if (entries.length === 0) return 0;
+    const sum = entries.reduce((acc, val) => acc + val, 0);
+    return Math.round((sum / entries.length) * 100) / 100;
+  };
+  
+  const formatElapsedTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Cleanup intervals on unmount
@@ -1269,6 +1377,101 @@ const AuditFormScreen = () => {
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* Multi-Time Entry Section for Item Making Performance */}
+                <View style={styles.timeEntryContainer}>
+                  <Text style={styles.timeEntryLabel}>⏱️ Time Tracking (record 4-5 times)</Text>
+                  
+                  {/* Display recorded entries */}
+                  <View style={styles.timeEntriesRow}>
+                    {[...Array(5)].map((_, idx) => {
+                      const entries = multiTimeEntries[item.id] || [];
+                      const hasEntry = entries[idx] !== undefined;
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[
+                            styles.timeEntryChip,
+                            hasEntry ? styles.timeEntryChipFilled : styles.timeEntryChipEmpty
+                          ]}
+                          onPress={() => hasEntry && removeTimeEntry(item.id, idx)}
+                        >
+                          <Text style={[
+                            styles.timeEntryChipText,
+                            hasEntry && styles.timeEntryChipTextFilled
+                          ]}>
+                            {hasEntry ? `${entries[idx]} min` : `#${idx + 1}`}
+                          </Text>
+                          {hasEntry && <Icon name="close" size={12} color="#fff" style={styles.timeEntryRemove} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  
+                  {/* Timer controls */}
+                  <View style={styles.timerControls}>
+                    {currentTimerRunning === item.id ? (
+                      <>
+                        <Text style={styles.timerDisplay}>
+                          {formatElapsedTime(itemElapsedTimes[item.id] || 0)}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.stopTimerButton}
+                          onPress={() => stopMultiTimer(item.id)}
+                        >
+                          <Icon name="stop" size={18} color="#fff" />
+                          <Text style={styles.timerButtonText}>Stop & Save</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <TouchableOpacity
+                        style={[
+                          styles.startTimerButton,
+                          currentTimerRunning !== null && currentTimerRunning !== item.id && styles.timerButtonDisabled
+                        ]}
+                        onPress={() => startMultiTimer(item.id)}
+                        disabled={currentTimerRunning !== null && currentTimerRunning !== item.id}
+                      >
+                        <Icon name="play-arrow" size={18} color="#fff" />
+                        <Text style={styles.timerButtonText}>
+                          Start Timer #{(multiTimeEntries[item.id]?.length || 0) + 1}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    
+                    {/* Manual entry */}
+                    <View style={styles.manualEntryRow}>
+                      <TextInput
+                        style={styles.manualTimeInput}
+                        placeholder="Min"
+                        placeholderTextColor={themeConfig.text.disabled}
+                        keyboardType="decimal-pad"
+                        value={manualTimeInput[item.id] || ''}
+                        onChangeText={(text) => setManualTimeInput(prev => ({ ...prev, [item.id]: text }))}
+                      />
+                      <TouchableOpacity
+                        style={styles.addManualButton}
+                        onPress={() => {
+                          const time = parseFloat(manualTimeInput[item.id]);
+                          if (time && time > 0) {
+                            addTimeEntry(item.id, time);
+                            setManualTimeInput(prev => ({ ...prev, [item.id]: '' }));
+                          }
+                        }}
+                      >
+                        <Icon name="add" size={18} color={themeConfig.primary.main} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  
+                  {/* Average display */}
+                  {(multiTimeEntries[item.id]?.length || 0) > 0 && (
+                    <View style={styles.averageDisplay}>
+                      <Text style={styles.averageLabel}>Average Time:</Text>
+                      <Text style={styles.averageValue}>{getAverageTime(item.id)} min</Text>
+                    </View>
+                  )}
+                </View>
 
                 <View style={styles.commentContainer}>
                   <Text style={styles.commentLabel}>Comment (optional)</Text>
@@ -1738,6 +1941,142 @@ const styles = StyleSheet.create({
     color: themeConfig.success.main,
     marginLeft: 6,
     fontWeight: '500',
+  },
+  // Multi-time entry styles
+  timeEntryContainer: {
+    marginTop: 15,
+    padding: 12,
+    backgroundColor: themeConfig.background.default,
+    borderRadius: themeConfig.borderRadius.medium,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+  },
+  timeEntryLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    marginBottom: 10,
+  },
+  timeEntriesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  timeEntryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 55,
+    justifyContent: 'center',
+  },
+  timeEntryChipEmpty: {
+    backgroundColor: themeConfig.background.paper,
+    borderColor: themeConfig.border.default,
+    borderStyle: 'dashed',
+  },
+  timeEntryChipFilled: {
+    backgroundColor: themeConfig.success.main,
+    borderColor: themeConfig.success.main,
+  },
+  timeEntryChipText: {
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    fontWeight: '500',
+  },
+  timeEntryChipTextFilled: {
+    color: '#fff',
+  },
+  timeEntryRemove: {
+    marginLeft: 4,
+  },
+  timerControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  timerDisplay: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: themeConfig.error.main,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    minWidth: 60,
+  },
+  startTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.primary.main,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  stopTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.error.main,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  timerButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  timerButtonDisabled: {
+    opacity: 0.5,
+  },
+  manualEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+  },
+  manualTimeInput: {
+    width: 60,
+    height: 36,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    backgroundColor: '#fff',
+  },
+  addManualButton: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderColor: themeConfig.primary.main,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: themeConfig.primary.light + '20',
+  },
+  averageDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: themeConfig.border.default,
+  },
+  averageLabel: {
+    fontSize: 13,
+    color: themeConfig.text.secondary,
+    fontWeight: '500',
+  },
+  averageValue: {
+    fontSize: 16,
+    color: themeConfig.primary.main,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 });
 
