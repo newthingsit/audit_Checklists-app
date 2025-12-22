@@ -67,8 +67,6 @@ const AuditFormScreen = () => {
   
   // Multi-time entries for Item Making Performance (4-5 times per item)
   const [multiTimeEntries, setMultiTimeEntries] = useState({}); // { itemId: [time1, time2, ...] }
-  const [currentTimerRunning, setCurrentTimerRunning] = useState(null); // Track which item's timer is running
-  const [manualTimeInput, setManualTimeInput] = useState({}); // For manual time entry
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -885,94 +883,12 @@ const AuditFormScreen = () => {
     return null;
   };
   
-  // Multi-time entry functions for Item Making Performance (4-5 times per item)
-  const startMultiTimer = (itemId) => {
-    setCurrentTimerRunning(itemId);
-    const startTime = new Date().toISOString();
-    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime }));
-    
-    // Start interval to update elapsed time display (every second for accuracy)
-    const interval = setInterval(() => {
-      setItemElapsedTimes(prev => {
-        const start = itemStartTimes[itemId] || startTime;
-        const elapsed = Math.floor((new Date() - new Date(start)) / 1000); // seconds
-        return { ...prev, [itemId]: elapsed };
-      });
-    }, 1000);
-    
-    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
-  };
-  
-  const stopMultiTimer = (itemId) => {
-    // Clear interval
-    if (timeTrackingIntervals[itemId]) {
-      clearInterval(timeTrackingIntervals[itemId]);
-      setTimeTrackingIntervals(prev => {
-        const newIntervals = { ...prev };
-        delete newIntervals[itemId];
-        return newIntervals;
-      });
-    }
-    
-    // Calculate time and add to entries
-    if (itemStartTimes[itemId]) {
-      const startTime = new Date(itemStartTimes[itemId]);
-      const endTime = new Date();
-      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100; // Round to 2 decimals
-      
-      // Add to multi-time entries
-      addTimeEntry(itemId, timeTakenMinutes);
-      
-      // Clear start time
-      setItemStartTimes(prev => {
-        const newTimes = { ...prev };
-        delete newTimes[itemId];
-        return newTimes;
-      });
-      
-      setItemElapsedTimes(prev => {
-        const newTimes = { ...prev };
-        delete newTimes[itemId];
-        return newTimes;
-      });
-    }
-    
-    setCurrentTimerRunning(null);
-  };
-  
-  const addTimeEntry = (itemId, timeMinutes) => {
-    if (timeMinutes <= 0) return;
-    
-    setMultiTimeEntries(prev => {
-      const currentEntries = prev[itemId] || [];
-      // Limit to 5 entries
-      if (currentEntries.length >= 5) {
-        Alert.alert('Maximum Entries', 'You can record up to 5 time entries per item.');
-        return prev;
-      }
-      return { ...prev, [itemId]: [...currentEntries, timeMinutes] };
-    });
-  };
-  
-  const removeTimeEntry = (itemId, index) => {
-    setMultiTimeEntries(prev => {
-      const currentEntries = prev[itemId] || [];
-      const newEntries = currentEntries.filter((_, i) => i !== index);
-      return { ...prev, [itemId]: newEntries };
-    });
-  };
-  
+  // Get average time from multi-time entries
   const getAverageTime = (itemId) => {
-    const entries = multiTimeEntries[itemId] || [];
+    const entries = (multiTimeEntries[itemId] || []).filter(e => e !== undefined && e > 0);
     if (entries.length === 0) return 0;
     const sum = entries.reduce((acc, val) => acc + val, 0);
     return Math.round((sum / entries.length) * 100) / 100;
-  };
-  
-  const formatElapsedTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Cleanup intervals on unmount
@@ -1380,97 +1296,58 @@ const AuditFormScreen = () => {
 
                 {/* Multi-Time Entry Section for Item Making Performance */}
                 <View style={styles.timeEntryContainer}>
-                  <Text style={styles.timeEntryLabel}>⏱️ Time Tracking (record 4-5 times)</Text>
+                  <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
                   
-                  {/* Display recorded entries */}
-                  <View style={styles.timeEntriesRow}>
+                  {/* 5 Input fields for time entries */}
+                  <View style={styles.timeInputsRow}>
                     {[...Array(5)].map((_, idx) => {
                       const entries = multiTimeEntries[item.id] || [];
-                      const hasEntry = entries[idx] !== undefined;
+                      const value = entries[idx] !== undefined ? entries[idx].toString() : '';
                       return (
-                        <TouchableOpacity
-                          key={idx}
-                          style={[
-                            styles.timeEntryChip,
-                            hasEntry ? styles.timeEntryChipFilled : styles.timeEntryChipEmpty
-                          ]}
-                          onPress={() => hasEntry && removeTimeEntry(item.id, idx)}
-                        >
-                          <Text style={[
-                            styles.timeEntryChipText,
-                            hasEntry && styles.timeEntryChipTextFilled
-                          ]}>
-                            {hasEntry ? `${entries[idx]} min` : `#${idx + 1}`}
-                          </Text>
-                          {hasEntry && <Icon name="close" size={12} color="#fff" style={styles.timeEntryRemove} />}
-                        </TouchableOpacity>
+                        <View key={idx} style={styles.timeInputWrapper}>
+                          <Text style={styles.timeInputLabel}>#{idx + 1}</Text>
+                          <TextInput
+                            style={[
+                              styles.timeInputField,
+                              value ? styles.timeInputFieldFilled : {}
+                            ]}
+                            placeholder="0"
+                            placeholderTextColor={themeConfig.text.disabled}
+                            keyboardType="decimal-pad"
+                            value={value}
+                            onChangeText={(text) => {
+                              const numValue = parseFloat(text);
+                              setMultiTimeEntries(prev => {
+                                const currentEntries = [...(prev[item.id] || [])];
+                                if (text === '' || isNaN(numValue)) {
+                                  // Remove entry if empty
+                                  currentEntries[idx] = undefined;
+                                } else {
+                                  currentEntries[idx] = numValue;
+                                }
+                                // Filter out undefined values but keep array indices
+                                return { ...prev, [item.id]: currentEntries };
+                              });
+                            }}
+                          />
+                        </View>
                       );
                     })}
                   </View>
                   
-                  {/* Timer controls */}
-                  <View style={styles.timerControls}>
-                    {currentTimerRunning === item.id ? (
-                      <>
-                        <Text style={styles.timerDisplay}>
-                          {formatElapsedTime(itemElapsedTimes[item.id] || 0)}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.stopTimerButton}
-                          onPress={() => stopMultiTimer(item.id)}
-                        >
-                          <Icon name="stop" size={18} color="#fff" />
-                          <Text style={styles.timerButtonText}>Stop & Save</Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <TouchableOpacity
-                        style={[
-                          styles.startTimerButton,
-                          currentTimerRunning !== null && currentTimerRunning !== item.id && styles.timerButtonDisabled
-                        ]}
-                        onPress={() => startMultiTimer(item.id)}
-                        disabled={currentTimerRunning !== null && currentTimerRunning !== item.id}
-                      >
-                        <Icon name="play-arrow" size={18} color="#fff" />
-                        <Text style={styles.timerButtonText}>
-                          Start Timer #{(multiTimeEntries[item.id]?.length || 0) + 1}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                    
-                    {/* Manual entry */}
-                    <View style={styles.manualEntryRow}>
-                      <TextInput
-                        style={styles.manualTimeInput}
-                        placeholder="Min"
-                        placeholderTextColor={themeConfig.text.disabled}
-                        keyboardType="decimal-pad"
-                        value={manualTimeInput[item.id] || ''}
-                        onChangeText={(text) => setManualTimeInput(prev => ({ ...prev, [item.id]: text }))}
-                      />
-                      <TouchableOpacity
-                        style={styles.addManualButton}
-                        onPress={() => {
-                          const time = parseFloat(manualTimeInput[item.id]);
-                          if (time && time > 0) {
-                            addTimeEntry(item.id, time);
-                            setManualTimeInput(prev => ({ ...prev, [item.id]: '' }));
-                          }
-                        }}
-                      >
-                        <Icon name="add" size={18} color={themeConfig.primary.main} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  
                   {/* Average display */}
-                  {(multiTimeEntries[item.id]?.length || 0) > 0 && (
-                    <View style={styles.averageDisplay}>
-                      <Text style={styles.averageLabel}>Average Time:</Text>
-                      <Text style={styles.averageValue}>{getAverageTime(item.id)} min</Text>
-                    </View>
-                  )}
+                  {(() => {
+                    const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e > 0);
+                    if (entries.length === 0) return null;
+                    const avg = entries.reduce((a, b) => a + b, 0) / entries.length;
+                    return (
+                      <View style={styles.averageDisplay}>
+                        <Text style={styles.averageLabel}>Average:</Text>
+                        <Text style={styles.averageValue}>{avg.toFixed(1)} min</Text>
+                        <Text style={styles.entriesCount}>({entries.length} entries)</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <View style={styles.commentContainer}>
@@ -1942,7 +1819,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontWeight: '500',
   },
-  // Multi-time entry styles
+  // Multi-time entry styles - Simple input fields
   timeEntryContainer: {
     marginTop: 15,
     padding: 12,
@@ -1957,90 +1834,24 @@ const styles = StyleSheet.create({
     color: themeConfig.text.primary,
     marginBottom: 10,
   },
-  timeEntriesRow: {
+  timeInputsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 12,
   },
-  timeEntryChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: 'row',
+  timeInputWrapper: {
+    flex: 1,
     alignItems: 'center',
-    minWidth: 55,
-    justifyContent: 'center',
   },
-  timeEntryChipEmpty: {
-    backgroundColor: themeConfig.background.paper,
-    borderColor: themeConfig.border.default,
-    borderStyle: 'dashed',
-  },
-  timeEntryChipFilled: {
-    backgroundColor: themeConfig.success.main,
-    borderColor: themeConfig.success.main,
-  },
-  timeEntryChipText: {
-    fontSize: 12,
+  timeInputLabel: {
+    fontSize: 11,
     color: themeConfig.text.secondary,
+    marginBottom: 4,
     fontWeight: '500',
   },
-  timeEntryChipTextFilled: {
-    color: '#fff',
-  },
-  timeEntryRemove: {
-    marginLeft: 4,
-  },
-  timerControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  timerDisplay: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: themeConfig.error.main,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    minWidth: 60,
-  },
-  startTimerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: themeConfig.primary.main,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  stopTimerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: themeConfig.error.main,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  timerButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  timerButtonDisabled: {
-    opacity: 0.5,
-  },
-  manualEntryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginLeft: 'auto',
-  },
-  manualTimeInput: {
-    width: 60,
-    height: 36,
+  timeInputField: {
+    width: '100%',
+    height: 40,
     borderWidth: 1,
     borderColor: themeConfig.border.default,
     borderRadius: 8,
@@ -2048,21 +1859,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     backgroundColor: '#fff',
+    color: themeConfig.text.primary,
   },
-  addManualButton: {
-    width: 36,
-    height: 36,
-    borderWidth: 1,
-    borderColor: themeConfig.primary.main,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: themeConfig.primary.light + '20',
+  timeInputFieldFilled: {
+    borderColor: themeConfig.success.main,
+    backgroundColor: themeConfig.success.light + '20',
   },
   averageDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: themeConfig.border.default,
@@ -2076,6 +1882,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: themeConfig.primary.main,
     fontWeight: '700',
+    marginLeft: 8,
+  },
+  entriesCount: {
+    fontSize: 12,
+    color: themeConfig.text.secondary,
     marginLeft: 8,
   },
 });
