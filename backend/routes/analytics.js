@@ -339,6 +339,7 @@ router.get('/dashboard', authenticate, (req, res) => {
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
       let query;
+      // Fix WHERE clause - should include all scheduled audits, not just completed ones
       const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
       const params = isAdmin ? [] : [userId, userId];
       
@@ -359,7 +360,7 @@ router.get('/dashboard', authenticate, (req, res) => {
           END) as completed_on_time
         FROM scheduled_audits sa
         LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        WHERE 1=1
         ${whereClause}`;
       } else if (dbType === 'mysql') {
         query = `SELECT 
@@ -378,7 +379,7 @@ router.get('/dashboard', authenticate, (req, res) => {
           END) as completed_on_time
         FROM scheduled_audits sa
         LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        WHERE 1=1
         ${whereClause}`;
       } else {
         query = `SELECT 
@@ -397,11 +398,15 @@ router.get('/dashboard', authenticate, (req, res) => {
           END) as completed_on_time
         FROM scheduled_audits sa
         LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE (sa.status = 'completed' OR a.id IS NOT NULL)
+        WHERE 1=1
         ${whereClause}`;
       }
       dbInstance.get(query, params, (err, row) => {
-        if (err) return reject(err);
+        if (err) {
+          logger.error('Schedule Adherence query error:', err);
+          // Return default values instead of rejecting
+          return resolve({ total: 0, onTime: 0, adherence: 0 });
+        }
         const total = row?.total_scheduled || 0;
         const onTime = row?.completed_on_time || 0;
         const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;

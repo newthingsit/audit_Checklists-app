@@ -41,8 +41,9 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
         return res.status(404).json({ error: 'Audit not found' });
       }
 
+      // First, get all items with their selected options
       dbInstance.all(
-        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
+        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required, ci.order_index,
                 cio.option_text as selected_option_text, cio.mark as selected_mark,
                 ai.photo_url, ai.mark, ai.status, ai.comment
          FROM audit_items ai
@@ -57,130 +58,128 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             return res.status(500).json({ error: 'Database error', details: err.message });
           }
 
-          // Create PDF with enhanced formatting matching web UI
-          const doc = new PDFDocument({ margin: 40, size: 'A4' });
+          // Get all options for each item to calculate max scores
+          Promise.all(items.map((item) => {
+            return new Promise((resolve, reject) => {
+              dbInstance.all(
+                `SELECT mark FROM checklist_item_options WHERE item_id = ?`,
+                [item.item_id],
+                (err, options) => {
+                  if (err) {
+                    logger.error('Error fetching options:', err);
+                    return resolve({ ...item, maxScore: parseFloat(item.selected_mark) || 3 });
+                  }
+                  
+                  // Find max numeric score (exclude 'NA')
+                  const numericMarks = options
+                    .map(o => parseFloat(o.mark))
+                    .filter(m => !isNaN(m));
+                  const maxScore = numericMarks.length > 0 ? Math.max(...numericMarks) : (parseFloat(item.selected_mark) || 3);
+                  
+                  resolve({ ...item, maxScore });
+                }
+              );
+            });
+          })).then(itemsWithMaxScores => {
+
+          // Calculate category-wise scores
+          const categoryData = {};
+          let totalPerfectScore = 0;
+          let totalActualScore = 0;
+          
+          itemsWithMaxScores.forEach(item => {
+            const cat = item.category || 'Uncategorized';
+            if (!categoryData[cat]) {
+              categoryData[cat] = { 
+                perfectScore: 0, 
+                actualScore: 0, 
+                count: 0, 
+                items: [] 
+              };
+            }
+            categoryData[cat].items.push(item);
+            categoryData[cat].count++;
+            
+            const maxScore = item.maxScore || 3;
+            const actualMark = parseFloat(item.mark) || 0;
+            
+            categoryData[cat].perfectScore += maxScore;
+            categoryData[cat].actualScore += actualMark;
+            totalPerfectScore += maxScore;
+            totalActualScore += actualMark;
+          });
+
+          // Create PDF with detailed format matching the screenshot
+          const doc = new PDFDocument({ margin: 50, size: 'A4' });
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename=audit-${auditId}.pdf`);
+          const storeName = audit.restaurant_name || audit.location || 'Restaurant';
+          const fileName = `${audit.template_name || 'Report'} - ${storeName}.pdf`;
+          res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
           doc.pipe(res);
 
           // Helper function to get score color
           const getScoreColor = (score) => {
-            if (score >= 80) return '#22c55e'; // Green
+            if (score >= 90) return '#22c55e'; // Green
+            if (score >= 80) return '#4caf50'; // Light Green
             if (score >= 60) return '#f59e0b'; // Orange
             return '#ef4444'; // Red
           };
 
-          // Header with restaurant name and status
-          const storeName = audit.restaurant_name || audit.location || 'Restaurant';
-          doc.fontSize(24).fillColor('#1976d2').text(storeName, { align: 'center' });
-          doc.fontSize(12).fillColor('#666').text(`Store: ${audit.location || 'N/A'}`, { align: 'center' });
+          // Header Section (matching screenshot format)
+          doc.fontSize(18).fillColor('#000').text(`${audit.template_name || 'Report'} - Report`, { align: 'center' });
+          doc.fontSize(14).fillColor('#666').text('Lite Bite Foods', { align: 'center' });
           doc.moveDown(0.5);
           
-          // Status badge and score
-          const statusColor = audit.status === 'completed' ? '#22c55e' : '#f59e0b';
-          doc.fontSize(12).fillColor(statusColor).text(audit.status?.toUpperCase() || 'IN PROGRESS', { align: 'center' });
-          
-          if (audit.score !== null && audit.score !== undefined) {
-            const scoreColor = getScoreColor(audit.score);
-            doc.fontSize(36).fillColor(scoreColor).text(`${audit.score}%`, { align: 'center' });
-            doc.fontSize(10).fillColor('#666').text(`${items.length} / ${items.length} items completed`, { align: 'center' });
-          }
-          doc.moveDown();
+          // Overall Score
+          const overallScore = totalPerfectScore > 0 ? Math.round((totalActualScore / totalPerfectScore) * 100 * 10) / 10 : 0;
+          doc.fontSize(16).fillColor('#000').text(`${overallScore}% (${Math.round(totalActualScore)}/${Math.round(totalPerfectScore)})`, { align: 'center' });
+          doc.moveDown(1);
 
-          // Audit Information Box
-          doc.rect(40, doc.y, 515, 80).fill('#f5f5f5');
-          const infoY = doc.y + 10;
+          // Details Section
+          doc.fontSize(12).fillColor('#000').text('Details', { underline: true });
           doc.fontSize(10).fillColor('#333');
-          doc.text(`Template: ${audit.template_name || 'N/A'}`, 50, infoY);
-          doc.text(`Auditor: ${audit.user_name || 'N/A'}`, 50, infoY + 15);
-          doc.text(`Created: ${new Date(audit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, infoY + 30);
+          doc.text(`Outlet Name: ${storeName}`, 50, doc.y);
+          doc.text(`Start Date: ${new Date(audit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, doc.y + 12);
           if (audit.completed_at) {
-            doc.text(`Completed: ${new Date(audit.completed_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, infoY + 45);
+            doc.text(`End Date: ${new Date(audit.completed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, doc.y + 12);
           }
-          doc.text(`Category: ${audit.category || 'N/A'}`, 300, infoY);
-          doc.y = infoY + 70;
-          doc.moveDown();
+          doc.text(`Submitted by: ${audit.user_name || 'N/A'}`, 50, doc.y + 12);
+          doc.moveDown(1.5);
 
-          // Notes
-          if (audit.notes) {
-            doc.fontSize(12).fillColor('#1976d2').text('Notes', { underline: true });
-            doc.fontSize(10).fillColor('#333').text(audit.notes);
-            doc.moveDown();
-          }
-
-          // Calculate category-wise scores with enhanced data
-          const categoryData = {};
-          items.forEach(item => {
-            const cat = item.category || 'Uncategorized';
-            if (!categoryData[cat]) {
-              categoryData[cat] = { totalScore: 0, maxScore: 0, count: 0, completed: 0, items: [] };
-            }
-            categoryData[cat].items.push(item);
-            categoryData[cat].count++;
-            if (item.status === 'completed') categoryData[cat].completed++;
-            
-            const mark = parseFloat(item.mark) || 0;
-            const maxMark = parseFloat(item.selected_mark) || 3; // Default max mark
-            categoryData[cat].totalScore += mark;
-            categoryData[cat].maxScore += maxMark;
-          });
-
-          // Category Scores Section (visual boxes like web UI)
-          doc.fontSize(14).fillColor('#333').text('Category Scores', { underline: true });
+          // Score By Section
+          doc.fontSize(12).fillColor('#000').text('Score By Section', { underline: true });
           doc.moveDown(0.5);
-
-          let boxX = 40;
-          let boxY = doc.y;
-          const boxWidth = 165;
-          const boxHeight = 70;
-          let boxCount = 0;
-
+          
           Object.keys(categoryData).sort().forEach(cat => {
             const data = categoryData[cat];
-            const percentage = data.maxScore > 0 ? Math.round((data.totalScore / data.maxScore) * 100) : 0;
-            const bgColor = getScoreColor(percentage);
-            
-            // Check if we need a new row
-            if (boxCount > 0 && boxCount % 3 === 0) {
-              boxX = 40;
-              boxY += boxHeight + 10;
-              
-              // Check if we need a new page
-              if (boxY > 700) {
-                doc.addPage();
-                boxY = 50;
-              }
-            }
-            
-            // Draw category box
-            doc.rect(boxX, boxY, boxWidth, boxHeight).fill(bgColor);
-            doc.fontSize(9).fillColor('white').text(cat.toUpperCase(), boxX + 10, boxY + 10, { width: boxWidth - 20 });
-            doc.fontSize(24).text(`${percentage}%`, boxX + 10, boxY + 30);
-            doc.fontSize(8).text(`${data.completed}/${data.count} items`, boxX + 10, boxY + 55);
-            
-            boxX += boxWidth + 10;
-            boxCount++;
+            const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+            doc.fontSize(10).fillColor('#333');
+            doc.text(`${cat.toUpperCase()}: Perfect Score: ${Math.round(data.perfectScore)}, Actual Score: ${Math.round(data.actualScore)}, Percentage: ${percentage}%`);
           });
+          doc.moveDown(1);
 
-          // Move past the category boxes
-          doc.y = boxY + boxHeight + 20;
-          if (doc.y > 700) {
-            doc.addPage();
-          }
-          
-          doc.moveDown();
+          // Add footer function for all pages
+          const addFooter = (pageNum, totalPages) => {
+            doc.fontSize(8).fillColor('#999');
+            doc.text(`Page ${pageNum} of ${totalPages}`, 50, 780);
+            doc.text('Powered By Accrue', 450, 780, { align: 'right' });
+          };
 
-          // Checklist Items Section
-          doc.fontSize(14).fillColor('#333').text('Checklist Items', { underline: true });
-          doc.moveDown(0.5);
-
+          // Detailed Questions Section (grouped by category)
           let currentCategory = null;
-          let itemIndex = 1;
+          let questionNumber = 1;
+          let pageNumber = 1;
           
-          for (const item of items) {
+          // Estimate total pages (rough calculation)
+          const itemsPerPage = 12;
+          let estimatedTotalPages = Math.ceil(itemsWithMaxScores.length / itemsPerPage) + 1;
+          
+          for (const item of itemsWithMaxScores) {
             // Check if we need a new page
             if (doc.y > 700) {
+              addFooter(pageNumber, estimatedTotalPages);
               doc.addPage();
+              pageNumber++;
             }
             
             // Group by category
@@ -191,66 +190,81 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               }
               currentCategory = itemCategory;
               
-              // Category header with score
+              // Category header with score (matching screenshot format)
               const catData = categoryData[itemCategory];
-              const catScore = catData && catData.maxScore > 0 
-                ? Math.round((catData.totalScore / catData.maxScore) * 100) 
-                : 0;
-              const catColor = getScoreColor(catScore);
+              const catPercentage = catData.perfectScore > 0 ? Math.round((catData.actualScore / catData.perfectScore) * 100) : 0;
+              const catActual = Math.round(catData.actualScore);
+              const catPerfect = Math.round(catData.perfectScore);
               
-              doc.fontSize(12).fillColor(catColor).text(`${itemCategory} (${catScore}%)`, { underline: true });
-              doc.fillColor('black');
+              doc.fontSize(12).fillColor('#000').text(`${itemCategory.toUpperCase()} - ${catPercentage}% (${catActual}/${catPerfect})`, { underline: true });
               doc.moveDown(0.3);
             }
 
-            // Item title with status indicator
-            const statusIcon = item.status === 'completed' ? '✓' : '○';
-            const itemColor = item.mark && parseFloat(item.mark) > 0 ? '#22c55e' : '#ef4444';
+            // Question format: "Question X: [Title]" with Score and Response
+            doc.fontSize(10).fillColor('#000');
+            doc.text(`Question ${questionNumber}: ${item.title}`, { continued: false });
             
-            doc.fontSize(11).fillColor('#333');
-            doc.text(`${itemIndex}. ${item.title}`, { continued: false });
+            // Score and Response in table format
+            const actualMark = parseFloat(item.mark) || 0;
+            const maxMark = item.maxScore || 3;
+            const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
             
-            // Status chips
-            doc.fontSize(9).fillColor('#666');
-            let statusLine = `   [${item.category || 'N/A'}] [${item.status || 'pending'}]`;
-            if (item.mark !== null && item.mark !== undefined) {
-              statusLine += ` [Mark: ${item.mark}]`;
-            }
-            if (item.selected_option_text) {
-              statusLine += ` [${item.selected_option_text}]`;
-            }
-            doc.text(statusLine);
+            // Score: X/Y format
+            doc.fontSize(10).fillColor('#333');
+            doc.text(`   Score: ${actualMark}/${maxMark}`, { continued: true });
+            doc.text(`   Response: ${response}`, { continued: false });
             
-            // Comment
+            // Remarks/Comment
             if (item.comment) {
-              doc.fontSize(9).fillColor('#1976d2');
-              doc.text(`   Comment: ${item.comment}`);
+              doc.fontSize(9).fillColor('#666');
+              doc.text(`   Remarks: ${item.comment}`);
             }
             
-            // Photo evidence with URL
+            // Photo evidence - try to embed image if available
             if (item.photo_url) {
-              const appUrl = process.env.APP_URL || 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net';
-              let photoPath = item.photo_url;
-              if (!photoPath.startsWith('http')) {
-                photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
+              try {
+                const appUrl = process.env.APP_URL || 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net';
+                let photoPath = item.photo_url;
+                if (!photoPath.startsWith('http')) {
+                  photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
+                }
+                
+                // Try to add image (small thumbnail)
+                const fs = require('fs');
+                const path = require('path');
+                const uploadsPath = path.join(__dirname, '..', 'uploads');
+                const localPath = path.join(uploadsPath, path.basename(photoPath));
+                
+                if (fs.existsSync(localPath)) {
+                  const imageY = doc.y;
+                  doc.image(localPath, 400, imageY, { width: 80, height: 60, fit: [80, 60] });
+                } else {
+                  // If image not found locally, just show URL
+                  doc.fontSize(8).fillColor('#1976d2');
+                  doc.text(`   Photo: ${photoPath}`, { link: photoPath });
+                }
+              } catch (imgErr) {
+                // If image loading fails, just show URL
+                doc.fontSize(8).fillColor('#1976d2');
+                doc.text(`   Photo: ${item.photo_url}`);
               }
-              
-              doc.fontSize(9).fillColor('#1976d2');
-              doc.text(`   📷 Photo Evidence: `, { continued: true });
-              doc.fillColor('blue').text(photoPath, { link: photoPath, underline: true });
             }
             
-            doc.fillColor('black');
-            doc.moveDown(0.4);
-            itemIndex++;
+            doc.fillColor('#000');
+            doc.moveDown(0.5);
+            questionNumber++;
           }
 
-          // Footer
-          doc.fontSize(8).fillColor('#999');
-          doc.text(`Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, 780);
-          doc.text('Audit Pro - Restaurant Audit System', 450, 780);
+          // Final footer
+          addFooter(pageNumber, pageNumber);
 
           doc.end();
+          }).catch(err => {
+            logger.error('Error generating PDF:', err);
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Error generating PDF', details: err.message });
+            }
+          });
         }
       );
     }
