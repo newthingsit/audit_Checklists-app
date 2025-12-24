@@ -45,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         delete axios.defaults.headers.common['Authorization'];
       }
       // Don't log 503 or timeout errors - they're being retried automatically
-      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && error.code !== 'ETIMEDOUT' && !error.message?.includes('timeout')) {
         if (__DEV__) {
           console.error('Error fetching user:', error.message);
         }
@@ -63,7 +63,7 @@ export const AuthProvider = ({ children }) => {
       return await fetchUser();
     } catch (error) {
       // Don't log 503 or timeout errors - they're being retried automatically
-      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && error.code !== 'ETIMEDOUT' && !error.message?.includes('timeout')) {
         if (__DEV__) {
           console.error('Error refreshing user:', error.message);
         }
@@ -83,7 +83,7 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       // Don't log 503 or timeout errors - they're being retried automatically
-      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && error.code !== 'ETIMEDOUT' && !error.message?.includes('timeout')) {
         console.error('Error loading stored auth:', error);
       }
     } finally {
@@ -164,7 +164,7 @@ export const AuthProvider = ({ children }) => {
       // Don't log sensitive data in production
       if (__DEV__) {
         // Don't log 503 or timeout errors - they're being retried automatically
-        if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && error.code !== 'ETIMEDOUT' && !error.message?.includes('timeout')) {
           console.error('Login error:', error.message);
         }
       }
