@@ -145,7 +145,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, { email, password }, {
+        timeout: 15000 // 15 second timeout for login requests
+      });
       
       if (!response.data || !response.data.token) {
         throw new Error('Invalid response from server');
