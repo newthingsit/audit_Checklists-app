@@ -163,52 +163,81 @@ router.get('/dashboard', authenticate, (req, res) => {
     // Schedule Adherence - percentage of scheduled audits completed on time
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
+      const userEmail = req.user.email || '';
+      const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
       let query;
-      const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
-      const params = isAdmin ? [] : [userId, userId];
+      let params;
       
-      if (dbType === 'mssql' || dbType === 'sqlserver') {
+      // Build WHERE clause to include email-based assignments (like support@lbf.co.in)
+      if (isAdmin) {
         query = `SELECT 
           COUNT(*) as total_scheduled,
           SUM(CASE 
             WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
+              AND (
+                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+              )
             THEN 1 
             ELSE 0 
           END) as completed_on_time
         FROM scheduled_audits sa
         LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE sa.status = 'completed' OR a.id IS NOT NULL
-        ${whereClause}`;
-      } else if (dbType === 'mysql') {
-        query = `SELECT 
-          COUNT(*) as total_scheduled,
-          SUM(CASE 
-            WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
-            THEN 1 
-            ELSE 0 
-          END) as completed_on_time
-        FROM scheduled_audits sa
-        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE sa.status = 'completed' OR a.id IS NOT NULL
-        ${whereClause}`;
+        WHERE 1=1`;
+        params = [];
       } else {
-        query = `SELECT 
-          COUNT(*) as total_scheduled,
-          SUM(CASE 
-            WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND DATE(sa.scheduled_date) = DATE(a.completed_at)
-            THEN 1 
-            ELSE 0 
-          END) as completed_on_time
-        FROM scheduled_audits sa
-        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE sa.status = 'completed' OR a.id IS NOT NULL
-        ${whereClause}`;
+        // For regular users, include audits assigned by email
+        if (isSqlServer) {
+          query = `SELECT 
+            COUNT(*) as total_scheduled,
+            SUM(CASE 
+              WHEN a.id IS NOT NULL AND a.status = 'completed' 
+                AND (
+                  -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                  CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+                )
+              THEN 1 
+              ELSE 0 
+            END) as completed_on_time
+          FROM scheduled_audits sa
+          LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+          LEFT JOIN users u ON sa.assigned_to = u.id
+          WHERE (sa.created_by = ? OR sa.assigned_to = ? OR sa.assigned_to IN (
+            SELECT id FROM users WHERE LOWER(email) = LOWER(?)
+          ))`;
+          params = [userId, userId, userEmail];
+        } else {
+          query = `SELECT 
+            COUNT(*) as total_scheduled,
+            SUM(CASE 
+              WHEN a.id IS NOT NULL AND a.status = 'completed' 
+                AND (
+                  -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
+                  DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
+                )
+              THEN 1 
+              ELSE 0 
+            END) as completed_on_time
+          FROM scheduled_audits sa
+          LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
+          LEFT JOIN users u ON sa.assigned_to = u.id
+          WHERE (sa.created_by = ? OR sa.assigned_to = ? OR EXISTS (
+            SELECT 1 FROM users u2 
+            WHERE u2.id = sa.assigned_to 
+            AND LOWER(u2.email) = LOWER(?)
+          ) OR sa.assigned_to IN (
+            SELECT id FROM users WHERE LOWER(email) = LOWER(?)
+          ))`;
+          params = [userId, userId, userEmail, userEmail];
+        }
       }
+      
       dbInstance.get(query, params, (err, row) => {
-        if (err) return reject(err);
+        if (err) {
+          logger.error('Schedule Adherence query error:', err);
+          // Return default values instead of rejecting
+          return resolve({ total: 0, onTime: 0, adherence: 0 });
+        }
         const total = row?.total_scheduled || 0;
         const onTime = row?.completed_on_time || 0;
         const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;

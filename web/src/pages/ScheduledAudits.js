@@ -170,20 +170,24 @@ const ScheduledAudits = () => {
       if (inProgressSchedules.length > 0) {
         const auditPromises = inProgressSchedules.map(schedule =>
           axios.get(`/api/audits/by-scheduled/${schedule.id}`)
-            .then(response => ({ scheduleId: schedule.id, auditId: response.data.audit.id }))
+            .then(response => ({ 
+              scheduleId: schedule.id, 
+              auditId: response.data.audit.id,
+              auditStatus: response.data.audit.status 
+            }))
             .catch((error) => {
               // Silently handle 404 errors (no audit linked yet)
               if (error.response?.status !== 404) {
                 console.error('Error fetching linked audit:', error);
               }
-              return { scheduleId: schedule.id, auditId: null };
+              return { scheduleId: schedule.id, auditId: null, auditStatus: null };
             })
         );
         const auditResults = await Promise.all(auditPromises);
         const auditsMap = {};
-        auditResults.forEach(({ scheduleId, auditId }) => {
+        auditResults.forEach(({ scheduleId, auditId, auditStatus }) => {
           if (auditId) {
-            auditsMap[scheduleId] = auditId;
+            auditsMap[scheduleId] = { auditId, auditStatus };
           }
         });
         setLinkedAudits(auditsMap);
@@ -265,14 +269,25 @@ const ScheduledAudits = () => {
   };
 
   const handleContinueAudit = (schedule) => {
-    const auditId = linkedAudits[schedule.id];
+    const linkedAudit = linkedAudits[schedule.id];
+    const auditId = linkedAudit?.auditId || linkedAudit; // Support both old (number) and new (object) format
     if (auditId) {
       navigate(`/audit/${auditId}`);
     }
   };
 
   const canContinueSchedule = (schedule) => {
-    return getStatusValue(schedule.status) === 'in_progress' && linkedAudits[schedule.id];
+    const statusValue = getStatusValue(schedule.status);
+    const linkedAudit = linkedAudits[schedule.id];
+    
+    // Only show "Continue Audit" if:
+    // 1. Scheduled audit status is 'in_progress'
+    // 2. There's a linked audit
+    // 3. The linked audit is NOT completed (safety check)
+    return statusValue === 'in_progress' && 
+           linkedAudit && 
+           linkedAudit.auditId &&
+           linkedAudit.auditStatus !== 'completed';
   };
 
   const canStartSchedule = (schedule) => {

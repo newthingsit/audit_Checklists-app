@@ -39,14 +39,26 @@ const markScheduledAuditInProgress = (dbInstance, scheduleId) => {
 
 const handleScheduledAuditCompletion = (dbInstance, auditId) => {
   dbInstance.get(
-    'SELECT scheduled_audit_id FROM audits WHERE id = ?',
+    'SELECT scheduled_audit_id, status FROM audits WHERE id = ?',
     [auditId],
     (err, auditRow) => {
       if (err) {
         logger.error('Error fetching audit for schedule completion:', err.message);
         return;
       }
-      if (!auditRow || !auditRow.scheduled_audit_id) {
+      if (!auditRow) {
+        logger.warn(`[Scheduled Audit Completion] Audit ${auditId} not found`);
+        return;
+      }
+      
+      // Only update scheduled audit if the audit is actually completed
+      if (auditRow.status !== 'completed') {
+        logger.debug(`[Scheduled Audit Completion] Audit ${auditId} status is '${auditRow.status}', not 'completed'. Skipping scheduled audit update.`);
+        return;
+      }
+      
+      if (!auditRow.scheduled_audit_id) {
+        logger.debug(`[Scheduled Audit Completion] Audit ${auditId} has no scheduled_audit_id. Skipping.`);
         return;
       }
 
@@ -59,20 +71,23 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
             logger.error('Error fetching scheduled audit for completion:', scheduleErr.message);
             return;
           }
-          if (!schedule) return;
+          if (!schedule) {
+            logger.warn(`[Scheduled Audit Completion] Scheduled audit ${scheduleId} not found`);
+            return;
+          }
 
-          logger.debug(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Status: ${schedule.status}`);
+          logger.info(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Current Status: ${schedule.status}, Audit ID: ${auditId}`);
 
           if (!schedule.frequency || schedule.frequency === 'once') {
             // One-time audit: mark as completed
             dbInstance.run(
               'UPDATE scheduled_audits SET status = ? WHERE id = ?',
               ['completed', scheduleId],
-              (updateErr) => {
+              function(updateErr) {
                 if (updateErr) {
-                  logger.error('Error marking scheduled audit as completed:', updateErr.message);
+                  logger.error(`[Scheduled Audit Completion] Error marking scheduled audit ${scheduleId} as completed:`, updateErr.message);
                 } else {
-                  logger.debug(`[Scheduled Audit Completion] Marked schedule ${scheduleId} as completed`);
+                  logger.info(`[Scheduled Audit Completion] Successfully marked schedule ${scheduleId} as completed (rows affected: ${this.changes})`);
                 }
               }
             );
@@ -85,11 +100,11 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
               dbInstance.run(
                 'UPDATE scheduled_audits SET status = ? WHERE id = ?',
                 ['pending', scheduleId],
-                (updateErr) => {
+                function(updateErr) {
                   if (updateErr) {
-                    logger.error('Error resetting scheduled audit status:', updateErr.message);
+                    logger.error(`[Scheduled Audit Completion] Error resetting scheduled audit ${scheduleId} status:`, updateErr.message);
                   } else {
-                    logger.debug(`[Scheduled Audit Completion] Reset schedule ${scheduleId} to pending`);
+                    logger.info(`[Scheduled Audit Completion] Successfully reset schedule ${scheduleId} to pending (rows affected: ${this.changes})`);
                   }
                 }
               );
@@ -97,11 +112,11 @@ const handleScheduledAuditCompletion = (dbInstance, auditId) => {
               dbInstance.run(
                 'UPDATE scheduled_audits SET status = ?, scheduled_date = ?, next_run_date = ? WHERE id = ?',
                 ['pending', nextDate, nextDate, scheduleId],
-                (updateErr) => {
+                function(updateErr) {
                   if (updateErr) {
-                    logger.error('Error advancing scheduled audit date:', updateErr.message);
+                    logger.error(`[Scheduled Audit Completion] Error advancing scheduled audit ${scheduleId} date:`, updateErr.message);
                   } else {
-                    logger.debug(`[Scheduled Audit Completion] Advanced schedule ${scheduleId} to ${nextDate} with pending status`);
+                    logger.info(`[Scheduled Audit Completion] Successfully advanced schedule ${scheduleId} to ${nextDate} with pending status (rows affected: ${this.changes})`);
                   }
                 }
               );
@@ -684,9 +699,8 @@ router.post('/', authenticate, (req, res) => {
           
           // Helper function to create audit items
           function createAuditItems(auditId, items, linkedSchedule) {
-              if (linkedSchedule) {
-                markScheduledAuditInProgress(dbInstance, linkedSchedule.id);
-              }
+              // Don't mark as in_progress here - wait until user actually starts working on items
+              // This prevents status from changing automatically when audit is just created
 
               // Create audit items
               if (items.length > 0) {
@@ -912,18 +926,45 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
     }
 
     function updateAuditItem() {
-      // First check if audit item exists
+      // First check if audit has scheduled_audit_id and mark as in_progress if needed
       dbInstance.get(
-        'SELECT id FROM audit_items WHERE audit_id = ? AND item_id = ?',
-        [auditId, itemId],
-        (err, existingItem) => {
-          if (err) {
-            logger.error('Error checking for existing audit item:', err.message);
-            return res.status(500).json({ error: 'Database error checking existing item' });
+        'SELECT scheduled_audit_id FROM audits WHERE id = ?',
+        [auditId],
+        (auditErr, audit) => {
+          if (!auditErr && audit && audit.scheduled_audit_id) {
+            // Check if scheduled audit is still pending and mark as in_progress
+            dbInstance.get(
+              'SELECT status FROM scheduled_audits WHERE id = ?',
+              [audit.scheduled_audit_id],
+              (scheduleErr, schedule) => {
+                if (!scheduleErr && schedule && 
+                    schedule.status !== 'in_progress' && 
+                    schedule.status !== 'completed') {
+                  // Mark scheduled audit as in_progress when user first starts working
+                  markScheduledAuditInProgress(dbInstance, audit.scheduled_audit_id);
+                }
+                continueWithItemUpdate();
+              }
+            );
+          } else {
+            continueWithItemUpdate();
           }
+        }
+      );
+      
+      function continueWithItemUpdate() {
+        // Check if audit item exists
+        dbInstance.get(
+          'SELECT id FROM audit_items WHERE audit_id = ? AND item_id = ?',
+          [auditId, itemId],
+          (err, existingItem) => {
+            if (err) {
+              logger.error('Error checking for existing audit item:', err.message);
+              return res.status(500).json({ error: 'Database error checking existing item' });
+            }
 
-          // If item doesn't exist, create it first
-          if (!existingItem) {
+            // If item doesn't exist, create it first
+            if (!existingItem) {
             const insertFields = ['audit_id', 'item_id', 'status'];
             const insertValues = [auditId, itemId, status || 'pending'];
             const insertPlaceholders = ['?', '?', '?'];
@@ -1110,13 +1151,76 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                     ? Math.min(100, Math.round((weightedActualScore / weightedTotalPossible) * 100))
                     : 0;
 
-                  const total = auditItems.length;
-                  const completed = auditItems.filter(item => {
-                    const hasMark = item.mark !== null && item.mark !== undefined && item.mark !== '';
-                    const isNA = item.mark === 'NA' || String(item.mark).toUpperCase() === 'NA';
-                    return hasMark || isNA;
-                  }).length;
-                  const auditStatus = completed === total ? 'completed' : 'in_progress';
+                  // Compare against ALL template items, not just audit items created
+                  // This ensures completion is based on all items in the template, including those not yet started
+                  const total = templateItems.length;
+                  
+                  // Create a map of audit items by item_id for quick lookup
+                  const auditItemMap = {};
+                  auditItems.forEach(item => {
+                    auditItemMap[item.item_id] = item;
+                  });
+                  
+                  // Count how many template items have been completed
+                  // An item is completed only if:
+                  // 1. It exists in audit_items
+                  // 2. It has a valid mark (not null, not empty, not undefined, or is 'NA')
+                  // 3. The mark is a meaningful value (not just whitespace)
+                  let completed = 0;
+                  let missingItems = [];
+                  
+                  templateItems.forEach(templateItem => {
+                    const auditItem = auditItemMap[templateItem.id];
+                    if (!auditItem) {
+                      // Item doesn't exist in audit_items yet - not completed
+                      missingItems.push(templateItem.id);
+                      return;
+                    }
+                    
+                    // Check if item has a valid mark - be very strict
+                    const markValue = auditItem.mark;
+                    
+                    // Check for null, undefined, or empty
+                    if (markValue === null || markValue === undefined) {
+                      missingItems.push(templateItem.id);
+                      return;
+                    }
+                    
+                    // Convert to string and trim
+                    const markStr = String(markValue).trim();
+                    
+                    // Check if it's empty after trimming
+                    if (markStr === '') {
+                      missingItems.push(templateItem.id);
+                      return;
+                    }
+                    
+                    // Check if it's NA (case-insensitive)
+                    const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
+                    
+                    // If it's NA or has a non-empty value, it's completed
+                    if (isNA || markStr.length > 0) {
+                      completed++;
+                    } else {
+                      missingItems.push(templateItem.id);
+                    }
+                  });
+                  
+                  // Log for debugging if items are missing
+                  if (missingItems.length > 0) {
+                    logger.info(`[Audit ${auditId}] Completion check: ${completed}/${total} items completed. Missing marks for ${missingItems.length} items.`);
+                    if (missingItems.length <= 10) {
+                      logger.debug(`[Audit ${auditId}] Missing marks for items: ${missingItems.join(', ')}`);
+                    }
+                  }
+                  
+                  // Only mark as completed if ALL items have valid marks
+                  const auditStatus = (completed === total && total > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
+                  
+                  // Force in_progress if any items are missing
+                  if (missingItems.length > 0) {
+                    logger.info(`[Audit ${auditId}] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${total} total items`);
+                  }
 
                   dbInstance.run(
                     `UPDATE audits 
@@ -1166,37 +1270,98 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                         ? Math.round((totalMarks / (total * maxMark)) * 100) 
                         : 0;
                       
-                      dbInstance.all(
-                        `SELECT COUNT(*) as completed
-                         FROM audit_items 
-                         WHERE audit_id = ? AND (mark IS NOT NULL OR status = 'completed')`,
-                        [auditId],
-                        (err, completedResult) => {
-                          if (!err && completedResult.length > 0) {
-                            const completed = completedResult[0].completed || 0;
-                            const auditStatus = completed === total ? 'completed' : 'in_progress';
+                      // Get template items to check against ALL items, not just audit_items
+                      dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (templateErr, auditRow) => {
+                        if (templateErr || !auditRow) {
+                          logger.error('Error fetching audit template for fallback:', templateErr);
+                          return res.json({ message: 'Audit item updated successfully' });
+                        }
+                        
+                        dbInstance.all(
+                          'SELECT id FROM checklist_items WHERE template_id = ?',
+                          [auditRow.template_id],
+                          (templateItemsErr, templateItems) => {
+                            if (templateItemsErr || !templateItems) {
+                              logger.error('Error fetching template items for fallback:', templateItemsErr);
+                              return res.json({ message: 'Audit item updated successfully' });
+                            }
+                            
+                            const templateTotal = templateItems.length;
+                            
+                            // Get all audit items with marks
+                            dbInstance.all(
+                              'SELECT item_id, mark FROM audit_items WHERE audit_id = ?',
+                              [auditId],
+                              (auditItemsErr, allAuditItems) => {
+                                if (auditItemsErr) {
+                                  logger.error('Error fetching audit items for fallback:', auditItemsErr);
+                                  return res.json({ message: 'Audit item updated successfully' });
+                                }
+                                
+                                // Create map of audit items
+                                const auditItemMap = {};
+                                allAuditItems.forEach(item => {
+                                  auditItemMap[item.item_id] = item;
+                                });
+                                
+                                // Count completed using strict validation
+                                let completed = 0;
+                                let missingItems = [];
+                                
+                                templateItems.forEach(templateItem => {
+                                  const auditItem = auditItemMap[templateItem.id];
+                                  if (!auditItem) {
+                                    missingItems.push(templateItem.id);
+                                    return;
+                                  }
+                                  
+                                  const markValue = auditItem.mark;
+                                  if (markValue === null || markValue === undefined) {
+                                    missingItems.push(templateItem.id);
+                                    return;
+                                  }
+                                  
+                                  const markStr = String(markValue).trim();
+                                  if (markStr === '') {
+                                    missingItems.push(templateItem.id);
+                                    return;
+                                  }
+                                  
+                                  const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
+                                  if (isNA || markStr.length > 0) {
+                                    completed++;
+                                  } else {
+                                    missingItems.push(templateItem.id);
+                                  }
+                                });
+                                
+                                const auditStatus = (completed === templateTotal && templateTotal > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
+                                
+                                if (missingItems.length > 0) {
+                                  logger.info(`[Audit ${auditId} - Fallback] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${templateTotal} total`);
+                                }
 
-                            dbInstance.run(
-                              `UPDATE audits 
-                               SET completed_items = ?, score = ?, status = ?, 
-                                   completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
-                               WHERE id = ?`,
-                              [completed, score, auditStatus, completed, total, auditId],
-                              function(updateErr) {
-                                if (updateErr) {
-                                  logger.error('Error updating audit:', updateErr.message);
-                                }
-                                if (auditStatus === 'completed') {
-                                  handleScheduledAuditCompletion(dbInstance, auditId);
-                                }
-                                res.json({ message: 'Audit item updated successfully' });
+                                dbInstance.run(
+                                  `UPDATE audits 
+                                   SET completed_items = ?, score = ?, status = ?, 
+                                       completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
+                                   WHERE id = ?`,
+                                  [completed, score, auditStatus, completed, templateTotal, auditId],
+                                  function(updateErr) {
+                                    if (updateErr) {
+                                      logger.error('Error updating audit:', updateErr.message);
+                                    }
+                                    if (auditStatus === 'completed') {
+                                      handleScheduledAuditCompletion(dbInstance, auditId);
+                                    }
+                                    res.json({ message: 'Audit item updated successfully' });
+                                  }
+                                );
                               }
                             );
-                          } else {
-                            res.json({ message: 'Audit item updated successfully' });
                           }
-                        }
-                      );
+                        );
+                      });
                     } else {
                       res.json({ message: 'Audit item updated successfully' });
                     }
@@ -1242,6 +1407,23 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
 
     if (audit.status === 'completed' && !isAdmin) {
       return res.status(403).json({ error: 'Cannot modify items in a completed audit' });
+    }
+
+    // If this audit is linked to a scheduled audit and status is still pending,
+    // mark the scheduled audit as in_progress when user first starts working
+    if (audit.scheduled_audit_id) {
+      dbInstance.get(
+        'SELECT status FROM scheduled_audits WHERE id = ?',
+        [audit.scheduled_audit_id],
+        (scheduleErr, schedule) => {
+          if (!scheduleErr && schedule && 
+              schedule.status !== 'in_progress' && 
+              schedule.status !== 'completed') {
+            // Mark scheduled audit as in_progress when user first starts working
+            markScheduledAuditInProgress(dbInstance, audit.scheduled_audit_id);
+          }
+        }
+      );
     }
 
     try {
@@ -1530,14 +1712,78 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
           ? Math.min(100, Math.round((actualScore / totalPossibleScore) * 100))
           : 0;
 
-        const total = auditItems.length;
-        const completed = auditItems.filter(item => {
-          const hasMark = item.mark !== null && item.mark !== undefined && item.mark !== '';
-          return hasMark;
-        }).length;
+        // Compare against ALL template items, not just audit items created
+        // This ensures completion is based on all items in the template, including those not yet started
+        // templateItems is already fetched above, so we can use it directly
+        const total = templateItems.length;
         
-        const auditStatus = completed === total && total > 0 ? 'completed' : 'in_progress';
-
+        // Create a map of audit items by item_id for quick lookup
+        const auditItemMap = {};
+        auditItems.forEach(item => {
+          auditItemMap[item.item_id] = item;
+        });
+        
+        // Count how many template items have been completed
+        // An item is completed only if:
+        // 1. It exists in audit_items
+        // 2. It has a valid mark (not null, not empty, not undefined, or is 'NA')
+        // 3. The mark is a meaningful value (not just whitespace)
+        let completed = 0;
+        let missingItems = [];
+        
+        templateItems.forEach(templateItem => {
+          const auditItem = auditItemMap[templateItem.id];
+          if (!auditItem) {
+            // Item doesn't exist in audit_items yet - not completed
+            missingItems.push(templateItem.id);
+            return;
+          }
+          
+          // Check if item has a valid mark - be very strict
+          const markValue = auditItem.mark;
+          
+          // Check for null, undefined, or empty
+          if (markValue === null || markValue === undefined) {
+            missingItems.push(templateItem.id);
+            return;
+          }
+          
+          // Convert to string and trim
+          const markStr = String(markValue).trim();
+          
+          // Check if it's empty after trimming
+          if (markStr === '') {
+            missingItems.push(templateItem.id);
+            return;
+          }
+          
+          // Check if it's NA (case-insensitive)
+          const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
+          
+          // If it's NA or has a non-empty value, it's completed
+          if (isNA || markStr.length > 0) {
+            completed++;
+          } else {
+            missingItems.push(templateItem.id);
+          }
+        });
+        
+        // Log for debugging if items are missing
+        if (missingItems.length > 0) {
+          logger.info(`[Audit ${auditId} - Batch] Completion check: ${completed}/${total} items completed. Missing marks for ${missingItems.length} items.`);
+          if (missingItems.length <= 10) {
+            logger.debug(`[Audit ${auditId} - Batch] Missing marks for items: ${missingItems.join(', ')}`);
+          }
+        }
+        
+        // Only mark as completed if ALL items have valid marks
+        const auditStatus = (completed === total && total > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
+        
+        // Force in_progress if any items are missing
+        if (missingItems.length > 0) {
+          logger.info(`[Audit ${auditId} - Batch] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${total} total items`);
+        }
+        
         dbInstance.run(
           `UPDATE audits 
            SET completed_items = ?, score = ?, status = ?, 

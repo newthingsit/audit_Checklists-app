@@ -24,8 +24,6 @@ import { OfflineModeCard, PendingSyncSummary } from '../components/OfflineIndica
 
 const ChecklistsScreen = () => {
   const [templates, setTemplates] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isUsingCachedData, setIsUsingCachedData] = useState(false);
@@ -60,34 +58,6 @@ const ChecklistsScreen = () => {
           setTemplates(serverTemplates);
           setIsUsingCachedData(false);
           
-          // Group templates by category
-          const categoryMap = {};
-          serverTemplates.forEach(template => {
-            const templateCategories = template.categories || [];
-            if (templateCategories.length === 0) {
-              const cat = 'General';
-              if (!categoryMap[cat]) {
-                categoryMap[cat] = [];
-              }
-              categoryMap[cat].push(template);
-            } else {
-              templateCategories.forEach(cat => {
-                if (!categoryMap[cat]) {
-                  categoryMap[cat] = [];
-                }
-                categoryMap[cat].push(template);
-              });
-            }
-          });
-          
-          const categoryList = Object.keys(categoryMap).map(cat => ({
-            name: cat,
-            templates: categoryMap[cat],
-            count: categoryMap[cat].length
-          })).sort((a, b) => a.name.localeCompare(b.name));
-          
-          setCategories(categoryList);
-          
           // Prefetch for offline use in background
           prefetchForOffline();
           
@@ -103,43 +73,13 @@ const ChecklistsScreen = () => {
         setTemplates(cached.templates);
         setIsUsingCachedData(true);
         setLastSync(cached.cachedAt);
-        
-        // Group cached templates by category
-        const categoryMap = {};
-        cached.templates.forEach(template => {
-          const templateCategories = template.categories || [];
-          if (templateCategories.length === 0) {
-            const cat = 'General';
-            if (!categoryMap[cat]) {
-              categoryMap[cat] = [];
-            }
-            categoryMap[cat].push(template);
-          } else {
-            templateCategories.forEach(cat => {
-              if (!categoryMap[cat]) {
-                categoryMap[cat] = [];
-              }
-              categoryMap[cat].push(template);
-            });
-          }
-        });
-        
-        const categoryList = Object.keys(categoryMap).map(cat => ({
-          name: cat,
-          templates: categoryMap[cat],
-          count: categoryMap[cat].length
-        })).sort((a, b) => a.name.localeCompare(b.name));
-        
-        setCategories(categoryList);
       } else {
         setTemplates([]);
-        setCategories([]);
         setIsUsingCachedData(false);
       }
     } catch (error) {
       console.error('Error fetching templates:', error);
       setTemplates([]);
-      setCategories([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -172,18 +112,6 @@ const ChecklistsScreen = () => {
     fetchTemplates(true);
   };
 
-  const handleCategorySelect = (category) => {
-    if (!canCreateAudit) {
-      Alert.alert('Permission Denied', 'You do not have permission to create audits.');
-      return;
-    }
-    setSelectedCategory(category);
-  };
-
-  const handleBackToCategories = () => {
-    setSelectedCategory(null);
-  };
-
   const handleStartAudit = (template) => {
     if (!canCreateAudit) {
       Alert.alert('Permission Denied', 'You do not have permission to create audits.');
@@ -193,36 +121,9 @@ const ChecklistsScreen = () => {
     // Pass template data for offline support
     navigation.navigate('AuditForm', { 
       templateId: template.id,
-      templateData: template, // Pass full template for offline use
-      selectedCategory: selectedCategory?.name
+      templateData: template // Pass full template for offline use
     });
   };
-
-  const renderCategory = ({ item, index }) => (
-    <TouchableOpacity
-      style={styles.categoryCard}
-      onPress={() => handleCategorySelect(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.categoryHeader}>
-        <View style={styles.categoryIconContainer}>
-          <LinearGradient
-            colors={themeConfig.dashboardCards.card2}
-            style={styles.categoryIcon}
-          >
-            <Icon name="category" size={28} color="#fff" />
-          </LinearGradient>
-        </View>
-        <View style={styles.categoryInfo}>
-          <Text style={styles.categoryName}>{item.name}</Text>
-          <Text style={styles.categoryCount}>
-            {item.count} template{item.count !== 1 ? 's' : ''}
-          </Text>
-        </View>
-        <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
-      </View>
-    </TouchableOpacity>
-  );
 
   const renderTemplate = ({ item, index }) => (
     <TouchableOpacity
@@ -241,9 +142,18 @@ const ChecklistsScreen = () => {
         </View>
         <View style={styles.templateInfo}>
           <Text style={styles.templateName} numberOfLines={2}>{item.name}</Text>
-          {item.category && (
-            <View style={styles.categoryBadge}>
-              <Text style={styles.categoryText}>{item.category}</Text>
+          {item.categories && item.categories.length > 0 && (
+            <View style={styles.categoryBadgesContainer}>
+              {item.categories.slice(0, 2).map((cat, idx) => (
+                <View key={idx} style={styles.categoryBadge}>
+                  <Text style={styles.categoryText}>{cat}</Text>
+                </View>
+              ))}
+              {item.categories.length > 2 && (
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryText}>+{item.categories.length - 2}</Text>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -300,76 +210,38 @@ const ChecklistsScreen = () => {
       {/* Pending Sync Summary */}
       {offlineStats.hasPendingSync && <PendingSyncSummary />}
 
-      {selectedCategory ? (
-        <>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleBackToCategories}
-              activeOpacity={0.7}
-            >
-              <Icon name="arrow-back" size={24} color={themeConfig.primary.main} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>{selectedCategory.name}</Text>
-            <Text style={styles.headerSubtitle}>
-              {selectedCategory.count} template{selectedCategory.count !== 1 ? 's' : ''}
-            </Text>
-          </View>
-          <FlatList
-            data={selectedCategory.templates}
-            renderItem={renderTemplate}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl 
-                refreshing={refreshing} 
-                onRefresh={onRefresh}
-                colors={[themeConfig.primary.main]}
-                tintColor={themeConfig.primary.main}
-              />
-            }
-            ListEmptyComponent={
-              <NoTemplates 
-                onAction={isOnline ? onRefresh : undefined}
-              />
-            }
+      <FlatList
+        data={templates}
+        renderItem={renderTemplate}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={[themeConfig.primary.main]}
+            tintColor={themeConfig.primary.main}
           />
-        </>
-      ) : (
-        <FlatList
-          data={categories}
-          renderItem={renderCategory}
-          keyExtractor={(item) => item.name}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh}
-              colors={[themeConfig.primary.main]}
-              tintColor={themeConfig.primary.main}
-            />
-          }
-          ListEmptyComponent={
-            <NoTemplates 
-              onAction={isOnline ? onRefresh : undefined}
-            />
-          }
-          ListHeaderComponent={
-            categories.length > 0 ? (
-              <View style={styles.listHeader}>
-                <Text style={styles.listHeaderTitle}>
-                  Select Category
-                </Text>
-                <Text style={styles.listHeaderSubtitle}>
-                  Choose a category to start your audit
-                </Text>
-              </View>
-            ) : null
-          }
-        />
-      )}
+        }
+        ListEmptyComponent={
+          <NoTemplates 
+            onAction={isOnline ? onRefresh : undefined}
+          />
+        }
+        ListHeaderComponent={
+          templates.length > 0 ? (
+            <View style={styles.listHeader}>
+              <Text style={styles.listHeaderTitle}>
+                Checklist Templates
+              </Text>
+              <Text style={styles.listHeaderSubtitle}>
+                Select a template to start a new audit
+              </Text>
+            </View>
+          ) : null
+        }
+      />
     </View>
   );
 };
@@ -399,70 +271,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   listHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: themeConfig.text.primary,
-    letterSpacing: -0.3,
-  },
-  listHeaderSubtitle: {
-    fontSize: 13,
-    color: themeConfig.text.secondary,
-    marginTop: 2,
-  },
-  header: {
-    padding: 16,
-    backgroundColor: themeConfig.background.paper,
-    borderBottomWidth: 1,
-    borderBottomColor: themeConfig.border.light,
-  },
-  backButton: {
-    marginBottom: 8,
-  },
-  headerTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: themeConfig.text.primary,
+    letterSpacing: -0.3,
     marginBottom: 4,
   },
-  headerSubtitle: {
-    fontSize: 13,
+  listHeaderSubtitle: {
+    fontSize: 14,
     color: themeConfig.text.secondary,
-  },
-  categoryCard: {
-    backgroundColor: themeConfig.background.paper,
-    borderRadius: themeConfig.borderRadius.medium,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: themeConfig.border.light,
-    ...themeConfig.shadows.small,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  categoryIconContainer: {
-    marginRight: 14,
-  },
-  categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: themeConfig.borderRadius.medium,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: themeConfig.text.primary,
-    marginBottom: 4,
-  },
-  categoryCount: {
-    fontSize: 13,
-    color: themeConfig.text.secondary,
+    marginTop: 2,
   },
   templateCard: {
     backgroundColor: themeConfig.background.paper,
@@ -496,15 +314,20 @@ const styles = StyleSheet.create({
     color: themeConfig.text.primary,
     marginBottom: 4,
   },
+  categoryBadgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    gap: 6,
+  },
   categoryBadge: {
     backgroundColor: themeConfig.primary.main + '15',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: themeConfig.borderRadius.round,
-    alignSelf: 'flex-start',
   },
   categoryText: {
-    fontSize: 11,
+    fontSize: 10,
     color: themeConfig.primary.main,
     fontWeight: '600',
     textTransform: 'uppercase',

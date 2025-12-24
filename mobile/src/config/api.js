@@ -3,6 +3,15 @@
 
 import Constants from 'expo-constants';
 import axios from 'axios';
+import {
+  shouldThrottle,
+  isPending,
+  getCachedResponse,
+  markPending,
+  cacheResponse,
+  getPendingPromise,
+  getThrottleDelay
+} from '../utils/requestThrottle';
 
 /**
  * Get the API base URL based on environment
@@ -56,16 +65,33 @@ axios.defaults.timeout = API_TIMEOUT;
 axios.defaults.headers.common['Accept'] = 'application/json';
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 
-// Add request interceptor for performance tracking
+// Add request interceptor for request throttling
 axios.interceptors.request.use(
-  config => {
+  async config => {
     config.metadata = { startTime: new Date() };
+    
+    // Skip throttling for non-GET requests
+    if (config.method && config.method.toLowerCase() !== 'get') {
+      return config;
+    }
+    
+    // Check if request should be throttled - wait instead of rejecting
+    if (shouldThrottle(config)) {
+      const url = config.url || '';
+      const throttleDelay = getThrottleDelay(url);
+      if (__DEV__) {
+        console.warn(`[API] Request throttled, waiting ${throttleDelay}ms: ${url}`);
+      }
+      // Wait for throttle delay before proceeding
+      await new Promise(resolve => setTimeout(resolve, throttleDelay));
+    }
+    
     return config;
   },
   error => Promise.reject(error)
 );
 
-// Add response interceptor for performance tracking and retry logic
+// Add response interceptor for performance tracking, caching, and retry logic
 axios.interceptors.response.use(
   response => {
     const endTime = new Date();
@@ -73,23 +99,49 @@ axios.interceptors.response.use(
     if (__DEV__ && duration > 1000) {
       console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url} took ${duration}ms`);
     }
+    
+    // Cache GET responses
+    if (response.config.method && response.config.method.toLowerCase() === 'get') {
+      cacheResponse(response.config, response);
+    }
+    
     return response;
   },
   async error => {
     const config = error.config;
+    
+    // Handle 429 Too Many Requests with exponential backoff
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers['retry-after'];
+      const waitTime = retryAfter 
+        ? parseInt(retryAfter) * 1000 
+        : Math.min(30000, 1000 * Math.pow(2, config.__retryCount || 0)); // Max 30 seconds
+      
+      if (!config.__retryCount || config.__retryCount < 2) {
+        config.__retryCount = (config.__retryCount || 0) + 1;
+        console.warn(`[API] Rate limited (429), retrying after ${waitTime}ms (attempt ${config.__retryCount})`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return axios(config);
+      }
+      
+      console.error(`[API] Rate limited (429), max retries reached for: ${config.url}`);
+      return Promise.reject(error);
+    }
     
     // Don't retry if no config or already retried max times
     if (!config || config.__retryCount >= RETRY_CONFIG.maxRetries) {
       return Promise.reject(error);
     }
     
-    // Only retry on specific status codes
+    // Only retry on specific status codes (not 429, handled above)
     const status = error.response?.status;
     if (status && RETRY_CONFIG.retryOnStatusCodes.includes(status)) {
       config.__retryCount = (config.__retryCount || 0) + 1;
       
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, RETRY_CONFIG.retryDelay * config.__retryCount));
+      // Exponential backoff
+      const waitTime = RETRY_CONFIG.retryDelay * Math.pow(2, config.__retryCount - 1);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
       
       return axios(config);
     }

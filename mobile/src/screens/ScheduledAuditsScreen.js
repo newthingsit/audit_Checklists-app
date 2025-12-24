@@ -24,8 +24,8 @@ import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
-// Auto-refresh interval in milliseconds (5 seconds for real-time updates)
-const AUTO_REFRESH_INTERVAL = 5000;
+// Auto-refresh interval in milliseconds (30 seconds to prevent rate limiting)
+const AUTO_REFRESH_INTERVAL = 30000;
 
 const getStatusValue = (status) => {
   if (!status) return 'pending';
@@ -104,10 +104,8 @@ const ScheduledAuditsScreen = () => {
   // Silent fetch for auto-refresh (no loading spinners)
   const fetchScheduledAuditsSilent = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
-        params: { _t: Date.now() },
-        headers: { 'Cache-Control': 'no-cache' }
-      });
+      // Use throttled request - remove cache-busting to allow caching
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`);
       let schedulesData = response.data.schedules || [];
       schedulesData = schedulesData.filter(schedule => {
         const status = getStatusValue(schedule.status);
@@ -219,7 +217,8 @@ const ScheduledAuditsScreen = () => {
   };
 
   const handleContinueAudit = (schedule) => {
-    const auditId = linkedAudits[schedule.id];
+    const linkedAudit = linkedAudits[schedule.id];
+    const auditId = linkedAudit?.auditId || linkedAudit; // Support both old (number) and new (object) format
     if (auditId) {
       // Navigate to AuditForm to continue editing (preserves state better than AuditDetail)
       navigation.navigate('AuditForm', {
@@ -232,7 +231,17 @@ const ScheduledAuditsScreen = () => {
   };
 
   const canContinueSchedule = (schedule) => {
-    return getStatusValue(schedule.status) === 'in_progress' && linkedAudits[schedule.id];
+    const statusValue = getStatusValue(schedule.status);
+    const linkedAudit = linkedAudits[schedule.id];
+    
+    // Only show "Continue Audit" if:
+    // 1. Scheduled audit status is 'in_progress'
+    // 2. There's a linked audit
+    // 3. The linked audit is NOT completed (safety check)
+    return statusValue === 'in_progress' && 
+           linkedAudit && 
+           linkedAudit.auditId &&
+           linkedAudit.auditStatus !== 'completed';
   };
 
   const canReschedule = (schedule) => {
@@ -456,14 +465,18 @@ const ScheduledAuditsScreen = () => {
       if (inProgressSchedules.length > 0) {
         const auditPromises = inProgressSchedules.map(schedule =>
           axios.get(`${API_BASE_URL}/audits/by-scheduled/${schedule.id}`)
-            .then(response => ({ scheduleId: schedule.id, auditId: response.data.audit.id }))
-            .catch(() => ({ scheduleId: schedule.id, auditId: null }))
+            .then(response => ({ 
+              scheduleId: schedule.id, 
+              auditId: response.data.audit.id,
+              auditStatus: response.data.audit.status 
+            }))
+            .catch(() => ({ scheduleId: schedule.id, auditId: null, auditStatus: null }))
         );
         const auditResults = await Promise.all(auditPromises);
         const auditsMap = {};
-        auditResults.forEach(({ scheduleId, auditId }) => {
+        auditResults.forEach(({ scheduleId, auditId, auditStatus }) => {
           if (auditId) {
-            auditsMap[scheduleId] = auditId;
+            auditsMap[scheduleId] = { auditId, auditStatus };
           }
         });
         setLinkedAudits(auditsMap);
