@@ -108,7 +108,10 @@ axios.interceptors.response.use(
     return response;
   },
   async error => {
-    const config = error.config;
+    const config = error.config || {};
+    
+    // Handle network errors (timeouts, connection issues)
+    const isNetworkError = !error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout'));
     
     // Handle 429 Too Many Requests with exponential backoff
     if (error.response?.status === 429) {
@@ -129,20 +132,52 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
     
+    // Handle 503 Service Unavailable with longer backoff
+    if (error.response?.status === 503) {
+      if (!config.__retryCount || config.__retryCount < 3) {
+        config.__retryCount = (config.__retryCount || 0) + 1;
+        // Longer backoff for 503 (server might be restarting)
+        const waitTime = Math.min(10000, 2000 * Math.pow(2, config.__retryCount - 1)); // 2s, 4s, 8s
+        console.warn(`[API] Service unavailable (503), retrying after ${waitTime}ms (attempt ${config.__retryCount}): ${config.url}`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return axios(config);
+      }
+      
+      console.error(`[API] Service unavailable (503), max retries reached for: ${config.url}`);
+      return Promise.reject(error);
+    }
+    
+    // Handle network errors (timeouts) - retry with backoff
+    if (isNetworkError) {
+      if (!config.__retryCount || config.__retryCount < 2) {
+        config.__retryCount = (config.__retryCount || 0) + 1;
+        const waitTime = RETRY_CONFIG.retryDelay * Math.pow(2, config.__retryCount - 1);
+        console.warn(`[API] Network error (timeout), retrying after ${waitTime}ms (attempt ${config.__retryCount}): ${config.url}`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return axios(config);
+      }
+      
+      console.error(`[API] Network error (timeout), max retries reached for: ${config.url}`);
+      return Promise.reject(error);
+    }
+    
     // Don't retry if no config or already retried max times
     if (!config || config.__retryCount >= RETRY_CONFIG.maxRetries) {
       return Promise.reject(error);
     }
     
-    // Only retry on specific status codes (not 429, handled above)
+    // Retry on other retryable status codes
     const status = error.response?.status;
     if (status && RETRY_CONFIG.retryOnStatusCodes.includes(status)) {
       config.__retryCount = (config.__retryCount || 0) + 1;
       
       // Exponential backoff
       const waitTime = RETRY_CONFIG.retryDelay * Math.pow(2, config.__retryCount - 1);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      console.warn(`[API] Retrying after ${waitTime}ms (attempt ${config.__retryCount}) for status ${status}: ${config.url}`);
       
+      await new Promise(resolve => setTimeout(resolve, waitTime));
       return axios(config);
     }
     

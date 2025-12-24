@@ -30,17 +30,25 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/auth/me`);
+      const response = await axios.get(`${API_BASE_URL}/auth/me`, {
+        timeout: 15000 // 15 second timeout for auth requests
+      });
       setUser(response.data.user);
       return response.data.user;
     } catch (error) {
       // Only clear auth if it's an authentication error (401/403)
-      // Don't clear on network errors or other issues
+      // Don't clear on network errors (503, timeout, etc.) - these will be retried
       if (error.response && (error.response.status === 401 || error.response.status === 403)) {
         await SecureStore.deleteItemAsync(TOKEN_KEY);
         setToken(null);
         setUser(null);
         delete axios.defaults.headers.common['Authorization'];
+      }
+      // Don't log 503 or timeout errors - they're being retried automatically
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        if (__DEV__) {
+          console.error('Error fetching user:', error.message);
+        }
       }
       throw error;
     }
@@ -54,8 +62,11 @@ export const AuthProvider = ({ children }) => {
     try {
       return await fetchUser();
     } catch (error) {
-      if (__DEV__) {
-        console.error('Error refreshing user:', error.message);
+      // Don't log 503 or timeout errors - they're being retried automatically
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        if (__DEV__) {
+          console.error('Error refreshing user:', error.message);
+        }
       }
       return null;
     }
@@ -71,7 +82,10 @@ export const AuthProvider = ({ children }) => {
         await fetchUser();
       }
     } catch (error) {
-      console.error('Error loading stored auth:', error);
+      // Don't log 503 or timeout errors - they're being retried automatically
+      if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+        console.error('Error loading stored auth:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -147,7 +161,10 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       // Don't log sensitive data in production
       if (__DEV__) {
-        console.error('Login error:', error.message);
+        // Don't log 503 or timeout errors - they're being retried automatically
+        if (error.response?.status !== 503 && error.code !== 'ECONNABORTED' && !error.message?.includes('timeout')) {
+          console.error('Login error:', error.message);
+        }
       }
       throw error;
     }
