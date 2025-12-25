@@ -49,9 +49,11 @@ app.use((req, res, next) => {
   // 3. Development mode - allow all for easier testing
   const isAllowed = !origin || normalizedAllowedOrigins.includes(normalizedOrigin) || !isProduction;
   
-  // ALWAYS set CORS headers for OPTIONS requests (preflight) so browser can see the response
+  // CRITICAL FIX: ALWAYS set CORS headers for OPTIONS requests (preflight)
+  // Browsers require CORS headers on preflight responses, even if origin is not allowed
   // For other requests, only set if allowed
-  const shouldSetHeaders = req.method === 'OPTIONS' || isAllowed;
+  const isPreflight = req.method === 'OPTIONS';
+  const shouldSetHeaders = isPreflight || isAllowed;
   
   if (shouldSetHeaders) {
     // Use specific origin when sending credentials; never send credentials with "*"
@@ -68,6 +70,11 @@ app.use((req, res, next) => {
         // In development allow any origin, but still only allow credentials for explicit origin
         corsOrigin = origin;
         allowCredentials = true;
+      } else if (isPreflight) {
+        // CRITICAL FIX: For preflight requests, always use the requesting origin
+        // This allows the browser to see the CORS headers and proceed
+        corsOrigin = origin;
+        allowCredentials = true;
       } else {
         // Production and not in allowlist: use "*" but no credentials
         corsOrigin = '*';
@@ -79,6 +86,7 @@ app.use((req, res, next) => {
       allowCredentials = false;
     }
 
+    // CRITICAL: Set CORS headers BEFORE any other processing
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -88,17 +96,23 @@ app.use((req, res, next) => {
     }
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
+    
+    // Log preflight requests for debugging
+    if (isPreflight) {
+      logger.info('CORS preflight request:', { 
+        origin, 
+        corsOrigin, 
+        allowCredentials,
+        allowedOrigins: allowedOrigins.slice(0, 3) // Log first 3 for brevity
+      });
+    }
   }
   
-  // Handle preflight immediately - always return 204 for OPTIONS if headers are set
-  if (req.method === 'OPTIONS') {
-    if (shouldSetHeaders) {
-      return res.status(204).end();
-    } else {
-      // If headers weren't set, still return 204 but log it
-      logger.warn('OPTIONS request from disallowed origin:', { origin, allowedOrigins });
-      return res.status(204).end();
-    }
+  // Handle preflight immediately - always return 204 for OPTIONS
+  if (isPreflight) {
+    // Always return 204 for OPTIONS, even if origin is not in allowlist
+    // The browser needs to see the CORS headers to determine if the actual request can proceed
+    return res.status(204).end();
   }
   
   // For non-OPTIONS requests, only proceed if allowed
@@ -128,15 +142,18 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "https://app.litebitefoods.com", "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net"],
     },
   },
   crossOriginEmbedderPolicy: false, // Allow images from external sources
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin requests
+  // CRITICAL: Don't let Helmet interfere with CORS headers
+  crossOriginOpenerPolicy: false,
 }));
 
 // Standard CORS middleware as backup (handles edge cases)
 // Note: First middleware handles CORS, this is a fallback for edge cases
+// Using normalized comparison to match custom middleware
 app.use(cors({
   origin: (origin, callback) => {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -145,17 +162,22 @@ app.use(cors({
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
+    // Normalize origin for comparison (match custom middleware logic)
+    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+    const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
+    const originInList = normalizedAllowedOrigins.includes(normalizedOrigin);
+    
     // In development, always allow
     if (!isProduction) return callback(null, true);
     
     // In production with strict mode, enforce allowlist
-    if (strictCORS && !allowedOrigins.includes(origin)) {
-      logger.security('cors_blocked', { origin, allowedOrigins });
+    if (strictCORS && !originInList) {
+      logger.security('cors_blocked_by_backup_middleware', { origin, allowedOrigins });
       return callback(new Error('Not allowed by CORS policy'));
     }
     
-    // In production without strict mode, allow but log
-    if (!allowedOrigins.includes(origin)) {
+    // In production without strict mode, allow but log if not in allowlist
+    if (!originInList) {
       logger.security('cors_allowed_but_not_in_allowlist', { origin, allowedOrigins });
     }
     
@@ -163,8 +185,8 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With'],
-  exposedHeaders: ['Content-Type', 'Content-Length'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Type', 'Content-Length', 'Authorization'],
   maxAge: 86400, // Cache preflight requests for 24 hours
   optionsSuccessStatus: 204
 }));
