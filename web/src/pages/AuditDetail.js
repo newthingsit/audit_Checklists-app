@@ -73,6 +73,7 @@ const AuditDetail = () => {
   const [emailSending, setEmailSending] = useState(false);
   const [emailSuccess, setEmailSuccess] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchAudit();
@@ -80,6 +81,7 @@ const AuditDetail = () => {
 
   const fetchAudit = async () => {
     try {
+      setError(null);
       const [auditResponse, actionsResponse] = await Promise.all([
         axios.get(`/api/audits/${id}`),
         axios.get(`/api/actions/audit/${id}`).catch(() => ({ data: { actions: [] } }))
@@ -101,6 +103,20 @@ const AuditDetail = () => {
       setActions(actionsResponse.data.actions || []);
     } catch (error) {
       console.error('Error fetching audit:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to load audit';
+      const statusCode = error.response?.status;
+      
+      if (statusCode === 404) {
+        setError('Audit not found. It may have been deleted or you may not have permission to view it.');
+      } else if (statusCode === 403) {
+        setError('You do not have permission to view this audit.');
+      } else if (statusCode === 500) {
+        setError('Server error. Please try again later.');
+      } else if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
+        setError('Cannot connect to server. Please check your connection.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -266,7 +282,18 @@ const AuditDetail = () => {
     return (
       <Layout>
         <Container>
-          <Typography>Audit not found</Typography>
+          <Box sx={{ mt: 4, textAlign: 'center' }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error || 'Audit not found'}
+            </Alert>
+            <Button
+              startIcon={<ArrowBackIcon />}
+              onClick={() => navigate('/audits')}
+              variant="contained"
+            >
+              Back to Audits
+            </Button>
+          </Box>
         </Container>
       </Layout>
     );
