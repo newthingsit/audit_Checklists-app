@@ -306,6 +306,13 @@ router.get('/:id', authenticate, (req, res) => {
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
 
+  // Build absolute URL for uploaded evidence so web/mobile can display it reliably.
+  // IMPORTANT: APP_URL is the frontend URL, but uploads are served by the backend.
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const protocol = forwardedProto ? String(forwardedProto).split(',')[0].trim() : req.protocol;
+  const host = req.get('host');
+  const backendBaseUrl = (process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL || (protocol && host ? `${protocol}://${host}` : '')).replace(/\/$/, '');
+
   // Admins can view any audit, regular users only their own
   const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
   const queryParams = isAdmin ? [auditId] : [auditId, userId];
@@ -325,17 +332,22 @@ router.get('/:id', authenticate, (req, res) => {
         return res.status(404).json({ error: 'Audit not found' });
       }
 
+      const auditCategory = (audit.audit_category && String(audit.audit_category).trim()) ? String(audit.audit_category).trim() : null;
+
       // Check if time tracking columns exist, then build query accordingly
+      const itemsQuery = `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
+              COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
+              cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
+       FROM audit_items ai
+       JOIN checklist_items ci ON ai.item_id = ci.id
+       LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+       WHERE ai.audit_id = ? ${auditCategory ? 'AND ci.category = ?' : ''}
+       ORDER BY ci.order_index, ci.id`;
+      const itemsParams = auditCategory ? [auditId, auditCategory] : [auditId];
+
       dbInstance.all(
-        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
-                COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-                cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
-         FROM audit_items ai
-         JOIN checklist_items ci ON ai.item_id = ci.id
-         LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-         WHERE ai.audit_id = ?
-         ORDER BY ci.order_index, ci.id`,
-        [auditId],
+        itemsQuery,
+        itemsParams,
         (err, items) => {
           if (err) {
             logger.error('Error fetching audit items:', err.message);
@@ -378,10 +390,11 @@ router.get('/:id', authenticate, (req, res) => {
           }
           
           // Construct full photo URLs if they exist
-          const appUrl = process.env.APP_URL || '';
           const itemsWithFullUrls = items.map(item => {
-            if (item.photo_url && !item.photo_url.startsWith('http')) {
-              item.photo_url = `${appUrl}${item.photo_url}`;
+            if (item.photo_url && !String(item.photo_url).startsWith('http')) {
+              const raw = String(item.photo_url);
+              const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
+              item.photo_url = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
             }
             return item;
           });
@@ -464,12 +477,12 @@ router.get('/:id', authenticate, (req, res) => {
               });
               
               // Construct full photo URLs and attach options to items
-              const appUrl = process.env.APP_URL || '';
               const itemsWithOptions = items.map(item => {
                 // Construct full photo URL if it exists and is not already a full URL
                 let photoUrl = item.photo_url;
                 if (photoUrl && !photoUrl.startsWith('http')) {
-                  photoUrl = `${appUrl}${photoUrl}`;
+                  const normalizedPath = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
+                  photoUrl = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
                 }
                 
                 return {

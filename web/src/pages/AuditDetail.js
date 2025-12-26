@@ -675,7 +675,6 @@ const AuditDetail = () => {
                       : `${process.env.REACT_APP_API_URL?.replace('/api', '') || ''}${item.photo_url}`} 
                     alt="Audit evidence"
                     style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px' }}
-                    crossOrigin="anonymous"
                     onError={(e) => {
                       console.error('Error loading image:', item.photo_url);
                       e.target.style.display = 'none';
