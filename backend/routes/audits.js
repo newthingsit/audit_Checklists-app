@@ -352,7 +352,6 @@ router.get('/:id', authenticate, (req, res) => {
               ai.status,
               ai.photo_url,
               ai.selected_option_id,
-              ai.time_taken_minutes,
               cio.option_text as selected_option_text, 
               cio.mark as selected_mark
        FROM checklist_items ci
@@ -394,7 +393,7 @@ router.get('/:id', authenticate, (req, res) => {
               selected_option_id: item.selected_option_id || null,
               selected_option_text: item.selected_option_text || null,
               selected_mark: item.selected_mark || null,
-              time_taken_minutes: item.time_taken_minutes || null
+              time_taken_minutes: null // Column doesn't exist in audit_items table
             };
             
             // Construct full photo URL if it exists and is not already a full URL
