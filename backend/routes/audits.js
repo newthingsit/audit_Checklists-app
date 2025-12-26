@@ -367,7 +367,7 @@ router.get('/:id', authenticate, (req, res) => {
         itemsParams,
         (err, items) => {
           if (err) {
-            logger.error('Error fetching audit items:', err.message);
+            logger.error('Error fetching audit items:', { error: err.message, stack: err.stack, auditId, templateId: audit?.template_id });
             return res.status(500).json({ error: 'Database error', details: err.message });
           }
           
@@ -441,7 +441,8 @@ router.get('/:id', authenticate, (req, res) => {
             itemIds,
             (err, options) => {
               if (err) {
-                return res.status(500).json({ error: 'Database error' });
+                logger.error('Error fetching checklist item options:', { error: err.message, stack: err.stack, itemIds: itemIds.slice(0, 10) });
+                return res.status(500).json({ error: 'Database error', details: err.message });
               }
               
               // Group options by item_id
@@ -475,9 +476,13 @@ router.get('/:id', authenticate, (req, res) => {
                 // Get max score for this item (from "Yes" option or highest mark)
                 const itemOptions = optionsByItem[item.item_id] || [];
                 const yesOption = itemOptions.find(o => o.option_text === 'Yes' || o.option_text === 'Pass');
-                const maxScore = yesOption 
-                  ? parseFloat(yesOption.mark) || 0 
-                  : Math.max(...itemOptions.map(o => parseFloat(o.mark) || 0), 0);
+                let maxScore = 0;
+                if (yesOption) {
+                  maxScore = parseFloat(yesOption.mark) || 0;
+                } else if (itemOptions.length > 0) {
+                  const scores = itemOptions.map(o => parseFloat(o.mark) || 0).filter(s => !isNaN(s));
+                  maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+                }
                 
                 const weight = parseInt(item.weight) || 1;
                 catData.totalPossibleScore += maxScore;
