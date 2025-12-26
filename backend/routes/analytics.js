@@ -161,6 +161,7 @@ router.get('/dashboard', authenticate, (req, res) => {
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
     // Schedule Adherence - percentage of scheduled audits completed on time
+    // IMPORTANT: Do not reference optional/migrated columns that may not exist in PRD SQL Server (e.g. audits.original_scheduled_date)
     new Promise((resolve, reject) => {
       const dbType = process.env.DB_TYPE || 'sqlite';
       const userEmail = req.user.email || '';
@@ -175,8 +176,8 @@ router.get('/dashboard', authenticate, (req, res) => {
           SUM(CASE 
             WHEN a.id IS NOT NULL AND a.status = 'completed' 
               AND (
-                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+                -- On-time = completed on the scheduled date
+                CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
               )
             THEN 1 
             ELSE 0 
@@ -193,8 +194,8 @@ router.get('/dashboard', authenticate, (req, res) => {
             SUM(CASE 
               WHEN a.id IS NOT NULL AND a.status = 'completed' 
                 AND (
-                  -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                  CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
+                  -- On-time = completed on the scheduled date
+                  CAST(sa.scheduled_date AS DATE) = CAST(a.completed_at AS DATE)
                 )
               THEN 1 
               ELSE 0 
@@ -212,8 +213,8 @@ router.get('/dashboard', authenticate, (req, res) => {
             SUM(CASE 
               WHEN a.id IS NOT NULL AND a.status = 'completed' 
                 AND (
-                  -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                  DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
+                  -- On-time = completed on the scheduled date
+                  DATE(sa.scheduled_date) = DATE(a.completed_at)
                 )
               THEN 1 
               ELSE 0 
@@ -364,86 +365,8 @@ router.get('/dashboard', authenticate, (req, res) => {
       }
       dbInstance.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || []));
     }),
-    // Schedule Adherence - percentage of scheduled audits completed on time
-    new Promise((resolve, reject) => {
-      const dbType = process.env.DB_TYPE || 'sqlite';
-      let query;
-      // Fix WHERE clause - should include all scheduled audits, not just completed ones
-      const whereClause = isAdmin ? '' : 'AND (sa.created_by = ? OR sa.assigned_to = ?)';
-      const params = isAdmin ? [] : [userId, userId];
-      
-      if (dbType === 'mssql' || dbType === 'sqlserver') {
-        query = `SELECT 
-          COUNT(*) as total_scheduled,
-          SUM(CASE 
-            WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND (
-                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                CAST(COALESCE(a.original_scheduled_date, sa.scheduled_date) AS DATE) = CAST(a.completed_at AS DATE)
-                OR 
-                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
-                CAST(a.created_at AS DATE) = CAST(a.completed_at AS DATE)
-              )
-            THEN 1 
-            ELSE 0 
-          END) as completed_on_time
-        FROM scheduled_audits sa
-        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE 1=1
-        ${whereClause}`;
-      } else if (dbType === 'mysql') {
-        query = `SELECT 
-          COUNT(*) as total_scheduled,
-          SUM(CASE 
-            WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND (
-                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
-                OR 
-                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
-                DATE(a.created_at) = DATE(a.completed_at)
-              )
-            THEN 1 
-            ELSE 0 
-          END) as completed_on_time
-        FROM scheduled_audits sa
-        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE 1=1
-        ${whereClause}`;
-      } else {
-        query = `SELECT 
-          COUNT(*) as total_scheduled,
-          SUM(CASE 
-            WHEN a.id IS NOT NULL AND a.status = 'completed' 
-              AND (
-                -- Use original_scheduled_date if available, otherwise fall back to sa.scheduled_date
-                DATE(COALESCE(a.original_scheduled_date, sa.scheduled_date)) = DATE(a.completed_at)
-                OR 
-                -- Also count as on-time if completed on the same day as created (for audits without scheduled date)
-                DATE(a.created_at) = DATE(a.completed_at)
-              )
-            THEN 1 
-            ELSE 0 
-          END) as completed_on_time
-        FROM scheduled_audits sa
-        LEFT JOIN audits a ON sa.id = a.scheduled_audit_id
-        WHERE 1=1
-        ${whereClause}`;
-      }
-      dbInstance.get(query, params, (err, row) => {
-        if (err) {
-          logger.error('Schedule Adherence query error:', err);
-          // Return default values instead of rejecting
-          return resolve({ total: 0, onTime: 0, adherence: 0 });
-        }
-        const total = row?.total_scheduled || 0;
-        const onTime = row?.completed_on_time || 0;
-        const adherence = total > 0 ? Math.round((onTime / total) * 100) : 0;
-        resolve({ total, onTime, adherence });
-      });
-    })
   ])
-    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topUsers, recent, currentMonthStats, lastMonthStats, topStores, scheduleAdherence]) => {
+    .then(([total, completed, inProgress, avgScore, byStatus, byMonth, topUsers, recent, scheduleAdherence, currentMonthStats, lastMonthStats, topStores]) => {
       // Calculate month-over-month changes
       const monthChange = {
         total: currentMonthStats.total - lastMonthStats.total,
