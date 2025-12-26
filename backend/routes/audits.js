@@ -1252,121 +1252,121 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 
       // Fallback calculation (old method)
       function calculateScoreFallback() {
+        dbInstance.all(
+          `SELECT COUNT(*) as total, 
+           SUM(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN CAST(mark AS REAL) ELSE 0 END) as total_marks,
+           SUM(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN 1 ELSE 0 END) as items_with_marks,
+           MAX(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN CAST(mark AS REAL) ELSE 0 END) as max_mark
+           FROM audit_items WHERE audit_id = ?`,
+          [auditId],
+          (err, result) => {
+            if (!err && result.length > 0) {
+              const total = result[0].total || 0;
+              const totalMarks = result[0].total_marks || 0;
+              const itemsWithMarks = result[0].items_with_marks || 0;
+              const maxMark = result[0].max_mark || 2;
+              
+              const score = total > 0 && maxMark > 0 
+                ? Math.round((totalMarks / (total * maxMark)) * 100) 
+                : 0;
+              
+              // Get template items to check against ALL items, not just audit_items
+              dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (templateErr, auditRow) => {
+                if (templateErr || !auditRow) {
+                  logger.error('Error fetching audit template for fallback:', templateErr);
+                  return res.json({ message: 'Audit item updated successfully' });
+                }
+                
                 dbInstance.all(
-                  `SELECT COUNT(*) as total, 
-                   SUM(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN CAST(mark AS REAL) ELSE 0 END) as total_marks,
-                   SUM(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN 1 ELSE 0 END) as items_with_marks,
-                   MAX(CASE WHEN mark IS NOT NULL AND mark != 'NA' THEN CAST(mark AS REAL) ELSE 0 END) as max_mark
-                   FROM audit_items WHERE audit_id = ?`,
-                  [auditId],
-                  (err, result) => {
-                    if (!err && result.length > 0) {
-                      const total = result[0].total || 0;
-                      const totalMarks = result[0].total_marks || 0;
-                      const itemsWithMarks = result[0].items_with_marks || 0;
-                      const maxMark = result[0].max_mark || 2;
-                      
-                      const score = total > 0 && maxMark > 0 
-                        ? Math.round((totalMarks / (total * maxMark)) * 100) 
-                        : 0;
-                      
-                      // Get template items to check against ALL items, not just audit_items
-                      dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (templateErr, auditRow) => {
-                        if (templateErr || !auditRow) {
-                          logger.error('Error fetching audit template for fallback:', templateErr);
+                  'SELECT id FROM checklist_items WHERE template_id = ?',
+                  [auditRow.template_id],
+                  (templateItemsErr, templateItems) => {
+                    if (templateItemsErr || !templateItems) {
+                      logger.error('Error fetching template items for fallback:', templateItemsErr);
+                      return res.json({ message: 'Audit item updated successfully' });
+                    }
+                    
+                    const templateTotal = templateItems.length;
+                    
+                    // Get all audit items with marks
+                    dbInstance.all(
+                      'SELECT item_id, mark FROM audit_items WHERE audit_id = ?',
+                      [auditId],
+                      (auditItemsErr, allAuditItems) => {
+                        if (auditItemsErr) {
+                          logger.error('Error fetching audit items for fallback:', auditItemsErr);
                           return res.json({ message: 'Audit item updated successfully' });
                         }
                         
-                        dbInstance.all(
-                          'SELECT id FROM checklist_items WHERE template_id = ?',
-                          [auditRow.template_id],
-                          (templateItemsErr, templateItems) => {
-                            if (templateItemsErr || !templateItems) {
-                              logger.error('Error fetching template items for fallback:', templateItemsErr);
-                              return res.json({ message: 'Audit item updated successfully' });
-                            }
-                            
-                            const templateTotal = templateItems.length;
-                            
-                            // Get all audit items with marks
-                            dbInstance.all(
-                              'SELECT item_id, mark FROM audit_items WHERE audit_id = ?',
-                              [auditId],
-                              (auditItemsErr, allAuditItems) => {
-                                if (auditItemsErr) {
-                                  logger.error('Error fetching audit items for fallback:', auditItemsErr);
-                                  return res.json({ message: 'Audit item updated successfully' });
-                                }
-                                
-                                // Create map of audit items
-                                const auditItemMap = {};
-                                allAuditItems.forEach(item => {
-                                  auditItemMap[item.item_id] = item;
-                                });
-                                
-                                // Count completed using strict validation
-                                let completed = 0;
-                                let missingItems = [];
-                                
-                                templateItems.forEach(templateItem => {
-                                  const auditItem = auditItemMap[templateItem.id];
-                                  if (!auditItem) {
-                                    missingItems.push(templateItem.id);
-                                    return;
-                                  }
-                                  
-                                  const markValue = auditItem.mark;
-                                  if (markValue === null || markValue === undefined) {
-                                    missingItems.push(templateItem.id);
-                                    return;
-                                  }
-                                  
-                                  const markStr = String(markValue).trim();
-                                  if (markStr === '') {
-                                    missingItems.push(templateItem.id);
-                                    return;
-                                  }
-                                  
-                                  const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
-                                  if (isNA || markStr.length > 0) {
-                                    completed++;
-                                  } else {
-                                    missingItems.push(templateItem.id);
-                                  }
-                                });
-                                
-                                const auditStatus = (completed === templateTotal && templateTotal > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
-                                
-                                if (missingItems.length > 0) {
-                                  logger.info(`[Audit ${auditId} - Fallback] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${templateTotal} total`);
-                                }
+                        // Create map of audit items
+                        const auditItemMap = {};
+                        allAuditItems.forEach(item => {
+                          auditItemMap[item.item_id] = item;
+                        });
+                        
+                        // Count completed using strict validation
+                        let completed = 0;
+                        let missingItems = [];
+                        
+                        templateItems.forEach(templateItem => {
+                          const auditItem = auditItemMap[templateItem.id];
+                          if (!auditItem) {
+                            missingItems.push(templateItem.id);
+                            return;
+                          }
+                          
+                          const markValue = auditItem.mark;
+                          if (markValue === null || markValue === undefined) {
+                            missingItems.push(templateItem.id);
+                            return;
+                          }
+                          
+                          const markStr = String(markValue).trim();
+                          if (markStr === '') {
+                            missingItems.push(templateItem.id);
+                            return;
+                          }
+                          
+                          const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
+                          if (isNA || markStr.length > 0) {
+                            completed++;
+                          } else {
+                            missingItems.push(templateItem.id);
+                          }
+                        });
+                        
+                        const auditStatus = (completed === templateTotal && templateTotal > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
+                        
+                        if (missingItems.length > 0) {
+                          logger.info(`[Audit ${auditId} - Fallback] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${templateTotal} total`);
+                        }
 
-                                dbInstance.run(
-                                  `UPDATE audits 
-                                   SET completed_items = ?, score = ?, status = ?, 
-                                       completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
-                                   WHERE id = ?`,
-                                  [completed, score, auditStatus, completed, templateTotal, auditId],
-                                  function(updateErr) {
-                                    if (updateErr) {
-                                      logger.error('Error updating audit:', updateErr.message);
-                                    }
-                                    if (auditStatus === 'completed') {
-                                      handleScheduledAuditCompletion(dbInstance, auditId);
-                                    }
-                                    res.json({ message: 'Audit item updated successfully' });
-                                  }
-                                );
-                              }
-                            );
+                        dbInstance.run(
+                          `UPDATE audits 
+                           SET completed_items = ?, score = ?, status = ?, 
+                               completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
+                           WHERE id = ?`,
+                          [completed, score, auditStatus, completed, templateTotal, auditId],
+                          function(updateErr) {
+                            if (updateErr) {
+                              logger.error('Error updating audit:', updateErr.message);
+                            }
+                            if (auditStatus === 'completed') {
+                              handleScheduledAuditCompletion(dbInstance, auditId);
+                            }
+                            res.json({ message: 'Audit item updated successfully' });
                           }
                         );
-                      });
-                    } else {
-                      res.json({ message: 'Audit item updated successfully' });
-                    }
+                      }
+                    );
                   }
                 );
+              });
+            } else {
+              res.json({ message: 'Audit item updated successfully' });
+            }
+          }
+        );
       }
     }
   });
