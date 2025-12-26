@@ -89,10 +89,22 @@ const AuditDetail = () => {
       setAudit(auditResponse.data.audit);
       
       // Ensure photo_urls are properly constructed with full URLs
+      // Backend should already handle this, but add safety check here too
       const itemsWithPhotos = (auditResponse.data.items || []).map(item => {
-        if (item.photo_url && !item.photo_url.startsWith('http')) {
-          const baseUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || '';
-          item.photo_url = `${baseUrl}${item.photo_url}`;
+        if (item.photo_url) {
+          const raw = String(item.photo_url);
+          const isFullUrl = raw.startsWith('http://') || raw.startsWith('https://');
+          const hasDomain = raw.includes('://') || /^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(raw);
+          
+          if (!isFullUrl && !hasDomain) {
+            // Only prepend baseUrl if it's a relative path
+            const baseUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || '';
+            item.photo_url = `${baseUrl}${raw.startsWith('/') ? raw : `/${raw}`}`;
+          } else if (hasDomain && !isFullUrl) {
+            // If it has a domain but no protocol, add https://
+            item.photo_url = `https://${raw.replace(/^https?:\/\//, '')}`;
+          }
+          // If it's already a full URL, leave it as is
         }
         return item;
       });

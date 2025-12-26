@@ -397,10 +397,21 @@ router.get('/:id', authenticate, (req, res) => {
             };
             
             // Construct full photo URL if it exists and is not already a full URL
-            if (normalized.photo_url && !String(normalized.photo_url).startsWith('http')) {
+            // Check if it's already a full URL (starts with http/https) or contains a domain
+            if (normalized.photo_url) {
               const raw = String(normalized.photo_url);
-              const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
-              normalized.photo_url = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
+              const isFullUrl = raw.startsWith('http://') || raw.startsWith('https://');
+              const hasDomain = raw.includes('://') || /^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(raw);
+              
+              if (!isFullUrl && !hasDomain) {
+                // Only prepend backendBaseUrl if it's a relative path
+                const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
+                normalized.photo_url = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
+              } else if (hasDomain && !isFullUrl) {
+                // If it has a domain but no protocol, add https://
+                normalized.photo_url = `https://${raw.replace(/^https?:\/\//, '')}`;
+              }
+              // If it's already a full URL (starts with http/https), leave it as is
             }
             
             return normalized;
