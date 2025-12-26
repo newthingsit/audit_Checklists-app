@@ -285,6 +285,8 @@ const createTables = async () => {
       [location_id] INT,
       [team_id] INT,
       [scheduled_audit_id] INT,
+      -- When audits are performed "category-wise", this stores the selected checklist_items.category scope
+      [audit_category] NVARCHAR(255) NULL,
       [status] NVARCHAR(50) DEFAULT 'in_progress',
       [score] INT,
       [total_items] INT,
@@ -806,6 +808,26 @@ const addMissingColumns = async () => {
         ADD [scheduled_audit_id] INT NULL;
       `);
       console.log('scheduled_audit_id column added to audits table');
+    }
+
+    // Check and add audit_category to audits table (category-wise audits)
+    const checkAuditCategory = await pool.request().query(`
+      SELECT COUNT(*) as count 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'audits' AND COLUMN_NAME = 'audit_category'
+    `);
+    
+    if (checkAuditCategory.recordset[0].count === 0) {
+      console.log('Adding audit_category column to audits table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[audits] 
+          ADD [audit_category] NVARCHAR(255) NULL;
+        `);
+        console.log('audit_category column added to audits table');
+      } catch (err) {
+        console.warn('Error adding audit_category to audits:', err.message);
+      }
     }
     
     // Check and add team_id to tasks table

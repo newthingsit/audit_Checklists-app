@@ -495,6 +495,8 @@ router.get('/:id', authenticate, (req, res) => {
 router.post('/', authenticate, (req, res) => {
   const { 
     template_id, restaurant_name, location, location_id, team_id, notes, scheduled_audit_id,
+    // Optional: category-wise audit scope (checklist_items.category)
+    audit_category,
     // GPS location data
     gps_latitude, gps_longitude, gps_accuracy, gps_timestamp, location_verified
   } = req.body;
@@ -626,13 +628,27 @@ router.post('/', authenticate, (req, res) => {
           return res.status(404).json({ error: 'Template not found' });
         }
 
-      dbInstance.all('SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id', 
-        [template_id], (err, items) => {
+      const normalizedAuditCategory = (typeof audit_category === 'string' && audit_category.trim())
+        ? audit_category.trim()
+        : null;
+
+      // If audit_category is provided, scope the audit to that category only.
+      const itemsQuery = normalizedAuditCategory
+        ? 'SELECT * FROM checklist_items WHERE template_id = ? AND category = ? ORDER BY order_index, id'
+        : 'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id';
+
+      const itemsParams = normalizedAuditCategory ? [template_id, normalizedAuditCategory] : [template_id];
+
+      dbInstance.all(itemsQuery, 
+        itemsParams, (err, items) => {
           if (err) {
             return res.status(500).json({ error: 'Database error' });
           }
 
           const totalItems = items.length;
+          if (normalizedAuditCategory && totalItems === 0) {
+            return res.status(400).json({ error: `No checklist items found for category: ${normalizedAuditCategory}` });
+          }
 
           // Create audit - use location_id if provided, otherwise use location text
           // Store original_scheduled_date for Schedule Adherence tracking
@@ -647,6 +663,12 @@ router.post('/', authenticate, (req, res) => {
             insertColumns.push('original_scheduled_date');
             insertValues.push(originalScheduledDate);
           }
+
+          // Include audit_category if provided (category-wise audits)
+          if (normalizedAuditCategory) {
+            insertColumns.push('audit_category');
+            insertValues.push(normalizedAuditCategory);
+          }
           
           const placeholders = insertColumns.map(() => '?').join(', ');
           
@@ -660,6 +682,9 @@ router.post('/', authenticate, (req, res) => {
                   logger.warn('Some columns may not exist, retrying with basic columns only');
                   const basicColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id'];
                   const basicValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null];
+                  
+                  // IMPORTANT: Do NOT include audit_category in this retry insert.
+                  // If we are here, the DB likely doesn't have one of the optional columns (e.g. original_scheduled_date / audit_category).
                   const basicPlaceholders = basicColumns.map(() => '?').join(', ');
                   
                   dbInstance.run(
@@ -1070,7 +1095,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
             }
 
             // Get total possible score from template (sum of "Yes" option marks, excluding N/A items)
-            dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (err, audit) => {
+            dbInstance.get('SELECT template_id, audit_category FROM audits WHERE id = ?', [auditId], (err, audit) => {
               if (err || !audit) {
                 logger.error('Error fetching audit:', err.message);
                 return res.json({ message: 'Audit item updated successfully' });
@@ -1096,9 +1121,12 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                          WHERE ci.template_id = ?`;
               }
               
+              const templateParams = audit.audit_category ? [audit.template_id, audit.audit_category] : [audit.template_id];
+              const templateQuery = audit.audit_category ? `${query} AND ci.category = ?` : query;
+
               dbInstance.all(
-                query,
-                [audit.template_id],
+                templateQuery,
+                templateParams,
                 (err, templateItems) => {
                   if (err) {
                     logger.error('Error fetching template items:', err.message);
@@ -1271,16 +1299,23 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                 ? Math.round((totalMarks / (total * maxMark)) * 100) 
                 : 0;
               
-              // Get template items to check against ALL items, not just audit_items
-              dbInstance.get('SELECT template_id FROM audits WHERE id = ?', [auditId], (templateErr, auditRow) => {
+              // Get template items to check against ALL items in the audit scope (category-wise audits supported)
+              dbInstance.get('SELECT template_id, audit_category FROM audits WHERE id = ?', [auditId], (templateErr, auditRow) => {
                 if (templateErr || !auditRow) {
                   logger.error('Error fetching audit template for fallback:', templateErr);
                   return res.json({ message: 'Audit item updated successfully' });
                 }
                 
+                const templateItemsQuery = auditRow.audit_category
+                  ? 'SELECT id FROM checklist_items WHERE template_id = ? AND category = ?'
+                  : 'SELECT id FROM checklist_items WHERE template_id = ?';
+                const templateItemsParams = auditRow.audit_category
+                  ? [auditRow.template_id, auditRow.audit_category]
+                  : [auditRow.template_id];
+
                 dbInstance.all(
-                  'SELECT id FROM checklist_items WHERE template_id = ?',
-                  [auditRow.template_id],
+                  templateItemsQuery,
+                  templateItemsParams,
                   (templateItemsErr, templateItems) => {
                     if (templateItemsErr || !templateItems) {
                       logger.error('Error fetching template items for fallback:', templateItemsErr);
@@ -1622,8 +1657,26 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       const results = await Promise.all(updatePromises);
       logger.debug(`[Batch Update] Successfully processed ${results.length} items`);
 
+      // If the client requests category-scoped behavior, persist audit_category (useful for older audits created without it)
+      const requestedAuditCategory = (typeof req.body.audit_category === 'string' && req.body.audit_category.trim())
+        ? req.body.audit_category.trim()
+        : null;
+      const effectiveAuditCategory = audit.audit_category || requestedAuditCategory || null;
+
+      const maybePersistCategory = () => new Promise((resolve) => {
+        if (!requestedAuditCategory || audit.audit_category) return resolve();
+        dbInstance.run(
+          'UPDATE audits SET audit_category = ? WHERE id = ?',
+          [requestedAuditCategory, auditId],
+          () => resolve() // don't block the save on this update
+        );
+      });
+
+      await maybePersistCategory();
+
       // Calculate score once after all updates
-      calculateAndUpdateScore(dbInstance, auditId, audit.template_id, (err, scoreData) => {
+      // If this is a category-wise audit (audit_category set), scope completion/score to that category.
+      calculateAndUpdateScore(dbInstance, auditId, audit.template_id, effectiveAuditCategory, (err, scoreData) => {
         if (err) {
           logger.error('Error calculating score:', err);
           // Still return success for item updates, but log the score calculation error
@@ -1664,14 +1717,23 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
 });
 
 // Helper function to calculate and update audit score
-function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
+// If auditCategory is provided, scoring/completion is calculated only for items in that category.
+function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory, callback) {
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
 
-  // Get all audit items with their marks
+  // Get audit items with their marks (optionally scoped by category)
+  const auditItemsQuery = auditCategory
+    ? `SELECT ai.item_id, ai.mark
+       FROM audit_items ai
+       JOIN checklist_items ci ON ai.item_id = ci.id
+       WHERE ai.audit_id = ? AND ci.category = ?`
+    : `SELECT ai.item_id, ai.mark FROM audit_items ai WHERE ai.audit_id = ?`;
+  const auditItemsParams = auditCategory ? [auditId, auditCategory] : [auditId];
+
   dbInstance.all(
-    `SELECT ai.item_id, ai.mark FROM audit_items ai WHERE ai.audit_id = ?`,
-    [auditId],
+    auditItemsQuery,
+    auditItemsParams,
     (err, auditItems) => {
       if (err) return callback(err);
 
@@ -1691,7 +1753,13 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, callback) {
                  FROM checklist_items ci WHERE ci.template_id = ?`;
       }
 
-      dbInstance.all(query, [templateId], (err, templateItems) => {
+      const templateParams = [templateId];
+      if (auditCategory) {
+        query += ' AND ci.category = ?';
+        templateParams.push(auditCategory);
+      }
+
+      dbInstance.all(query, templateParams, (err, templateItems) => {
         if (err) return callback(err);
 
         let totalPossibleScore = 0;

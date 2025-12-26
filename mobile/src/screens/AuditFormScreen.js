@@ -272,18 +272,24 @@ const AuditFormScreen = () => {
       // Extract unique categories from items
       const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
       setCategories(uniqueCategories);
-      
-      // If only one category, auto-select it
-      if (uniqueCategories.length === 1) {
-        setSelectedCategory(uniqueCategories[0]);
-        const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+      // If this audit is category-scoped, lock the UI to that category
+      if (audit.audit_category) {
+        setSelectedCategory(audit.audit_category);
+        const filtered = allItems.filter(item => item.category === audit.audit_category);
         setFilteredItems(sortItemsWithTimeBasedLast(filtered));
-      } else if (uniqueCategories.length === 0) {
-        // No categories, show all items
-        setFilteredItems(sortItemsWithTimeBasedLast(allItems));
       } else {
-        // Multiple categories - show all items initially (user can filter later)
-        setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+        // If only one category, auto-select it
+        if (uniqueCategories.length === 1) {
+          setSelectedCategory(uniqueCategories[0]);
+          const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+          setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+        } else if (uniqueCategories.length === 0) {
+          // No categories, show all items
+          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+        } else {
+          // Multiple categories - show all items initially (user can filter later)
+          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+        }
       }
 
       // Populate responses from audit items
@@ -338,8 +344,10 @@ const AuditFormScreen = () => {
       setMultiTimeEntries(timeEntriesData);
 
       // Start at checklist step since we already have the info
-      // If multiple categories exist, go to category selection, otherwise go to checklist
-      if (uniqueCategories.length > 1) {
+      // If audit is category-scoped, jump directly to checklist.
+      if (audit.audit_category) {
+        setCurrentStep(2);
+      } else if (uniqueCategories.length > 1) {
         setCurrentStep(1);
       } else {
         setCurrentStep(2);
@@ -789,6 +797,11 @@ const AuditFormScreen = () => {
           location_id: parseInt(locationId),
           notes
         };
+
+        // Category-wise audits: if a category is selected, scope the audit to that category only.
+        if (selectedCategory) {
+          auditData.audit_category = selectedCategory;
+        }
         
         // Link to scheduled audit if provided
         if (scheduledAuditId) {
@@ -866,7 +879,10 @@ const AuditFormScreen = () => {
 
       // Send batch update request
       try {
-        await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/batch`, { items: batchItems });
+        await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/batch`, { 
+          items: batchItems,
+          audit_category: selectedCategory || null
+        });
       } catch (batchError) {
         console.warn('Batch update failed, trying individual updates:', batchError);
         // Fallback to individual updates if batch fails

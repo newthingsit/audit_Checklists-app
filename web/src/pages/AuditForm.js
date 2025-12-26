@@ -175,6 +175,28 @@ const AuditForm = () => {
       const allItems = templateResponse.data.items || [];
       setItems(allItems);
 
+      // Extract unique categories from items
+      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      setCategories(uniqueCategories);
+
+      // If this audit is category-scoped, lock the UI to that category
+      if (audit.audit_category) {
+        setSelectedCategory(audit.audit_category);
+        setFilteredItems(allItems.filter(item => item.category === audit.audit_category));
+        // Jump directly to checklist step
+        setActiveStep(uniqueCategories.length > 1 ? 2 : 1);
+      } else {
+        // Non-scoped audit: keep existing behavior
+        if (uniqueCategories.length === 1) {
+          setSelectedCategory(uniqueCategories[0]);
+          setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        } else if (uniqueCategories.length === 0) {
+          setFilteredItems(allItems);
+        }
+        // Start at category selection if multiple categories exist, otherwise checklist
+        setActiveStep(uniqueCategories.length > 1 ? 1 : 1);
+      }
+
       // Populate responses from audit items
       const responsesData = {};
       const optionsData = {};
@@ -205,8 +227,7 @@ const AuditForm = () => {
       setComments(commentsData);
       setPhotos(photosData);
 
-      // Start at checklist step since we already have the info
-      setActiveStep(1);
+      // (activeStep set above based on category scoping)
     } catch (error) {
       console.error('Error fetching audit data:', error);
       setError('Failed to load audit data');
@@ -662,6 +683,11 @@ const AuditForm = () => {
           notes
         };
 
+        // Category-wise audits: if a category is selected, scope the audit to that category only.
+        if (selectedCategory) {
+          auditData.audit_category = selectedCategory;
+        }
+
         if (scheduledId) {
           auditData.scheduled_audit_id = parseInt(scheduledId, 10);
         }
@@ -671,7 +697,11 @@ const AuditForm = () => {
       }
 
       // Update all items in a single batch request (much faster!)
-      const batchItems = items
+      // IMPORTANT: For category-wise audits, only save items for the selected category.
+      // Otherwise, saving would create/update "pending" rows for other categories and can flip status back to in_progress.
+      const itemsToSave = selectedCategory ? filteredItems : items;
+
+      const batchItems = itemsToSave
         .filter(item => item && item.id) // Filter out any items without valid IDs
         .map((item) => {
           const itemData = {
@@ -733,7 +763,10 @@ const AuditForm = () => {
       }
 
       // Single batch API call instead of multiple individual calls
-      await axios.put(`/api/audits/${currentAuditId}/items/batch`, { items: batchItems });
+      await axios.put(`/api/audits/${currentAuditId}/items/batch`, { 
+        items: batchItems,
+        audit_category: selectedCategory || null
+      });
 
       showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
       navigate(`/audit/${currentAuditId}`);
