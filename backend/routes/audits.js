@@ -1177,8 +1177,12 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                          WHERE ci.template_id = ?`;
               }
               
-              const templateParams = audit.audit_category ? [audit.template_id, audit.audit_category] : [audit.template_id];
-              const templateQuery = audit.audit_category ? `${query} AND ci.category = ?` : query;
+              // IMPORTANT: For completion status, always check ALL template items, not just the selected category.
+              // The audit_category is only used for scoping the work during editing, but completion should
+              // consider all items in the template to ensure the audit is truly complete.
+              const templateParams = [audit.template_id];
+              // Remove category filter for completion check
+              const templateQuery = query;
 
               dbInstance.all(
                 templateQuery,
@@ -1362,12 +1366,11 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                   return res.json({ message: 'Audit item updated successfully' });
                 }
                 
-                const templateItemsQuery = auditRow.audit_category
-                  ? 'SELECT id FROM checklist_items WHERE template_id = ? AND category = ?'
-                  : 'SELECT id FROM checklist_items WHERE template_id = ?';
-                const templateItemsParams = auditRow.audit_category
-                  ? [auditRow.template_id, auditRow.audit_category]
-                  : [auditRow.template_id];
+                // IMPORTANT: For completion status, always check ALL template items, not just the selected category.
+                // The audit_category is only used for scoping the work during editing, but completion should
+                // consider all items in the template to ensure the audit is truly complete.
+                const templateItemsQuery = 'SELECT id FROM checklist_items WHERE template_id = ?';
+                const templateItemsParams = [auditRow.template_id];
 
                 dbInstance.all(
                   templateItemsQuery,
@@ -1778,14 +1781,12 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
 
-  // Get audit items with their marks (optionally scoped by category)
-  const auditItemsQuery = auditCategory
-    ? `SELECT ai.item_id, ai.mark
-       FROM audit_items ai
-       JOIN checklist_items ci ON ai.item_id = ci.id
-       WHERE ai.audit_id = ? AND ci.category = ?`
-    : `SELECT ai.item_id, ai.mark FROM audit_items ai WHERE ai.audit_id = ?`;
-  const auditItemsParams = auditCategory ? [auditId, auditCategory] : [auditId];
+  // IMPORTANT: For completion status, always check ALL audit items, not just the selected category.
+  // The audit_category is only used for scoping the work during editing, but completion should
+  // consider all items in the template to ensure the audit is truly complete.
+  // Get audit items with their marks (always fetch all items for completion check)
+  const auditItemsQuery = `SELECT ai.item_id, ai.mark FROM audit_items ai WHERE ai.audit_id = ?`;
+  const auditItemsParams = [auditId];
 
   dbInstance.all(
     auditItemsQuery,
@@ -1809,11 +1810,15 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
                  FROM checklist_items ci WHERE ci.template_id = ?`;
       }
 
+      // IMPORTANT: For completion status, always check ALL template items, not just the selected category.
+      // The audit_category is only used for scoping the work during editing, but completion should
+      // consider all items in the template to ensure the audit is truly complete.
       const templateParams = [templateId];
-      if (auditCategory) {
-        query += ' AND ci.category = ?';
-        templateParams.push(auditCategory);
-      }
+      // Remove category filter for completion check - we want to check ALL items
+      // if (auditCategory) {
+      //   query += ' AND ci.category = ?';
+      //   templateParams.push(auditCategory);
+      // }
 
       dbInstance.all(query, templateParams, (err, templateItems) => {
         if (err) return callback(err);
