@@ -332,18 +332,33 @@ router.get('/:id', authenticate, (req, res) => {
         return res.status(404).json({ error: 'Audit not found' });
       }
 
-      const auditCategory = (audit.audit_category && String(audit.audit_category).trim()) ? String(audit.audit_category).trim() : null;
-
-      // Check if time tracking columns exist, then build query accordingly
-      const itemsQuery = `SELECT ai.*, ci.title, ci.description, ci.category, ci.required,
-              COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
-              cio.id as selected_option_id, cio.option_text as selected_option_text, cio.mark as selected_mark
-       FROM audit_items ai
-       JOIN checklist_items ci ON ai.item_id = ci.id
+      // IMPORTANT: When viewing audit detail/report, show ALL template items regardless of audit_category.
+      // The audit_category is only used during editing/score calculation to scope the work.
+      // For the final report, users should see all categories and their status.
+      // Use LEFT JOIN to include template items that don't have audit_items yet (for category-wise audits).
+      const itemsQuery = `SELECT 
+              ci.id as item_id,
+              ci.title, 
+              ci.description, 
+              ci.category, 
+              ci.required,
+              COALESCE(ci.weight, 1) as weight, 
+              COALESCE(ci.is_critical, 0) as is_critical,
+              ai.id as audit_item_id,
+              ai.mark,
+              ai.comment,
+              ai.status,
+              ai.photo_url,
+              ai.selected_option_id,
+              ai.time_taken_minutes,
+              cio.option_text as selected_option_text, 
+              cio.mark as selected_mark
+       FROM checklist_items ci
+       LEFT JOIN audit_items ai ON ci.id = ai.item_id AND ai.audit_id = ?
        LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-       WHERE ai.audit_id = ? ${auditCategory ? 'AND ci.category = ?' : ''}
+       WHERE ci.template_id = ?
        ORDER BY ci.order_index, ci.id`;
-      const itemsParams = auditCategory ? [auditId, auditCategory] : [auditId];
+      const itemsParams = [auditId, audit.template_id];
 
       dbInstance.all(
         itemsQuery,
@@ -357,49 +372,66 @@ router.get('/:id', authenticate, (req, res) => {
           // Extract time tracking data from ai.* if columns exist
           // SQLite/SQL Server will include all columns in ai.*, so we can access them directly
           
+          // Normalize items: items without audit_items will have null values for audit_item fields
+          // Construct full photo URLs if they exist
+          const itemsNormalized = items.map(item => {
+            const normalized = {
+              item_id: item.item_id,
+              title: item.title,
+              description: item.description,
+              category: item.category,
+              required: item.required,
+              weight: item.weight,
+              is_critical: item.is_critical,
+              // Audit item fields (may be null if no audit_item exists)
+              audit_item_id: item.audit_item_id,
+              mark: item.mark || null,
+              comment: item.comment || null,
+              status: item.status || 'pending',
+              photo_url: item.photo_url || null,
+              selected_option_id: item.selected_option_id || null,
+              selected_option_text: item.selected_option_text || null,
+              selected_mark: item.selected_mark || null,
+              time_taken_minutes: item.time_taken_minutes || null
+            };
+            
+            // Construct full photo URL if it exists and is not already a full URL
+            if (normalized.photo_url && !String(normalized.photo_url).startsWith('http')) {
+              const raw = String(normalized.photo_url);
+              const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
+              normalized.photo_url = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
+            }
+            
+            return normalized;
+          });
+          
           // Calculate time statistics (handle missing columns gracefully)
           const timeStats = {
             totalTime: 0,
             averageTime: 0,
             itemsWithTime: 0,
-            totalItems: items.length
+            totalItems: itemsNormalized.length
           };
           
-          if (items.length > 0) {
-            // Check if time_taken_minutes column exists by checking if any item has the property
-            // If column doesn't exist, items won't have this property
-            const hasTimeColumn = items.some(item => 'time_taken_minutes' in item);
-            
-            if (hasTimeColumn) {
-              const itemsWithTime = items.filter(item => 
-                item.time_taken_minutes !== null && 
-                item.time_taken_minutes !== undefined && 
-                item.time_taken_minutes !== ''
-              );
-              if (itemsWithTime.length > 0) {
-                timeStats.itemsWithTime = itemsWithTime.length;
-                timeStats.totalTime = itemsWithTime.reduce((sum, item) => sum + (parseFloat(item.time_taken_minutes) || 0), 0);
-                timeStats.averageTime = Math.round((timeStats.totalTime / itemsWithTime.length) * 100) / 100; // Round to 2 decimals
-              }
+          if (itemsNormalized.length > 0) {
+            const itemsWithTime = itemsNormalized.filter(item => 
+              item.time_taken_minutes !== null && 
+              item.time_taken_minutes !== undefined && 
+              item.time_taken_minutes !== ''
+            );
+            if (itemsWithTime.length > 0) {
+              timeStats.itemsWithTime = itemsWithTime.length;
+              timeStats.totalTime = itemsWithTime.reduce((sum, item) => sum + (parseFloat(item.time_taken_minutes) || 0), 0);
+              timeStats.averageTime = Math.round((timeStats.totalTime / itemsWithTime.length) * 100) / 100; // Round to 2 decimals
             }
           }
           
-          // Fetch all options for items
-          if (items.length === 0) {
+          // Fetch options for ALL template items (not just those with audit_items)
+          const itemIds = itemsNormalized.map(item => item.item_id);
+          if (itemIds.length === 0) {
             return res.json({ audit, items: [], categoryScores: {}, timeStats });
           }
           
-          // Construct full photo URLs if they exist
-          const itemsWithFullUrls = items.map(item => {
-            if (item.photo_url && !String(item.photo_url).startsWith('http')) {
-              const raw = String(item.photo_url);
-              const normalizedPath = raw.startsWith('/') ? raw : `/${raw}`;
-              item.photo_url = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
-            }
-            return item;
-          });
-          
-          const itemIds = itemsWithFullUrls.map(item => item.item_id);
           const placeholders = itemIds.map(() => '?').join(',');
           
           dbInstance.all(
@@ -421,7 +453,7 @@ router.get('/:id', authenticate, (req, res) => {
               
               // Calculate category-wise scores
               const categoryScores = {};
-              items.forEach(item => {
+              itemsNormalized.forEach(item => {
                 const category = item.category || 'Uncategorized';
                 if (!categoryScores[category]) {
                   categoryScores[category] = {
@@ -476,24 +508,14 @@ router.get('/:id', authenticate, (req, res) => {
                   : 0;
               });
               
-              // Construct full photo URLs and attach options to items
-              const itemsWithOptions = items.map(item => {
-                // Construct full photo URL if it exists and is not already a full URL
-                let photoUrl = item.photo_url;
-                if (photoUrl && !photoUrl.startsWith('http')) {
-                  const normalizedPath = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
-                  photoUrl = backendBaseUrl ? `${backendBaseUrl}${normalizedPath}` : normalizedPath;
-                }
-                
-                return {
-                  ...item,
-                  photo_url: photoUrl, // Use constructed full URL
-                  options: (optionsByItem[item.item_id] || []).map(option => ({
-                    ...option,
-                    text: option.option_text // Add text field for mobile compatibility
-                  }))
-                };
-              });
+              // Attach options to items
+              const itemsWithOptions = itemsNormalized.map(item => ({
+                ...item,
+                options: (optionsByItem[item.item_id] || []).map(option => ({
+                  ...option,
+                  text: option.option_text // Add text field for mobile compatibility
+                }))
+              }));
               
               res.json({ audit, items: itemsWithOptions, categoryScores, timeStats });
             }
