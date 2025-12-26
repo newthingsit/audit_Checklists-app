@@ -178,8 +178,13 @@ const AuditDetail = () => {
 
   const handleSaveItem = async () => {
     try {
+      // If an option is selected but status is still 'pending', automatically set to 'completed'
+      const finalStatus = itemForm.selected_option_id && itemForm.status === 'pending' 
+        ? 'completed' 
+        : itemForm.status;
+      
       const updateData = {
-        status: itemForm.status,
+        status: finalStatus,
         comment: itemForm.comment,
         selected_option_id: itemForm.selected_option_id || null
       };
@@ -796,7 +801,12 @@ const AuditDetail = () => {
                           key={option.id}
                           variant={itemForm.selected_option_id === option.id ? 'contained' : 'outlined'}
                           fullWidth
-                          onClick={() => setItemForm({ ...itemForm, selected_option_id: option.id })}
+                          onClick={() => setItemForm({ 
+                            ...itemForm, 
+                            selected_option_id: option.id,
+                            // Automatically set status to 'completed' when an option is selected
+                            status: itemForm.status === 'pending' ? 'completed' : itemForm.status
+                          })}
                           sx={{
                             py: 2,
                             display: 'flex',

@@ -1046,8 +1046,16 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 
             // If item doesn't exist, create it first
             if (!existingItem) {
+              // IMPORTANT: If an option is selected, automatically set status to 'completed'
+              // This ensures items are marked as completed when an option is chosen
+              let itemStatus = status || 'pending';
+              if (validSelectedOptionId && finalMark && itemStatus === 'pending') {
+                itemStatus = 'completed';
+                logger.debug(`[Create Item] Auto-setting status to 'completed' for new item ${itemId} with selected_option_id ${validSelectedOptionId}`);
+              }
+              
               const insertFields = ['audit_id', 'item_id', 'status'];
-              const insertValues = [auditId, itemId, status || 'pending'];
+              const insertValues = [auditId, itemId, itemStatus];
               const insertPlaceholders = ['?', '?', '?'];
               
               // Always include comment, photo_url, selected_option_id, and mark fields (can be null)
@@ -1081,8 +1089,16 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               );
             } else {
               // Update existing audit item
+              // IMPORTANT: If an option is selected but status is 'pending', automatically set to 'completed'
+              // This ensures items are marked as completed when an option is chosen
+              let finalStatus = status || 'pending';
+              if (validSelectedOptionId && finalMark && finalStatus === 'pending') {
+                finalStatus = 'completed';
+                logger.debug(`[Update Item] Auto-setting status to 'completed' for item ${itemId} with selected_option_id ${validSelectedOptionId}`);
+              }
+              
               const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
-              const updateValues = [status || 'pending', comment || null, photo_url || null];
+              const updateValues = [finalStatus, comment || null, photo_url || null];
               
               if (selected_option_id !== undefined) {
                 updateFields.push('selected_option_id = ?');
@@ -1105,7 +1121,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               }
               
               // Only update completed_at if status is completed
-              if (status === 'completed') {
+              if (finalStatus === 'completed') {
                 updateFields.push('completed_at = CURRENT_TIMESTAMP');
                 // If time_taken_minutes not provided but started_at exists, calculate it
                 if (time_taken_minutes === undefined && started_at) {
@@ -1543,8 +1559,16 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
 
               if (!existingItem) {
                 // Insert new item
+                // IMPORTANT: If an option is selected, automatically set status to 'completed'
+                // This ensures items are marked as completed when an option is chosen
+                let itemStatus = status || 'pending';
+                if (selected_option_id && mark && itemStatus === 'pending') {
+                  itemStatus = 'completed';
+                  logger.debug(`[Batch Update] Auto-setting status to 'completed' for new item ${itemId} with selected_option_id ${selected_option_id}`);
+                }
+                
                 const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
-                const insertValues = [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null];
+                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, mark || null];
                 const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
                 
                 // Add time tracking fields if provided (only if columns exist)
@@ -1611,8 +1635,16 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 );
               } else {
                 // Update existing item
+                // IMPORTANT: If an option is selected but status is 'pending', automatically set to 'completed'
+                // This ensures items are marked as completed when an option is chosen
+                let itemStatus = status || 'pending';
+                if (selected_option_id && mark && itemStatus === 'pending') {
+                  itemStatus = 'completed';
+                  logger.debug(`[Batch Update] Auto-setting status to 'completed' for item ${itemId} with selected_option_id ${selected_option_id}`);
+                }
+                
                 const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
-                const updateValues = [status || 'pending', comment || null, photo_url || null];
+                const updateValues = [itemStatus, comment || null, photo_url || null];
                 
                 if (selected_option_id !== undefined) {
                   updateFields.push('selected_option_id = ?');
