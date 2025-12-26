@@ -298,36 +298,38 @@ router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
 
 // Get single audit with items (admins can view any audit)
 router.get('/:id', authenticate, (req, res) => {
-  const dbInstance = db.getDb();
-  const auditId = parseInt(req.params.id, 10);
-  if (isNaN(auditId)) {
-    return res.status(400).json({ error: 'Invalid audit ID' });
-  }
-  const userId = req.user.id;
-  const isAdmin = isAdminUser(req.user);
+  try {
+    const dbInstance = db.getDb();
+    const auditId = parseInt(req.params.id, 10);
+    if (isNaN(auditId)) {
+      return res.status(400).json({ error: 'Invalid audit ID' });
+    }
+    const userId = req.user.id;
+    const isAdmin = isAdminUser(req.user);
 
-  // Build absolute URL for uploaded evidence so web/mobile can display it reliably.
-  // IMPORTANT: APP_URL is the frontend URL, but uploads are served by the backend.
-  const forwardedProto = req.headers['x-forwarded-proto'];
-  const protocol = forwardedProto ? String(forwardedProto).split(',')[0].trim() : req.protocol;
-  const host = req.get('host');
-  const backendBaseUrl = (process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL || (protocol && host ? `${protocol}://${host}` : '')).replace(/\/$/, '');
+    // Build absolute URL for uploaded evidence so web/mobile can display it reliably.
+    // IMPORTANT: APP_URL is the frontend URL, but uploads are served by the backend.
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = forwardedProto ? String(forwardedProto).split(',')[0].trim() : req.protocol;
+    const host = req.get('host');
+    const backendBaseUrl = (process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL || (protocol && host ? `${protocol}://${host}` : '')).replace(/\/$/, '');
 
-  // Admins can view any audit, regular users only their own
-  const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
-  const queryParams = isAdmin ? [auditId] : [auditId, userId];
+    // Admins can view any audit, regular users only their own
+    const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+    const queryParams = isAdmin ? [auditId] : [auditId, userId];
 
-  dbInstance.get(
-    `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name, u.email as user_email
-     FROM audits a
-     JOIN checklist_templates ct ON a.template_id = ct.id
-     LEFT JOIN users u ON a.user_id = u.id
-     ${whereClause}`,
-    queryParams,
-    (err, audit) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
+    dbInstance.get(
+      `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name, u.email as user_email
+       FROM audits a
+       JOIN checklist_templates ct ON a.template_id = ct.id
+       LEFT JOIN users u ON a.user_id = u.id
+       ${whereClause}`,
+      queryParams,
+      (err, audit) => {
+        if (err) {
+          logger.error('Error fetching audit:', { error: err.message, stack: err.stack, auditId, userId, isAdmin });
+          return res.status(500).json({ error: 'Database error', details: err.message });
+        }
       if (!audit) {
         return res.status(404).json({ error: 'Audit not found' });
       }
@@ -524,6 +526,10 @@ router.get('/:id', authenticate, (req, res) => {
       );
     }
   );
+  } catch (error) {
+    logger.error('Unhandled error in GET /api/audits/:id:', { error: error.message, stack: error.stack, auditId: req.params.id });
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
 });
 
 // Create new audit
