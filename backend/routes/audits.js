@@ -965,92 +965,93 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 
             // If item doesn't exist, create it first
             if (!existingItem) {
-            const insertFields = ['audit_id', 'item_id', 'status'];
-            const insertValues = [auditId, itemId, status || 'pending'];
-            const insertPlaceholders = ['?', '?', '?'];
-            
-            // Always include comment, photo_url, selected_option_id, and mark fields (can be null)
-            insertFields.push('comment', 'photo_url', 'selected_option_id', 'mark');
-            insertValues.push(comment || null, photo_url || null, validSelectedOptionId, finalMark || null);
-            insertPlaceholders.push('?', '?', '?', '?');
-            
-            // Add time tracking fields if provided
-            if (time_taken_minutes !== undefined) {
-              insertFields.push('time_taken_minutes');
-              insertValues.push(time_taken_minutes || null);
-              insertPlaceholders.push('?');
-            }
-            if (started_at !== undefined) {
-              insertFields.push('started_at');
-              insertValues.push(started_at || null);
-              insertPlaceholders.push('?');
-            }
-            
-            dbInstance.run(
-              `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`,
-              insertValues,
-              function(insertErr) {
-                if (insertErr) {
-                  logger.error('Error creating audit item:', insertErr.message);
-                  return res.status(500).json({ error: 'Error creating audit item: ' + insertErr.message });
+              const insertFields = ['audit_id', 'item_id', 'status'];
+              const insertValues = [auditId, itemId, status || 'pending'];
+              const insertPlaceholders = ['?', '?', '?'];
+              
+              // Always include comment, photo_url, selected_option_id, and mark fields (can be null)
+              insertFields.push('comment', 'photo_url', 'selected_option_id', 'mark');
+              insertValues.push(comment || null, photo_url || null, validSelectedOptionId, finalMark || null);
+              insertPlaceholders.push('?', '?', '?', '?');
+              
+              // Add time tracking fields if provided
+              if (time_taken_minutes !== undefined) {
+                insertFields.push('time_taken_minutes');
+                insertValues.push(time_taken_minutes || null);
+                insertPlaceholders.push('?');
+              }
+              if (started_at !== undefined) {
+                insertFields.push('started_at');
+                insertValues.push(started_at || null);
+                insertPlaceholders.push('?');
+              }
+              
+              dbInstance.run(
+                `INSERT INTO audit_items (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`,
+                insertValues,
+                function(insertErr) {
+                  if (insertErr) {
+                    logger.error('Error creating audit item:', insertErr.message);
+                    return res.status(500).json({ error: 'Error creating audit item: ' + insertErr.message });
+                  }
+                  // After creating, continue with score calculation
+                  calculateScoreAndUpdate();
                 }
-                // After creating, continue with score calculation
-                calculateScoreAndUpdate();
+              );
+            } else {
+              // Update existing audit item
+              const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
+              const updateValues = [status || 'pending', comment || null, photo_url || null];
+              
+              if (selected_option_id !== undefined) {
+                updateFields.push('selected_option_id = ?');
+                updateValues.push(validSelectedOptionId);
               }
-            );
-          } else {
-            // Update existing audit item
-            const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
-            const updateValues = [status || 'pending', comment || null, photo_url || null];
-            
-            if (selected_option_id !== undefined) {
-              updateFields.push('selected_option_id = ?');
-              updateValues.push(validSelectedOptionId);
-            }
-            
-            if (finalMark !== undefined) {
-              updateFields.push('mark = ?');
-              updateValues.push(finalMark || null);
-            }
-            
-            // Add time tracking fields if provided
-            if (time_taken_minutes !== undefined) {
-              updateFields.push('time_taken_minutes = ?');
-              updateValues.push(time_taken_minutes || null);
-            }
-            if (started_at !== undefined) {
-              updateFields.push('started_at = ?');
-              updateValues.push(started_at || null);
-            }
-            
-            // Only update completed_at if status is completed
-            if (status === 'completed') {
-              updateFields.push('completed_at = CURRENT_TIMESTAMP');
-              // If time_taken_minutes not provided but started_at exists, calculate it
-              if (time_taken_minutes === undefined && started_at) {
-                updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
+              
+              if (finalMark !== undefined) {
+                updateFields.push('mark = ?');
+                updateValues.push(finalMark || null);
               }
-            }
-            
-            updateValues.push(auditId, itemId);
-            
-            dbInstance.run(
-              `UPDATE audit_items 
-               SET ${updateFields.join(', ')}
-               WHERE audit_id = ? AND item_id = ?`,
-              updateValues,
-              function(updateErr) {
-                if (updateErr) {
-                  logger.error('Error updating audit item:', updateErr.message);
-                  return res.status(500).json({ error: 'Error updating audit item: ' + updateErr.message });
+              
+              // Add time tracking fields if provided
+              if (time_taken_minutes !== undefined) {
+                updateFields.push('time_taken_minutes = ?');
+                updateValues.push(time_taken_minutes || null);
+              }
+              if (started_at !== undefined) {
+                updateFields.push('started_at = ?');
+                updateValues.push(started_at || null);
+              }
+              
+              // Only update completed_at if status is completed
+              if (status === 'completed') {
+                updateFields.push('completed_at = CURRENT_TIMESTAMP');
+                // If time_taken_minutes not provided but started_at exists, calculate it
+                if (time_taken_minutes === undefined && started_at) {
+                  updateFields.push('time_taken_minutes = ROUND((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 1440, 2)');
                 }
-                // After updating, continue with score calculation
-                calculateScoreAndUpdate();
               }
-            );
+              
+              updateValues.push(auditId, itemId);
+              
+              dbInstance.run(
+                `UPDATE audit_items 
+                 SET ${updateFields.join(', ')}
+                 WHERE audit_id = ? AND item_id = ?`,
+                updateValues,
+                function(updateErr) {
+                  if (updateErr) {
+                    logger.error('Error updating audit item:', updateErr.message);
+                    return res.status(500).json({ error: 'Error updating audit item: ' + updateErr.message });
+                  }
+                  // After updating, continue with score calculation
+                  calculateScoreAndUpdate();
+                }
+              );
+            }
           }
-        }
-      );
+        );
+      }
 
       function calculateScoreAndUpdate() {
         // Update audit progress - calculate score based on marks with weighted scoring support
