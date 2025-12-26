@@ -102,71 +102,88 @@ router.post('/login', [
   
   // Simple query - email is already normalized, so we can do a direct comparison
   // For case-insensitive comparison across all databases, we'll compare the normalized values
-  dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], async (err, user) => {
+  dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], (err, user) => {
     if (err) {
       logger.error('Login database error:', err);
       return res.status(500).json({ error: 'Database error', details: err.message });
     }
+
     if (!user) {
       logger.security('login_failed', { reason: 'user_not_found', email: normalizedEmail });
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Invalid credentials',
         message: 'Email or password is incorrect'
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
-      return res.status(400).json({ 
-        error: 'Invalid credentials',
-        message: 'Email or password is incorrect'
-      });
+    // Defensive: avoid throwing when password hash is missing/invalid
+    if (!user.password || typeof user.password !== 'string') {
+      logger.error('Login error: user record has invalid password hash', { userId: user.id, email: normalizedEmail });
+      return res.status(500).json({ error: 'Invalid user password data' });
     }
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // Optimize permissions fetching - admins get all permissions immediately without DB query
-    const { isAdminUser } = require('../middleware/permissions');
-    const role = user.role ? user.role.toLowerCase() : '';
-    
-    // Fast path for admin users - no database query needed
-    if (role === 'admin' || role === 'superadmin') {
-      logger.security('login_success', { userId: user.id });
-      return res.json({
-        token,
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          name: user.name, 
-          role: user.role, 
-          permissions: ['*'] // Admin has all permissions
+    // IMPORTANT: do not use an `async` callback here; errors from awaited promises can be mishandled by some DB wrappers.
+    bcrypt.compare(password, user.password)
+      .then((isMatch) => {
+        if (!isMatch) {
+          logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
+          return res.status(400).json({
+            error: 'Invalid credentials',
+            message: 'Email or password is incorrect'
+          });
         }
-      });
-    }
 
-    // For non-admin users, fetch permissions (but don't block login if it fails)
-    const { getUserPermissions } = require('../middleware/permissions');
-    getUserPermissions(user.id, user.role, (permErr, permissions) => {
-      if (permErr) {
-        logger.error('Error fetching permissions:', permErr.message);
-        // Return user without permissions if error - don't block login
-        logger.security('login_success', { userId: user.id });
-        return res.json({
-          token,
-          user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
+        let token;
+        try {
+          token = jwt.sign(
+            { id: user.id, email: user.email, name: user.name, role: user.role },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+        } catch (tokenErr) {
+          logger.error('Login token generation error:', tokenErr);
+          return res.status(500).json({ error: 'Token generation failed' });
+        }
+
+        const role = user.role ? String(user.role).toLowerCase() : '';
+
+        // Fast path for admin users - no database query needed
+        if (role === 'admin' || role === 'superadmin') {
+          logger.security('login_success', { userId: user.id });
+          return res.json({
+            token,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              permissions: ['*']
+            }
+          });
+        }
+
+        // For non-admin users, fetch permissions (but don't block login if it fails)
+        const { getUserPermissions } = require('../middleware/permissions');
+        getUserPermissions(user.id, user.role, (permErr, permissions) => {
+          if (permErr) {
+            logger.error('Error fetching permissions:', permErr.message);
+            logger.security('login_success', { userId: user.id });
+            return res.json({
+              token,
+              user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
+            });
+          }
+          logger.security('login_success', { userId: user.id });
+          return res.json({
+            token,
+            user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
+          });
         });
-      }
-      logger.security('login_success', { userId: user.id });
-      res.json({
-        token,
-        user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
+      })
+      .catch((compareErr) => {
+        logger.error('Login password compare error:', compareErr);
+        return res.status(500).json({ error: 'Login failed' });
       });
-    });
   });
 });
 
