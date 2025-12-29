@@ -148,7 +148,8 @@ router.get('/', authenticate, (req, res) => {
 // If scheduled_audit_id is provided, returns count for that specific checklist
 // Otherwise returns 0 (since we now track per-checklist, not per-user)
 // IMPORTANT: This route MUST be defined BEFORE /:id to prevent Express from matching "reschedule-count" as an ID
-router.get('/reschedule-count', authenticate, (req, res) => {
+// Note: Does not use authenticate middleware - handles auth internally and always returns 200
+router.get('/reschedule-count', (req, res) => {
   const { scheduled_audit_id } = req.query;
   
   // Default response - sent on any error

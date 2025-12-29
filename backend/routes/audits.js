@@ -1748,22 +1748,32 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       const results = await Promise.all(updatePromises);
       logger.debug(`[Batch Update] Successfully processed ${results.length} items`);
 
-      // If the client requests category-scoped behavior, persist audit_category (useful for older audits created without it)
-      const requestedAuditCategory = (typeof req.body.audit_category === 'string' && req.body.audit_category.trim())
-        ? req.body.audit_category.trim()
-        : null;
-      const effectiveAuditCategory = audit.audit_category || requestedAuditCategory || null;
+      // Handle audit_category: allow clearing it (null) to support multi-category audits
+      // If explicitly set to null, clear the category to allow multiple categories in same audit
+      const requestedAuditCategory = req.body.hasOwnProperty('audit_category') 
+        ? (typeof req.body.audit_category === 'string' && req.body.audit_category.trim()
+            ? req.body.audit_category.trim()
+            : null)
+        : undefined; // Not provided, don't change
+      
+      const effectiveAuditCategory = requestedAuditCategory !== undefined 
+        ? requestedAuditCategory 
+        : (audit.audit_category || null);
 
-      const maybePersistCategory = () => new Promise((resolve) => {
-        if (!requestedAuditCategory || audit.audit_category) return resolve();
-        dbInstance.run(
-          'UPDATE audits SET audit_category = ? WHERE id = ?',
-          [requestedAuditCategory, auditId],
-          () => resolve() // don't block the save on this update
-        );
+      const maybeUpdateCategory = () => new Promise((resolve) => {
+        // If explicitly set (including null), update it
+        if (requestedAuditCategory !== undefined) {
+          dbInstance.run(
+            'UPDATE audits SET audit_category = ? WHERE id = ?',
+            [requestedAuditCategory, auditId],
+            () => resolve() // don't block the save on this update
+          );
+        } else {
+          resolve();
+        }
       });
 
-      await maybePersistCategory();
+      await maybeUpdateCategory();
 
       // Calculate score once after all updates
       // If this is a category-wise audit (audit_category set), scope completion/score to that category.

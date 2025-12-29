@@ -47,6 +47,7 @@ const AuditFormScreen = () => {
   const [selectedCategory, setSelectedCategory] = useState(null); // Selected category for filtering items
   const [categories, setCategories] = useState([]); // Available categories
   const [filteredItems, setFilteredItems] = useState([]); // Items filtered by selected category
+  const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track which categories have items completed
   
   // GPS Location state
   const { getCurrentLocation, permissionGranted, settings: locationSettings } = useLocation();
@@ -272,8 +273,32 @@ const AuditFormScreen = () => {
       // Extract unique categories from items
       const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
       setCategories(uniqueCategories);
-      // If this audit is category-scoped, lock the UI to that category
-      if (audit.audit_category) {
+      
+      // Check which categories have been completed in this audit
+      const categoryStatus = {};
+      uniqueCategories.forEach(cat => {
+        const categoryItems = allItems.filter(item => item.category === cat);
+        const completedInCategory = categoryItems.filter(item => {
+          const auditItem = auditItems.find(ai => ai.item_id === item.id);
+          return auditItem && auditItem.mark !== null && auditItem.mark !== undefined && auditItem.mark !== '';
+        }).length;
+        categoryStatus[cat] = {
+          completed: completedInCategory,
+          total: categoryItems.length,
+          isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+        };
+      });
+      setCategoryCompletionStatus(categoryStatus);
+      
+      // If this audit has a category set, default to it but allow changing if multiple categories exist
+      if (audit.audit_category && uniqueCategories.length > 1) {
+        // If audit has a category but there are multiple categories, allow user to select
+        // Default to the audit's category but don't lock it
+        setSelectedCategory(audit.audit_category);
+        const filtered = allItems.filter(item => item.category === audit.audit_category);
+        setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+      } else if (audit.audit_category && uniqueCategories.length <= 1) {
+        // Only one category, lock to it
         setSelectedCategory(audit.audit_category);
         const filtered = allItems.filter(item => item.category === audit.audit_category);
         setFilteredItems(sortItemsWithTimeBasedLast(filtered));
@@ -343,13 +368,14 @@ const AuditFormScreen = () => {
       setPhotos(photosData);
       setMultiTimeEntries(timeEntriesData);
 
-      // Start at checklist step since we already have the info
-      // If audit is category-scoped, jump directly to checklist.
-      if (audit.audit_category) {
-        setCurrentStep(2);
-      } else if (uniqueCategories.length > 1) {
+      // Start at appropriate step
+      // If multiple categories exist, show category selection even if audit has a category set
+      // This allows users to switch between categories in the same audit
+      if (uniqueCategories.length > 1) {
+        // Multiple categories - show category selection to allow switching
         setCurrentStep(1);
       } else {
+        // Single or no categories - go directly to checklist
         setCurrentStep(2);
       }
     } catch (error) {
@@ -798,10 +824,8 @@ const AuditFormScreen = () => {
           notes
         };
 
-        // Category-wise audits: if a category is selected, scope the audit to that category only.
-        if (selectedCategory) {
-          auditData.audit_category = selectedCategory;
-        }
+        // Don't set audit_category when creating new audit - allow multiple categories in same audit
+        // audit_category will be cleared when saving items from different categories
         
         // Link to scheduled audit if provided
         if (scheduledAuditId) {
@@ -878,10 +902,12 @@ const AuditFormScreen = () => {
       });
 
       // Send batch update request
+      // Clear audit_category to allow multiple categories in the same audit
+      // This allows users to complete different categories in the same audit session
       try {
         await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/batch`, { 
           items: batchItems,
-          audit_category: selectedCategory || null
+          audit_category: null // Clear category to allow multi-category audits
         });
       } catch (batchError) {
         console.warn('Batch update failed, trying individual updates:', batchError);
@@ -1311,21 +1337,36 @@ const AuditFormScreen = () => {
           
           {categories.map((category, index) => {
             const categoryItems = items.filter(item => item.category === category);
+            const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
             return (
               <TouchableOpacity
                 key={category || `no-category-${index}`}
                 style={[
                   styles.categoryCard,
-                  selectedCategory === category && styles.categoryCardSelected
+                  selectedCategory === category && styles.categoryCardSelected,
+                  status.isComplete && styles.categoryCardCompleted
                 ]}
                 onPress={() => handleCategorySelect(category)}
                 activeOpacity={0.7}
               >
                 <View style={styles.categoryCardContent}>
-                  <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
-                  <Text style={styles.categoryCount}>{categoryItems.length} item{categoryItems.length !== 1 ? 's' : ''}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
+                      <Text style={styles.categoryCount}>
+                        {categoryItems.length} item{categoryItems.length !== 1 ? 's' : ''}
+                        {status.completed > 0 && ` • ${status.completed}/${status.total} completed`}
+                      </Text>
+                    </View>
+                    {status.isComplete && (
+                      <View style={styles.completedBadge}>
+                        <Icon name="check-circle" size={20} color="#4caf50" />
+                        <Text style={styles.completedText}>Done</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-                {selectedCategory === category && (
+                {selectedCategory === category && !status.isComplete && (
                   <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
                 )}
                 {!selectedCategory || selectedCategory !== category ? (
@@ -1982,8 +2023,27 @@ const styles = StyleSheet.create({
     backgroundColor: themeConfig.primary.light + '15',
     borderWidth: 3,
   },
+  categoryCardCompleted: {
+    borderColor: '#4caf50',
+    backgroundColor: '#e8f5e9',
+    borderWidth: 2,
+  },
   categoryCardContent: {
     flex: 1,
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4caf50',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  completedText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   categoryName: {
     fontSize: 18,
