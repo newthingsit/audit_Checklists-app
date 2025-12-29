@@ -37,95 +37,121 @@ const markScheduledAuditInProgress = (dbInstance, scheduleId) => {
   );
 };
 
-const handleScheduledAuditCompletion = (dbInstance, auditId) => {
-  dbInstance.get(
-    'SELECT scheduled_audit_id, status FROM audits WHERE id = ?',
-    [auditId],
-    (err, auditRow) => {
-      if (err) {
-        logger.error('Error fetching audit for schedule completion:', err.message);
-        return;
-      }
-      if (!auditRow) {
-        logger.warn(`[Scheduled Audit Completion] Audit ${auditId} not found`);
-        return;
-      }
-      
-      // Only update scheduled audit if the audit is actually completed
-      if (auditRow.status !== 'completed') {
-        logger.debug(`[Scheduled Audit Completion] Audit ${auditId} status is '${auditRow.status}', not 'completed'. Skipping scheduled audit update.`);
-        return;
-      }
-      
-      if (!auditRow.scheduled_audit_id) {
-        logger.debug(`[Scheduled Audit Completion] Audit ${auditId} has no scheduled_audit_id. Skipping.`);
-        return;
-      }
+const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null) => {
+  // Helper function to process scheduled audit update
+  const processScheduledAuditUpdate = (scheduleId) => {
+    dbInstance.get(
+      'SELECT id, frequency, scheduled_date, status FROM scheduled_audits WHERE id = ?',
+      [scheduleId],
+      (scheduleErr, schedule) => {
+        if (scheduleErr) {
+          logger.error('Error fetching scheduled audit for completion:', scheduleErr.message);
+          return;
+        }
+        if (!schedule) {
+          logger.warn(`[Scheduled Audit Completion] Scheduled audit ${scheduleId} not found`);
+          return;
+        }
 
-      const scheduleId = auditRow.scheduled_audit_id;
-      dbInstance.get(
-        'SELECT id, frequency, scheduled_date, status FROM scheduled_audits WHERE id = ?',
-        [scheduleId],
-        (scheduleErr, schedule) => {
-          if (scheduleErr) {
-            logger.error('Error fetching scheduled audit for completion:', scheduleErr.message);
-            return;
-          }
-          if (!schedule) {
-            logger.warn(`[Scheduled Audit Completion] Scheduled audit ${scheduleId} not found`);
-            return;
-          }
+        logger.info(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Current Status: ${schedule.status}, Audit ID: ${auditId}`);
 
-          logger.info(`[Scheduled Audit Completion] Schedule ID: ${scheduleId}, Frequency: ${schedule.frequency}, Current Status: ${schedule.status}, Audit ID: ${auditId}`);
-
-          if (!schedule.frequency || schedule.frequency === 'once') {
-            // One-time audit: mark as completed
+        if (!schedule.frequency || schedule.frequency === 'once') {
+          // One-time audit: mark as completed
+          dbInstance.run(
+            'UPDATE scheduled_audits SET status = ? WHERE id = ?',
+            ['completed', scheduleId],
+            function(updateErr) {
+              if (updateErr) {
+                logger.error(`[Scheduled Audit Completion] Error marking scheduled audit ${scheduleId} as completed:`, updateErr.message);
+              } else {
+                logger.info(`[Scheduled Audit Completion] Successfully marked schedule ${scheduleId} as completed (rows affected: ${this.changes})`);
+              }
+            }
+          );
+        } else {
+          // Recurring audit: advance to next date and reset to pending
+          const nextDate = getNextScheduledDate(schedule.scheduled_date, schedule.frequency);
+          logger.debug(`[Scheduled Audit Completion] Recurring audit - advancing to next date: ${nextDate}`);
+          
+          if (!nextDate) {
             dbInstance.run(
               'UPDATE scheduled_audits SET status = ? WHERE id = ?',
-              ['completed', scheduleId],
+              ['pending', scheduleId],
               function(updateErr) {
                 if (updateErr) {
-                  logger.error(`[Scheduled Audit Completion] Error marking scheduled audit ${scheduleId} as completed:`, updateErr.message);
+                  logger.error(`[Scheduled Audit Completion] Error resetting scheduled audit ${scheduleId} status:`, updateErr.message);
                 } else {
-                  logger.info(`[Scheduled Audit Completion] Successfully marked schedule ${scheduleId} as completed (rows affected: ${this.changes})`);
+                  logger.info(`[Scheduled Audit Completion] Successfully reset schedule ${scheduleId} to pending (rows affected: ${this.changes})`);
                 }
               }
             );
           } else {
-            // Recurring audit: advance to next date and reset to pending
-            const nextDate = getNextScheduledDate(schedule.scheduled_date, schedule.frequency);
-            logger.debug(`[Scheduled Audit Completion] Recurring audit - advancing to next date: ${nextDate}`);
-            
-            if (!nextDate) {
-              dbInstance.run(
-                'UPDATE scheduled_audits SET status = ? WHERE id = ?',
-                ['pending', scheduleId],
-                function(updateErr) {
-                  if (updateErr) {
-                    logger.error(`[Scheduled Audit Completion] Error resetting scheduled audit ${scheduleId} status:`, updateErr.message);
-                  } else {
-                    logger.info(`[Scheduled Audit Completion] Successfully reset schedule ${scheduleId} to pending (rows affected: ${this.changes})`);
-                  }
+            dbInstance.run(
+              'UPDATE scheduled_audits SET status = ?, scheduled_date = ?, next_run_date = ? WHERE id = ?',
+              ['pending', nextDate, nextDate, scheduleId],
+              function(updateErr) {
+                if (updateErr) {
+                  logger.error(`[Scheduled Audit Completion] Error advancing scheduled audit ${scheduleId} date:`, updateErr.message);
+                } else {
+                  logger.info(`[Scheduled Audit Completion] Successfully advanced schedule ${scheduleId} to ${nextDate} with pending status (rows affected: ${this.changes})`);
                 }
-              );
-            } else {
-              dbInstance.run(
-                'UPDATE scheduled_audits SET status = ?, scheduled_date = ?, next_run_date = ? WHERE id = ?',
-                ['pending', nextDate, nextDate, scheduleId],
-                function(updateErr) {
-                  if (updateErr) {
-                    logger.error(`[Scheduled Audit Completion] Error advancing scheduled audit ${scheduleId} date:`, updateErr.message);
-                  } else {
-                    logger.info(`[Scheduled Audit Completion] Successfully advanced schedule ${scheduleId} to ${nextDate} with pending status (rows affected: ${this.changes})`);
-                  }
-                }
-              );
-            }
+              }
+            );
           }
         }
-      );
-    }
-  );
+      }
+    );
+  };
+
+  // If auditStatus is provided and is 'completed', use it directly (from the update that just happened)
+  // Otherwise, read from database (for backward compatibility)
+  if (auditStatus === 'completed') {
+    // Status is already confirmed as completed, just get scheduled_audit_id
+    dbInstance.get(
+      'SELECT scheduled_audit_id FROM audits WHERE id = ?',
+      [auditId],
+      (err, auditRow) => {
+        if (err) {
+          logger.error('Error fetching audit for schedule completion:', err.message);
+          return;
+        }
+        if (!auditRow || !auditRow.scheduled_audit_id) {
+          logger.debug(`[Scheduled Audit Completion] Audit ${auditId} has no scheduled_audit_id. Skipping.`);
+          return;
+        }
+        processScheduledAuditUpdate(auditRow.scheduled_audit_id);
+      }
+    );
+  } else {
+    // Fallback: read status from database
+    dbInstance.get(
+      'SELECT scheduled_audit_id, status FROM audits WHERE id = ?',
+      [auditId],
+      (err, auditRow) => {
+        if (err) {
+          logger.error('Error fetching audit for schedule completion:', err.message);
+          return;
+        }
+        if (!auditRow) {
+          logger.warn(`[Scheduled Audit Completion] Audit ${auditId} not found`);
+          return;
+        }
+        
+        // Only update scheduled audit if the audit is actually completed
+        if (auditRow.status !== 'completed') {
+          logger.debug(`[Scheduled Audit Completion] Audit ${auditId} status is '${auditRow.status}', not 'completed'. Skipping scheduled audit update.`);
+          return;
+        }
+        
+        if (!auditRow.scheduled_audit_id) {
+          logger.debug(`[Scheduled Audit Completion] Audit ${auditId} has no scheduled_audit_id. Skipping.`);
+          return;
+        }
+
+        processScheduledAuditUpdate(auditRow.scheduled_audit_id);
+      }
+    );
+  }
 };
 
 const router = express.Router();
@@ -1338,7 +1364,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                         logger.error('Error updating audit:', updateErr.message);
                       }
                       if (auditStatus === 'completed') {
-                        handleScheduledAuditCompletion(dbInstance, auditId);
+                        handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
                       }
                       res.json({ 
                         message: 'Audit item updated successfully',
@@ -1463,7 +1489,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                               logger.error('Error updating audit:', updateErr.message);
                             }
                             if (auditStatus === 'completed') {
-                              handleScheduledAuditCompletion(dbInstance, auditId);
+                              handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
                             }
                             res.json({ message: 'Audit item updated successfully' });
                           }
@@ -1783,15 +1809,24 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
           // Still return success for item updates, but log the score calculation error
         }
         
+        // Log completion status for debugging
+        if (scoreData) {
+          logger.info(`[Batch Update] Audit ${auditId} - Status: ${scoreData.status}, Score: ${scoreData.score}%, Completed: ${scoreData.completed}/${scoreData.total} items`);
+        }
+        
         if (scoreData && scoreData.status === 'completed') {
-          handleScheduledAuditCompletion(dbInstance, auditId);
+          logger.info(`[Batch Update] Audit ${auditId} is completed - updating scheduled audit status`);
+          // Pass the status directly to avoid re-reading from database
+          handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
         }
         
         res.json({ 
           message: 'Audit items updated successfully', 
           updatedCount: items.length,
           score: scoreData?.score,
-          status: scoreData?.status
+          status: scoreData?.status,
+          completed: scoreData?.completed,
+          total: scoreData?.total
         });
       });
 
@@ -1964,6 +1999,14 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
           [completed, score, auditStatus, completed, total, auditId],
           function(err) {
             if (err) return callback(err);
+            
+            // Log completion status for debugging
+            if (auditStatus === 'completed') {
+              logger.info(`[Audit ${auditId} - Batch] Audit marked as completed: ${completed}/${total} items completed`);
+            } else {
+              logger.debug(`[Audit ${auditId} - Batch] Audit status: ${auditStatus}, ${completed}/${total} items completed, ${missingItems.length} missing`);
+            }
+            
             callback(null, { score, status: auditStatus, completed, total });
           }
         );
@@ -2013,7 +2056,7 @@ router.put('/:id/complete', authenticate, (req, res) => {
               return res.status(500).json({ error: 'Error completing audit' });
             }
 
-            handleScheduledAuditCompletion(dbInstance, auditId);
+            handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
 
             // Send notification to audit creator
             try {

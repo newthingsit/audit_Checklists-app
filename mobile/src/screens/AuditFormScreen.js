@@ -369,13 +369,16 @@ const AuditFormScreen = () => {
       setMultiTimeEntries(timeEntriesData);
 
       // Start at appropriate step
-      // If multiple categories exist, show category selection even if audit has a category set
-      // This allows users to switch between categories in the same audit
-      if (uniqueCategories.length > 1) {
-        // Multiple categories - show category selection to allow switching
+      // IMPORTANT: For in_progress audits with multiple categories, always show category selection
+      // This allows users to switch between categories and continue completing the audit
+      // Only go directly to checklist if:
+      // 1. Single category (or no categories)
+      // 2. Audit is completed (all categories done)
+      if (uniqueCategories.length > 1 && audit.status !== 'completed') {
+        // Multiple categories and audit is in_progress - show category selection to allow switching
         setCurrentStep(1);
       } else {
-        // Single or no categories - go directly to checklist
+        // Single or no categories, or audit is completed - go directly to checklist
         setCurrentStep(2);
       }
     } catch (error) {
@@ -928,9 +931,104 @@ const AuditFormScreen = () => {
         }
       }
 
-      Alert.alert('Success', isEditing ? 'Audit updated successfully' : 'Audit saved successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      // Refresh audit data to get updated completion status
+      // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
+      try {
+        const auditResponse = await axios.get(`${API_BASE_URL}/audits/${currentAuditId}`);
+        const updatedAudit = auditResponse.data.audit;
+        const updatedAuditItems = auditResponse.data.items || [];
+        
+        // Update audit status from backend (this is the source of truth)
+        const isAuditCompleted = updatedAudit.status === 'completed';
+        if (updatedAudit.status) {
+          setAuditStatus(updatedAudit.status);
+        }
+        
+        // Recalculate category completion status based on ALL saved items (not just filtered)
+        // Get ALL items from template to check completion properly
+        const allTemplateItems = items; // items already contains all template items
+        const updatedCategoryStatus = {};
+        
+        categories.forEach(cat => {
+          // Get ALL items in this category from the template
+          const categoryItems = allTemplateItems.filter(item => item.category === cat);
+          const completedInCategory = categoryItems.filter(item => {
+            const auditItem = updatedAuditItems.find(ai => ai.item_id === item.id);
+            if (!auditItem) return false;
+            // Check if item has a valid mark (not null, not empty, not undefined)
+            const markValue = auditItem.mark;
+            if (markValue === null || markValue === undefined) return false;
+            const markStr = String(markValue).trim();
+            return markStr !== ''; // Empty string means not completed
+          }).length;
+          
+          updatedCategoryStatus[cat] = {
+            completed: completedInCategory,
+            total: categoryItems.length,
+            isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+          };
+        });
+        setCategoryCompletionStatus(updatedCategoryStatus);
+        
+        // IMPORTANT: Use backend's completion status as source of truth
+        // If backend says completed, ALL categories are done (regardless of frontend calculation)
+        if (isAuditCompleted) {
+          // Audit is fully completed - all categories are done
+          Alert.alert(
+            'Success', 
+            'All categories completed! Audit is now complete.',
+            [
+              { 
+                text: 'Done', 
+                onPress: () => navigation.goBack()
+              }
+            ]
+          );
+        } else {
+          // Audit is still in progress - show remaining categories
+          const remainingCategories = categories.filter(cat => {
+            const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
+            return !status.isComplete;
+          });
+          
+          const message = remainingCategories.length > 0
+            ? `Category saved successfully! ${remainingCategories.length} categor${remainingCategories.length === 1 ? 'y' : 'ies'} remaining.`
+            : 'Category saved successfully!';
+          
+          Alert.alert(
+            'Success', 
+            message,
+            [
+              { 
+                text: remainingCategories.length > 0 ? 'Continue' : 'Done', 
+                style: remainingCategories.length > 0 ? 'cancel' : 'default',
+                onPress: remainingCategories.length > 0 ? undefined : () => navigation.goBack()
+              },
+              ...(remainingCategories.length > 0 ? [{
+                text: 'Done',
+                onPress: () => navigation.goBack()
+              }] : [])
+            ]
+          );
+        }
+      } catch (refreshError) {
+        // If refresh fails, show basic success message
+        console.warn('Failed to refresh audit data:', refreshError);
+        Alert.alert(
+          'Success', 
+          'Audit saved successfully. You can continue with other categories.',
+          [
+            { 
+              text: 'Continue', 
+              style: 'cancel'
+            },
+            { 
+              text: 'Done', 
+              onPress: () => navigation.goBack() 
+            }
+          ]
+        );
+      }
     } catch (error) {
       console.error('Error saving audit:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
@@ -1031,7 +1129,14 @@ const AuditFormScreen = () => {
     );
   }
 
-  const completedItems = Object.values(responses).filter(r => r === 'completed').length;
+  // Calculate completed items correctly - count items with valid marks/responses
+  // Check both responses state and actual item marks
+  const completedItems = filteredItems.filter(item => {
+    const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
+    // Also check if item has a mark from loaded audit data
+    const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
+    return hasResponse || hasMark;
+  }).length;
 
   return (
     <View style={styles.container}>
@@ -1650,14 +1755,20 @@ const AuditFormScreen = () => {
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
                 onPress={() => {
-                  if (categories.length > 1) {
+                  // If multiple categories and audit is in_progress, go back to category selection
+                  // This allows users to switch between categories and continue completing the audit
+                  if (categories.length > 1 && auditStatus !== 'completed') {
+                    setCurrentStep(1);
+                  } else if (categories.length > 1) {
                     setCurrentStep(1);
                   } else {
                     setCurrentStep(0);
                   }
                 }}
               >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Back</Text>
+                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
+                  {categories.length > 1 && auditStatus !== 'completed' ? 'Change Category' : 'Back'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, (saving || auditStatus === 'completed') && styles.buttonDisabled]}
