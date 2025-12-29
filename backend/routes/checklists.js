@@ -338,6 +338,8 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
 
     // Parse data rows
     const items = [];
+    const foundCategories = new Set(); // Track unique categories found
+    
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
       const title = values[titleIndex]?.replace(/^"|"$/g, '').trim();
@@ -366,10 +368,20 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
           itemOptions.push(...defaultOptions);
         }
 
+        // Extract category: if category column exists and has a value, use it; otherwise use template-level category
+        let itemCategory = category || '';
+        if (catIndex !== -1 && values[catIndex] !== undefined) {
+          const csvCategory = values[catIndex]?.replace(/^"|"$/g, '').trim();
+          if (csvCategory && csvCategory !== '') {
+            itemCategory = csvCategory;
+            foundCategories.add(csvCategory);
+          }
+        }
+
         items.push({
           title,
           description: descIndex !== -1 ? (values[descIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
-          category: catIndex !== -1 ? (values[catIndex]?.replace(/^"|"$/g, '').trim() || '') : (category || ''),
+          category: itemCategory,
           required: reqIndex !== -1 
             ? (values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'yes' || 
                values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'true' || 
@@ -378,6 +390,11 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
           options: itemOptions
         });
       }
+    }
+
+    // Log found categories for debugging
+    if (foundCategories.size > 0) {
+      logger.info(`[CSV Import] Found ${foundCategories.size} unique categories: ${Array.from(foundCategories).join(', ')}`);
     }
 
     if (items.length === 0) {
@@ -396,26 +413,45 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
 
       // Insert items with options using the helper function
       try {
+        logger.info(`[CSV Import] Creating template "${templateName}" with ${items.length} items`);
         await insertItemsWithOptions(dbInstance, templateId, items, category || '');
+        logger.info(`[CSV Import] Successfully created template ${templateId} with ${items.length} items`);
         res.status(201).json({ 
           id: templateId, 
           message: `Template created successfully with ${items.length} items`,
           itemsCount: items.length
         });
       } catch (error) {
-        logger.error('Error inserting items:', error);
-        logger.error('Error inserting items:', error);
-        res.status(500).json({ error: 'Error creating items' });
+        logger.error('[CSV Import] Error inserting items:', error);
+        logger.error('[CSV Import] Error stack:', error.stack);
+        logger.error('[CSV Import] Template ID:', templateId);
+        logger.error('[CSV Import] Items count:', items.length);
+        const errorMessage = error.message || 'Unknown error occurred while creating items';
+        res.status(500).json({ 
+          error: 'Error creating items',
+          details: errorMessage,
+          message: errorMessage
+        });
       }
     }).catch((err) => {
-      logger.error('Error creating template:', err);
-      logger.error('Error creating template:', err);
-      res.status(500).json({ error: 'Error creating template' });
+      logger.error('[CSV Import] Error creating template:', err);
+      logger.error('[CSV Import] Error stack:', err.stack);
+      const errorMessage = err.message || 'Unknown error occurred while creating template';
+      res.status(500).json({ 
+        error: 'Error creating template',
+        details: errorMessage,
+        message: errorMessage
+      });
     });
   } catch (error) {
-    logger.error('Error parsing CSV:', error);
-    logger.error('Error parsing CSV:', error);
-    res.status(400).json({ error: 'Error parsing CSV data' });
+    logger.error('[CSV Import] Error parsing CSV:', error);
+    logger.error('[CSV Import] Error stack:', error.stack);
+    const errorMessage = error.message || 'Unknown error occurred while parsing CSV';
+    res.status(400).json({ 
+      error: 'Error parsing CSV data',
+      details: errorMessage,
+      message: errorMessage
+    });
   }
 });
 

@@ -527,10 +527,19 @@ const Checklists = () => {
             );
           }
 
+          // Extract category: if category column exists and has a value, use it
+          let itemCategory = '';
+          if (catIndex !== -1 && values[catIndex] !== undefined) {
+            const csvCategory = values[catIndex]?.replace(/^"|"$/g, '').trim();
+            if (csvCategory && csvCategory !== '') {
+              itemCategory = csvCategory;
+            }
+          }
+
           items.push({
             title,
             description: descIndex !== -1 ? (values[descIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
-            category: catIndex !== -1 ? (values[catIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
+            category: itemCategory,
             required: reqIndex !== -1 
               ? (values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'yes' || 
                  values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'true' || 
@@ -603,7 +612,12 @@ const Checklists = () => {
       fetchTemplates();
     } catch (error) {
       console.error('Error importing template:', error);
-      showError(error.response?.data?.error || error.response?.data?.details || 'Error importing template');
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.details || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Error importing template';
+      showError(errorMessage);
     }
   };
 
