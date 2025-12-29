@@ -131,6 +131,36 @@ const scoringPresets = {
       { option_text: 'Out of Range', mark: '0' },
       { option_text: 'Not Measured', mark: 'NA' }
     ]
+  },
+  'preparation_time': {
+    name: 'Preparation Time Audit',
+    description: 'Time-based scoring for item preparation (e.g., beverage making)',
+    isTimeBased: true,
+    defaultTimeConstraints: {
+      min_time_minutes: 1.5,
+      target_time_minutes: 2,
+      max_time_minutes: 3
+    },
+    options: [
+      { option_text: 'Excellent (< 2 min)', mark: '100' },
+      { option_text: 'Good (2-3 min)', mark: '90' },
+      { option_text: 'Average (3-4 min)', mark: '80' },
+      { option_text: 'Needs Improvement (> 4 min)', mark: '70' }
+    ]
+  },
+  'dynamic_entry': {
+    name: 'Dynamic Item Entry',
+    description: 'Allow auditors to add items manually during audit with time tracking',
+    isTimeBased: true,
+    allowDynamicEntry: true,
+    defaultTimeConstraints: {
+      min_time_minutes: 1.5,
+      target_time_minutes: 2,
+      max_time_minutes: 3
+    },
+    options: [
+      { option_text: 'Auto-calculated from time', mark: '0' }
+    ]
   }
 };
 
@@ -334,6 +364,17 @@ const Checklists = () => {
     if (preset) {
       const newItems = [...items];
       newItems[itemIndex].options = preset.options.map(option => ({ ...option }));
+      
+      // If preset has time-based configuration, apply it
+      if (preset.isTimeBased) {
+        newItems[itemIndex].is_time_based = true;
+        if (preset.defaultTimeConstraints) {
+          newItems[itemIndex].min_time_minutes = preset.defaultTimeConstraints.min_time_minutes || '';
+          newItems[itemIndex].target_time_minutes = preset.defaultTimeConstraints.target_time_minutes || '';
+          newItems[itemIndex].max_time_minutes = preset.defaultTimeConstraints.max_time_minutes || '';
+        }
+      }
+      
       setItems(newItems);
     }
   };
