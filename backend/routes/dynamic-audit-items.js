@@ -5,6 +5,25 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+// Calculate score from average time (minutes). Uses target as the "excellent" threshold.
+// Example with target=2:
+// <2 => 100, 2-3 => 90, 3-4 => 80, 4-5 => 70, >5 => 70 - ((t-5)*10)
+const calculateTimeBasedScore = (averageTimeMinutes, targetTimeMinutes = 2) => {
+  const avg = Number(averageTimeMinutes);
+  if (!Number.isFinite(avg) || avg <= 0) return null;
+
+  const target = Number(targetTimeMinutes);
+  const t = Number.isFinite(target) && target > 0 ? target : 2;
+
+  if (avg < t) return 100;
+  if (avg < t + 1) return 90;
+  if (avg < t + 2) return 80;
+  if (avg < t + 3) return 70;
+
+  const score = 70 - ((avg - (t + 3)) * 10);
+  return Math.max(0, Math.round(score));
+};
+
 // Helper function to run database queries
 const runDb = (dbInstance, query, params = []) =>
   new Promise((resolve, reject) => {
@@ -70,7 +89,7 @@ router.post('/audits/:auditId/dynamic-items', authenticate, async (req, res) => 
       }
     }
 
-    // Create a temporary checklist item for this audit
+    // Create a checklist item for this audit
     // We'll use order_index = -1 to indicate it's a dynamic item
     const { lastID: itemId } = await runDb(
       dbInstance,
@@ -84,8 +103,8 @@ router.post('/audits/:auditId/dynamic-items', authenticate, async (req, res) => 
         category || '',
         1, // required
         -1, // Special order_index to mark as dynamic item
-        is_time_based ? 1 : 0,
-        target_time_minutes || null,
+        (is_time_based === undefined ? 1 : (is_time_based ? 1 : 0)),
+        target_time_minutes || 2,
         min_time_minutes || null,
         max_time_minutes || null
       ]
@@ -95,58 +114,83 @@ router.post('/audits/:auditId/dynamic-items', authenticate, async (req, res) => 
     let averageTime = null;
     let timeBasedScore = null;
     if (time_entries && Array.isArray(time_entries) && time_entries.length > 0) {
-      averageTime = time_entries.reduce((sum, t) => sum + t, 0) / time_entries.length;
+      const validEntries = time_entries
+        .map(t => Number(t))
+        .filter(t => Number.isFinite(t) && t > 0);
+
+      averageTime = validEntries.length > 0
+        ? (validEntries.reduce((sum, t) => sum + t, 0) / validEntries.length)
+        : null;
+
       averageTime = Math.round(averageTime * 100) / 100;
 
-      // Calculate score based on time constraints
-      if (is_time_based && (min_time_minutes || max_time_minutes || target_time_minutes)) {
-        const min = parseFloat(min_time_minutes) || 0;
-        const max = parseFloat(max_time_minutes) || Infinity;
-        const target = parseFloat(target_time_minutes) || null;
-
-        if (target && averageTime === target) {
-          timeBasedScore = 100;
-        } else if (averageTime >= min && averageTime <= max) {
-          timeBasedScore = 100;
-        } else if (averageTime < min) {
-          // Faster than minimum - may indicate rushing
-          const deviation = (min - averageTime) / min;
-          timeBasedScore = Math.max(0, 100 - (deviation * 100));
-        } else if (averageTime > max) {
-          // Slower than maximum - needs improvement
-          const deviation = (averageTime - max) / max;
-          timeBasedScore = Math.max(0, 100 - (deviation * 50));
-        }
-        timeBasedScore = Math.round(timeBasedScore);
+      // Enforce minimum 4 entries for scoring consistency with the mobile UI
+      if (validEntries.length >= 4) {
+        timeBasedScore = calculateTimeBasedScore(averageTime, target_time_minutes || 2);
       }
+    }
+
+    // Ensure this item contributes correctly to template max score calculations
+    // (calculateAndUpdateScore uses checklist_item_options.max(mark))
+    try {
+      await runDb(
+        dbInstance,
+        `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index)
+         VALUES (?, ?, ?, ?)`,
+        [itemId, 'Auto (Time)', '100', 0]
+      );
+    } catch (e) {
+      logger.warn('[Dynamic Items] Failed to insert default option for dynamic item:', e.message);
     }
 
     // Create audit item response
     const mark = timeBasedScore !== null ? String(timeBasedScore) : null;
     const status = timeBasedScore !== null ? 'completed' : 'pending';
 
-    const { lastID: auditItemId } = await runDb(
-      dbInstance,
-      `INSERT INTO audit_items 
-       (audit_id, item_id, response, selected_option_id, mark, status, time_entries_json, average_time_minutes, time_based_score) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        auditId,
-        itemId,
-        description || '',
-        null,
-        mark,
-        status,
-        time_entries ? JSON.stringify(time_entries) : null,
-        averageTime,
-        timeBasedScore
-      ]
-    );
+    const comment = [
+      description || null,
+      averageTime !== null ? `Avg time: ${averageTime} min` : null,
+      timeBasedScore !== null ? `Score: ${timeBasedScore}/100` : null
+    ].filter(Boolean).join(' | ') || null;
+
+    let auditItemId = null;
+    try {
+      const result = await runDb(
+        dbInstance,
+        `INSERT INTO audit_items 
+         (audit_id, item_id, status, selected_option_id, mark, comment, time_entries, average_time_minutes) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          auditId,
+          itemId,
+          status,
+          null,
+          mark,
+          comment,
+          time_entries ? JSON.stringify(time_entries) : null,
+          averageTime
+        ]
+      );
+      auditItemId = result.lastID;
+    } catch (err) {
+      // Backward compatibility if time tracking columns are missing
+      if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
+        const result = await runDb(
+          dbInstance,
+          `INSERT INTO audit_items (audit_id, item_id, status, selected_option_id, mark, comment) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [auditId, itemId, status, null, mark, comment]
+        );
+        auditItemId = result.lastID;
+      } else {
+        throw err;
+      }
+    }
 
     // Update audit total_items count
     await runDb(
       dbInstance,
-      'UPDATE audits SET total_items = total_items + 1 WHERE id = ?',
+      'UPDATE audits SET total_items = COALESCE(total_items, 0) + 1 WHERE id = ?',
       [auditId]
     );
 
@@ -160,9 +204,11 @@ router.post('/audits/:auditId/dynamic-items', authenticate, async (req, res) => 
         title,
         description,
         category,
-        is_time_based: is_time_based ? 1 : 0,
+        is_time_based: 1,
+        target_time_minutes: target_time_minutes || 2,
+        min_time_minutes: min_time_minutes || null,
+        max_time_minutes: max_time_minutes || null,
         average_time_minutes: averageTime,
-        time_based_score: timeBasedScore,
         mark,
         status
       }
@@ -181,7 +227,7 @@ router.get('/audits/:auditId/dynamic-items', authenticate, async (req, res) => {
   try {
     const items = await new Promise((resolve, reject) => {
       dbInstance.all(
-        `SELECT ci.*, ai.response, ai.mark, ai.status, ai.time_entries_json, ai.average_time_minutes, ai.time_based_score
+        `SELECT ci.*, ai.comment, ai.mark, ai.status, ai.time_entries, ai.average_time_minutes
          FROM checklist_items ci
          INNER JOIN audit_items ai ON ci.id = ai.item_id
          WHERE ai.audit_id = ? AND ci.order_index = -1
@@ -247,7 +293,7 @@ router.delete('/audits/:auditId/dynamic-items/:itemId', authenticate, async (req
     // Update audit total_items count
     await runDb(
       dbInstance,
-      'UPDATE audits SET total_items = total_items - 1 WHERE id = ?',
+      'UPDATE audits SET total_items = MAX(COALESCE(total_items, 0) - 1, 0) WHERE id = ?',
       [auditId]
     );
 

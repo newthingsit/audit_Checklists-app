@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,32 +21,54 @@ const DynamicItemEntry = ({ onAddItem, category = '' }) => {
   const [timeEntries, setTimeEntries] = useState(['', '', '', '', '']);
   const [isRunningTimer, setIsRunningTimer] = useState(false);
   const [currentTimerIndex, setCurrentTimerIndex] = useState(null);
-  const [timerStartTime, setTimerStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  const timerIntervalRef = useRef(null);
+  const timerStartRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Start timer for a specific attempt
   const startTimer = (index) => {
+    if (isRunningTimer) {
+      Alert.alert('Timer Running', 'Please stop the current timer before starting another.');
+      return;
+    }
     setIsRunningTimer(true);
     setCurrentTimerIndex(index);
-    setTimerStartTime(Date.now());
     setElapsedTime(0);
+    timerStartRef.current = Date.now();
 
     // Update elapsed time every second
-    const interval = setInterval(() => {
-      setElapsedTime(Date.now() - timerStartTime);
-    }, 100);
-
-    // Store interval ID for cleanup
-    this._timerInterval = interval;
+    timerIntervalRef.current = setInterval(() => {
+      if (!timerStartRef.current) return;
+      setElapsedTime(Date.now() - timerStartRef.current);
+    }, 250);
   };
 
   // Stop timer and record time
   const stopTimer = () => {
-    if (this._timerInterval) {
-      clearInterval(this._timerInterval);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
     }
 
-    const totalSeconds = Math.round((Date.now() - timerStartTime) / 1000);
+    const start = timerStartRef.current;
+    if (!start) {
+      setIsRunningTimer(false);
+      setCurrentTimerIndex(null);
+      setElapsedTime(0);
+      return;
+    }
+
+    const totalSeconds = Math.round((Date.now() - start) / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const timeValue = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -58,7 +80,7 @@ const DynamicItemEntry = ({ onAddItem, category = '' }) => {
 
     setIsRunningTimer(false);
     setCurrentTimerIndex(null);
-    setTimerStartTime(null);
+    timerStartRef.current = null;
     setElapsedTime(0);
   };
 
@@ -130,17 +152,7 @@ const DynamicItemEntry = ({ onAddItem, category = '' }) => {
       .filter(t => t !== null && t > 0);
 
     if (validTimes.length < 4) {
-      Alert.alert(
-        'Insufficient Data',
-        'Please record at least 4 time entries for accurate scoring',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Add Anyway', 
-            onPress: () => submitItem(validTimes)
-          }
-        ]
-      );
+      Alert.alert('Insufficient Data', 'Please record at least 4 time entries (4–5 attempts) to calculate score.');
       return;
     }
 
@@ -226,7 +238,7 @@ const DynamicItemEntry = ({ onAddItem, category = '' }) => {
               onChangeText={(value) => handleTimeChange(index, value)}
               placeholder="0:00 or 1.5"
               placeholderTextColor="#999"
-              keyboardType="numeric"
+              keyboardType="default"
               editable={!isRunningTimer || currentTimerIndex !== index}
             />
 

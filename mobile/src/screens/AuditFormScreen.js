@@ -21,6 +21,7 @@ import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
 import { useLocation } from '../context/LocationContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
+import DynamicItemEntry from '../components/DynamicItemEntry';
 
 const AuditFormScreen = () => {
   const route = useRoute();
@@ -44,6 +45,9 @@ const AuditFormScreen = () => {
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: category selection, 2: checklist
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
+  const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
+  const [showDynamicEntry, setShowDynamicEntry] = useState(false);
+  const [dynamicEntrySaving, setDynamicEntrySaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null); // Selected category for filtering items
   const [categories, setCategories] = useState([]); // Available categories
   const [filteredItems, setFilteredItems] = useState([]); // Items filtered by selected category
@@ -241,6 +245,7 @@ const AuditFormScreen = () => {
 
       // Check if audit is completed
       setAuditStatus(audit.status);
+      setCurrentAuditId(audit.id);
       if (audit.status === 'completed') {
         Alert.alert(
           'Audit Completed',
@@ -441,6 +446,106 @@ const AuditFormScreen = () => {
 
   const fetchAuditData = async () => {
     await fetchAuditDataById(auditId);
+  };
+
+  const ensureAuditExists = async () => {
+    if (currentAuditId) return currentAuditId;
+
+    if (!selectedLocation) {
+      throw new Error('Please select a store first.');
+    }
+
+    const auditData = {
+      template_id: parseInt(templateId, 10),
+      restaurant_name: selectedLocation.name,
+      location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+      location_id: parseInt(locationId || selectedLocation.id, 10),
+      notes
+    };
+
+    if (scheduledAuditId) {
+      auditData.scheduled_audit_id = parseInt(scheduledAuditId, 10);
+    }
+
+    // Add GPS location data if captured
+    if (capturedLocation) {
+      auditData.gps_latitude = capturedLocation.latitude;
+      auditData.gps_longitude = capturedLocation.longitude;
+      auditData.gps_accuracy = capturedLocation.accuracy;
+      auditData.gps_timestamp = capturedLocation.timestamp;
+      auditData.location_verified = locationVerified;
+    }
+
+    const resp = await axios.post(`${API_BASE_URL}/audits`, auditData);
+    const newId = resp.data.id;
+    setCurrentAuditId(newId);
+    return newId;
+  };
+
+  const handleAddDynamicItem = async (item) => {
+    try {
+      setDynamicEntrySaving(true);
+
+      const auditIdToUse = await ensureAuditExists();
+
+      const payload = {
+        title: item.title,
+        description: item.description || '',
+        category: item.category || selectedCategory || 'Preparation Time',
+        is_time_based: true,
+        time_entries: item.time_entries,
+        min_time_minutes: 1.5,
+        target_time_minutes: 2,
+        max_time_minutes: 3
+      };
+
+      const response = await axios.post(`${API_BASE_URL}/audits/${auditIdToUse}/dynamic-items`, payload);
+      const created = response.data?.item;
+
+      if (!created?.id) {
+        throw new Error('Invalid server response while adding item.');
+      }
+
+      const newChecklistItem = {
+        id: created.id,
+        title: created.title,
+        description: created.description || '',
+        category: created.category || payload.category,
+        required: 1,
+        order_index: -1,
+        is_time_based: 1,
+        min_time_minutes: created.min_time_minutes ?? payload.min_time_minutes,
+        target_time_minutes: created.target_time_minutes ?? payload.target_time_minutes,
+        max_time_minutes: created.max_time_minutes ?? payload.max_time_minutes,
+        options: []
+      };
+
+      setItems(prev => sortItemsWithTimeBasedLast([...prev, newChecklistItem]));
+      setCategories(prev => {
+        const cat = newChecklistItem.category;
+        if (!cat || !cat.trim()) return prev;
+        return prev.includes(cat) ? prev : [...prev, cat];
+      });
+
+      if (!selectedCategory || newChecklistItem.category === selectedCategory) {
+        setFilteredItems(prev => sortItemsWithTimeBasedLast([...prev, newChecklistItem]));
+      }
+
+      // Seed local state so progress updates instantly
+      setMultiTimeEntries(prev => ({ ...prev, [newChecklistItem.id]: item.time_entries }));
+      setResponses(prev => ({ ...prev, [newChecklistItem.id]: 'completed' }));
+
+      setShowDynamicEntry(false);
+
+      const avg = created.average_time_minutes ?? item.average_time_minutes;
+      const score = created.mark ?? item.score;
+      Alert.alert('Success', `"${newChecklistItem.title}" added.\nAvg: ${avg} min\nScore: ${score}/100`);
+    } catch (error) {
+      console.error('Error adding dynamic item:', error);
+      Alert.alert('Error', error?.response?.data?.error || error.message || 'Failed to add item.');
+    } finally {
+      setDynamicEntrySaving(false);
+    }
   };
 
   // Fetch previous audit failures for recurring failures indicator
@@ -846,6 +951,7 @@ const AuditFormScreen = () => {
         
         const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
         currentAuditId = auditResponse.data.id;
+        setCurrentAuditId(currentAuditId);
       }
 
       // Use batch update for faster saves - prepare all items
@@ -1135,7 +1241,15 @@ const AuditFormScreen = () => {
     const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
     // Also check if item has a mark from loaded audit data
     const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
-    return hasResponse || hasMark;
+
+    // Time-based items: treat >=4 recorded entries as completed for UI progress
+    const entries = multiTimeEntries[item.id] || [];
+    const validTimeEntriesCount = Array.isArray(entries)
+      ? entries.filter(t => typeof t === 'number' && !isNaN(t) && t > 0).length
+      : 0;
+    const hasTimeEntries = !!item.is_time_based && validTimeEntriesCount >= 4;
+
+    return hasResponse || hasMark || hasTimeEntries;
   }).length;
 
   return (
@@ -1430,6 +1544,30 @@ const AuditFormScreen = () => {
         </View>
       </Modal>
 
+      {/* Dynamic Item Entry Modal (Preparation Time) */}
+      <Modal
+        visible={showDynamicEntry}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDynamicEntry(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.dynamicEntryModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Item Manually</Text>
+              <TouchableOpacity onPress={() => setShowDynamicEntry(false)}>
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <DynamicItemEntry
+              category={selectedCategory || 'Preparation Time'}
+              onAddItem={handleAddDynamicItem}
+            />
+          </View>
+        </View>
+      </Modal>
+
       {currentStep === 1 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={{ marginBottom: 20 }}>
@@ -1509,6 +1647,24 @@ const AuditFormScreen = () => {
           </View>
 
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            {/* Dynamic item entry (Preparation Time / Manual Item Add) */}
+            {auditStatus !== 'completed' && (
+              <TouchableOpacity
+                style={[styles.dynamicEntryButton, dynamicEntrySaving && styles.dynamicEntryButtonDisabled]}
+                onPress={() => setShowDynamicEntry(true)}
+                disabled={dynamicEntrySaving}
+              >
+                {dynamicEntrySaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Icon name="add-circle" size={22} color="#fff" />
+                )}
+                <Text style={styles.dynamicEntryButtonText}>
+                  Add Item Manually (Preparation Time)
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* Previous failures summary banner */}
             {previousAuditInfo && previousFailures.length > 0 && (
               <View style={styles.previousFailuresBanner}>
@@ -1876,6 +2032,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1976d2',
     fontWeight: '600',
+  },
+  dynamicEntryButton: {
+    backgroundColor: themeConfig.success.main,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    gap: 10,
+  },
+  dynamicEntryButtonDisabled: {
+    opacity: 0.6,
+  },
+  dynamicEntryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  dynamicEntryModalContent: {
+    maxHeight: '90%',
   },
   itemCard: {
     backgroundColor: '#fff',

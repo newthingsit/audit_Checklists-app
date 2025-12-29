@@ -5,6 +5,48 @@ const { createNotification } = require('./notifications');
 const { isAdminUser } = require('../middleware/permissions');
 const logger = require('../utils/logger');
 
+// Calculate score from average time (minutes). Uses target as the "excellent" threshold.
+// Example with target=2:
+// <2 => 100, 2-3 => 90, 3-4 => 80, 4-5 => 70, >5 => 70 - ((t-5)*10)
+const calculateTimeBasedScore = (averageTimeMinutes, targetTimeMinutes = 2) => {
+  const avg = Number(averageTimeMinutes);
+  if (!Number.isFinite(avg) || avg <= 0) return null;
+
+  const target = Number(targetTimeMinutes);
+  const t = Number.isFinite(target) && target > 0 ? target : 2;
+
+  if (avg < t) return 100;
+  if (avg < t + 1) return 90;
+  if (avg < t + 2) return 80;
+  if (avg < t + 3) return 70;
+
+  const score = 70 - ((avg - (t + 3)) * 10);
+  return Math.max(0, Math.round(score));
+};
+
+const parseTimeEntriesToArray = (time_entries) => {
+  if (time_entries === undefined || time_entries === null) return [];
+  if (Array.isArray(time_entries)) return time_entries;
+  if (typeof time_entries === 'string') {
+    try {
+      const parsed = JSON.parse(time_entries);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const computeAverageMinutes = (time_entries) => {
+  const entries = parseTimeEntriesToArray(time_entries)
+    .map(t => Number(t))
+    .filter(t => Number.isFinite(t) && t > 0);
+  if (entries.length === 0) return null;
+  const avg = entries.reduce((sum, t) => sum + t, 0) / entries.length;
+  return Math.round(avg * 100) / 100;
+};
+
 const getNextScheduledDate = (currentDate, frequency) => {
   if (!frequency) return null;
   const date = new Date(currentDate || new Date());
@@ -1564,6 +1606,27 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
     }
 
     try {
+      // Prefetch checklist item metadata so we can auto-calculate marks for time-based items
+      const uniqueItemIds = [...new Set(items.map(i => parseInt(i.itemId, 10)).filter(id => !isNaN(id)))];
+      const itemMetaById = await new Promise((resolve) => {
+        if (uniqueItemIds.length === 0) return resolve({});
+        const placeholders = uniqueItemIds.map(() => '?').join(',');
+        dbInstance.all(
+          `SELECT id, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes 
+           FROM checklist_items WHERE id IN (${placeholders})`,
+          uniqueItemIds,
+          (metaErr, rows) => {
+            if (metaErr) {
+              logger.warn('[Batch Update] Failed to prefetch checklist_items meta for time scoring:', metaErr.message);
+              return resolve({});
+            }
+            const map = {};
+            (rows || []).forEach(r => { map[r.id] = r; });
+            resolve(map);
+          }
+        );
+      });
+
       // Process all items in parallel using Promise.all
       const updatePromises = items.map(item => {
         return new Promise((resolve, reject) => {
@@ -1588,13 +1651,36 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 // IMPORTANT: If an option is selected, automatically set status to 'completed'
                 // This ensures items are marked as completed when an option is chosen
                 let itemStatus = status || 'pending';
+                let effectiveMark = mark;
+
+                // Auto-calculate mark for time-based items (preparation time audits)
+                const meta = itemMetaById[itemId];
+                const isTimeBased = meta && (meta.is_time_based === 1 || meta.is_time_based === true);
+                const providedAvg = average_time_minutes !== undefined && average_time_minutes !== null
+                  ? Number(average_time_minutes)
+                  : null;
+                const computedAvg = Number.isFinite(providedAvg) && providedAvg > 0 ? providedAvg : computeAverageMinutes(time_entries);
+                const validCount = parseTimeEntriesToArray(time_entries)
+                  .map(t => Number(t))
+                  .filter(t => Number.isFinite(t) && t > 0).length;
+
+                const markEmpty = effectiveMark === undefined || effectiveMark === null || String(effectiveMark).trim() === '';
+                if (isTimeBased && markEmpty && computedAvg !== null && validCount >= 4) {
+                  const computedScore = calculateTimeBasedScore(computedAvg, meta?.target_time_minutes || 2);
+                  if (computedScore !== null) {
+                    effectiveMark = String(computedScore);
+                    itemStatus = 'completed';
+                    logger.debug(`[Batch Update] Auto-calculated time-based mark for item ${itemId}: avg=${computedAvg}, score=${effectiveMark}`);
+                  }
+                }
+
                 if (selected_option_id && mark && itemStatus === 'pending') {
                   itemStatus = 'completed';
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for new item ${itemId} with selected_option_id ${selected_option_id}`);
                 }
                 
                 const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
-                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, mark || null];
+                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, effectiveMark || null];
                 const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
                 
                 // Add time tracking fields if provided (only if columns exist)
@@ -1664,6 +1750,29 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 // IMPORTANT: If an option is selected but status is 'pending', automatically set to 'completed'
                 // This ensures items are marked as completed when an option is chosen
                 let itemStatus = status || 'pending';
+                let effectiveMark = mark;
+
+                // Auto-calculate mark for time-based items (preparation time audits)
+                const meta = itemMetaById[itemId];
+                const isTimeBased = meta && (meta.is_time_based === 1 || meta.is_time_based === true);
+                const providedAvg = average_time_minutes !== undefined && average_time_minutes !== null
+                  ? Number(average_time_minutes)
+                  : null;
+                const computedAvg = Number.isFinite(providedAvg) && providedAvg > 0 ? providedAvg : computeAverageMinutes(time_entries);
+                const validCount = parseTimeEntriesToArray(time_entries)
+                  .map(t => Number(t))
+                  .filter(t => Number.isFinite(t) && t > 0).length;
+
+                const markEmpty = effectiveMark === undefined || effectiveMark === null || String(effectiveMark).trim() === '';
+                if (isTimeBased && markEmpty && computedAvg !== null && validCount >= 4) {
+                  const computedScore = calculateTimeBasedScore(computedAvg, meta?.target_time_minutes || 2);
+                  if (computedScore !== null) {
+                    effectiveMark = String(computedScore);
+                    itemStatus = 'completed';
+                    logger.debug(`[Batch Update] Auto-calculated time-based mark for item ${itemId}: avg=${computedAvg}, score=${effectiveMark}`);
+                  }
+                }
+
                 if (selected_option_id && mark && itemStatus === 'pending') {
                   itemStatus = 'completed';
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for item ${itemId} with selected_option_id ${selected_option_id}`);
@@ -1678,7 +1787,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 }
                 if (mark !== undefined) {
                   updateFields.push('mark = ?');
-                  updateValues.push(mark || null);
+                  updateValues.push(effectiveMark || null);
                 }
                 if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
                   updateFields.push('time_taken_minutes = ?');
@@ -1697,7 +1806,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   updateFields.push('average_time_minutes = ?');
                   updateValues.push(average_time_minutes);
                 }
-                if (status === 'completed') {
+                if (itemStatus === 'completed') {
                   updateFields.push('completed_at = CURRENT_TIMESTAMP');
                   // If time_taken_minutes not provided but started_at exists, calculate it
                   // Note: For SQL Server, we skip auto-calculation to avoid SQL injection
