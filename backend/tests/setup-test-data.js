@@ -60,7 +60,18 @@ async function setupTestData() {
       });
       
       if (existing) {
-        console.log(`  ✓ ${user.email} already exists`);
+        // Update password to ensure it matches test credentials
+        await new Promise((resolve, reject) => {
+          dbInstance.run(
+            'UPDATE users SET password = ? WHERE email = ?',
+            [hashedPassword, user.email],
+            function(err) {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+        console.log(`  ✓ ${user.email} already exists (password updated)`);
       } else {
         await new Promise((resolve, reject) => {
           dbInstance.run(

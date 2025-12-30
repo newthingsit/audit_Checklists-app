@@ -77,6 +77,7 @@ const createTables = () => {
         category VARCHAR(255),
         required BOOLEAN DEFAULT TRUE,
         order_index INTEGER DEFAULT 0,
+        input_type VARCHAR(50) DEFAULT 'auto',
         FOREIGN KEY (template_id) REFERENCES checklist_templates(id) ON DELETE CASCADE
       )`,
       

@@ -111,6 +111,11 @@ const createTables = () => {
       db.run(`ALTER TABLE checklist_items ADD COLUMN target_time_minutes REAL`, () => {});
       db.run(`ALTER TABLE checklist_items ADD COLUMN min_time_minutes REAL`, () => {});
       db.run(`ALTER TABLE checklist_items ADD COLUMN max_time_minutes REAL`, () => {});
+
+      // Add input_type to checklist_items (migration for extended field types)
+      // Values are UI-driven (e.g. option_select, open_ended, image_upload, number, date, scan_code, signature)
+      // Default to 'auto' to preserve legacy behavior.
+      db.run(`ALTER TABLE checklist_items ADD COLUMN input_type TEXT DEFAULT 'auto'`, () => {});
       
       // Add critical failure tracking to audits (migration)
       db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});

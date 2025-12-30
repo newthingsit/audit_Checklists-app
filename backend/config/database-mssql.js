@@ -226,6 +226,7 @@ const createTables = async () => {
       [category] NVARCHAR(255),
       [required] BIT DEFAULT 1,
       [order_index] INT DEFAULT 0,
+      [input_type] NVARCHAR(50) NULL DEFAULT 'auto',
       FOREIGN KEY ([template_id]) REFERENCES [checklist_templates]([id]) ON DELETE CASCADE
     )`,
     
@@ -1127,6 +1128,19 @@ const addMissingColumns = async () => {
         console.log('is_critical column added to checklist_items table');
       } catch (err) {
         console.warn('Error adding is_critical to checklist_items:', err.message);
+      }
+    }
+
+    if (!itemsColumns.includes('input_type')) {
+      console.log('Adding input_type column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [input_type] NVARCHAR(50) NULL DEFAULT 'auto';
+        `);
+        console.log('input_type column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding input_type to checklist_items:', err.message);
       }
     }
     

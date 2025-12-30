@@ -78,6 +78,7 @@ const createTables = async () => {
       category VARCHAR(255),
       required BOOLEAN DEFAULT TRUE,
       order_index INT DEFAULT 0,
+      input_type VARCHAR(50) DEFAULT 'auto',
       FOREIGN KEY (template_id) REFERENCES checklist_templates(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     

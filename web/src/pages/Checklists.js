@@ -47,6 +47,16 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ScaleIcon from '@mui/icons-material/Scale';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import TimerIcon from '@mui/icons-material/Timer';
+import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
+import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
+import NumbersIcon from '@mui/icons-material/Numbers';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
+import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
+import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
+import QrCodeScannerOutlinedIcon from '@mui/icons-material/QrCodeScannerOutlined';
+import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -171,10 +181,40 @@ const weightOptions = [
   { value: 3, label: 'Critical', description: '3x weight' }
 ];
 
+// Checklist Item "Field Type" options (as per UI request)
+const itemFieldTypes = [
+  { value: 'option_select', label: 'Option Select', icon: <CheckBoxOutlinedIcon fontSize="small" /> },
+  { value: 'open_ended', label: 'Open Ended', icon: <EditOutlinedIcon fontSize="small" /> },
+  { value: 'image_upload', label: 'Image Upload', icon: <ImageOutlinedIcon fontSize="small" /> },
+  { value: 'select_from_data_source', label: 'Select from Data Source', icon: <StorageOutlinedIcon fontSize="small" /> },
+  { value: 'number', label: 'Number', icon: <NumbersIcon fontSize="small" /> },
+  { value: 'description', label: 'Description', icon: <DescriptionOutlinedIcon fontSize="small" /> },
+  { value: 'task', label: 'Task', icon: <TaskAltOutlinedIcon fontSize="small" /> },
+  { value: 'date', label: 'Date', icon: <EventOutlinedIcon fontSize="small" /> },
+  { value: 'scan_code', label: 'Scan Code', icon: <QrCodeScannerOutlinedIcon fontSize="small" /> },
+  { value: 'signature', label: 'Collect Signature', icon: <DrawOutlinedIcon fontSize="small" /> },
+];
+
+const inferItemFieldType = (item) => {
+  // Legacy behavior: options => option select; otherwise a status/task style item.
+  if (item?.options && Array.isArray(item.options) && item.options.length > 0) return 'option_select';
+  return 'task';
+};
+
+const getEffectiveItemFieldType = (item) => {
+  const t = item?.input_type || item?.inputType || 'auto';
+  if (!t || t === 'auto') return inferItemFieldType(item);
+  return t;
+};
+
+const fieldTypeSupportsOptions = (fieldType) =>
+  fieldType === 'option_select' || fieldType === 'select_from_data_source';
+
 const createEmptyItem = (category = '') => ({
   title: '',
   description: '',
   category,
+  input_type: 'option_select',
   required: true,
   weight: 1, // Default weight
   is_critical: false, // Critical items can auto-fail the audit
@@ -324,6 +364,17 @@ const Checklists = () => {
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
+
+    if (field === 'input_type') {
+      const effective = value || 'auto';
+      if (!fieldTypeSupportsOptions(effective)) {
+        newItems[index].options = [];
+      } else if (!newItems[index].options || newItems[index].options.length === 0) {
+        // Provide a sensible default for option-based items.
+        newItems[index].options = defaultOptions.map(option => ({ ...option }));
+      }
+    }
+
     setItems(newItems);
   };
 
@@ -400,6 +451,7 @@ const Checklists = () => {
         title: item.title,
         description: item.description || '',
         category: item.category || '',
+        input_type: getEffectiveItemFieldType(item),
         required: item.required !== false,
         weight: item.weight || 1,
         is_critical: item.is_critical || false,
@@ -408,11 +460,13 @@ const Checklists = () => {
         min_time_minutes: item.is_time_based ? parseFloat(item.min_time_minutes) || null : null,
         max_time_minutes: item.is_time_based ? parseFloat(item.max_time_minutes) || null : null,
         order_index: index,
-        options: (item.options || []).map((option, optionIndex) => ({
-          option_text: option.option_text || '',
-          mark: option.mark ?? '',
-          order_index: optionIndex
-        }))
+        options: fieldTypeSupportsOptions(getEffectiveItemFieldType(item))
+          ? (item.options || []).map((option, optionIndex) => ({
+              option_text: option.option_text || '',
+              mark: option.mark ?? '',
+              order_index: optionIndex
+            }))
+          : []
       }))
     };
 
@@ -448,6 +502,7 @@ const Checklists = () => {
         title: item.title,
         description: item.description,
         category: item.category,
+        input_type: item.input_type || item.inputType || 'auto',
         required: item.required !== 0,
         weight: item.weight || 1,
         is_critical: item.is_critical === 1 || item.is_critical === true,
@@ -995,6 +1050,33 @@ const Checklists = () => {
                       />
                     </Tooltip>
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Field Type</InputLabel>
+                      <Select
+                        value={getEffectiveItemFieldType(item)}
+                        label="Field Type"
+                        onChange={(e) => handleItemChange(index, 'input_type', e.target.value)}
+                        MenuProps={{
+                          PaperProps: {
+                            style: {
+                              maxHeight: 360,
+                              overflow: 'auto'
+                            }
+                          }
+                        }}
+                      >
+                        {itemFieldTypes.map((ft) => (
+                          <MenuItem key={ft.value} value={ft.value}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {ft.icon}
+                              <span>{ft.label}</span>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
                 </Grid>
                 
                 {/* Time-Based Scoring Section for Item Making Performance */}
@@ -1096,7 +1178,7 @@ const Checklists = () => {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Typography variant="subtitle2">Scoring Options</Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <FormControl size="small" sx={{ minWidth: 150 }} disabled={!fieldTypeSupportsOptions(getEffectiveItemFieldType(item))}>
                         <InputLabel>Apply Preset</InputLabel>
                         <Select
                           value=""
@@ -1135,12 +1217,13 @@ const Checklists = () => {
                         size="small"
                         variant="outlined"
                         onClick={() => handleAddOption(index)}
+                        disabled={!fieldTypeSupportsOptions(getEffectiveItemFieldType(item))}
                       >
                         Add Option
                       </Button>
                     </Box>
                   </Box>
-                  {(item.options && item.options.length > 0) ? (
+                  {(fieldTypeSupportsOptions(getEffectiveItemFieldType(item)) && item.options && item.options.length > 0) ? (
                     item.options.map((option, optionIndex) => (
                       <Box
                         key={optionIndex}
@@ -1176,7 +1259,9 @@ const Checklists = () => {
                     ))
                   ) : (
                     <Typography variant="caption" color="text.secondary">
-                      No scoring options yet.
+                      {fieldTypeSupportsOptions(getEffectiveItemFieldType(item))
+                        ? 'No scoring options yet.'
+                        : 'Scoring options are disabled for this field type.'}
                     </Typography>
                   )}
                 </Box>

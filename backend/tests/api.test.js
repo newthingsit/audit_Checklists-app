@@ -132,6 +132,7 @@ async function testAuthEndpoints() {
   
   // Test login with admin - try multiple credentials
   const adminCredentials = [
+    { email: 'admin@lbf.co.in', password: 'Admin123@' },
     { email: 'testadmin@test.com', password: 'Test123!' },
     { email: 'admin@test.com', password: 'password123' },
     { email: 'admin@admin.com', password: 'admin123' }

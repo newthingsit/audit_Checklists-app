@@ -306,6 +306,20 @@ const apiLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
+  // Avoid double-rate-limiting on routes that already have dedicated limiters
+  // (auditLimiter, authLimiter, sensitiveOpLimiter, uploadLimiter).
+  skip: (req) => {
+    const url = req.originalUrl || '';
+    return (
+      url.startsWith('/api/audits') ||
+      url.startsWith('/api/photo') ||
+      url.startsWith('/api/photos') ||
+      url.startsWith('/api/auth/login') ||
+      url.startsWith('/api/auth/register') ||
+      url.startsWith('/api/users') ||
+      url.startsWith('/api/roles')
+    );
+  },
 });
 
 // Stricter rate limiter for sensitive operations
@@ -362,7 +376,9 @@ app.use('/api/users', sensitiveOpLimiter); // User management
 app.use('/api/roles', sensitiveOpLimiter); // Role management
 
 // Apply upload limiter to file upload routes
-app.use('/api/upload', uploadLimiter);
+// NOTE: upload routes are mounted under `/api` (see below), so limiter must match `/api/photo` and `/api/photos`.
+app.use('/api/photo', uploadLimiter);
+app.use('/api/photos', uploadLimiter);
 
 // Apply more lenient rate limiting to audit routes (mobile apps need more requests)
 app.use('/api/audits', auditLimiter);

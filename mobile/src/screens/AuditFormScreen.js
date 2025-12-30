@@ -16,11 +16,13 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
 import { useLocation } from '../context/LocationContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
+import { SignatureModal, SignatureDisplay } from '../components';
 import DynamicItemEntry from '../components/DynamicItemEntry';
 
 const AuditFormScreen = () => {
@@ -39,6 +41,9 @@ const AuditFormScreen = () => {
   const [comments, setComments] = useState({});
   const [photos, setPhotos] = useState({});
   const [uploading, setUploading] = useState({});
+  const [datePickerItemId, setDatePickerItemId] = useState(null);
+  const [datePickerValue, setDatePickerValue] = useState(new Date());
+  const [signatureItemId, setSignatureItemId] = useState(null);
   const [locations, setLocations] = useState([]);
   const [showStorePicker, setShowStorePicker] = useState(false);
   const [storeSearchText, setStoreSearchText] = useState('');
@@ -648,6 +653,41 @@ const AuditFormScreen = () => {
     setComments(prev => ({ ...prev, [itemId]: comment }));
   }, [auditStatus]);
 
+  const getEffectiveItemFieldType = useCallback((item) => {
+    const raw = item?.input_type || item?.inputType || 'auto';
+    if (raw && raw !== 'auto') return raw;
+    if (item?.options && Array.isArray(item.options) && item.options.length > 0) return 'option_select';
+    return 'task';
+  }, []);
+
+  const isOptionFieldType = useCallback((fieldType) => {
+    return fieldType === 'option_select' || fieldType === 'select_from_data_source';
+  }, []);
+
+  const isAnswerFieldType = useCallback((fieldType) => {
+    return (
+      fieldType === 'open_ended' ||
+      fieldType === 'description' ||
+      fieldType === 'number' ||
+      fieldType === 'date' ||
+      fieldType === 'scan_code' ||
+      fieldType === 'signature'
+    );
+  }, []);
+
+  const handleAnswerChange = useCallback((itemId, value) => {
+    // Start timer when user first interacts with item
+    if (!itemStartTimes[itemId]) {
+      startItemTimer(itemId);
+    }
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
+    setComments(prev => ({ ...prev, [itemId]: value }));
+    setResponses(prev => ({ ...prev, [itemId]: value && String(value).trim() ? 'completed' : (prev[itemId] || 'pending') }));
+  }, [auditStatus, itemStartTimes]);
+
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
     let lastError = null;
@@ -679,7 +719,10 @@ const AuditFormScreen = () => {
           } else if (uploadResponse.status === 429) {
             // Rate limited - wait longer and retry with exponential backoff
             if (attempt < maxRetries) {
-              const waitTime = Math.min(5000 * attempt, 30000); // Max 30 seconds wait
+              const retryAfterHeader = uploadResponse.headers?.get?.('retry-after');
+              const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+              const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+              const waitTime = retryAfterMs ?? Math.min(5000 * attempt, 30000); // Max 30 seconds wait
               console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
               await new Promise(resolve => setTimeout(resolve, waitTime));
               continue;
@@ -804,7 +847,9 @@ const AuditFormScreen = () => {
         errorMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Retry', onPress: () => handlePhotoUpload(itemId) }
+          ...(error?.type === 'ratelimit'
+            ? [{ text: 'OK', onPress: () => {} }]
+            : [{ text: 'Retry', onPress: () => handlePhotoUpload(itemId) }])
         ]
       );
     } finally {
@@ -956,17 +1001,48 @@ const AuditFormScreen = () => {
 
       // Use batch update for faster saves - prepare all items
       const batchItems = filteredItems.map((item) => {
+        const fieldType = getEffectiveItemFieldType(item);
+        const isOptionType = isOptionFieldType(fieldType);
+        const isAnswerType = isAnswerFieldType(fieldType);
+        const hasAnswer = !!(comments[item.id] && String(comments[item.id]).trim());
+        const hasPhoto = !!photos[item.id];
+        const statusFromState = responses[item.id] || 'pending';
+
+        let effectiveStatus = statusFromState;
+        if (isAnswerType) {
+          effectiveStatus = hasAnswer ? 'completed' : 'pending';
+        }
+        if (fieldType === 'image_upload') {
+          effectiveStatus = hasPhoto ? 'completed' : statusFromState;
+        }
+
         const updateData = {
           itemId: item.id,
-          status: responses[item.id] || 'pending',
+          status: effectiveStatus,
         };
         
-        if (selectedOptions[item.id]) {
+        if (isOptionType && selectedOptions[item.id]) {
           updateData.selected_option_id = selectedOptions[item.id];
         }
         
         if (comments[item.id]) {
           updateData.comment = comments[item.id];
+        }
+
+        // Ensure non-option field types can still complete audits by writing a non-scoring mark.
+        // Backend treats 'NA' as a valid completion mark and excludes it from score.
+        if (isAnswerType && hasAnswer) {
+          updateData.mark = 'NA';
+        }
+        if (fieldType === 'image_upload' && hasPhoto) {
+          updateData.mark = 'NA';
+        }
+        if (fieldType === 'task') {
+          // Map task status to a numeric mark so completion + scoring works even without options.
+          const st = updateData.status;
+          if (st === 'completed') updateData.mark = '100';
+          if (st === 'failed') updateData.mark = '0';
+          if (st === 'warning') updateData.mark = '50';
         }
         
         if (photos[item.id]) {
@@ -1014,26 +1090,78 @@ const AuditFormScreen = () => {
       // Clear audit_category to allow multiple categories in the same audit
       // This allows users to complete different categories in the same audit session
       try {
-        await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/batch`, { 
-          items: batchItems,
-          audit_category: null // Clear category to allow multi-category audits
-        });
+        const batchUrl = `${API_BASE_URL}/audits/${currentAuditId}/items/batch`;
+        const payload = { items: batchItems, audit_category: null };
+
+        // Retry batch update on transient failures (especially 429/rate limit)
+        let batchAttempt = 0;
+        const maxBatchRetries = 3;
+        while (true) {
+          try {
+            batchAttempt += 1;
+            await axios.put(batchUrl, payload);
+            break;
+          } catch (e) {
+            const status = e?.response?.status;
+            const retryAfterHeader = e?.response?.headers?.['retry-after'];
+            const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+            const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+            const waitMs = retryAfterMs ?? Math.min(1000 * (2 ** (batchAttempt - 1)), 10000);
+
+            if (batchAttempt < maxBatchRetries && (status === 429 || !status)) {
+              console.warn(`Batch save failed (attempt ${batchAttempt}/${maxBatchRetries}). Waiting ${waitMs}ms then retry...`);
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+              continue;
+            }
+            throw e;
+          }
+        }
       } catch (batchError) {
         console.warn('Batch update failed, trying individual updates:', batchError);
         // Fallback to individual updates if batch fails
-        const updatePromises = batchItems.map(async (updateData) => {
-          try {
-            return await axios.put(`${API_BASE_URL}/audits/${currentAuditId}/items/${updateData.itemId}`, updateData);
-          } catch (itemError) {
-            console.warn(`Failed to update item ${updateData.itemId}:`, itemError);
-            return { error: itemError, itemId: updateData.itemId };
+        // IMPORTANT: Do NOT fire all item updates in parallel (can trigger 429 and make all fail).
+        const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${currentAuditId}/items/${itemId}`;
+        const errors = [];
+
+        for (const updateData of batchItems) {
+          const itemId = updateData.itemId;
+          const maxItemRetries = 3;
+          let attempt = 0;
+
+          while (true) {
+            try {
+              attempt += 1;
+              await axios.put(perItemUrl(itemId), updateData);
+              break;
+            } catch (itemError) {
+              const status = itemError?.response?.status;
+              const retryAfterHeader = itemError?.response?.headers?.['retry-after'];
+              const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+              const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+              const waitMs = retryAfterMs ?? Math.min(750 * attempt, 4000);
+
+              console.warn(`Failed to update item ${itemId} (attempt ${attempt}/${maxItemRetries}):`, itemError?.message || itemError);
+
+              // Retry on 429 + network-ish errors
+              if (attempt < maxItemRetries && (status === 429 || !status)) {
+                await new Promise(resolve => setTimeout(resolve, waitMs));
+                continue;
+              }
+
+              errors.push({ itemId, error: itemError });
+              break;
+            }
           }
-        });
-        
-        const results = await Promise.all(updatePromises);
-        const errors = results.filter(r => r && r.error);
-        if (errors.length > 0 && errors.length === results.length) {
-          throw new Error(`Failed to save ${errors.length} items`);
+
+          // Small spacing between requests to reduce burstiness
+          await new Promise(resolve => setTimeout(resolve, 60));
+        }
+
+        if (errors.length > 0 && errors.length === batchItems.length) {
+          const first = errors[0]?.error;
+          const firstStatus = first?.response?.status;
+          const firstMsg = first?.response?.data?.error || first?.response?.data?.message || first?.message || 'Unknown error';
+          throw new Error(`Failed to save ${errors.length} items (first error${firstStatus ? ` ${firstStatus}` : ''}: ${firstMsg})`);
         }
       }
 
@@ -1678,6 +1806,9 @@ const AuditFormScreen = () => {
             {filteredItems.map((item, index) => {
               const isPreviousFailure = failedItemIds.has(item.id);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
+              const fieldType = getEffectiveItemFieldType(item);
+              const optionType = isOptionFieldType(fieldType);
+              const answerType = isAnswerFieldType(fieldType);
               
               return (
               <View 
@@ -1724,7 +1855,7 @@ const AuditFormScreen = () => {
                   <Text style={styles.itemDescription}>{item.description}</Text>
                 )}
                 
-                {item.options && item.options.length > 0 ? (
+                {optionType && item.options && item.options.length > 0 ? (
                   <View style={styles.optionsContainer}>
                     {item.options.map((option) => (
                       <TouchableOpacity
@@ -1747,6 +1878,86 @@ const AuditFormScreen = () => {
                         </Text>
                       </TouchableOpacity>
                     ))}
+                  </View>
+                ) : fieldType === 'date' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Date</Text>
+                    <TouchableOpacity
+                      style={[styles.commentInput, { justifyContent: 'center' }]}
+                      onPress={() => {
+                        const dateStr = comments[item.id] || '';
+                        const current = dateStr ? new Date(dateStr) : new Date();
+                        setDatePickerValue(isNaN(current.getTime()) ? new Date() : current);
+                        setDatePickerItemId(item.id);
+                      }}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      <Text style={{ color: (comments[item.id] ? themeConfig.text.primary : themeConfig.text.disabled) }}>
+                        {comments[item.id] || 'Select date...'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : fieldType === 'signature' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Signature</Text>
+                    <TouchableOpacity
+                      style={[styles.photoButton, { marginTop: 8 }]}
+                      onPress={() => setSignatureItemId(item.id)}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      <Icon name="gesture" size={20} color={themeConfig.primary.main} />
+                      <Text style={styles.photoButtonText}>
+                        {comments[item.id] ? 'Edit Signature' : 'Add Signature'}
+                      </Text>
+                    </TouchableOpacity>
+                    {(() => {
+                      let signatureObj = null;
+                      try {
+                        signatureObj = comments[item.id] ? JSON.parse(comments[item.id]) : null;
+                      } catch (e) {
+                        signatureObj = null;
+                      }
+                      return <SignatureDisplay signature={signatureObj} style={{ marginTop: 10 }} />;
+                    })()}
+                  </View>
+                ) : fieldType === 'number' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Number</Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Enter number..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      keyboardType="decimal-pad"
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
+                ) : fieldType === 'scan_code' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Scan Code</Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Enter code..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
+                ) : answerType ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>{fieldType === 'description' ? 'Description' : 'Answer'}</Text>
+                    <TextInput
+                      style={[styles.commentInput, { minHeight: 60 }]}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Enter your response..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      multiline
+                      numberOfLines={3}
+                      editable={auditStatus !== 'completed'}
+                    />
                   </View>
                 ) : (
                   <View style={styles.statusButtons}>
@@ -1891,21 +2102,64 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                <View style={styles.commentContainer}>
-                  <Text style={styles.commentLabel}>Comment (optional)</Text>
-                  <TextInput
-                    style={styles.commentInput}
-                    value={comments[item.id] || ''}
-                    onChangeText={(text) => handleCommentChange(item.id, text)}
-                    placeholder="Add a comment..."
-                    placeholderTextColor={themeConfig.text.disabled}
-                    multiline
-                    numberOfLines={2}
-                  />
-                </View>
+                {!answerType && fieldType !== 'date' && fieldType !== 'signature' && fieldType !== 'number' && fieldType !== 'scan_code' && (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Comment (optional)</Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleCommentChange(item.id, text)}
+                      placeholder="Add a comment..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      multiline
+                      numberOfLines={2}
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
+                )}
               </View>
               );
             })}
+
+            {/* Date Picker (Android inline / iOS modal) */}
+            {datePickerItemId !== null && (
+              <DateTimePicker
+                value={datePickerValue}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, selectedDate) => {
+                  // Android can dismiss without selecting
+                  if (Platform.OS !== 'ios' && event?.type === 'dismissed') {
+                    setDatePickerItemId(null);
+                    return;
+                  }
+
+                  const d = selectedDate || datePickerValue;
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  handleAnswerChange(datePickerItemId, `${y}-${m}-${day}`);
+
+                  if (Platform.OS !== 'ios') {
+                    setDatePickerItemId(null);
+                  } else {
+                    setDatePickerValue(d);
+                  }
+                }}
+              />
+            )}
+
+            {/* Signature Modal */}
+            <SignatureModal
+              visible={signatureItemId !== null}
+              title="Collect Signature"
+              subtitle="Sign to confirm"
+              onClose={() => setSignatureItemId(null)}
+              onSave={(signatureData) => {
+                if (signatureItemId === null) return;
+                handleAnswerChange(signatureItemId, JSON.stringify(signatureData));
+              }}
+            />
 
             <View style={styles.buttonRow}>
               <TouchableOpacity

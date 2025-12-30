@@ -74,9 +74,11 @@ const insertItemsWithOptions = (dbInstance, templateId, items = [], defaultCateg
         return;
       }
 
+      const inputType = item.input_type || item.inputType || 'auto';
+
       const { lastID: itemId } = await runDb(
         dbInstance,
-        'INSERT INTO checklist_items (template_id, title, description, category, required, order_index, weight, is_critical, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO checklist_items (template_id, title, description, category, required, order_index, input_type, weight, is_critical, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           templateId,
           item.title,
@@ -84,6 +86,7 @@ const insertItemsWithOptions = (dbInstance, templateId, items = [], defaultCateg
           item.category || defaultCategory,
           item.required !== false ? 1 : 0,
           item.order_index !== undefined ? item.order_index : index,
+          inputType,
           item.weight || 1,
           item.is_critical ? 1 : 0,
           item.is_time_based ? 1 : 0,
@@ -648,9 +651,9 @@ router.post('/:id/clone', authenticate, requirePermission('manage_templates', 'c
     for (const item of items) {
       const { lastID: newItemId } = await runDb(
         dbInstance,
-        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, weight, max_score, section) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.weight || 1, item.max_score || 100, item.section || '']
+        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, input_type, weight, max_score, section) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.input_type || 'auto', item.weight || 1, item.max_score || 100, item.section || '']
       );
       
       // Clone item options
@@ -722,9 +725,9 @@ router.post('/:id/version', authenticate, requirePermission('manage_templates', 
     for (const item of items) {
       const { lastID: newItemId } = await runDb(
         dbInstance,
-        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, weight, max_score, section) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.weight || 1, item.max_score || 100, item.section || '']
+        `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, input_type, weight, max_score, section) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newTemplateId, item.title, item.description || '', item.category || '', item.required, item.order_index, item.input_type || 'auto', item.weight || 1, item.max_score || 100, item.section || '']
       );
       
       const options = await getAllRows(dbInstance, 'SELECT * FROM checklist_item_options WHERE item_id = ? ORDER BY order_index', [item.id]);
