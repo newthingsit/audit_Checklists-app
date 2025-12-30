@@ -383,14 +383,41 @@ const AuditHistory = () => {
                       height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
-                      border: '1px solid',
-                      borderColor: selectedAudits.has(audit.id) ? 'primary.main' : 'divider',
+                      border: audit.status === 'completed' ? '2px solid' : '1px solid',
+                      borderColor: selectedAudits.has(audit.id) 
+                        ? 'primary.main' 
+                        : audit.status === 'completed' 
+                          ? 'success.main' 
+                          : 'divider',
                       transition: 'all 0.3s ease',
+                      position: 'relative',
+                      overflow: 'visible',
                       '&:hover': { 
                         transform: 'translateY(-4px)',
                         boxShadow: 6,
-                        borderColor: 'primary.main'
-                      }
+                        borderColor: audit.status === 'completed' ? 'success.dark' : 'primary.main'
+                      },
+                      // Green tick badge in corner for completed audits
+                      ...(audit.status === 'completed' && {
+                        '&::after': {
+                          content: '"✓"',
+                          position: 'absolute',
+                          top: -10,
+                          right: -10,
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          bgcolor: 'success.main',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          boxShadow: 2,
+                          zIndex: 1
+                        }
+                      })
                     }}
                   >
                     <CardContent sx={{ flexGrow: 1, position: 'relative' }}>

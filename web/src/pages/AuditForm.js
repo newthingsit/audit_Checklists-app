@@ -179,22 +179,26 @@ const AuditForm = () => {
       const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
       setCategories(uniqueCategories);
 
-      // If this audit is category-scoped, lock the UI to that category
-      if (audit.audit_category) {
-        setSelectedCategory(audit.audit_category);
-        setFilteredItems(allItems.filter(item => item.category === audit.audit_category));
-        // Jump directly to checklist step
-        setActiveStep(uniqueCategories.length > 1 ? 2 : 1);
-      } else {
-        // Non-scoped audit: keep existing behavior
-        if (uniqueCategories.length === 1) {
-          setSelectedCategory(uniqueCategories[0]);
-          setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
-        } else if (uniqueCategories.length === 0) {
-          setFilteredItems(allItems);
+      // For resume audit: ALWAYS show category selection if multiple categories exist
+      // This allows users to switch between categories and continue completing the audit
+      if (uniqueCategories.length > 1) {
+        // Multiple categories - start at category selection step to allow user to choose/switch
+        // Pre-select the audit's category if it has one, but allow changing
+        if (audit.audit_category) {
+          setSelectedCategory(audit.audit_category);
+          setFilteredItems(allItems.filter(item => item.category === audit.audit_category));
         }
-        // Start at category selection if multiple categories exist, otherwise checklist
-        setActiveStep(uniqueCategories.length > 1 ? 1 : 1);
+        // Go to category selection step (step 1) so user can choose which category to work on
+        setActiveStep(1);
+      } else if (uniqueCategories.length === 1) {
+        // Single category - auto-select and go directly to checklist
+        setSelectedCategory(uniqueCategories[0]);
+        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        setActiveStep(1);
+      } else {
+        // No categories - show all items directly
+        setFilteredItems(allItems);
+        setActiveStep(1);
       }
 
       // Populate responses from audit items

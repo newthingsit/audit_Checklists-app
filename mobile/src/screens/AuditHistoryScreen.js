@@ -264,17 +264,28 @@ const AuditHistoryScreen = () => {
 
   const renderAudit = ({ item, index }) => {
     const statusStyles = getStatusStyles(item.status);
+    const isCompleted = item.status === 'completed';
     
     return (
       <TouchableOpacity
-        style={[styles.auditCard, index === 0 && styles.auditCardFirst]}
+        style={[
+          styles.auditCard, 
+          index === 0 && styles.auditCardFirst,
+          isCompleted && styles.auditCardCompleted
+        ]}
         onPress={() => navigation.navigate('AuditDetail', { id: item.id })}
         activeOpacity={0.7}
       >
+        {/* Green tick badge for completed audits */}
+        {isCompleted && (
+          <View style={styles.completedBadge}>
+            <Icon name="check" size={14} color="#fff" />
+          </View>
+        )}
         <View style={styles.auditCardLeft}>
           <View style={[
             styles.statusIndicator,
-            { backgroundColor: item.status === 'completed' ? themeConfig.success.main : themeConfig.warning.main }
+            { backgroundColor: isCompleted ? themeConfig.success.main : themeConfig.warning.main }
           ]} />
           <View style={styles.auditInfo}>
             <Text style={styles.auditName} numberOfLines={1}>{item.restaurant_name}</Text>
@@ -715,6 +726,27 @@ const styles = StyleSheet.create({
   auditCardFirst: {
     borderColor: themeConfig.primary.light,
     borderWidth: 1.5,
+  },
+  auditCardCompleted: {
+    borderColor: themeConfig.success.main,
+    borderWidth: 2,
+  },
+  completedBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: themeConfig.success.main,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   auditCardLeft: {
     flex: 1,
