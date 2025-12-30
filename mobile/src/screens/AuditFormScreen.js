@@ -23,7 +23,6 @@ import { themeConfig } from '../config/theme';
 import { useLocation } from '../context/LocationContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 import { SignatureModal, SignatureDisplay } from '../components';
-import DynamicItemEntry from '../components/DynamicItemEntry';
 
 const AuditFormScreen = () => {
   const route = useRoute();
@@ -51,8 +50,6 @@ const AuditFormScreen = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
   const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
-  const [showDynamicEntry, setShowDynamicEntry] = useState(false);
-  const [dynamicEntrySaving, setDynamicEntrySaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null); // Selected category for filtering items
   const [categories, setCategories] = useState([]); // Available categories
   const [filteredItems, setFilteredItems] = useState([]); // Items filtered by selected category
@@ -70,64 +67,6 @@ const AuditFormScreen = () => {
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
   
-  // Time tracking state for Item Making Performance
-  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when user starts working on each item
-  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for display
-  const [timeTrackingIntervals, setTimeTrackingIntervals] = useState({}); // Store interval IDs
-  
-  // Multi-time entries for Item Making Performance (4-5 times per item)
-  const [multiTimeEntries, setMultiTimeEntries] = useState({}); // { itemId: [time1, time2, ...] }
-  
-  // Time input modal state
-  const [showTimeInputModal, setShowTimeInputModal] = useState(false);
-  const [timeInputItemId, setTimeInputItemId] = useState(null);
-  const [timeInputSlotIndex, setTimeInputSlotIndex] = useState(null);
-  const [timeInputValue, setTimeInputValue] = useState('');
-  
-  // Time preset modal state
-  const [showTimePresetModal, setShowTimePresetModal] = useState(false);
-  const [timePresetItemId, setTimePresetItemId] = useState(null);
-  
-  // Time presets - like Scoring Option presets
-  const TIME_PRESETS = [
-    { 
-      name: 'Quick (1-5 min)', 
-      description: 'Fast items under 5 minutes',
-      values: [1, 2, 3, 4, 5] 
-    },
-    { 
-      name: 'Standard (2-10 min)', 
-      description: 'Standard preparation time',
-      values: [2, 4, 6, 8, 10] 
-    },
-    { 
-      name: 'Extended (5-15 min)', 
-      description: 'Items requiring more time',
-      values: [5, 8, 10, 12, 15] 
-    },
-    { 
-      name: 'Long (10-30 min)', 
-      description: 'Complex items',
-      values: [10, 15, 20, 25, 30] 
-    },
-    { 
-      name: 'Custom Entry', 
-      description: 'Enter your own times',
-      values: [] 
-    },
-  ];
-
-  // Helper function to sort items: Standard items first, time-based items at the end
-  const sortItemsWithTimeBasedLast = (itemsList) => {
-    return [...itemsList].sort((a, b) => {
-      const aIsTimeBased = a.is_time_based && (a.min_time_minutes || a.max_time_minutes || a.target_time_minutes);
-      const bIsTimeBased = b.is_time_based && (b.min_time_minutes || b.max_time_minutes || b.target_time_minutes);
-      if (aIsTimeBased && !bIsTimeBased) return 1; // Time-based goes after standard
-      if (!aIsTimeBased && bIsTimeBased) return -1; // Standard goes before time-based
-      return 0; // Keep original order for same type
-    });
-  };
-
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
     return locations.filter(loc => {
@@ -451,106 +390,6 @@ const AuditFormScreen = () => {
 
   const fetchAuditData = async () => {
     await fetchAuditDataById(auditId);
-  };
-
-  const ensureAuditExists = async () => {
-    if (currentAuditId) return currentAuditId;
-
-    if (!selectedLocation) {
-      throw new Error('Please select a store first.');
-    }
-
-    const auditData = {
-      template_id: parseInt(templateId, 10),
-      restaurant_name: selectedLocation.name,
-      location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
-      location_id: parseInt(locationId || selectedLocation.id, 10),
-      notes
-    };
-
-    if (scheduledAuditId) {
-      auditData.scheduled_audit_id = parseInt(scheduledAuditId, 10);
-    }
-
-    // Add GPS location data if captured
-    if (capturedLocation) {
-      auditData.gps_latitude = capturedLocation.latitude;
-      auditData.gps_longitude = capturedLocation.longitude;
-      auditData.gps_accuracy = capturedLocation.accuracy;
-      auditData.gps_timestamp = capturedLocation.timestamp;
-      auditData.location_verified = locationVerified;
-    }
-
-    const resp = await axios.post(`${API_BASE_URL}/audits`, auditData);
-    const newId = resp.data.id;
-    setCurrentAuditId(newId);
-    return newId;
-  };
-
-  const handleAddDynamicItem = async (item) => {
-    try {
-      setDynamicEntrySaving(true);
-
-      const auditIdToUse = await ensureAuditExists();
-
-      const payload = {
-        title: item.title,
-        description: item.description || '',
-        category: item.category || selectedCategory || 'Preparation Time',
-        is_time_based: true,
-        time_entries: item.time_entries,
-        min_time_minutes: 1.5,
-        target_time_minutes: 2,
-        max_time_minutes: 3
-      };
-
-      const response = await axios.post(`${API_BASE_URL}/audits/${auditIdToUse}/dynamic-items`, payload);
-      const created = response.data?.item;
-
-      if (!created?.id) {
-        throw new Error('Invalid server response while adding item.');
-      }
-
-      const newChecklistItem = {
-        id: created.id,
-        title: created.title,
-        description: created.description || '',
-        category: created.category || payload.category,
-        required: 1,
-        order_index: -1,
-        is_time_based: 1,
-        min_time_minutes: created.min_time_minutes ?? payload.min_time_minutes,
-        target_time_minutes: created.target_time_minutes ?? payload.target_time_minutes,
-        max_time_minutes: created.max_time_minutes ?? payload.max_time_minutes,
-        options: []
-      };
-
-      setItems(prev => sortItemsWithTimeBasedLast([...prev, newChecklistItem]));
-      setCategories(prev => {
-        const cat = newChecklistItem.category;
-        if (!cat || !cat.trim()) return prev;
-        return prev.includes(cat) ? prev : [...prev, cat];
-      });
-
-      if (!selectedCategory || newChecklistItem.category === selectedCategory) {
-        setFilteredItems(prev => sortItemsWithTimeBasedLast([...prev, newChecklistItem]));
-      }
-
-      // Seed local state so progress updates instantly
-      setMultiTimeEntries(prev => ({ ...prev, [newChecklistItem.id]: item.time_entries }));
-      setResponses(prev => ({ ...prev, [newChecklistItem.id]: 'completed' }));
-
-      setShowDynamicEntry(false);
-
-      const avg = created.average_time_minutes ?? item.average_time_minutes;
-      const score = created.mark ?? item.score;
-      Alert.alert('Success', `"${newChecklistItem.title}" added.\nAvg: ${avg} min\nScore: ${score}/100`);
-    } catch (error) {
-      console.error('Error adding dynamic item:', error);
-      Alert.alert('Error', error?.response?.data?.error || error.message || 'Failed to add item.');
-    } finally {
-      setDynamicEntrySaving(false);
-    }
   };
 
   // Fetch previous audit failures for recurring failures indicator
@@ -1068,21 +907,6 @@ const AuditFormScreen = () => {
           }
         }
         
-        // Add multi-time entries if available
-        if (multiTimeEntries[item.id] && multiTimeEntries[item.id].length > 0) {
-          updateData.time_entries = multiTimeEntries[item.id];
-          updateData.average_time_minutes = getAverageTime(item.id);
-        }
-        
-        // Add time tracking data if available (single timer)
-        if (itemStartTimes[item.id]) {
-          const timeData = stopItemTimer(item.id);
-          if (timeData) {
-            updateData.time_taken_minutes = timeData.time_taken_minutes;
-            updateData.started_at = timeData.started_at;
-          }
-        }
-
         return updateData;
       });
 
@@ -1272,76 +1096,6 @@ const AuditFormScreen = () => {
     }
   };
 
-  // Time tracking functions for Item Making Performance
-  const startItemTimer = (itemId) => {
-    // If timer already started, don't restart
-    if (itemStartTimes[itemId]) {
-      return;
-    }
-    
-    const startTime = new Date().toISOString();
-    setItemStartTimes(prev => ({ ...prev, [itemId]: startTime }));
-    
-    // Start interval to update elapsed time display
-    const interval = setInterval(() => {
-      setItemElapsedTimes(prev => {
-        const start = itemStartTimes[itemId] || startTime;
-        const elapsed = Math.floor((new Date() - new Date(start)) / 1000 / 60); // minutes
-        return { ...prev, [itemId]: elapsed };
-      });
-    }, 10000); // Update every 10 seconds
-    
-    setTimeTrackingIntervals(prev => ({ ...prev, [itemId]: interval }));
-  };
-
-  const stopItemTimer = (itemId) => {
-    // Clear interval
-    if (timeTrackingIntervals[itemId]) {
-      clearInterval(timeTrackingIntervals[itemId]);
-      setTimeTrackingIntervals(prev => {
-        const newIntervals = { ...prev };
-        delete newIntervals[itemId];
-        return newIntervals;
-      });
-    }
-    
-    // Calculate final time
-    if (itemStartTimes[itemId]) {
-      const startTime = new Date(itemStartTimes[itemId]);
-      const endTime = new Date();
-      const timeTakenMinutes = Math.round(((endTime - startTime) / 1000 / 60) * 100) / 100; // Round to 2 decimals
-      
-      setItemElapsedTimes(prev => {
-        const newTimes = { ...prev };
-        delete newTimes[itemId];
-        return newTimes;
-      });
-      
-      return {
-        time_taken_minutes: timeTakenMinutes,
-        started_at: itemStartTimes[itemId]
-      };
-    }
-    return null;
-  };
-  
-  // Get average time from multi-time entries
-  const getAverageTime = (itemId) => {
-    const entries = (multiTimeEntries[itemId] || []).filter(e => e !== undefined && e > 0);
-    if (entries.length === 0) return 0;
-    const sum = entries.reduce((acc, val) => acc + val, 0);
-    return Math.round((sum / entries.length) * 100) / 100;
-  };
-
-  // Cleanup intervals on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(timeTrackingIntervals).forEach(interval => {
-        if (interval) clearInterval(interval);
-      });
-    };
-  }, []);
-
   const getStatusIcon = (status) => {
     switch (status) {
       case 'completed':
@@ -1370,14 +1124,7 @@ const AuditFormScreen = () => {
     // Also check if item has a mark from loaded audit data
     const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
 
-    // Time-based items: treat >=4 recorded entries as completed for UI progress
-    const entries = multiTimeEntries[item.id] || [];
-    const validTimeEntriesCount = Array.isArray(entries)
-      ? entries.filter(t => typeof t === 'number' && !isNaN(t) && t > 0).length
-      : 0;
-    const hasTimeEntries = !!item.is_time_based && validTimeEntriesCount >= 4;
-
-    return hasResponse || hasMark || hasTimeEntries;
+    return hasResponse || hasMark;
   }).length;
 
   return (
@@ -1545,157 +1292,6 @@ const AuditFormScreen = () => {
         </View>
       </Modal>
 
-      {/* Time Input Modal */}
-      <Modal
-        visible={showTimeInputModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowTimeInputModal(false)}
-      >
-        <View style={styles.timeInputModalOverlay}>
-          <View style={styles.timeInputModalContent}>
-            <Text style={styles.timeInputModalTitle}>
-              Entry #{timeInputSlotIndex !== null ? timeInputSlotIndex + 1 : ''}
-            </Text>
-            <Text style={styles.timeInputModalSubtitle}>Enter time in minutes</Text>
-            
-            <TextInput
-              style={styles.timeInputModalField}
-              placeholder="0"
-              placeholderTextColor="#999"
-              keyboardType="decimal-pad"
-              value={timeInputValue}
-              onChangeText={setTimeInputValue}
-              autoFocus={true}
-            />
-            
-            <View style={styles.timeInputModalButtons}>
-              <TouchableOpacity
-                style={[styles.timeInputModalButton, styles.timeInputModalButtonClear]}
-                onPress={() => {
-                  if (timeInputItemId !== null && timeInputSlotIndex !== null) {
-                    setMultiTimeEntries(prev => {
-                      const currentEntries = [...(prev[timeInputItemId] || [])];
-                      currentEntries[timeInputSlotIndex] = undefined;
-                      return { ...prev, [timeInputItemId]: currentEntries };
-                    });
-                  }
-                  setShowTimeInputModal(false);
-                  setTimeInputValue('');
-                }}
-              >
-                <Text style={styles.timeInputModalButtonTextClear}>Clear</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.timeInputModalButton, styles.timeInputModalButtonCancel]}
-                onPress={() => {
-                  setShowTimeInputModal(false);
-                  setTimeInputValue('');
-                }}
-              >
-                <Text style={styles.timeInputModalButtonTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.timeInputModalButton, styles.timeInputModalButtonSave]}
-                onPress={() => {
-                  const numValue = parseFloat(timeInputValue);
-                  if (!isNaN(numValue) && numValue > 0 && timeInputItemId !== null && timeInputSlotIndex !== null) {
-                    setMultiTimeEntries(prev => {
-                      const currentEntries = [...(prev[timeInputItemId] || [])];
-                      currentEntries[timeInputSlotIndex] = numValue;
-                      return { ...prev, [timeInputItemId]: currentEntries };
-                    });
-                  }
-                  setShowTimeInputModal(false);
-                  setTimeInputValue('');
-                }}
-              >
-                <Text style={styles.timeInputModalButtonTextSave}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Time Preset Modal - Like Scoring Options Preset Dropdown */}
-      <Modal
-        visible={showTimePresetModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowTimePresetModal(false)}
-      >
-        <View style={styles.timePresetModalOverlay}>
-          <View style={styles.timePresetModalContent}>
-            <View style={styles.timePresetModalHeader}>
-              <Text style={styles.timePresetModalTitle}>Apply Preset</Text>
-              <TouchableOpacity onPress={() => setShowTimePresetModal(false)}>
-                <Icon name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.timePresetList}>
-              {TIME_PRESETS.map((preset, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.timePresetOption}
-                  onPress={() => {
-                    if (preset.values.length > 0 && timePresetItemId !== null) {
-                      // Apply preset values to the item
-                      setMultiTimeEntries(prev => ({
-                        ...prev,
-                        [timePresetItemId]: [...preset.values]
-                      }));
-                    }
-                    setShowTimePresetModal(false);
-                  }}
-                >
-                  <View style={styles.timePresetOptionContent}>
-                    <Text style={styles.timePresetOptionName}>{preset.name}</Text>
-                    <Text style={styles.timePresetOptionDescription}>{preset.description}</Text>
-                    {preset.values.length > 0 && (
-                      <View style={styles.timePresetValuesRow}>
-                        {preset.values.map((val, i) => (
-                          <View key={i} style={styles.timePresetValueChip}>
-                            <Text style={styles.timePresetValueText}>{val}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                  <Icon name="chevron-right" size={24} color="#ccc" />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Dynamic Item Entry Modal (Preparation Time) */}
-      <Modal
-        visible={showDynamicEntry}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowDynamicEntry(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.dynamicEntryModalContent]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Item Manually</Text>
-              <TouchableOpacity onPress={() => setShowDynamicEntry(false)}>
-                <Icon name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-
-            <DynamicItemEntry
-              category={selectedCategory || 'Preparation Time'}
-              onAddItem={handleAddDynamicItem}
-            />
-          </View>
-        </View>
-      </Modal>
-
       {currentStep === 1 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={{ marginBottom: 20 }}>
@@ -1775,23 +1371,6 @@ const AuditFormScreen = () => {
           </View>
 
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            {/* Dynamic item entry (Preparation Time / Manual Item Add) */}
-            {auditStatus !== 'completed' && (
-              <TouchableOpacity
-                style={[styles.dynamicEntryButton, dynamicEntrySaving && styles.dynamicEntryButtonDisabled]}
-                onPress={() => setShowDynamicEntry(true)}
-                disabled={dynamicEntrySaving}
-              >
-                {dynamicEntrySaving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Icon name="add-circle" size={22} color="#fff" />
-                )}
-                <Text style={styles.dynamicEntryButtonText}>
-                  Add Item Manually (Preparation Time)
-                </Text>
-              </TouchableOpacity>
-            )}
 
             {/* Previous failures summary banner */}
             {previousAuditInfo && previousFailures.length > 0 && (
@@ -1842,12 +1421,6 @@ const AuditFormScreen = () => {
                       {index + 1}. {item.title}
                       {item.required && <Text style={styles.required}> *</Text>}
                     </Text>
-                    {/* Time tracking display */}
-                    {(itemStartTimes[item.id] || itemElapsedTimes[item.id]) && (
-                      <Text style={styles.timeTrackingText}>
-                        ⏱️ {itemElapsedTimes[item.id] || 0} min
-                      </Text>
-                    )}
                   </View>
                   {getStatusIcon(responses[item.id])}
                 </View>
@@ -2015,90 +1588,6 @@ const AuditFormScreen = () => {
                     >
                       <Icon name="close" size={16} color="#fff" />
                     </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* Multi-Time Entry Section - Only show for time-based items */}
-                {item.is_time_based && (item.min_time_minutes || item.max_time_minutes || item.target_time_minutes) && (
-                  <View style={styles.timeEntryContainer}>
-                    <View style={styles.timeEntryHeader}>
-                      <Text style={styles.timeEntryLabel}>⏱️ Time Entries (minutes)</Text>
-                      
-                      {/* Apply Preset Dropdown - Like Scoring Options */}
-                      <TouchableOpacity
-                        style={styles.timePresetButton}
-                        onPress={() => {
-                          setTimePresetItemId(item.id);
-                          setShowTimePresetModal(true);
-                        }}
-                      >
-                        <Text style={styles.timePresetButtonText}>Apply Preset</Text>
-                        <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
-                      </TouchableOpacity>
-                    </View>
-                    
-                    {/* 5 Time entry slots - Exactly like Scoring Options structure */}
-                    <View style={styles.timeEntriesColumn}>
-                      {[...Array(5)].map((_, idx) => {
-                        const entries = multiTimeEntries[item.id] || [];
-                        const value = entries[idx];
-                        const hasValue = value !== undefined && value !== null;
-                        
-                        return (
-                          <View key={idx} style={styles.timeEntryRow}>
-                            <Text style={styles.timeEntryRowLabel}>Entry {idx + 1}</Text>
-                            <TextInput
-                              style={[
-                                styles.timeEntryInput,
-                                hasValue && styles.timeEntryInputFilled
-                              ]}
-                              placeholder="Enter minutes"
-                              placeholderTextColor="#999"
-                              keyboardType="decimal-pad"
-                              value={hasValue ? value.toString() : ''}
-                              onChangeText={(text) => {
-                                const numValue = parseFloat(text);
-                                setMultiTimeEntries(prev => {
-                                  const currentEntries = [...(prev[item.id] || [])];
-                                  if (text === '' || isNaN(numValue)) {
-                                    currentEntries[idx] = undefined;
-                                  } else {
-                                    currentEntries[idx] = numValue;
-                                  }
-                                  return { ...prev, [item.id]: currentEntries };
-                                });
-                              }}
-                            />
-                            <TouchableOpacity
-                              style={styles.timeEntryDeleteButton}
-                              onPress={() => {
-                                setMultiTimeEntries(prev => {
-                                  const currentEntries = [...(prev[item.id] || [])];
-                                  currentEntries[idx] = undefined;
-                                  return { ...prev, [item.id]: currentEntries };
-                                });
-                              }}
-                            >
-                              <Icon name="delete" size={20} color={themeConfig.error.main} />
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-                    </View>
-                    
-                    {/* Average display */}
-                    {(() => {
-                      const entries = (multiTimeEntries[item.id] || []).filter(e => e !== undefined && e !== null && e > 0);
-                      if (entries.length === 0) return null;
-                      const avg = entries.reduce((a, b) => a + b, 0) / entries.length;
-                      return (
-                        <View style={styles.averageDisplay}>
-                          <Text style={styles.averageLabel}>Average:</Text>
-                          <Text style={styles.averageValue}>{avg.toFixed(1)} min</Text>
-                          <Text style={styles.entriesCount}>({entries.length}/5 entries)</Text>
-                        </View>
-                      );
-                    })()}
                   </View>
                 )}
 
