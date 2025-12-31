@@ -11,6 +11,8 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import GridOnIcon from '@mui/icons-material/GridOn';
+import EmailIcon from '@mui/icons-material/Email';
+import ShareIcon from '@mui/icons-material/Share';
 import axios from 'axios';
 import { showSuccess, showError } from '../utils/toast';
 
@@ -201,7 +203,30 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
       handleClose();
     } catch (error) {
       console.error('Export error:', error);
-      showError(`Failed to export ${format.toUpperCase()}`);
+      const errorMsg = error.response?.data?.error || error.message || `Failed to export ${format.toUpperCase()}`;
+      showError(errorMsg);
+    }
+  };
+
+  const handleEmailShare = async () => {
+    try {
+      if (auditId) {
+        // Single audit email
+        const emailUrl = `/audit/${auditId}`;
+        const subject = encodeURIComponent(`Audit Report: ${auditName || 'Audit'}`);
+        const body = encodeURIComponent(`Please review this audit report:\n${window.location.origin}${emailUrl}`);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      } else if (audits && audits.length > 0) {
+        // Multiple audits email
+        const auditLinks = audits.map(a => `${window.location.origin}/audit/${a.id}`).join('\n');
+        const subject = encodeURIComponent(`Audit Reports: ${audits.length} audits`);
+        const body = encodeURIComponent(`Please review these audit reports:\n\n${auditLinks}`);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      }
+      handleClose();
+    } catch (error) {
+      console.error('Email share error:', error);
+      showError('Failed to open email client');
     }
   };
 
@@ -246,6 +271,12 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
             <GridOnIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Export as Excel</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleEmailShare}>
+          <ListItemIcon>
+            <EmailIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Share via Email</ListItemText>
         </MenuItem>
       </Menu>
     </>

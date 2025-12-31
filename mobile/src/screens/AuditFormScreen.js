@@ -1319,18 +1319,31 @@ const AuditFormScreen = () => {
                 <View style={styles.categoryCardContent}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
+                        {status.isComplete && (
+                          <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
+                        )}
+                      </View>
                       <Text style={styles.categoryCount}>
-                        {categoryItems.length} item{categoryItems.length !== 1 ? 's' : ''}
-                        {status.completed > 0 && ` • ${status.completed}/${status.total} completed`}
+                        {status.completed} / {status.total} items completed
+                      </Text>
+                      {/* Progress bar */}
+                      <View style={styles.categoryCardProgressBar}>
+                        <View 
+                          style={[
+                            styles.categoryCardProgressFill, 
+                            { 
+                              width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
+                              backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                            }
+                          ]} 
+                        />
+                      </View>
+                      <Text style={styles.categoryProgressPercent}>
+                        {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
                       </Text>
                     </View>
-                    {status.isComplete && (
-                      <View style={styles.completedBadge}>
-                        <Icon name="check-circle" size={20} color="#4caf50" />
-                        <Text style={styles.completedText}>Done</Text>
-                      </View>
-                    )}
                   </View>
                 </View>
                 {selectedCategory === category && !status.isComplete && (
@@ -1364,10 +1377,80 @@ const AuditFormScreen = () => {
       {currentStep === 2 && (
         <View style={styles.container}>
           <View style={styles.progressBar}>
-            <Text style={styles.progressText}>
-              Progress: {completedItems} / {filteredItems.length} items
-              {selectedCategory && ` (${selectedCategory})`}
-            </Text>
+            {/* Category Switcher (only show if multiple categories) */}
+            {categories.length > 1 && (
+              <View style={styles.categorySwitcherContainer}>
+                <Text style={styles.categorySwitcherLabel}>Category:</Text>
+                <TouchableOpacity
+                  style={styles.categorySwitcherButton}
+                  onPress={() => {
+                    // Show category selection modal
+                    setCurrentStep(1);
+                  }}
+                >
+                  <Text style={styles.categorySwitcherText}>
+                    {selectedCategory || 'Select Category'}
+                  </Text>
+                  <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
+                </TouchableOpacity>
+                
+                {/* Overall Audit Summary */}
+                {(() => {
+                  const totalCompleted = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.completed, 0);
+                  const totalItems = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.total, 0);
+                  const completedCategories = Object.values(categoryCompletionStatus).filter(s => s.isComplete).length;
+                  const overallPercent = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0;
+                  
+                  return (
+                    <View style={styles.overallProgressContainer}>
+                      <View style={styles.overallProgressHeader}>
+                        <Text style={styles.overallProgressLabel}>Overall Progress</Text>
+                        <Text style={styles.overallProgressPercent}>{overallPercent}%</Text>
+                      </View>
+                      <View style={styles.overallProgressBar}>
+                        <View 
+                          style={[
+                            styles.overallProgressFill, 
+                            { width: `${overallPercent}%` }
+                          ]} 
+                        />
+                      </View>
+                      <Text style={styles.overallProgressText}>
+                        {totalCompleted} / {totalItems} items • {completedCategories} / {categories.length} categories
+                      </Text>
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
+            
+            {/* Current Category Progress */}
+            <View style={styles.currentCategoryProgress}>
+              <Text style={styles.progressText}>
+                Progress: {completedItems} / {filteredItems.length} items
+                {selectedCategory && ` (${selectedCategory})`}
+              </Text>
+              {(() => {
+                const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
+                if (currentStatus) {
+                  const percent = currentStatus.total > 0 ? Math.round((currentStatus.completed / currentStatus.total) * 100) : 0;
+                  return (
+                    <View style={styles.categoryProgressBar}>
+                      <View 
+                        style={[
+                          styles.categoryProgressFill, 
+                          { 
+                            width: `${percent}%`,
+                            backgroundColor: currentStatus.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                          }
+                        ]} 
+                      />
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+            </View>
           </View>
 
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -1776,6 +1859,84 @@ const styles = StyleSheet.create({
     color: '#1976d2',
     fontWeight: '600',
   },
+  categorySwitcherContainer: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#b3d9f2',
+  },
+  categorySwitcherLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: themeConfig.text.secondary,
+    marginBottom: 8,
+  },
+  categorySwitcherButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: themeConfig.primary.main,
+    marginBottom: 12,
+  },
+  categorySwitcherText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+    flex: 1,
+  },
+  overallProgressContainer: {
+    marginTop: 8,
+  },
+  overallProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  overallProgressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: themeConfig.text.secondary,
+  },
+  overallProgressPercent: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: themeConfig.info.dark,
+  },
+  overallProgressBar: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  overallProgressFill: {
+    height: '100%',
+    backgroundColor: themeConfig.info.main,
+    borderRadius: 3,
+  },
+  overallProgressText: {
+    fontSize: 11,
+    color: themeConfig.text.secondary,
+  },
+  currentCategoryProgress: {
+    marginTop: 8,
+  },
+  categoryProgressBar: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  categoryProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
   dynamicEntryButton: {
     backgroundColor: themeConfig.success.main,
     borderRadius: 10,
@@ -2087,6 +2248,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: themeConfig.text.secondary,
     fontWeight: '500',
+    marginBottom: 6,
+  },
+  categoryCardProgressBar: {
+    height: 6,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  categoryCardProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  categoryProgressPercent: {
+    fontSize: 11,
+    color: themeConfig.text.secondary,
+    marginTop: 2,
   },
   modalOverlay: {
     flex: 1,

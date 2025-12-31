@@ -25,7 +25,10 @@ import {
   Autocomplete,
   useMediaQuery,
   useTheme,
-  LinearProgress
+  LinearProgress,
+  Select,
+  MenuItem,
+  Menu
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -78,6 +81,7 @@ const AuditForm = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [categories, setCategories] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
+  const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
 
   useEffect(() => {
     fetchLocations();
@@ -438,6 +442,39 @@ const AuditForm = () => {
     setFilteredItems(filtered);
   };
 
+  // Calculate category completion status
+  const calculateCategoryCompletion = useCallback(() => {
+    if (categories.length === 0) return {};
+    
+    const status = {};
+    categories.forEach(cat => {
+      const categoryItems = items.filter(item => item.category === cat);
+      const completedInCategory = categoryItems.filter(item => {
+        // Check if item has a response or selected option
+        const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
+        const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
+        // Also check if item has a mark from loaded audit data
+        const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
+        return hasResponse || hasOption || hasMark;
+      }).length;
+      
+      status[cat] = {
+        completed: completedInCategory,
+        total: categoryItems.length,
+        isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+      };
+    });
+    return status;
+  }, [categories, items, responses, selectedOptions]);
+
+  // Update category completion status when responses or options change
+  useEffect(() => {
+    if (categories.length > 0 && items.length > 0) {
+      const status = calculateCategoryCompletion();
+      setCategoryCompletionStatus(status);
+    }
+  }, [categories, items, responses, selectedOptions, calculateCategoryCompletion]);
+
   const handleSubmit = async () => {
     if (auditStatus === 'completed') {
       showError('Cannot modify a completed audit');
@@ -543,10 +580,39 @@ const AuditForm = () => {
       }
 
       // Single batch API call instead of multiple individual calls
-      await axios.put(`/api/audits/${currentAuditId}/items/batch`, { 
+      const response = await axios.put(`/api/audits/${currentAuditId}/items/batch`, { 
         items: batchItems,
         audit_category: selectedCategory || null
       });
+
+      // Refresh category completion status after save
+      if (response.data && categories.length > 0) {
+        // Fetch updated audit items to recalculate completion
+        const auditResponse = await axios.get(`/api/audits/${currentAuditId}`);
+        const updatedAuditItems = auditResponse.data.items || [];
+        
+        // Update responses and options from server response
+        const updatedResponses = { ...responses };
+        const updatedOptions = { ...selectedOptions };
+        
+        updatedAuditItems.forEach(auditItem => {
+          if (auditItem.status) {
+            updatedResponses[auditItem.item_id] = auditItem.status;
+          }
+          if (auditItem.selected_option_id) {
+            updatedOptions[auditItem.item_id] = auditItem.selected_option_id;
+          }
+          // Update mark in items array
+          const itemIndex = items.findIndex(i => i.id === auditItem.item_id);
+          if (itemIndex >= 0) {
+            items[itemIndex].mark = auditItem.mark;
+          }
+        });
+        
+        setResponses(updatedResponses);
+        setSelectedOptions(updatedOptions);
+        // Category completion will be recalculated by useEffect
+      }
 
       showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
       navigate(`/audit/${currentAuditId}`);
@@ -740,32 +806,72 @@ const AuditForm = () => {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
               {categories.map((category, index) => {
                 const categoryItems = items.filter(item => item.category === category);
+                const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
+                const completionPercent = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
+                
                 return (
                   <Card
                     key={category || `no-category-${index}`}
                     sx={{
                       cursor: 'pointer',
                       border: 2,
-                      borderColor: selectedCategory === category ? 'primary.main' : 'divider',
-                      bgcolor: selectedCategory === category ? 'primary.light' : 'background.paper',
+                      borderColor: status.isComplete 
+                        ? 'success.main' 
+                        : selectedCategory === category 
+                          ? 'primary.main' 
+                          : 'divider',
+                      bgcolor: status.isComplete
+                        ? 'success.light'
+                        : selectedCategory === category 
+                          ? 'primary.light' 
+                          : 'background.paper',
+                      position: 'relative',
+                      transition: 'all 0.2s',
                       '&:hover': {
-                        borderColor: 'primary.main',
-                        bgcolor: 'action.hover'
+                        borderColor: status.isComplete ? 'success.dark' : 'primary.main',
+                        bgcolor: status.isComplete ? 'success.light' : 'action.hover',
+                        transform: 'translateY(-2px)',
+                        boxShadow: 4
                       }
                     }}
                     onClick={() => handleCategorySelect(category)}
                   >
                     <CardContent>
-                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                        {category || 'Uncategorized'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {categoryItems.length} items
-                      </Typography>
-                      {selectedCategory === category && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+                          {category || 'Uncategorized'}
+                        </Typography>
+                        {status.isComplete && (
+                          <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main' }} />
+                        )}
+                      </Box>
+                      
+                      <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          {status.completed} / {status.total} items completed
+                        </Typography>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={completionPercent}
+                          sx={{
+                            height: 6,
+                            borderRadius: 3,
+                            bgcolor: 'grey.200',
+                            '& .MuiLinearProgress-bar': {
+                              bgcolor: status.isComplete ? 'success.main' : 'primary.main',
+                              borderRadius: 3
+                            }
+                          }}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          {completionPercent}% complete
+                        </Typography>
+                      </Box>
+                      
+                      {selectedCategory === category && !status.isComplete && (
                         <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
-                          <CheckCircleIcon sx={{ fontSize: 20, mr: 0.5 }} />
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>Selected</Typography>
+                          <CheckCircleIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>Currently Selected</Typography>
                         </Box>
                       )}
                     </CardContent>
@@ -791,7 +897,7 @@ const AuditForm = () => {
 
         {activeStep === (categories.length > 1 ? 2 : 1) && (
           <Box className={isMobile ? 'has-bottom-actions' : ''}>
-            {/* Sticky Progress Bar for Mobile */}
+            {/* Enhanced Progress Bar with Category Switcher */}
             <Paper 
               sx={{ 
                 p: 2, 
@@ -808,6 +914,89 @@ const AuditForm = () => {
               }}
               className="audit-progress"
             >
+              {/* Category Switcher (only show if multiple categories) */}
+              {categories.length > 1 && (
+                <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                    Category:
+                  </Typography>
+                  <Select
+                    value={selectedCategory || ''}
+                    onChange={(e) => handleCategorySelect(e.target.value)}
+                    size="small"
+                    sx={{
+                      minWidth: 200,
+                      bgcolor: 'background.paper',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'primary.main'
+                      }
+                    }}
+                  >
+                    {categories.map((cat, idx) => {
+                      const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
+                      const catItems = items.filter(item => item.category === cat);
+                      return (
+                        <MenuItem key={cat || `no-category-${idx}`} value={cat}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <Typography variant="body2">
+                              {cat || 'Uncategorized'}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
+                              {catStatus.isComplete && (
+                                <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} />
+                              )}
+                              <Chip 
+                                label={`${catStatus.completed}/${catStatus.total}`}
+                                size="small"
+                                color={catStatus.isComplete ? 'success' : 'default'}
+                                sx={{ height: 20, fontSize: '0.7rem' }}
+                              />
+                            </Box>
+                          </Box>
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                  
+                  {/* Overall Audit Summary */}
+                  {(() => {
+                    const totalCompleted = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.completed, 0);
+                    const totalItems = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.total, 0);
+                    const completedCategories = Object.values(categoryCompletionStatus).filter(s => s.isComplete).length;
+                    const overallPercent = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0;
+                    
+                    return (
+                      <Box sx={{ flex: 1, minWidth: isMobile ? '100%' : 300 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                            Overall Progress
+                          </Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'info.dark' }}>
+                            {overallPercent}%
+                          </Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={overallPercent}
+                          sx={{ 
+                            height: 6, 
+                            borderRadius: 3,
+                            bgcolor: 'rgba(255,255,255,0.5)',
+                            '& .MuiLinearProgress-bar': {
+                              borderRadius: 3,
+                            }
+                          }}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          {totalCompleted} / {totalItems} items • {completedCategories} / {categories.length} categories complete
+                        </Typography>
+                      </Box>
+                    );
+                  })()}
+                </Box>
+              )}
+              
+              {/* Current Category Progress */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
                   {completedItems} / {itemsToDisplay.length}
