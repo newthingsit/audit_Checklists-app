@@ -271,7 +271,6 @@ const AuditFormScreen = () => {
       const optionsData = {};
       const commentsData = {};
       const photosData = {};
-      const timeEntriesData = {};
 
       auditItems.forEach(auditItem => {
         if (auditItem.status) {
@@ -296,26 +295,12 @@ const AuditFormScreen = () => {
           }
           photosData[auditItem.item_id] = photoUrl;
         }
-        // Load time entries from saved audit
-        if (auditItem.time_entries) {
-          try {
-            const entries = typeof auditItem.time_entries === 'string' 
-              ? JSON.parse(auditItem.time_entries) 
-              : auditItem.time_entries;
-            if (Array.isArray(entries) && entries.length > 0) {
-              timeEntriesData[auditItem.item_id] = entries;
-            }
-          } catch (e) {
-            console.log('Error parsing time_entries:', e);
-          }
-        }
       });
 
       setResponses(responsesData);
       setSelectedOptions(optionsData);
       setComments(commentsData);
       setPhotos(photosData);
-      setMultiTimeEntries(timeEntriesData);
 
       // Start at appropriate step
       // IMPORTANT: For in_progress audits with multiple categories, always show category selection
@@ -455,15 +440,6 @@ const AuditFormScreen = () => {
 
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
-    // Start timer when user first interacts with item
-    if (!itemStartTimes[itemId] && status !== 'pending') {
-      startItemTimer(itemId);
-    }
-    
-    // Stop timer and calculate time when item is completed
-    if (status === 'completed' && itemStartTimes[itemId]) {
-      stopItemTimer(itemId);
-    }
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -472,10 +448,6 @@ const AuditFormScreen = () => {
   }, [auditStatus]);
 
   const handleOptionChange = useCallback((itemId, optionId) => {
-    // Start timer when user first interacts with item
-    if (!itemStartTimes[itemId]) {
-      startItemTimer(itemId);
-    }
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -515,17 +487,13 @@ const AuditFormScreen = () => {
   }, []);
 
   const handleAnswerChange = useCallback((itemId, value) => {
-    // Start timer when user first interacts with item
-    if (!itemStartTimes[itemId]) {
-      startItemTimer(itemId);
-    }
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
     setComments(prev => ({ ...prev, [itemId]: value }));
     setResponses(prev => ({ ...prev, [itemId]: value && String(value).trim() ? 'completed' : (prev[itemId] || 'pending') }));
-  }, [auditStatus, itemStartTimes]);
+  }, [auditStatus]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
