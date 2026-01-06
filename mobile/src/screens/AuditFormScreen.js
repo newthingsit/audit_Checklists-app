@@ -229,7 +229,16 @@ const AuditFormScreen = () => {
         const categoryItems = allItems.filter(item => item.category === cat);
         const completedInCategory = categoryItems.filter(item => {
           const auditItem = auditItems.find(ai => ai.item_id === item.id);
-          return auditItem && auditItem.mark !== null && auditItem.mark !== undefined && auditItem.mark !== '';
+          if (!auditItem) return false;
+          // Check if item has a valid mark (not null, not undefined, not empty string)
+          // Also check status field as a fallback
+          const hasMark = auditItem.mark !== null && 
+                         auditItem.mark !== undefined && 
+                         String(auditItem.mark).trim() !== '';
+          const hasStatus = auditItem.status && 
+                           auditItem.status !== 'pending' && 
+                           auditItem.status !== '';
+          return hasMark || hasStatus;
         }).length;
         categoryStatus[cat] = {
           completed: completedInCategory,
@@ -444,8 +453,33 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setResponses(prev => ({ ...prev, [itemId]: status }));
-  }, [auditStatus]);
+    setResponses(prev => {
+      const updated = { ...prev, [itemId]: status };
+      // Recalculate category completion after state update
+      // Find the category of this item
+      const item = items.find(i => i.id === itemId);
+      if (item && item.category) {
+        setCategoryCompletionStatus(prevStatus => {
+          const cat = item.category;
+          const categoryItems = items.filter(i => i.category === cat);
+          const completedInCategory = categoryItems.filter(i => {
+            const response = i.id === itemId ? status : (updated[i.id] || prev[i.id]);
+            return response && response !== 'pending' && response !== '';
+          }).length;
+          
+          return {
+            ...prevStatus,
+            [cat]: {
+              completed: completedInCategory,
+              total: categoryItems.length,
+              isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+            }
+          };
+        });
+      }
+      return updated;
+    });
+  }, [auditStatus, items]);
 
   const handleOptionChange = useCallback((itemId, optionId) => {
     if (auditStatus === 'completed') {
@@ -453,8 +487,33 @@ const AuditFormScreen = () => {
       return;
     }
     setSelectedOptions(prev => ({ ...prev, [itemId]: optionId }));
-    setResponses(prev => ({ ...prev, [itemId]: 'completed' }));
-  }, [auditStatus]);
+    setResponses(prev => {
+      const updated = { ...prev, [itemId]: 'completed' };
+      // Recalculate category completion after state update
+      // Find the category of this item
+      const item = items.find(i => i.id === itemId);
+      if (item && item.category) {
+        setCategoryCompletionStatus(prevStatus => {
+          const cat = item.category;
+          const categoryItems = items.filter(i => i.category === cat);
+          const completedInCategory = categoryItems.filter(i => {
+            const response = i.id === itemId ? 'completed' : (updated[i.id] || prev[i.id]);
+            return response && response !== 'pending' && response !== '';
+          }).length;
+          
+          return {
+            ...prevStatus,
+            [cat]: {
+              completed: completedInCategory,
+              total: categoryItems.length,
+              isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+            }
+          };
+        });
+      }
+      return updated;
+    });
+  }, [auditStatus, items]);
 
   const handleCommentChange = useCallback((itemId, comment) => {
     if (auditStatus === 'completed') {
@@ -981,10 +1040,15 @@ const AuditFormScreen = () => {
             const auditItem = updatedAuditItems.find(ai => ai.item_id === item.id);
             if (!auditItem) return false;
             // Check if item has a valid mark (not null, not empty, not undefined)
+            // Also check status field as a fallback
             const markValue = auditItem.mark;
-            if (markValue === null || markValue === undefined) return false;
-            const markStr = String(markValue).trim();
-            return markStr !== ''; // Empty string means not completed
+            const hasMark = markValue !== null && 
+                           markValue !== undefined && 
+                           String(markValue).trim() !== '';
+            const hasStatus = auditItem.status && 
+                             auditItem.status !== 'pending' && 
+                             auditItem.status !== '';
+            return hasMark || hasStatus;
           }).length;
           
           updatedCategoryStatus[cat] = {

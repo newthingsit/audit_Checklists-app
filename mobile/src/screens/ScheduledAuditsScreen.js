@@ -115,21 +115,28 @@ const ScheduledAuditsScreen = () => {
 
       // Fetch linked audits for in_progress scheduled audits
       const inProgressSchedules = schedulesData.filter(s => getStatusValue(s.status) === 'in_progress');
+      const auditsMap = {};
+      
       if (inProgressSchedules.length > 0) {
         const auditPromises = inProgressSchedules.map(schedule =>
           axios.get(`${API_BASE_URL}/audits/by-scheduled/${schedule.id}`)
-            .then(response => ({ scheduleId: schedule.id, auditId: response.data.audit.id }))
-            .catch(() => ({ scheduleId: schedule.id, auditId: null }))
+            .then(response => ({ 
+              scheduleId: schedule.id, 
+              auditId: response.data.audit.id,
+              auditStatus: response.data.audit.status 
+            }))
+            .catch(() => ({ scheduleId: schedule.id, auditId: null, auditStatus: null }))
         );
         const auditResults = await Promise.all(auditPromises);
-        const auditsMap = {};
-        auditResults.forEach(({ scheduleId, auditId }) => {
+        auditResults.forEach(({ scheduleId, auditId, auditStatus }) => {
           if (auditId) {
-            auditsMap[scheduleId] = auditId;
+            auditsMap[scheduleId] = { auditId, auditStatus };
           }
         });
-        setLinkedAudits(auditsMap);
       }
+      
+      // Always update linkedAudits to clear old entries and ensure consistency
+      setLinkedAudits(auditsMap);
     } catch (error) {
       // Silent fail for background refresh
       console.error('[Mobile] Silent refresh error:', error.message);
@@ -218,7 +225,8 @@ const ScheduledAuditsScreen = () => {
 
   const handleContinueAudit = (schedule) => {
     const linkedAudit = linkedAudits[schedule.id];
-    const auditId = linkedAudit?.auditId || linkedAudit; // Support both old (number) and new (object) format
+    // Support both old format (just auditId number) and new format (object with auditId and auditStatus)
+    const auditId = linkedAudit ? (typeof linkedAudit === 'object' ? linkedAudit.auditId : linkedAudit) : null;
     if (auditId) {
       // Navigate to AuditForm to continue editing (preserves state better than AuditDetail)
       navigation.navigate('AuditForm', {
@@ -236,12 +244,22 @@ const ScheduledAuditsScreen = () => {
     
     // Only show "Continue Audit" if:
     // 1. Scheduled audit status is 'in_progress'
-    // 2. There's a linked audit
+    // 2. There's a linked audit (support both old format: number, and new format: object)
     // 3. The linked audit is NOT completed (safety check)
-    return statusValue === 'in_progress' && 
-           linkedAudit && 
-           linkedAudit.auditId &&
-           linkedAudit.auditStatus !== 'completed';
+    if (statusValue !== 'in_progress') return false;
+    
+    if (!linkedAudit) return false;
+    
+    // Support both old format (just auditId number) and new format (object with auditId and auditStatus)
+    const auditId = typeof linkedAudit === 'object' ? linkedAudit.auditId : linkedAudit;
+    const auditStatus = typeof linkedAudit === 'object' ? linkedAudit.auditStatus : null;
+    
+    if (!auditId) return false;
+    
+    // If we have auditStatus, check it's not completed
+    if (auditStatus && auditStatus === 'completed') return false;
+    
+    return true;
   };
 
   const canReschedule = (schedule) => {
