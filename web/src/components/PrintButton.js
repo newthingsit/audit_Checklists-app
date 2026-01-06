@@ -1,8 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, IconButton, Tooltip } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import PrintPreviewModal from './PrintPreviewModal';
 
 const PrintButton = ({ audit, variant = 'icon', ...props }) => {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const handlePrintClick = () => {
+    if (!audit) {
+      console.error('No audit data provided');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     
@@ -217,25 +228,31 @@ const PrintButton = ({ audit, variant = 'icon', ...props }) => {
     }, 250);
   };
 
-  if (variant === 'icon') {
-    return (
-      <Tooltip title="Print Audit Report">
-        <IconButton onClick={handlePrint} color="primary" {...props}>
-          <PrintIcon />
-        </IconButton>
-      </Tooltip>
-    );
-  }
-
   return (
-    <Button
-      startIcon={<PrintIcon />}
-      onClick={handlePrint}
-      variant="outlined"
-      {...props}
-    >
-      Print
-    </Button>
+    <>
+      {variant === 'icon' ? (
+        <Tooltip title="Print Audit Report">
+          <IconButton onClick={handlePrintClick} color="primary" {...props}>
+            <PrintIcon />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Button
+          startIcon={<PrintIcon />}
+          onClick={handlePrintClick}
+          variant="outlined"
+          {...props}
+        >
+          Print
+        </Button>
+      )}
+      <PrintPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        audit={audit}
+        onPrint={handlePrint}
+      />
+    </>
   );
 };
 

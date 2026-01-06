@@ -46,6 +46,7 @@ import Pagination from '@mui/material/Pagination';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
+import PrintPreviewModal from '../components/PrintPreviewModal';
 import { CardSkeleton } from '../components/ui/LoadingSkeleton';
 import { NoAuditsState, NoSearchResultsState } from '../components/ui/EmptyState';
 import { showSuccess, showError } from '../utils/toast';
@@ -74,6 +75,8 @@ const AuditHistory = () => {
   const [quickDateFilter, setQuickDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'year'
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewAudit, setPreviewAudit] = useState(null);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [printPreviewAudit, setPrintPreviewAudit] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -297,6 +300,31 @@ const AuditHistory = () => {
       const response = await axios.get(`/api/audits/${auditId}`);
       setPreviewAudit(response.data);
       setPreviewDialogOpen(true);
+    } catch (error) {
+      console.error('Error fetching audit for preview:', error);
+      showError('Failed to load audit preview');
+    }
+  };
+
+  const handlePrintPreview = async (auditId) => {
+    try {
+      const response = await axios.get(`/api/audits/${auditId}`);
+      const auditData = response.data;
+      // Format audit data for print preview
+      const formattedAudit = {
+        ...auditData.audit,
+        items: (auditData.items || []).map(item => ({
+          id: item.id,
+          title: item.title || item.item_title || 'Untitled Item',
+          description: item.description || item.item_description || '',
+          status: item.status || item.mark || 'pending',
+          category: item.category || 'General',
+          comment: item.comment || '',
+          required: item.required || false
+        }))
+      };
+      setPrintPreviewAudit(formattedAudit);
+      setPrintPreviewOpen(true);
     } catch (error) {
       showError('Failed to load audit preview');
     }
@@ -765,10 +793,7 @@ const AuditHistory = () => {
                         startIcon={<PrintIcon />}
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/audit/${audit.id}`);
-                          setTimeout(() => {
-                            window.print();
-                          }, 500);
+                          handlePrintPreview(audit.id);
                         }}
                         sx={{ flex: 1 }}
                       >
@@ -991,10 +1016,21 @@ const AuditHistory = () => {
               Delete
             </Button>
           </DialogActions>
-        </Dialog>
-      </Container>
-    </Layout>
-  );
-};
+          </Dialog>
 
-export default AuditHistory;
+          {/* Print Preview Modal */}
+          <PrintPreviewModal
+            open={printPreviewOpen}
+            onClose={() => setPrintPreviewOpen(false)}
+            audit={printPreviewAudit}
+            onPrint={() => {
+              // Optional: Close modal after printing
+              // setPrintPreviewOpen(false);
+            }}
+          />
+        </Container>
+      </Layout>
+    );
+  };
+  
+  export default AuditHistory;
