@@ -245,24 +245,24 @@ const AuditFormScreen = () => {
         // Default to the audit's category but don't lock it
         setSelectedCategory(audit.audit_category);
         const filtered = allItems.filter(item => item.category === audit.audit_category);
-        setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+        setFilteredItems(filtered);
       } else if (audit.audit_category && uniqueCategories.length <= 1) {
         // Only one category, lock to it
         setSelectedCategory(audit.audit_category);
         const filtered = allItems.filter(item => item.category === audit.audit_category);
-        setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+        setFilteredItems(filtered);
       } else {
         // If only one category, auto-select it
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
           const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
-          setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+          setFilteredItems(filtered);
         } else if (uniqueCategories.length === 0) {
           // No categories, show all items
-          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+          setFilteredItems(allItems);
         } else {
           // Multiple categories - show all items initially (user can filter later)
-          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+          setFilteredItems(allItems);
         }
       }
 
@@ -347,10 +347,10 @@ const AuditFormScreen = () => {
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
           const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
-          setFilteredItems(sortItemsWithTimeBasedLast(filtered));
+          setFilteredItems(filtered);
         } else if (uniqueCategories.length === 0) {
           // No categories, show all items
-          setFilteredItems(sortItemsWithTimeBasedLast(allItems));
+          setFilteredItems(allItems);
         }
       } else {
         throw new Error('Invalid template response');
@@ -667,8 +667,7 @@ const AuditFormScreen = () => {
   const handleCategorySelect = (category) => {
     setSelectedCategory(category);
     const filtered = items.filter(item => item.category === category);
-    const sorted = sortItemsWithTimeBasedLast(filtered);
-    setFilteredItems(sorted);
+    setFilteredItems(filtered);
   };
 
   const handleNext = () => {
@@ -2005,12 +2004,6 @@ const styles = StyleSheet.create({
   },
   required: {
     color: themeConfig.error.main,
-  },
-  timeTrackingText: {
-    fontSize: 12,
-    color: themeConfig.text.secondary,
-    marginTop: 4,
-    fontStyle: 'italic',
   },
   optionsContainer: {
     flexDirection: 'row',
