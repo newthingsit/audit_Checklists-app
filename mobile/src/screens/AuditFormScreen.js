@@ -47,6 +47,9 @@ const AuditFormScreen = () => {
   const [showStorePicker, setShowStorePicker] = useState(false);
   const [storeSearchText, setStoreSearchText] = useState('');
   const [currentStep, setCurrentStep] = useState(0); // 0: info, 1: category selection, 2: checklist
+  const [attendees, setAttendees] = useState(''); // Name of Attendees
+  const [pointsDiscussed, setPointsDiscussed] = useState(''); // Points Discussed
+  const [infoPictures, setInfoPictures] = useState([]); // Multiple pictures for info step
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
   const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
@@ -78,6 +81,23 @@ const AuditFormScreen = () => {
       );
     });
   }, [locations, storeSearchText]);
+
+  // Helper function to check if an item is time-related
+  const isTimeRelatedItem = useCallback((item) => {
+    if (!item) return false;
+    const title = (item.title || '').toLowerCase();
+    const category = (item.category || '').toLowerCase();
+    
+    // Check for time-related keywords in title
+    const timeKeywords = ['(time)', '(sec)', 'time tracking', 'speed of service', 'tracking'];
+    const hasTimeKeyword = timeKeywords.some(keyword => title.includes(keyword));
+    
+    // Check for time-related categories
+    const timeCategories = ['speed of service - tracking', 'time tracking', 'tracking'];
+    const hasTimeCategory = timeCategories.some(keyword => category.includes(keyword));
+    
+    return hasTimeKeyword || hasTimeCategory;
+  }, []);
 
   // Fetch previous audit failures when location and template are available
   // This works for both regular audits and scheduled audits (same location + same checklist)
@@ -191,19 +211,34 @@ const AuditFormScreen = () => {
       setAuditStatus(audit.status);
       setCurrentAuditId(audit.id);
       if (audit.status === 'completed') {
+        // Show info that audit is in read-only mode but continue loading
         Alert.alert(
           'Audit Completed',
-          'This audit has been completed and cannot be modified.',
-          [{ text: 'OK' }]
+          'This audit has been completed. You can view the details but cannot modify any answers.',
+          [{ text: 'View Details' }]
         );
-        navigation.goBack();
-        return;
+        // Don't return - continue loading to allow viewing in read-only mode
       }
 
       // Set audit info
       const auditLocationId = audit.location_id?.toString() || '';
       setLocationId(auditLocationId);
-      setNotes(audit.notes || '');
+      const auditNotes = audit.notes || '';
+      setNotes(auditNotes);
+      
+      // Try to parse info fields from notes (if saved as JSON)
+      try {
+        const infoData = JSON.parse(auditNotes);
+        if (infoData && typeof infoData === 'object' && !Array.isArray(infoData)) {
+          if (infoData.attendees) setAttendees(infoData.attendees);
+          if (infoData.pointsDiscussed) setPointsDiscussed(infoData.pointsDiscussed);
+          if (infoData.pictures && Array.isArray(infoData.pictures)) {
+            setInfoPictures(infoData.pictures.map(uri => ({ uri })));
+          }
+        }
+      } catch (e) {
+        // Notes is not JSON, keep as is
+      }
       
       // If locations are already loaded, set selectedLocation immediately
       if (auditLocationId && locations.length > 0) {
@@ -217,16 +252,26 @@ const AuditFormScreen = () => {
       const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`);
       setTemplate(templateResponse.data.template);
       const allItems = templateResponse.data.items || [];
-      setItems(allItems);
       
-      // Extract unique categories from items
-      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      // Filter out time-related items
+      const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
+      setItems(filteredItems);
+      
+      // Extract unique categories from filtered items (excluding time-related categories)
+      const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
+        if (!cat || !cat.trim()) return false;
+        const categoryLower = cat.toLowerCase();
+        // Filter out time-related categories
+        return !categoryLower.includes('speed of service - tracking') && 
+               !categoryLower.includes('time tracking') &&
+               !categoryLower.includes('tracking');
+      }))];
       setCategories(uniqueCategories);
       
       // Check which categories have been completed in this audit
       const categoryStatus = {};
       uniqueCategories.forEach(cat => {
-        const categoryItems = allItems.filter(item => item.category === cat);
+        const categoryItems = filteredItems.filter(item => item.category === cat);
         const completedInCategory = categoryItems.filter(item => {
           const auditItem = auditItems.find(ai => ai.item_id === item.id);
           if (!auditItem) return false;
@@ -253,25 +298,25 @@ const AuditFormScreen = () => {
         // If audit has a category but there are multiple categories, allow user to select
         // Default to the audit's category but don't lock it
         setSelectedCategory(audit.audit_category);
-        const filtered = allItems.filter(item => item.category === audit.audit_category);
+        const filtered = filteredItems.filter(item => item.category === audit.audit_category);
         setFilteredItems(filtered);
       } else if (audit.audit_category && uniqueCategories.length <= 1) {
         // Only one category, lock to it
         setSelectedCategory(audit.audit_category);
-        const filtered = allItems.filter(item => item.category === audit.audit_category);
+        const filtered = filteredItems.filter(item => item.category === audit.audit_category);
         setFilteredItems(filtered);
       } else {
         // If only one category, auto-select it
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
-          const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+          const filtered = filteredItems.filter(item => item.category === uniqueCategories[0]);
           setFilteredItems(filtered);
         } else if (uniqueCategories.length === 0) {
-          // No categories, show all items
-          setFilteredItems(allItems);
+          // No categories, show all filtered items
+          setFilteredItems(filteredItems);
         } else {
-          // Multiple categories - show all items initially (user can filter later)
-          setFilteredItems(allItems);
+          // Multiple categories - show all filtered items initially (user can filter later)
+          setFilteredItems(filteredItems);
         }
       }
 
@@ -346,20 +391,30 @@ const AuditFormScreen = () => {
       if (response.data && response.data.template) {
         setTemplate(response.data.template);
         const allItems = response.data.items || [];
-        setItems(allItems);
         
-        // Extract unique categories from items
-        const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+        // Filter out time-related items
+        const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
+        setItems(filteredItems);
+        
+        // Extract unique categories from filtered items (excluding time-related categories)
+        const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
+          if (!cat || !cat.trim()) return false;
+          const categoryLower = cat.toLowerCase();
+          // Filter out time-related categories
+          return !categoryLower.includes('speed of service - tracking') && 
+                 !categoryLower.includes('time tracking') &&
+                 !categoryLower.includes('tracking');
+        }))];
         setCategories(uniqueCategories);
         
         // If only one category, auto-select it
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
-          const filtered = allItems.filter(item => item.category === uniqueCategories[0]);
+          const filtered = filteredItems.filter(item => item.category === uniqueCategories[0]);
           setFilteredItems(filtered);
         } else if (uniqueCategories.length === 0) {
-          // No categories, show all items
-          setFilteredItems(allItems);
+          // No categories, show all filtered items
+          setFilteredItems(filteredItems);
         }
       } else {
         throw new Error('Invalid template response');
@@ -731,10 +786,30 @@ const AuditFormScreen = () => {
 
   const handleNext = () => {
     if (currentStep === 0) {
+      // Validate required fields
       if (!locationId || !selectedLocation) {
-        Alert.alert('Error', 'Please select a store');
+        Alert.alert('Error', 'Please select an outlet');
         return;
       }
+      if (!attendees.trim()) {
+        Alert.alert('Error', 'Please enter name of attendees');
+        return;
+      }
+      if (infoPictures.length === 0) {
+        Alert.alert('Error', 'Please add at least one picture');
+        return;
+      }
+      if (!pointsDiscussed.trim()) {
+        Alert.alert('Error', 'Please enter points discussed');
+        return;
+      }
+      // Store info fields in notes for now (can be saved to backend later)
+      const infoData = {
+        attendees: attendees,
+        pointsDiscussed: pointsDiscussed,
+        pictures: infoPictures.map(p => p.uri),
+      };
+      setNotes(JSON.stringify(infoData));
       // If no categories or only one category, skip category selection
       if (categories.length <= 1) {
         setCurrentStep(2);
@@ -1160,54 +1235,145 @@ const AuditFormScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* Read-only banner for completed audits */}
+      {auditStatus === 'completed' && (
+        <View style={styles.completedBanner}>
+          <Icon name="lock" size={18} color="#fff" />
+          <Text style={styles.completedBannerText}>
+            This audit is completed and cannot be modified
+          </Text>
+        </View>
+      )}
+      
       {currentStep === 0 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.title}>Store Information</Text>
-          <Text style={styles.subtitle}>{template?.name}</Text>
-
+          {/* Outlet (Required) */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Store *</Text>
-            {/* Lock store selection if scheduled audit has pre-assigned location */}
-            {scheduledAuditId && initialLocationId ? (
-              <View style={[styles.input, styles.lockedInput]}>
-                <Text style={styles.inputText}>
-                  {selectedLocation
-                    ? (selectedLocation.store_number
-                        ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
-                        : selectedLocation.name)
-                    : 'Loading store...'}
+            <Text style={styles.label}>Outlet (Required)</Text>
+            {selectedLocation ? (
+              <View style={styles.selectedOutletTag}>
+                <Text style={styles.selectedOutletText}>
+                  {selectedLocation.store_number
+                    ? `${selectedLocation.name} (${selectedLocation.store_number})`
+                    : selectedLocation.name}
                 </Text>
-                <Icon name="lock" size={20} color="#999" />
+                {!(scheduledAuditId && initialLocationId) && auditStatus !== 'completed' && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedLocation(null);
+                      setLocationId('');
+                    }}
+                    style={styles.removeTagButton}
+                    disabled={auditStatus === 'completed'}
+                  >
+                    <Icon name="close" size={18} color={themeConfig.text.primary} />
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <TouchableOpacity
-                style={styles.input}
-                onPress={() => setShowStorePicker(true)}
+                style={[styles.searchInputContainer, auditStatus === 'completed' && styles.disabledInput]}
+                onPress={() => auditStatus !== 'completed' && setShowStorePicker(true)}
+                disabled={auditStatus === 'completed'}
               >
-                <Text style={selectedLocation ? styles.inputText : styles.placeholderText}>
-                  {selectedLocation
-                    ? (selectedLocation.store_number
-                        ? `Store ${selectedLocation.store_number} - ${selectedLocation.name}`
-                        : selectedLocation.name)
-                    : 'Select a store'}
-                </Text>
-                <Icon name="arrow-drop-down" size={24} color="#666" />
+                <Icon name="search" size={20} color={themeConfig.text.disabled} style={styles.searchIcon} />
+                <Text style={styles.searchPlaceholder}>Search</Text>
               </TouchableOpacity>
             )}
-            {scheduledAuditId && initialLocationId && (
+            {scheduledAuditId && initialLocationId && selectedLocation && (
               <Text style={styles.lockedHint}>
                 📍 Store is locked for this scheduled audit
               </Text>
             )}
           </View>
 
-          {/* GPS Location Capture */}
+          {/* Name of Attendees (Required) */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>📍 Your Location</Text>
+            <Text style={styles.label}>Name of Attendees (Required)</Text>
+            <TextInput
+              style={[styles.textInput, auditStatus === 'completed' && styles.disabledInput]}
+              value={attendees}
+              onChangeText={setAttendees}
+              placeholder="Enter attendees name"
+              placeholderTextColor={themeConfig.text.disabled}
+              editable={auditStatus !== 'completed'}
+            />
+          </View>
+
+          {/* Picture (Required) */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Picture (Required)</Text>
+            <View style={styles.pictureContainer}>
+              {infoPictures.map((picture, index) => (
+                <View key={index} style={styles.pictureThumbnail}>
+                  <Image source={{ uri: picture.uri }} style={styles.thumbnailImage} />
+                  {auditStatus !== 'completed' && (
+                    <TouchableOpacity
+                      style={styles.removePictureButton}
+                      onPress={() => {
+                        const newPictures = infoPictures.filter((_, i) => i !== index);
+                        setInfoPictures(newPictures);
+                      }}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      <Icon name="close" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              {infoPictures.length < 10 && auditStatus !== 'completed' && (
+                <TouchableOpacity
+                  style={styles.addPictureButton}
+                  onPress={async () => {
+                    if (auditStatus === 'completed') return;
+                    try {
+                      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                      if (status !== 'granted') {
+                        Alert.alert('Permission needed', 'Please grant camera roll permissions');
+                        return;
+                      }
+                      const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                        allowsEditing: true,
+                        aspect: [4, 3],
+                        quality: 0.8,
+                      });
+                      if (!result.canceled && result.assets[0]) {
+                        setInfoPictures([...infoPictures, { uri: result.assets[0].uri }]);
+                      }
+                    } catch (error) {
+                      console.error('Error picking image:', error);
+                      Alert.alert('Error', 'Failed to pick image');
+                    }
+                  }}
+                  disabled={auditStatus === 'completed'}
+                >
+                  <Icon name="add" size={32} color={themeConfig.primary.main} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Points Discussed (Required) */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Points Discussed (Required)</Text>
+            <TextInput
+              style={[styles.textInput, styles.textArea, auditStatus === 'completed' && styles.disabledInput]}
+              value={pointsDiscussed}
+              onChangeText={setPointsDiscussed}
+              placeholder="Enter points discussed"
+              placeholderTextColor={themeConfig.text.disabled}
+              multiline
+              numberOfLines={4}
+              editable={auditStatus !== 'completed'}
+            />
+          </View>
+
+          {/* GPS Location Capture (Hidden but still functional) */}
+          <View style={styles.inputGroup}>
             <LocationCaptureButton
               onCapture={(location) => {
                 setCapturedLocation(location);
-                // If store has coordinates, show verification option
                 if (selectedLocation?.latitude && selectedLocation?.longitude) {
                   setShowLocationVerification(true);
                 }
@@ -1217,14 +1383,6 @@ const AuditFormScreen = () => {
               label="Capture Your Location"
               capturedLabel="Location Captured"
             />
-            {capturedLocation && (
-              <View style={styles.locationInfoRow}>
-                <Icon name="check-circle" size={16} color={themeConfig.success.main} />
-                <Text style={styles.locationInfoText}>
-                  GPS coordinates recorded for this audit
-                </Text>
-              </View>
-            )}
           </View>
 
           {/* Location Verification (if store has coordinates) */}
@@ -1243,9 +1401,7 @@ const AuditFormScreen = () => {
                     Alert.alert(
                       'Location Mismatch',
                       `You are ${result.distance}m from ${selectedLocation.name}. The maximum allowed distance is ${result.maxDistance}m.\n\nYou must be within 100 meters to start or continue an audit.`,
-                      [
-                        { text: 'OK', style: 'cancel' },
-                      ]
+                      [{ text: 'OK', style: 'cancel' }]
                     );
                   }
                 }}
@@ -1253,21 +1409,48 @@ const AuditFormScreen = () => {
             </View>
           )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Enter any notes"
-              multiline
-              numberOfLines={4}
-            />
+          {/* Action Buttons */}
+          <View style={styles.buttonRow}>
+            {auditStatus !== 'completed' && (
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={async () => {
+                  // Save draft functionality
+                  if (!selectedLocation) {
+                    Alert.alert('Error', 'Please select an outlet');
+                    return;
+                  }
+                  // Save as draft - can be implemented later
+                  Alert.alert('Draft Saved', 'Your draft has been saved');
+                }}
+              >
+                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Save Draft</Text>
+              </TouchableOpacity>
+            )}
+            {auditStatus === 'completed' ? (
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  // For completed audits, allow viewing the checklist
+                  if (categories.length <= 1) {
+                    setCurrentStep(2);
+                  } else {
+                    setCurrentStep(1);
+                  }
+                }}
+              >
+                <Text style={styles.buttonText}>View Checklist</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.button, (!selectedLocation || !attendees.trim() || infoPictures.length === 0 || !pointsDiscussed.trim()) && styles.buttonDisabled]}
+                onPress={handleNext}
+                disabled={!selectedLocation || !attendees.trim() || infoPictures.length === 0 || !pointsDiscussed.trim()}
+              >
+                <Text style={styles.buttonText}>Submit</Text>
+              </TouchableOpacity>
+            )}
           </View>
-
-          <TouchableOpacity style={styles.button} onPress={handleNext}>
-            <Text style={styles.buttonText}>Next: Checklist</Text>
-          </TouchableOpacity>
         </ScrollView>
       )}
 
@@ -1281,18 +1464,22 @@ const AuditFormScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Store</Text>
+              <Text style={styles.modalTitle}>Select Outlet</Text>
               <TouchableOpacity onPress={() => setShowStorePicker(false)}>
                 <Icon name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search stores..."
-              value={storeSearchText}
-              onChangeText={setStoreSearchText}
-            />
+            <View style={styles.searchInputWrapper}>
+              <Icon name="search" size={20} color={themeConfig.text.disabled} style={styles.searchIconInModal} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search"
+                value={storeSearchText}
+                onChangeText={setStoreSearchText}
+                placeholderTextColor={themeConfig.text.disabled}
+              />
+            </View>
             
             <FlatList
               data={filteredLocations}
@@ -1311,7 +1498,7 @@ const AuditFormScreen = () => {
                   }}
                 >
                   <Text style={styles.storeOptionText}>
-                    {item.store_number ? `Store ${item.store_number} - ${item.name}` : item.name}
+                    {item.store_number ? `${item.name} (${item.store_number})` : item.name}
                   </Text>
                   {selectedLocation?.id === item.id && (
                     <Icon name="check" size={20} color="#1976d2" />
@@ -1395,11 +1582,17 @@ const AuditFormScreen = () => {
               <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.button}
-              onPress={handleNext}
+              style={[styles.button, !selectedCategory && styles.buttonDisabled]}
+              onPress={() => {
+                if (selectedCategory) {
+                  setCurrentStep(2);
+                }
+              }}
               disabled={!selectedCategory}
             >
-              <Text style={styles.buttonText}>Next: Start Audit</Text>
+              <Text style={styles.buttonText}>
+                {auditStatus === 'completed' ? 'View Category' : 'Next: Start Audit'}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1415,7 +1608,7 @@ const AuditFormScreen = () => {
                 <TouchableOpacity
                   style={styles.categorySwitcherButton}
                   onPress={() => {
-                    // Show category selection modal
+                    // Allow viewing different categories even in completed audits
                     setCurrentStep(1);
                   }}
                 >
@@ -1674,9 +1867,9 @@ const AuditFormScreen = () => {
 
                 <View style={styles.actionsContainer}>
                   <TouchableOpacity
-                    style={styles.photoButton}
+                    style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
                     onPress={() => handlePhotoUpload(item.id)}
-                    disabled={uploading[item.id]}
+                    disabled={uploading[item.id] || auditStatus === 'completed'}
                   >
                     {uploading[item.id] ? (
                       <ActivityIndicator size="small" color={themeConfig.primary.main} />
@@ -1692,16 +1885,19 @@ const AuditFormScreen = () => {
                 {photos[item.id] && (
                   <View style={styles.photoContainer}>
                     <Image source={{ uri: photos[item.id] }} style={styles.photo} />
-                    <TouchableOpacity
-                      style={styles.removePhotoButton}
-                      onPress={() => {
-                        const newPhotos = { ...photos };
-                        delete newPhotos[item.id];
-                        setPhotos(newPhotos);
-                      }}
-                    >
-                      <Icon name="close" size={16} color="#fff" />
-                    </TouchableOpacity>
+                    {auditStatus !== 'completed' && (
+                      <TouchableOpacity
+                        style={styles.removePhotoButton}
+                        onPress={() => {
+                          const newPhotos = { ...photos };
+                          delete newPhotos[item.id];
+                          setPhotos(newPhotos);
+                        }}
+                        disabled={auditStatus === 'completed'}
+                      >
+                        <Icon name="close" size={16} color="#fff" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
 
@@ -1709,7 +1905,7 @@ const AuditFormScreen = () => {
                   <View style={styles.commentContainer}>
                     <Text style={styles.commentLabel}>Comment (optional)</Text>
                     <TextInput
-                      style={styles.commentInput}
+                      style={[styles.commentInput, auditStatus === 'completed' && styles.disabledInput]}
                       value={comments[item.id] || ''}
                       onChangeText={(text) => handleCommentChange(item.id, text)}
                       placeholder="Add a comment..."
@@ -1768,11 +1964,8 @@ const AuditFormScreen = () => {
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
                 onPress={() => {
-                  // If multiple categories and audit is in_progress, go back to category selection
-                  // This allows users to switch between categories and continue completing the audit
-                  if (categories.length > 1 && auditStatus !== 'completed') {
-                    setCurrentStep(1);
-                  } else if (categories.length > 1) {
+                  // Allow navigating back to category selection for viewing different categories
+                  if (categories.length > 1) {
                     setCurrentStep(1);
                   } else {
                     setCurrentStep(0);
@@ -1780,20 +1973,29 @@ const AuditFormScreen = () => {
                 }}
               >
                 <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                  {categories.length > 1 && auditStatus !== 'completed' ? 'Change Category' : 'Back'}
+                  {categories.length > 1 ? 'Change Category' : 'Back'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, (saving || auditStatus === 'completed') && styles.buttonDisabled]}
-                onPress={handleSubmit}
-                disabled={saving || auditStatus === 'completed'}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.buttonText}>Save Audit</Text>
-                )}
-              </TouchableOpacity>
+              {auditStatus === 'completed' ? (
+                <TouchableOpacity
+                  style={styles.button}
+                  onPress={() => navigation.goBack()}
+                >
+                  <Text style={styles.buttonText}>Close</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.button, saving && styles.buttonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Save Audit</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </ScrollView>
         </View>
@@ -1828,6 +2030,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     marginBottom: 20,
+  },
+  completedBanner: {
+    backgroundColor: '#f44336',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    gap: 8,
+  },
+  completedBannerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   inputGroup: {
     marginBottom: 20,
@@ -2320,9 +2536,112 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     padding: 12,
+    paddingLeft: 40,
     margin: 20,
     marginBottom: 10,
     fontSize: 16,
+    flex: 1,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingLeft: 12,
+  },
+  searchIconInModal: {
+    marginRight: 8,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchPlaceholder: {
+    fontSize: 16,
+    color: themeConfig.text.disabled,
+  },
+  selectedOutletTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeConfig.primary.light + '20',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: themeConfig.primary.main,
+    justifyContent: 'space-between',
+  },
+  selectedOutletText: {
+    fontSize: 16,
+    color: themeConfig.text.primary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  removeTagButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  textInput: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    fontSize: 16,
+    color: themeConfig.text.primary,
+  },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+    opacity: 0.6,
+  },
+  pictureContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+  },
+  pictureThumbnail: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  removePictureButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addPictureButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: themeConfig.primary.main,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: themeConfig.primary.light + '10',
   },
   storeOption: {
     flexDirection: 'row',
@@ -2352,245 +2671,6 @@ const styles = StyleSheet.create({
     color: themeConfig.success.main,
     marginLeft: 6,
     fontWeight: '500',
-  },
-  // Multi-time entry styles - Like Scoring Options layout
-  timeEntryContainer: {
-    marginTop: 15,
-    padding: 12,
-    backgroundColor: themeConfig.background.default,
-    borderRadius: themeConfig.borderRadius.medium,
-    borderWidth: 1,
-    borderColor: themeConfig.border.default,
-  },
-  timeEntryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  timeEntryLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: themeConfig.text.primary,
-  },
-  timePresetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: themeConfig.primary.main,
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    gap: 4,
-  },
-  timePresetButtonText: {
-    fontSize: 13,
-    color: themeConfig.primary.main,
-    fontWeight: '500',
-  },
-  timeEntriesColumn: {
-    gap: 8,
-    marginTop: 8,
-  },
-  timeEntryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  timeEntryRowLabel: {
-    width: 70,
-    fontSize: 14,
-    color: themeConfig.text.secondary,
-    fontWeight: '500',
-  },
-  timeEntryInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: themeConfig.border.default,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
-    fontSize: 14,
-    color: themeConfig.text.primary,
-  },
-  timeEntryInputFilled: {
-    borderColor: themeConfig.primary.main,
-    backgroundColor: '#fff',
-  },
-  timeEntryDeleteButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  averageDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: themeConfig.border.default,
-  },
-  averageLabel: {
-    fontSize: 13,
-    color: themeConfig.text.secondary,
-    fontWeight: '500',
-  },
-  averageValue: {
-    fontSize: 16,
-    color: themeConfig.primary.main,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-  entriesCount: {
-    fontSize: 12,
-    color: themeConfig.text.secondary,
-    marginLeft: 8,
-  },
-  // Time Preset Modal styles
-  timePresetModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  timePresetModalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%',
-  },
-  timePresetModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  timePresetModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: themeConfig.text.primary,
-  },
-  timePresetList: {
-    paddingBottom: 20,
-  },
-  timePresetOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  timePresetOptionContent: {
-    flex: 1,
-  },
-  timePresetOptionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: themeConfig.text.primary,
-    marginBottom: 2,
-  },
-  timePresetOptionDescription: {
-    fontSize: 13,
-    color: themeConfig.text.secondary,
-    marginBottom: 6,
-  },
-  timePresetValuesRow: {
-    flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  timePresetValueChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: themeConfig.primary.light + '20',
-    borderRadius: 12,
-  },
-  timePresetValueText: {
-    fontSize: 12,
-    color: themeConfig.primary.main,
-    fontWeight: '600',
-  },
-  // Time Input Modal styles
-  timeInputModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  timeInputModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 300,
-    alignItems: 'center',
-  },
-  timeInputModalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: themeConfig.text.primary,
-    marginBottom: 4,
-  },
-  timeInputModalSubtitle: {
-    fontSize: 14,
-    color: themeConfig.text.secondary,
-    marginBottom: 20,
-  },
-  timeInputModalField: {
-    width: '100%',
-    height: 56,
-    borderWidth: 2,
-    borderColor: themeConfig.primary.main,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 24,
-    textAlign: 'center',
-    backgroundColor: '#f9f9f9',
-    color: themeConfig.text.primary,
-    fontWeight: '600',
-    marginBottom: 20,
-  },
-  timeInputModalButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  timeInputModalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  timeInputModalButtonClear: {
-    backgroundColor: themeConfig.error.light + '30',
-  },
-  timeInputModalButtonCancel: {
-    backgroundColor: '#f0f0f0',
-  },
-  timeInputModalButtonSave: {
-    backgroundColor: themeConfig.primary.main,
-  },
-  timeInputModalButtonTextClear: {
-    color: themeConfig.error.main,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  timeInputModalButtonTextCancel: {
-    color: themeConfig.text.secondary,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  timeInputModalButtonTextSave: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
   },
 });
 
