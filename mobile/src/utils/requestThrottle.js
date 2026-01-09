@@ -8,24 +8,28 @@ const requestCache = new Map();
 const lastRequestTime = new Map();
 
 // Cache duration for different endpoints (in milliseconds)
+// Increased to reduce API calls and prevent 429 errors
 const CACHE_DURATIONS = {
-  '/templates': 30000,           // 30 seconds
-  '/scheduled-audits': 30000,   // 30 seconds
-  '/notifications/unread-count': 10000, // 10 seconds
-  '/notifications': 30000,      // 30 seconds
-  '/analytics/dashboard': 60000, // 60 seconds
-  '/locations': 300000,          // 5 minutes
-  '/users': 300000,             // 5 minutes
-  default: 30000,               // 30 seconds
+  '/templates': 60000,           // 60 seconds (increased from 30s)
+  '/scheduled-audits': 45000,   // 45 seconds (increased from 30s)
+  '/notifications/unread-count': 30000, // 30 seconds (increased from 10s)
+  '/notifications': 45000,      // 45 seconds (increased from 30s)
+  '/analytics/dashboard': 120000, // 2 minutes (increased from 60s)
+  '/locations': 600000,          // 10 minutes (increased from 5 min)
+  '/users': 600000,             // 10 minutes (increased from 5 min)
+  '/auth/me': 60000,            // 60 seconds - session check can be cached
+  default: 45000,               // 45 seconds (increased from 30s)
 };
 
 // Minimum time between requests for the same endpoint (in milliseconds)
+// Increased to reduce API calls and prevent 429 errors
 const THROTTLE_DELAYS = {
-  '/notifications/unread-count': 10000, // 10 seconds minimum
-  '/notifications': 15000,      // 15 seconds minimum
-  '/scheduled-audits': 20000,   // 20 seconds minimum
-  '/templates': 15000,          // 15 seconds minimum
-  default: 10000,               // 10 seconds minimum
+  '/notifications/unread-count': 30000, // 30 seconds minimum (increased from 10s)
+  '/notifications': 30000,      // 30 seconds minimum (increased from 15s)
+  '/scheduled-audits': 30000,   // 30 seconds minimum (increased from 20s)
+  '/templates': 30000,          // 30 seconds minimum (increased from 15s)
+  '/auth/me': 30000,            // 30 seconds minimum - don't spam session checks
+  default: 20000,               // 20 seconds minimum (increased from 10s)
 };
 
 /**

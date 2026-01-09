@@ -54,12 +54,26 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // Track last refresh time to prevent excessive API calls
+  const lastRefreshTime = useRef(0);
+  const REFRESH_COOLDOWN = 30000; // 30 seconds minimum between refreshes
+
   // Public function to refresh user data (useful when role/permissions change)
-  const refreshUser = useCallback(async () => {
+  // Throttled to prevent excessive API calls (429 errors)
+  const refreshUser = useCallback(async (force = false) => {
     if (!token) {
       return null;
     }
+    
+    // Check cooldown unless force refresh is requested
+    const now = Date.now();
+    if (!force && (now - lastRefreshTime.current) < REFRESH_COOLDOWN) {
+      // Return current user data without making API call
+      return user;
+    }
+    
     try {
+      lastRefreshTime.current = now;
       return await fetchUser();
     } catch (error) {
       // Don't log 503 or timeout errors - they're being retried automatically
@@ -70,7 +84,7 @@ export const AuthProvider = ({ children }) => {
       }
       return null;
     }
-  }, [token, fetchUser]);
+  }, [token, fetchUser, user]);
 
   const loadStoredAuth = useCallback(async () => {
     try {

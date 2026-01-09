@@ -259,7 +259,7 @@ const getClientIpKeyGenerator = (req) => {
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 100 : 100, // Increased to 100 for production (mobile apps may retry frequently)
+  max: isDevelopment ? 500 : 200, // Increased to 200 for production (mobile apps check auth frequently)
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -268,17 +268,11 @@ const authLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
-  // Skip rate limiting for certain conditions
+  // Skip rate limiting for /auth/me - it's called frequently and is not a security risk
   skip: (req) => {
-    // In development, be more lenient
-    if (isDevelopment) {
-      return false; // Still apply, but with higher limit
-    }
-    // Allow bypass for specific test emails in production (for testing)
-    const email = req.body?.email;
-    if (email && (email.toLowerCase().includes('test') || email.toLowerCase().includes('admin'))) {
-      // Don't skip, but we'll use a higher limit above
-      return false;
+    // Skip rate limiting for /auth/me endpoint (session check, not login)
+    if (req.path === '/me' || req.originalUrl?.includes('/auth/me')) {
+      return true;
     }
     return false;
   },
@@ -297,7 +291,7 @@ const authLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 2000 : 500, // Increased to 500 for production (mobile apps need more requests)
+  max: isDevelopment ? 5000 : 2000, // Increased to 2000 for production (mobile apps need many requests)
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -316,8 +310,12 @@ const apiLimiter = rateLimit({
       url.startsWith('/api/photos') ||
       url.startsWith('/api/auth/login') ||
       url.startsWith('/api/auth/register') ||
+      url.startsWith('/api/auth/me') || // Skip /auth/me - called frequently for session check
       url.startsWith('/api/users') ||
-      url.startsWith('/api/roles')
+      url.startsWith('/api/roles') ||
+      url.startsWith('/api/notifications') || // Skip notifications - polled frequently
+      url.startsWith('/api/scheduled-audits') || // Skip scheduled audits - polled frequently
+      url.startsWith('/api/locations') // Skip locations - fetched frequently
     );
   },
 });
@@ -339,7 +337,7 @@ const sensitiveOpLimiter = rateLimit({
 // Mobile apps need to upload many photos quickly during audits
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 500 : 500, // Increased to 500 uploads per 15 min for large audits (was 100)
+  max: isDevelopment ? 1000 : 1000, // Increased to 1000 uploads per 15 min for large audits
   message: 'Too many file uploads, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -347,17 +345,14 @@ const uploadLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
-  // Skip rate limiting for uploads if user is authenticated (trust authenticated users more)
-  skip: (req) => {
-    // Allow more uploads for authenticated users (they're doing legitimate audits)
-    return false; // Still rate limit, but with higher limit above
-  }
+  // Skip successful uploads to allow more throughput
+  skipSuccessfulRequests: true, // Don't count successful uploads against limit
 });
 
 // Audit operations rate limiter (more lenient - mobile apps make many requests per audit)
 const auditLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 2000 : 1000, // 1000 requests per 15 min for audit operations
+  max: isDevelopment ? 5000 : 3000, // 3000 requests per 15 min for audit operations (increased)
   message: 'Too many audit requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -365,6 +360,8 @@ const auditLimiter = rateLimit({
   validate: {
     xForwardedForHeader: isDevelopment ? false : true,
   },
+  // Skip successful requests to allow more throughput for legitimate operations
+  skipSuccessfulRequests: true,
 });
 
 // Apply rate limiting to auth routes

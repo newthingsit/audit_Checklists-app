@@ -24,8 +24,8 @@ import { useAuth } from '../context/AuthContext';
 import { themeConfig } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
-// Auto-refresh interval in milliseconds (30 seconds to prevent rate limiting)
-const AUTO_REFRESH_INTERVAL = 30000;
+// Auto-refresh interval in milliseconds (60 seconds to prevent rate limiting)
+const AUTO_REFRESH_INTERVAL = 60000;
 
 const getStatusValue = (status) => {
   if (!status) return 'pending';
