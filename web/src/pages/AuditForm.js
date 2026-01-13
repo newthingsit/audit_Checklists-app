@@ -55,6 +55,7 @@ const AuditForm = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [responses, setResponses] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({}); // Track selected_option_id for each item
+  const [inputValues, setInputValues] = useState({}); // Track values for number, date, open_ended input types
   const [comments, setComments] = useState({});
   const [photos, setPhotos] = useState({});
   const [uploading, setUploading] = useState({});
@@ -201,6 +202,7 @@ const AuditForm = () => {
       const optionsData = {};
       const commentsData = {};
       const photosData = {};
+      const inputValuesData = {};
 
       auditItems.forEach(auditItem => {
         if (auditItem.status) {
@@ -219,12 +221,18 @@ const AuditForm = () => {
             : auditItem.photo_url;
           photosData[auditItem.item_id] = photoUrl;
         }
+        // Load input values for number/date/open_ended items from mark field
+        // Only if there's no selected_option_id (meaning it's not an option-based item)
+        if (auditItem.mark && !auditItem.selected_option_id) {
+          inputValuesData[auditItem.item_id] = auditItem.mark;
+        }
       });
 
       setResponses(responsesData);
       setSelectedOptions(optionsData);
       setComments(commentsData);
       setPhotos(photosData);
+      setInputValues(inputValuesData);
 
       // (activeStep set above based on category scoping)
     } catch (error) {
@@ -342,6 +350,19 @@ const AuditForm = () => {
       return;
     }
     setComments({ ...comments, [itemId]: comment });
+  };
+
+  // Handle input value changes for number, date, open_ended input types
+  const handleInputValueChange = (itemId, value) => {
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
+    setInputValues({ ...inputValues, [itemId]: value });
+    // Mark as completed when value is entered
+    if (value && value.toString().trim() !== '') {
+      setResponses({ ...responses, [itemId]: 'completed' });
+    }
   };
 
   const handlePhotoUpload = async (itemId, file) => {
@@ -557,6 +578,13 @@ const AuditForm = () => {
             if (selectedOpt) {
               itemData.mark = selectedOpt.mark;
             }
+          }
+          
+          // Include input values for number, date, open_ended input types
+          if (inputValues[item.id] !== undefined && inputValues[item.id] !== '') {
+            itemData.input_value = inputValues[item.id];
+            // Store in mark field for compatibility
+            itemData.mark = inputValues[item.id].toString();
           }
           
           if (comments[item.id]) {
@@ -1178,108 +1206,169 @@ const AuditForm = () => {
                     color="primary"
                     variant="outlined"
                   />
-                  {/* Show options if available (Yes/No/N/A), otherwise show status radio buttons */}
-                  {item.options && item.options.length > 0 ? (
-                    <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-                      <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
-                        Select Option:
-                      </FormLabel>
-                      <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
-                        {item.options.map((option) => (
-                          <Button
-                            key={option.id}
-                            variant={selectedOptions[item.id] === option.id ? 'contained' : 'outlined'}
-                            fullWidth
-                            onClick={() => handleOptionChange(item.id, option.id)}
-                            sx={{
-                              py: isMobile ? 2 : 1.5,
-                              px: isMobile ? 2 : 2,
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              textTransform: 'none',
-                              minHeight: isMobile ? 56 : 48,
-                              border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
-                              borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
-                              backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
-                              color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
-                              '&:hover': {
-                                borderColor: 'primary.main',
-                                backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
-                              },
-                              // Touch-friendly active state
-                              '&:active': {
-                                transform: 'scale(0.98)',
+                  {/* Render input based on input_type */}
+                  {(() => {
+                    const inputType = (item.input_type || '').toLowerCase();
+                    
+                    // Number input type
+                    if (inputType === 'number') {
+                      return (
+                        <TextField
+                          fullWidth
+                          type="number"
+                          label="Enter Value"
+                          placeholder="Enter a number..."
+                          value={inputValues[item.id] || ''}
+                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                          size="small"
+                          sx={{ mt: 2, mb: 1 }}
+                          InputProps={{
+                            inputProps: { min: 0 }
+                          }}
+                        />
+                      );
+                    }
+                    
+                    // Date input type
+                    if (inputType === 'date') {
+                      return (
+                        <TextField
+                          fullWidth
+                          type="datetime-local"
+                          label="Select Date/Time"
+                          value={inputValues[item.id] || ''}
+                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                          size="small"
+                          sx={{ mt: 2, mb: 1 }}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      );
+                    }
+                    
+                    // Open ended / text input type
+                    if (inputType === 'open_ended' || inputType === 'description') {
+                      return (
+                        <TextField
+                          fullWidth
+                          multiline
+                          rows={3}
+                          label="Enter Response"
+                          placeholder="Enter your response..."
+                          value={inputValues[item.id] || ''}
+                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                          size="small"
+                          sx={{ mt: 2, mb: 1 }}
+                        />
+                      );
+                    }
+                    
+                    // Option select - show options if available
+                    if (item.options && item.options.length > 0) {
+                      return (
+                        <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
+                          <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
+                            Select Option:
+                          </FormLabel>
+                          <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
+                            {item.options.map((option) => (
+                              <Button
+                                key={option.id}
+                                variant={selectedOptions[item.id] === option.id ? 'contained' : 'outlined'}
+                                fullWidth
+                                onClick={() => handleOptionChange(item.id, option.id)}
+                                sx={{
+                                  py: isMobile ? 2 : 1.5,
+                                  px: isMobile ? 2 : 2,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  textTransform: 'none',
+                                  minHeight: isMobile ? 56 : 48,
+                                  border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
+                                  borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
+                                  backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
+                                  color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
+                                  '&:hover': {
+                                    borderColor: 'primary.main',
+                                    backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
+                                  },
+                                  '&:active': {
+                                    transform: 'scale(0.98)',
+                                  }
+                                }}
+                              >
+                                <Typography 
+                                  variant="body1" 
+                                  sx={{ 
+                                    fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
+                                    fontSize: isMobile ? '1rem' : '1rem'
+                                  }}
+                                >
+                                  {option.option_text}
+                                </Typography>
+                                <Chip
+                                  label={`${option.mark}`}
+                                  size="small"
+                                  sx={{
+                                    ml: 1,
+                                    minWidth: 40,
+                                    backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
+                                    color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
+                                    border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
+                                    borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
+                                    fontWeight: 600
+                                  }}
+                                />
+                              </Button>
+                            ))}
+                          </Box>
+                        </FormControl>
+                      );
+                    }
+                    
+                    // Default: Task/status radio buttons
+                    return (
+                      <FormControl component="fieldset">
+                        <FormLabel component="legend">Status</FormLabel>
+                        <RadioGroup
+                          row
+                          value={responses[item.id] || 'pending'}
+                          onChange={(e) => {
+                            handleResponseChange(item.id, e.target.value);
+                            if (errors.items && e.target.value !== 'pending') {
+                              const remainingRequired = items.filter(i => 
+                                i.required && (!responses[i.id] || responses[i.id] === 'pending') && i.id !== item.id
+                              );
+                              if (remainingRequired.length === 0) {
+                                setErrors({ ...errors, items: '' });
                               }
-                            }}
-                          >
-                            <Typography 
-                              variant="body1" 
-                              sx={{ 
-                                fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
-                                fontSize: isMobile ? '1rem' : '1rem'
-                              }}
-                            >
-                              {option.option_text}
-                            </Typography>
-                            <Chip
-                              label={`${option.mark}`}
-                              size="small"
-                              sx={{
-                                ml: 1,
-                                minWidth: 40,
-                                backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                                color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
-                                border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
-                                borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
-                                fontWeight: 600
-                              }}
-                            />
-                          </Button>
-                        ))}
-                      </Box>
-                    </FormControl>
-                  ) : (
-                  <FormControl component="fieldset">
-                    <FormLabel component="legend">Status</FormLabel>
-                    <RadioGroup
-                      row
-                      value={responses[item.id] || 'pending'}
-                      onChange={(e) => {
-                        handleResponseChange(item.id, e.target.value);
-                        if (errors.items && e.target.value !== 'pending') {
-                          const remainingRequired = items.filter(i => 
-                            i.required && (!responses[i.id] || responses[i.id] === 'pending') && i.id !== item.id
-                          );
-                          if (remainingRequired.length === 0) {
-                            setErrors({ ...errors, items: '' });
-                          }
-                        }
-                      }}
-                    >
-                      <FormControlLabel
-                        value="pending"
-                        control={<Radio />}
-                        label="Not Started"
-                      />
-                      <FormControlLabel
-                        value="completed"
-                        control={<Radio />}
-                        label="Completed"
-                      />
-                      <FormControlLabel
-                        value="failed"
-                        control={<Radio />}
-                        label="Failed"
-                      />
-                      <FormControlLabel
-                        value="warning"
-                        control={<Radio />}
-                        label="Warning"
-                      />
-                    </RadioGroup>
-                  </FormControl>
-                  )}
+                            }
+                          }}
+                        >
+                          <FormControlLabel
+                            value="pending"
+                            control={<Radio />}
+                            label="Not Started"
+                          />
+                          <FormControlLabel
+                            value="completed"
+                            control={<Radio />}
+                            label="Completed"
+                          />
+                          <FormControlLabel
+                            value="failed"
+                            control={<Radio />}
+                            label="Failed"
+                          />
+                          <FormControlLabel
+                            value="warning"
+                            control={<Radio />}
+                            label="Warning"
+                          />
+                        </RadioGroup>
+                      </FormControl>
+                    );
+                  })()}
 
                   <TextField
                     fullWidth
