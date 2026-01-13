@@ -1131,6 +1131,56 @@ const addMissingColumns = async () => {
       }
     }
 
+    // Add time-based columns to checklist_items table
+    if (!itemsColumns.includes('is_time_based')) {
+      console.log('Adding time-based columns to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [is_time_based] BIT DEFAULT 0;
+        `);
+        console.log('is_time_based column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding is_time_based to checklist_items:', err.message);
+      }
+    }
+
+    if (!itemsColumns.includes('target_time_minutes')) {
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [target_time_minutes] INT NULL;
+        `);
+        console.log('target_time_minutes column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding target_time_minutes to checklist_items:', err.message);
+      }
+    }
+
+    if (!itemsColumns.includes('min_time_minutes')) {
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [min_time_minutes] INT NULL;
+        `);
+        console.log('min_time_minutes column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding min_time_minutes to checklist_items:', err.message);
+      }
+    }
+
+    if (!itemsColumns.includes('max_time_minutes')) {
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [max_time_minutes] INT NULL;
+        `);
+        console.log('max_time_minutes column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding max_time_minutes to checklist_items:', err.message);
+      }
+    }
+
     if (!itemsColumns.includes('input_type')) {
       console.log('Adding input_type column to checklist_items table...');
       try {
