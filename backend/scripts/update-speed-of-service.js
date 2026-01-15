@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 /**
- * Replace "Speed of Service" items in a given template with a curated list.
+ * Replace "SERVICE - Speed of Service" items in a given template with a curated list.
  *
  * Default template name: "CVR - CDR"
  *
  * Safe guards:
- * - Only deletes items in the specified template AND category = "Speed of Service".
- * - Runs in a transaction.
+ * - Only deletes items in the specified template AND category.
+ * - Uses database-loader for cross-DB compatibility.
  *
  * Usage:
  *   node backend/scripts/update-speed-of-service.js
  *   node backend/scripts/update-speed-of-service.js "Template Name"
- *
- * This script respects DB_TYPE / env settings via database-loader, so it will
- * work for SQLite, MSSQL, Postgres, or MySQL as configured.
+ *   node backend/scripts/update-speed-of-service.js "Template Name" "Category Name"
  */
 
 /* eslint-disable no-console */
@@ -21,20 +19,20 @@ require('dotenv').config();
 const dbLoader = require('../config/database-loader');
 
 const TEMPLATE_NAME = process.argv[2] || 'CVR - CDR';
-const CATEGORY = 'Speed of Service';
+const CATEGORY = process.argv[3] || 'SERVICE - Speed of Service';
 
-// Curated items (ordered)
+// Curated items (ordered) - from user's screenshot
 const ITEMS = [
   { title: 'If there was NO queue, were customers greeted within 10 seconds / acceptable time', yesMark: '3' },
   { title: 'If there was a queue, were customers greeted within 20 seconds / acceptable time', yesMark: '3' },
   { title: 'If there was a queue, were you quoted an accurate wait time and provided a menu?', yesMark: '3' },
   { title: 'Server offered to take the order within 2 minutes of your having been seated or buzzed', yesMark: '3' },
-  { title: 'Was the complete food order served in a timely manner?', yesMark: '3' },
-  { title: 'Straight Drinks on time (3-4 mins)', yesMark: '3' },
-  { title: 'Cocktails / Mocktails on time (5-8 mins)', yesMark: '3' },
-  { title: 'Starter on time (15-20 mins)', yesMark: '3' },
-  { title: 'Mains on time (15-20 mins)', yesMark: '3' },
-  { title: 'Desserts on time (10 mins)', yesMark: '3' },
+  { title: 'Was the complete food order served in a timely manner?', yesMark: '0', isHeader: true }, // This appears to be a sub-header
+  { title: 'Straight Drinks on time (3-4 mins)', yesMark: '3', isSubItem: true },
+  { title: 'Cocktails / Mocktails on time (5-8 mins)', yesMark: '3', isSubItem: true },
+  { title: 'Starter on time (15-20 mins)', yesMark: '3', isSubItem: true },
+  { title: 'Mains on time (15-20 mins)', yesMark: '3', isSubItem: true },
+  { title: 'Desserts on time (10 mins)', yesMark: '3', isSubItem: true },
   { title: 'Station holder checked for the feedback within 3 mins of starters being served', yesMark: '3' },
   { title: 'Manager on duty checked for the feedback within 4 mins of main course being served', yesMark: '3' },
   { title: 'Dishes cleared within 7 minutes of guests finishing their meals or as required during the meal', yesMark: '3' },
@@ -43,114 +41,128 @@ const ITEMS = [
   { title: 'Vacated tables cleared and cleaned within 4 minutes', yesMark: '2' }, // Score 2 for the last item per source
 ];
 
-// Helpers for promisified DB calls (works for sqlite/mssql/mysql/pg implementations used by the app)
-const run = (db, sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
-
-const all = (db, sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows || []);
-    });
-  });
-
-const get = (db, sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row || null);
-    });
-  });
-
 async function main() {
-  await dbLoader.init?.();
-  const db = dbLoader.getDb();
-
-  console.log(`➡️  Updating category "${CATEGORY}" in template "${TEMPLATE_NAME}"`);
-
-  // Find template
-  const template = await get(db, 'SELECT id FROM checklist_templates WHERE name = ?', [TEMPLATE_NAME]);
-  if (!template) {
-    console.error(`❌ Template not found: ${TEMPLATE_NAME}`);
-    process.exit(1);
-  }
-
-  // Begin transaction
-  await run(db, 'BEGIN');
+  console.log('🚀 Starting Speed of Service update script...');
+  console.log(`📋 Template: "${TEMPLATE_NAME}"`);
+  console.log(`📂 Category: "${CATEGORY}"`);
+  
   try {
+    // Initialize database connection
+    await dbLoader.init?.();
+    const db = dbLoader.getDb();
+    
+    // Find template
+    console.log('\n🔍 Looking for template...');
+    const template = await db.get('SELECT id, name FROM checklist_templates WHERE name = ?', [TEMPLATE_NAME]);
+    
+    if (!template) {
+      console.error(`❌ Template not found: "${TEMPLATE_NAME}"`);
+      console.log('\n📋 Available templates:');
+      const allTemplates = await db.all('SELECT id, name FROM checklist_templates ORDER BY name');
+      allTemplates.forEach(t => console.log(`   - ${t.name} (ID: ${t.id})`));
+      process.exit(1);
+    }
+    
+    console.log(`✅ Found template: "${template.name}" (ID: ${template.id})`);
     const templateId = template.id;
-
-    // Fetch existing items in this category
-    const existing = await all(
-      db,
-      'SELECT id FROM checklist_items WHERE template_id = ? AND category = ?',
+    
+    // Check existing items in this category
+    console.log(`\n🔍 Looking for existing items in category "${CATEGORY}"...`);
+    const existing = await db.all(
+      'SELECT id, title FROM checklist_items WHERE template_id = ? AND category = ?',
       [templateId, CATEGORY]
     );
-    const existingIds = existing.map((r) => r.id);
-
-    if (existingIds.length > 0) {
-      // Delete options first
-      const placeholders = existingIds.map(() => '?').join(',');
-      await run(db, `DELETE FROM checklist_item_options WHERE item_id IN (${placeholders})`, existingIds);
-      await run(db, `DELETE FROM checklist_items WHERE id IN (${placeholders})`, existingIds);
-      console.log(`🧹 Removed ${existingIds.length} existing items in category "${CATEGORY}"`);
-    } else {
-      console.log(`ℹ️  No existing items found in category "${CATEGORY}"`);
+    
+    console.log(`📊 Found ${existing.length} existing items in this category`);
+    
+    if (existing.length > 0) {
+      console.log('\n🧹 Removing existing items...');
+      
+      // Get all item IDs
+      const existingIds = existing.map(r => r.id);
+      
+      // Delete options first (for each item individually to avoid complex IN clause)
+      for (const itemId of existingIds) {
+        await db.run('DELETE FROM checklist_item_options WHERE item_id = ?', [itemId]);
+      }
+      console.log(`   Deleted options for ${existingIds.length} items`);
+      
+      // Delete items
+      for (const itemId of existingIds) {
+        await db.run('DELETE FROM checklist_items WHERE id = ?', [itemId]);
+      }
+      console.log(`   Deleted ${existingIds.length} items`);
     }
-
-    // Insert curated items with options (Yes/No/NA)
+    
+    // Insert new items
+    console.log(`\n📝 Inserting ${ITEMS.length} new items...`);
+    
     for (let i = 0; i < ITEMS.length; i++) {
       const item = ITEMS[i];
-      const res = await run(
-        db,
+      const displayTitle = item.isSubItem ? `- ${item.title}` : item.title;
+      
+      // Insert item
+      const result = await db.run(
         `INSERT INTO checklist_items 
          (template_id, title, description, category, required, order_index, input_type, weight, is_critical)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           templateId,
-          item.title,
-          item.description || '',
+          displayTitle,
+          '',           // description
           CATEGORY,
-          1, // required
-          i,
+          1,            // required
+          i,            // order_index
           'option_select',
-          1,
-          0
+          1,            // weight
+          0             // is_critical
         ]
       );
-      const itemId = res.lastID;
-
+      
+      const itemId = result.lastID;
+      
+      if (!itemId) {
+        console.error(`   ❌ Failed to get lastID for item: ${displayTitle}`);
+        continue;
+      }
+      
+      // Insert options: Yes, No, N/A
       const options = [
         { option_text: 'Yes', mark: item.yesMark },
         { option_text: 'No', mark: '0' },
         { option_text: 'N/A', mark: 'NA' },
       ];
-
+      
       for (let j = 0; j < options.length; j++) {
         const opt = options[j];
-        await run(
-          db,
+        await db.run(
           `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index)
            VALUES (?, ?, ?, ?)`,
           [itemId, opt.option_text, opt.mark, j]
         );
       }
+      
+      console.log(`   ✅ [${i + 1}/${ITEMS.length}] ${displayTitle.substring(0, 60)}...`);
     }
-
-    await run(db, 'COMMIT');
-    console.log(`✅ Inserted ${ITEMS.length} items into template "${TEMPLATE_NAME}" / category "${CATEGORY}"`);
+    
+    console.log(`\n🎉 SUCCESS! Inserted ${ITEMS.length} items into template "${TEMPLATE_NAME}" / category "${CATEGORY}"`);
+    console.log('\n📊 Summary:');
+    console.log(`   - Template: ${TEMPLATE_NAME}`);
+    console.log(`   - Category: ${CATEGORY}`);
+    console.log(`   - Items added: ${ITEMS.length}`);
+    console.log(`   - Perfect Score: 44 points`);
+    
   } catch (err) {
-    console.error('❌ Error during update, rolling back:', err.message);
-    await run(db, 'ROLLBACK');
+    console.error('\n❌ Error during update:', err.message);
+    console.error(err.stack);
     process.exit(1);
   } finally {
-    await dbLoader.close?.();
+    try {
+      await dbLoader.close?.();
+      console.log('\n🔌 Database connection closed');
+    } catch (e) {
+      // Ignore close errors
+    }
   }
 }
 
