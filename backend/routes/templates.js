@@ -268,18 +268,17 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
       const fields = section === 'Avg' ? AVG_FIELDS : TRACKING_FIELDS;
       
       for (const field of fields) {
-        // Create a unique title with section prefix for grouping
-        const fullCategory = `${category}|${section}`;
-        
+        // Use the section field properly instead of appending to category
         const result = await dbInstance.run(
           `INSERT INTO checklist_items 
-           (template_id, title, description, category, required, order_index, input_type, weight, is_critical)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (template_id, title, description, category, section, required, order_index, input_type, weight, is_critical)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             templateId,
             field.title,
             '',
-            fullCategory,
+            category,      // Main category: "SPEED OF SERVICE - TRACKING"
+            section,       // Section: "Trnx-1", "Trnx-2", etc.
             field.required ? 1 : 0,
             orderIndex,
             field.inputType,
