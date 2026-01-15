@@ -101,6 +101,7 @@ const AuditForm = () => {
   const [filteredItems, setFilteredItems] = useState([]);
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
+  const [expandedSections, setExpandedSections] = useState({}); // Track which sections are expanded (e.g., Trnx-1, Trnx-2)
 
   // Helper function to group categories by their parent (e.g., "SERVICE (Speed of Service)" -> parent: "SERVICE")
   // Also handles sections within categories (e.g., items with section="Trnx-1" under "SPEED OF SERVICE - TRACKING")
@@ -878,6 +879,441 @@ const AuditForm = () => {
     }
   };
 
+  // Render a single audit item (extracted for reuse in section grouping)
+  const renderAuditItem = (item, index) => {
+    const isPreviousFailure = failedItemIds.has(item.id);
+    const inputType = (item.input_type || '').toLowerCase();
+    const failureInfo = previousFailures.find(f => f.item_id === item.id);
+    
+    return (
+      <Card 
+        key={item.id} 
+        className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''}`}
+        sx={{ 
+          mb: isMobile ? 2 : 2,
+          border: isPreviousFailure ? '2px solid' : '1px solid',
+          borderColor: isPreviousFailure 
+            ? 'error.main' 
+            : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
+          backgroundColor: isPreviousFailure ? '#FFF5F5' : 'background.paper',
+          transition: 'border-color 0.2s',
+        }}
+      >
+        <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+          {/* Previous failure warning banner */}
+          {isPreviousFailure && (
+            <Alert 
+              severity="warning" 
+              icon={<span style={{ fontSize: '1rem' }}>⚠️</span>}
+              sx={{ 
+                mb: 2,
+                py: 0.5,
+                backgroundColor: '#FFE5E5',
+                '& .MuiAlert-message': { fontSize: '0.85rem' }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="body2" fontWeight={600} color="error.dark">
+                  Failed in last audit
+                  {failureInfo?.failure_count > 1 && ` (${failureInfo.failure_count}x in 6 months)`}
+                </Typography>
+                {failureInfo?.is_recurring && (
+                  <Chip 
+                    label="RECURRING" 
+                    size="small" 
+                    color="error" 
+                    sx={{ fontSize: '0.6rem', height: 18, fontWeight: 700 }} 
+                  />
+                )}
+              </Box>
+            </Alert>
+          )}
+          
+          {/* Previous comment if available */}
+          {isPreviousFailure && failureInfo?.comment && (
+            <Box 
+              sx={{ 
+                mb: 2, 
+                p: 1.5, 
+                backgroundColor: '#FFF0E5', 
+                borderRadius: 1,
+                borderLeft: '3px solid',
+                borderLeftColor: 'warning.main'
+              }}
+            >
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                Previous comment:
+              </Typography>
+              <Typography variant="body2" fontStyle="italic" sx={{ mt: 0.5 }}>
+                "{failureInfo.comment}"
+              </Typography>
+            </Box>
+          )}
+          
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: isMobile ? 'flex-start' : 'center', 
+            mb: 2,
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 1 : 0
+          }}>
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                flexGrow: 1, 
+                fontSize: isMobile ? '1rem' : '1.25rem',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
+              {item.required && (
+                <Chip 
+                  label="Required" 
+                  size="small" 
+                  color="error" 
+                  sx={{ fontSize: '0.65rem', height: 20 }} 
+                />
+              )}
+            </Typography>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              ...(isMobile && { alignSelf: 'flex-end' })
+            }}>
+              {getStatusIcon(responses[item.id])}
+            </Box>
+          </Box>
+          {item.description && (
+            <Typography variant="body2" color="text.secondary" paragraph>
+              {item.description}
+            </Typography>
+          )}
+          <Chip
+            label={item.category}
+            size="small"
+            sx={{ mb: 2 }}
+            color="primary"
+            variant="outlined"
+          />
+          {/* Render input based on input_type */}
+          {(() => {
+            // Number input type
+            if (inputType === 'number') {
+              return (
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Enter Value"
+                  placeholder="Enter a number..."
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  InputProps={{
+                    inputProps: { min: 0 }
+                  }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+            
+            // Date input type
+            if (inputType === 'date') {
+              return (
+                <TextField
+                  fullWidth
+                  type="datetime-local"
+                  label="Select Date/Time"
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+            
+            // Open ended / text input type
+            if (inputType === 'open_ended' || inputType === 'description') {
+              return (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Enter Response"
+                  placeholder="Enter your response..."
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+
+            // Scan code input type
+            if (inputType === 'scan_code') {
+              return (
+                <TextField
+                  fullWidth
+                  label="Scan Code"
+                  placeholder="Enter scanned code..."
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+
+            // Signature input type (draw pad)
+            if (inputType === 'signature') {
+              return (
+                <Box sx={{ mt: 2, mb: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DrawOutlinedIcon />}
+                      onClick={() => openSignatureModal(item.id)}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      {photos[item.id] ? 'Edit Signature' : 'Add Signature'}
+                    </Button>
+                    {photos[item.id] && (
+                      <Button
+                        variant="text"
+                        color="error"
+                        onClick={() => {
+                          setPhotos({ ...photos, [item.id]: null });
+                          setInputValues({ ...inputValues, [item.id]: '' });
+                          setResponses({ ...responses, [item.id]: 'pending' });
+                        }}
+                        disabled={auditStatus === 'completed'}
+                      >
+                        Clear Signature
+                      </Button>
+                    )}
+                  </Box>
+                  {photos[item.id] && (
+                    <Box sx={{ mt: 1 }}>
+                      <img
+                        src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
+                        alt="Signature"
+                        style={{ maxWidth: '100%', height: 120, border: '1px solid #e0e0e0', borderRadius: 6 }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              );
+            }
+            
+            // Option select - show options if available
+            if (item.options && item.options.length > 0) {
+              return (
+                <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
+                  <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
+                    Select Option:
+                  </FormLabel>
+                  <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
+                    {item.options.map((option) => (
+                      <Button
+                        key={option.id}
+                        variant={selectedOptions[item.id] === option.id ? 'contained' : 'outlined'}
+                        fullWidth
+                        onClick={() => handleOptionChange(item.id, option.id)}
+                        disabled={auditStatus === 'completed'}
+                        sx={{
+                          py: isMobile ? 2 : 1.5,
+                          px: isMobile ? 2 : 2,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          textTransform: 'none',
+                          minHeight: isMobile ? 56 : 48,
+                          border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
+                          borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
+                          backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
+                          color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
+                          '&:hover': {
+                            borderColor: 'primary.main',
+                            backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
+                          },
+                          '&:active': {
+                            transform: 'scale(0.98)',
+                          }
+                        }}
+                      >
+                        <Typography 
+                          variant="body1" 
+                          sx={{ 
+                            fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
+                            fontSize: isMobile ? '1rem' : '1rem'
+                          }}
+                        >
+                          {option.option_text}
+                        </Typography>
+                        <Chip
+                          label={`${option.mark}`}
+                          size="small"
+                          sx={{
+                            ml: 1,
+                            minWidth: 40,
+                            backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
+                            color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
+                            border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
+                            borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
+                            fontWeight: 600
+                          }}
+                        />
+                      </Button>
+                    ))}
+                  </Box>
+                </FormControl>
+              );
+            }
+            
+            // Default: Task/status radio buttons
+            return (
+              <FormControl component="fieldset" disabled={auditStatus === 'completed'}>
+                <FormLabel component="legend">Status</FormLabel>
+                <RadioGroup
+                  row
+                  value={responses[item.id] || 'pending'}
+                  onChange={(e) => {
+                    handleResponseChange(item.id, e.target.value);
+                    if (errors.items && e.target.value !== 'pending') {
+                      const remainingRequired = items.filter(i => 
+                        i.required && (!responses[i.id] || responses[i.id] === 'pending') && i.id !== item.id
+                      );
+                      if (remainingRequired.length === 0) {
+                        setErrors({ ...errors, items: '' });
+                      }
+                    }
+                  }}
+                >
+                  <FormControlLabel
+                    value="pending"
+                    control={<Radio />}
+                    label="Not Started"
+                  />
+                  <FormControlLabel
+                    value="completed"
+                    control={<Radio />}
+                    label="Completed"
+                  />
+                  <FormControlLabel
+                    value="failed"
+                    control={<Radio />}
+                    label="Failed"
+                  />
+                  <FormControlLabel
+                    value="warning"
+                    control={<Radio />}
+                    label="Warning"
+                  />
+                </RadioGroup>
+              </FormControl>
+            );
+          })()}
+
+          <TextField
+            fullWidth
+            label="Add Comment"
+            placeholder="Add any notes or comments..."
+            value={comments[item.id] || ''}
+            onChange={(e) => handleCommentChange(item.id, e.target.value)}
+            multiline
+            rows={2}
+            size="small"
+            sx={{ mb: 2, mt: 2 }}
+            disabled={auditStatus === 'completed'}
+          />
+
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            mt: 2,
+            flexWrap: isMobile ? 'wrap' : 'nowrap'
+          }}>
+            <input
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              id={`photo-upload-${item.id}`}
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) handlePhotoUpload(item.id, file);
+              }}
+              disabled={auditStatus === 'completed'}
+            />
+            <label htmlFor={`photo-upload-${item.id}`} style={{ width: isMobile ? '100%' : 'auto' }}>
+              <Tooltip title="Upload photo evidence">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<PhotoCameraIcon />}
+                  size={isMobile ? "medium" : "small"}
+                  disabled={uploading[item.id] || auditStatus === 'completed'}
+                  className="photo-upload-btn"
+                  sx={{
+                    width: isMobile ? '100%' : 'auto',
+                    minHeight: isMobile ? 48 : 36,
+                  }}
+                >
+                  {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                </Button>
+              </Tooltip>
+            </label>
+            {photos[item.id] && (
+              <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                width: isMobile ? '100%' : 'auto',
+                justifyContent: isMobile ? 'center' : 'flex-start',
+                mt: isMobile ? 1 : 0
+              }}>
+                <img
+                  src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
+                  alt="Uploaded"
+                  style={{
+                    width: isMobile ? 60 : 50,
+                    height: isMobile ? 60 : 50,
+                    borderRadius: 8,
+                    objectFit: 'cover',
+                    border: '2px solid #e0e0e0'
+                  }}
+                  crossOrigin="anonymous"
+                />
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    setPhotos({ ...photos, [item.id]: null });
+                    if (inputType === 'image_upload') {
+                      setResponses({ ...responses, [item.id]: 'pending' });
+                    }
+                  }}
+                  color="error"
+                  disabled={auditStatus === 'completed'}
+                >
+                  <CancelIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -893,6 +1329,55 @@ const AuditForm = () => {
   
   // Use filteredItems for display when on checklist step
   const itemsToDisplay = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
+
+  // Group items by section for display (similar to mobile app)
+  const groupItemsBySection = useCallback((itemsList) => {
+    const sections = {};
+    const itemsWithoutSection = [];
+
+    itemsList.forEach(item => {
+      const section = item.section;
+      if (section && section.trim()) {
+        if (!sections[section]) {
+          sections[section] = [];
+        }
+        sections[section].push(item);
+      } else {
+        itemsWithoutSection.push(item);
+      }
+    });
+
+    // Sort sections (Trnx-1, Trnx-2, Trnx-3, Trnx-4, Avg)
+    const sortedSections = Object.keys(sections).sort((a, b) => {
+      // Custom sort: Trnx-* first, then Avg, then others alphabetically
+      if (a.startsWith('Trnx-') && b.startsWith('Trnx-')) {
+        return a.localeCompare(b);
+      }
+      if (a.startsWith('Trnx-')) return -1;
+      if (b.startsWith('Trnx-')) return 1;
+      if (a === 'Avg') return 1;
+      if (b === 'Avg') return -1;
+      return a.localeCompare(b);
+    });
+
+    return { sections: sortedSections.map(s => ({ name: s, items: sections[s] })), itemsWithoutSection };
+  }, []);
+
+  // Get grouped items for current display
+  const groupedItems = React.useMemo(() => {
+    return groupItemsBySection(itemsToDisplay);
+  }, [itemsToDisplay, groupItemsBySection]);
+
+  // Initialize expanded sections (expand all by default)
+  useEffect(() => {
+    if (groupedItems.sections.length > 0) {
+      const initialExpanded = {};
+      groupedItems.sections.forEach(section => {
+        initialExpanded[section.name] = true; // Expand all sections by default
+      });
+      setExpandedSections(prev => ({ ...prev, ...initialExpanded }));
+    }
+  }, [groupedItems.sections]);
 
   return (
     <Layout>
@@ -1423,503 +1908,126 @@ const AuditForm = () => {
                 </Alert>
               ) : null;
             })()}
-            {itemsToDisplay.map((item, index) => {
-              const isPreviousFailure = failedItemIds.has(item.id);
-              const inputType = (item.input_type || '').toLowerCase();
-              const failureInfo = previousFailures.find(f => f.item_id === item.id);
-              
-              return (
-              <Card 
-                key={item.id} 
-                className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''}`}
-                sx={{ 
-                  mb: isMobile ? 2 : 2,
-                  border: isPreviousFailure ? '2px solid' : '1px solid',
-                  borderColor: isPreviousFailure 
-                    ? 'error.main' 
-                    : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
-                  backgroundColor: isPreviousFailure ? '#FFF5F5' : 'background.paper',
-                  transition: 'border-color 0.2s',
-                }}
-              >
-                <CardContent sx={{ p: isMobile ? 2 : 3 }}>
-                  {/* Previous failure warning banner */}
-                  {isPreviousFailure && (
-                    <Alert 
-                      severity="warning" 
-                      icon={<span style={{ fontSize: '1rem' }}>⚠️</span>}
-                sx={{ 
-                  mb: 2,
-                        py: 0.5,
-                        backgroundColor: '#FFE5E5',
-                        '& .MuiAlert-message': { fontSize: '0.85rem' }
+
+            {/* Render items grouped by section (similar to mobile app) */}
+            {groupedItems.sections.length > 0 ? (
+              <>
+                {groupedItems.sections.map((sectionData) => {
+                  const sectionItems = sectionData.items;
+                  const sectionCompleted = sectionItems.filter(item => isItemComplete(item)).length;
+                  const sectionTotal = sectionItems.length;
+                  const sectionPercent = sectionTotal > 0 ? Math.round((sectionCompleted / sectionTotal) * 100) : 0;
+                  const isSectionExpanded = expandedSections[sectionData.name] !== false; // Default to true
+
+                  return (
+                    <Accordion
+                      key={sectionData.name}
+                      expanded={isSectionExpanded}
+                      onChange={() => setExpandedSections(prev => ({ ...prev, [sectionData.name]: !isSectionExpanded }))}
+                      sx={{
+                        mb: 2,
+                        border: 1,
+                        borderColor: sectionPercent === 100 ? 'success.main' : 'divider',
+                        '&.Mui-expanded': {
+                          borderColor: sectionPercent === 100 ? 'success.main' : 'primary.main',
+                          boxShadow: 2
+                        }
                       }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        <Typography variant="body2" fontWeight={600} color="error.dark">
-                          Failed in last audit
-                          {failureInfo?.failure_count > 1 && ` (${failureInfo.failure_count}x in 6 months)`}
-                        </Typography>
-                        {failureInfo?.is_recurring && (
-                          <Chip 
-                            label="RECURRING" 
-                            size="small" 
-                            color="error" 
-                            sx={{ fontSize: '0.6rem', height: 18, fontWeight: 700 }} 
-                          />
-                        )}
-                      </Box>
-                    </Alert>
-                  )}
-                  
-                  {/* Previous comment if available */}
-                  {isPreviousFailure && failureInfo?.comment && (
-                    <Box 
-                      sx={{ 
-                        mb: 2, 
-                        p: 1.5, 
-                        backgroundColor: '#FFF0E5', 
-                        borderRadius: 1,
-                        borderLeft: '3px solid',
-                        borderLeftColor: 'warning.main'
-                }}
-              >
-                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                        Previous comment:
-                      </Typography>
-                      <Typography variant="body2" fontStyle="italic" sx={{ mt: 0.5 }}>
-                        "{failureInfo.comment}"
-                      </Typography>
-                    </Box>
-                  )}
-                  
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: isMobile ? 'flex-start' : 'center', 
-                    mb: 2,
-                    flexDirection: isMobile ? 'column' : 'row',
-                    gap: isMobile ? 1 : 0
-                  }}>
-                    <Typography 
-                      variant="h6" 
-                      sx={{ 
-                        flexGrow: 1, 
-                        fontSize: isMobile ? '1rem' : '1.25rem',
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 1
-                      }}
-                    >
-                      <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
-                      {item.required && (
-                        <Chip 
-                          label="Required" 
-                          size="small" 
-                          color="error" 
-                          sx={{ fontSize: '0.65rem', height: 20 }} 
-                        />
-                      )}
-                    </Typography>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 1,
-                      ...(isMobile && { alignSelf: 'flex-end' })
-                    }}>
-                    {getStatusIcon(responses[item.id])}
-                    </Box>
-                  </Box>
-                  {item.description && (
-                    <Typography variant="body2" color="text.secondary" paragraph>
-                      {item.description}
-                    </Typography>
-                  )}
-                  <Chip
-                    label={item.category}
-                    size="small"
-                    sx={{ mb: 2 }}
-                    color="primary"
-                    variant="outlined"
-                  />
-                  {/* Render input based on input_type */}
-                  {(() => {
-                    
-                    // Number input type
-                    if (inputType === 'number') {
-                      return (
-                        <TextField
-                          fullWidth
-                          type="number"
-                          label="Enter Value"
-                          placeholder="Enter a number..."
-                          value={inputValues[item.id] || ''}
-                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
-                          size="small"
-                          sx={{ mt: 2, mb: 1 }}
-                          InputProps={{
-                            inputProps: { min: 0 }
-                          }}
-                        />
-                      );
-                    }
-                    
-                    // Date input type
-                    if (inputType === 'date') {
-                      return (
-                        <TextField
-                          fullWidth
-                          type="datetime-local"
-                          label="Select Date/Time"
-                          value={inputValues[item.id] || ''}
-                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
-                          size="small"
-                          sx={{ mt: 2, mb: 1 }}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      );
-                    }
-                    
-                    // Open ended / text input type
-                    if (inputType === 'open_ended' || inputType === 'description') {
-                      return (
-                        <TextField
-                          fullWidth
-                          multiline
-                          rows={3}
-                          label="Enter Response"
-                          placeholder="Enter your response..."
-                          value={inputValues[item.id] || ''}
-                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
-                          size="small"
-                          sx={{ mt: 2, mb: 1 }}
-                        />
-                      );
-                    }
-
-                    // Scan code input type
-                    if (inputType === 'scan_code') {
-                      return (
-                        <TextField
-                          fullWidth
-                          label="Scan Code"
-                          placeholder="Enter scanned code..."
-                          value={inputValues[item.id] || ''}
-                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
-                          size="small"
-                          sx={{ mt: 2, mb: 1 }}
-                        />
-                      );
-                    }
-
-                    // Signature input type (draw pad)
-                    if (inputType === 'signature') {
-                      return (
-                        <Box sx={{ mt: 2, mb: 1 }}>
-                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                            <Button
-                              variant="outlined"
-                              startIcon={<DrawOutlinedIcon />}
-                              onClick={() => openSignatureModal(item.id)}
-                            >
-                              {photos[item.id] ? 'Edit Signature' : 'Add Signature'}
-                            </Button>
-                            {photos[item.id] && (
-                              <Button
-                                variant="text"
-                                color="error"
-                                onClick={() => {
-                                  setPhotos({ ...photos, [item.id]: null });
-                                  setInputValues({ ...inputValues, [item.id]: '' });
-                                  setResponses({ ...responses, [item.id]: 'pending' });
-                                }}
-                              >
-                                Clear Signature
-                              </Button>
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon />}
+                        sx={{
+                          bgcolor: sectionPercent === 100 ? 'success.light' : 'background.paper',
+                          '&.Mui-expanded': {
+                            bgcolor: sectionPercent === 100 ? 'success.light' : 'primary.light',
+                          }
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
+                            {sectionData.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {sectionPercent === 100 && (
+                              <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} />
                             )}
+                            <Chip
+                              label={`${sectionCompleted}/${sectionTotal}`}
+                              size="small"
+                              color={sectionPercent === 100 ? 'success' : 'default'}
+                              sx={{ height: 24, fontSize: '0.8rem', fontWeight: 600 }}
+                            />
                           </Box>
-                          {photos[item.id] && (
-                            <Box sx={{ mt: 1 }}>
-                              <img
-                                src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
-                                alt="Signature"
-                                style={{ maxWidth: '100%', height: 120, border: '1px solid #e0e0e0', borderRadius: 6 }}
-                              />
-                            </Box>
-                          )}
                         </Box>
-                      );
-                    }
-                    
-                    // Option select - show options if available
-                    if (item.options && item.options.length > 0) {
-                      return (
-                        <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-                          <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
-                            Select Option:
-                          </FormLabel>
-                          <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
-                            {item.options.map((option) => (
-                              <Button
-                                key={option.id}
-                                variant={selectedOptions[item.id] === option.id ? 'contained' : 'outlined'}
-                                fullWidth
-                                onClick={() => handleOptionChange(item.id, option.id)}
-                                sx={{
-                                  py: isMobile ? 2 : 1.5,
-                                  px: isMobile ? 2 : 2,
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  textTransform: 'none',
-                                  minHeight: isMobile ? 56 : 48,
-                                  border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
-                                  borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
-                                  backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
-                                  color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
-                                  '&:hover': {
-                                    borderColor: 'primary.main',
-                                    backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
-                                  },
-                                  '&:active': {
-                                    transform: 'scale(0.98)',
-                                  }
-                                }}
-                              >
-                                <Typography 
-                                  variant="body1" 
-                                  sx={{ 
-                                    fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
-                                    fontSize: isMobile ? '1rem' : '1rem'
-                                  }}
-                                >
-                                  {option.option_text}
-                                </Typography>
-                                <Chip
-                                  label={`${option.mark}`}
-                                  size="small"
-                                  sx={{
-                                    ml: 1,
-                                    minWidth: 40,
-                                    backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                                    color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
-                                    border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
-                                    borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
-                                    fontWeight: 600
-                                  }}
-                                />
-                              </Button>
-                            ))}
-                          </Box>
-                        </FormControl>
-                      );
-                    }
-                    
-                    // Default: Task/status radio buttons
-                    return (
-                      <FormControl component="fieldset">
-                        <FormLabel component="legend">Status</FormLabel>
-                        <RadioGroup
-                          row
-                          value={responses[item.id] || 'pending'}
-                          onChange={(e) => {
-                            handleResponseChange(item.id, e.target.value);
-                            if (errors.items && e.target.value !== 'pending') {
-                              const remainingRequired = items.filter(i => 
-                                i.required && (!responses[i.id] || responses[i.id] === 'pending') && i.id !== item.id
-                              );
-                              if (remainingRequired.length === 0) {
-                                setErrors({ ...errors, items: '' });
-                              }
-                            }
-                          }}
-                        >
-                          <FormControlLabel
-                            value="pending"
-                            control={<Radio />}
-                            label="Not Started"
-                          />
-                          <FormControlLabel
-                            value="completed"
-                            control={<Radio />}
-                            label="Completed"
-                          />
-                          <FormControlLabel
-                            value="failed"
-                            control={<Radio />}
-                            label="Failed"
-                          />
-                          <FormControlLabel
-                            value="warning"
-                            control={<Radio />}
-                            label="Warning"
-                          />
-                        </RadioGroup>
-                      </FormControl>
-                    );
-                  })()}
-
-                  <TextField
-                    fullWidth
-                    label="Add Comment"
-                    placeholder="Add any notes or comments..."
-                    value={comments[item.id] || ''}
-                    onChange={(e) => handleCommentChange(item.id, e.target.value)}
-                    multiline
-                    rows={2}
-                    size="small"
-                    sx={{ mb: 2 }}
-                  />
-
-                  {inputType !== 'signature' && (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 2, 
-                    mt: 2,
-                    flexWrap: isMobile ? 'wrap' : 'nowrap'
-                  }}>
-                    <input
-                      accept="image/*"
-                      capture="environment"
-                      style={{ display: 'none' }}
-                      id={`photo-upload-${item.id}`}
-                      type="file"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) handlePhotoUpload(item.id, file);
-                      }}
-                    />
-                    <label htmlFor={`photo-upload-${item.id}`} style={{ width: isMobile ? '100%' : 'auto' }}>
-                      <Tooltip title="Upload photo evidence">
-                        <Button
-                          variant="outlined"
-                          component="span"
-                          startIcon={<PhotoCameraIcon />}
-                          size={isMobile ? "medium" : "small"}
-                          disabled={uploading[item.id]}
-                          className="photo-upload-btn"
-                          sx={{
-                            width: isMobile ? '100%' : 'auto',
-                            minHeight: isMobile ? 48 : 36,
-                          }}
-                        >
-                          {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
-                        </Button>
-                      </Tooltip>
-                    </label>
-                    {photos[item.id] && (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 1,
-                        width: isMobile ? '100%' : 'auto',
-                        justifyContent: isMobile ? 'center' : 'flex-start',
-                        mt: isMobile ? 1 : 0
-                      }}>
-                        <img 
-                          src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]} 
-                          alt="Uploaded"
-                          style={{ 
-                            width: isMobile ? 60 : 50, 
-                            height: isMobile ? 60 : 50, 
-                            borderRadius: 8, 
-                            objectFit: 'cover',
-                            border: '2px solid #e0e0e0'
-                          }}
-                          crossOrigin="anonymous"
-                        />
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            setPhotos({ ...photos, [item.id]: null });
-                            setInputValues({ ...inputValues, [item.id]: '' });
-                            if (inputType === 'image_upload') {
-                              setResponses({ ...responses, [item.id]: 'pending' });
-                            }
-                          }}
-                          color="error"
-                        >
-                          <CancelIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    )}
+                      </AccordionSummary>
+                      <AccordionDetails sx={{ bgcolor: 'grey.50', borderTop: '1px solid', borderColor: 'divider', p: 0 }}>
+                        <Box sx={{ p: 2 }}>
+                          {sectionItems.map((item, index) => {
+                            return renderAuditItem(item, index);
+                          })}
+                        </Box>
+                      </AccordionDetails>
+                    </Accordion>
+                  );
+                })}
+                {/* Render items without section */}
+                {groupedItems.itemsWithoutSection.length > 0 && (
+                  <Box sx={{ mt: 3 }}>
+                    {groupedItems.itemsWithoutSection.map((item, index) => {
+                      return renderAuditItem(item, index);
+                    })}
                   </Box>
-                  )}
-                </CardContent>
-              </Card>
-              );
-            })}
-
-            {/* Mobile: Fixed bottom action bar, Desktop: Regular buttons */}
-            {isMobile ? (
-              <Box 
-                className="mobile-bottom-actions"
-                sx={{
-                  position: 'fixed',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  bgcolor: 'background.paper',
-                  p: 2,
-                  boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
-                  zIndex: 1000,
-                  display: 'flex',
-                  gap: 2,
-                }}
-              >
-                <Button 
-                  onClick={handleBack}
-                  variant="outlined"
-                  sx={{ flex: 1, minHeight: 48 }}
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleSubmit}
-                  variant="contained"
-                  disabled={saving || auditStatus === 'completed'}
-                  sx={{ flex: 2, minHeight: 48 }}
-                >
-                  {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
-                </Button>
-              </Box>
+                )}
+              </>
             ) : (
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-              <Button onClick={handleBack}>Back</Button>
-              <Button
-                onClick={handleSubmit}
-                variant="contained"
-                disabled={saving || auditStatus === 'completed'}
-              >
-                {saving ? <CircularProgress size={24} /> : isEditing ? 'Update Audit' : 'Save Audit'}
-              </Button>
-            </Box>
+              /* Fallback: render items in flat list if no sections */
+              itemsToDisplay.map((item, index) => {
+                return renderAuditItem(item, index);
+              })
             )}
-            <Dialog open={signatureModalOpen} onClose={closeSignatureModal} maxWidth="sm" fullWidth>
-              <DialogTitle>Signature</DialogTitle>
-              <DialogContent>
-                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, p: 1, mt: 1 }}>
-                  <SignatureCanvas
-                    ref={signatureRef}
-                    penColor="#111827"
-                    canvasProps={{ width: 520, height: 200, style: { width: '100%', height: 200 } }}
-                  />
-                </Box>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => signatureRef.current?.clear()}>Clear</Button>
-                <Button onClick={closeSignatureModal}>Cancel</Button>
-                <Button onClick={handleSaveSignature} variant="contained">Save</Button>
-              </DialogActions>
-            </Dialog>
           </Box>
         )}
+
+        {/* Signature Modal */}
+        <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Draw Signature</DialogTitle>
+          <DialogContent>
+            <Box sx={{ border: '1px solid grey', borderRadius: 1, overflow: 'hidden' }}>
+              <SignatureCanvas
+                ref={signatureRef}
+                penColor='black'
+                canvasProps={{ width: 500, height: 200, className: 'sigCanvas' }}
+                backgroundColor='white'
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => signatureRef.current?.clear()} color="error">Clear</Button>
+            <Button onClick={() => setSignatureModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (signatureRef.current?.isEmpty()) {
+                  showError('Please provide a signature.');
+                  return;
+                }
+                const dataUrl = signatureRef.current?.toDataURL('image/png');
+                // Convert data URL to Blob for upload
+                const blob = await (await fetch(dataUrl)).blob();
+                const file = new File([blob], `signature_${signatureItemId}.png`, { type: 'image/png' });
+                await handlePhotoUpload(signatureItemId, file);
+                setInputValues(prev => ({ ...prev, [signatureItemId]: 'Signed' })); // Mark as signed
+                setResponses(prev => ({ ...prev, [signatureItemId]: 'completed' }));
+                setSignatureModalOpen(false);
+              }}
+              variant="contained"
+            >
+              Save Signature
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Layout>
   );
 };
 
 export default AuditForm;
-
-
