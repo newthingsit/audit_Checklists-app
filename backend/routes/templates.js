@@ -248,9 +248,14 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
     logger.info(`[Admin] Found template: ${template.name} (ID: ${templateId})`);
     
     // Get existing items in this category (including sectioned categories like "CATEGORY|Trnx-1")
+    // Also look for items with section field set to Trnx-1, Trnx-2, etc.
     const existing = await dbInstance.all(
-      `SELECT id FROM checklist_items WHERE template_id = ? AND (category = ? OR category LIKE ?)`,
-      [templateId, category, `${category}|%`]
+      `SELECT id FROM checklist_items WHERE template_id = ? AND (
+        category = ? 
+        OR category LIKE ?
+        OR (category LIKE ? AND section IN ('Trnx-1', 'Trnx-2', 'Trnx-3', 'Trnx-4', 'Avg'))
+      )`,
+      [templateId, category, `${category}|%`, `%SPEED%SERVICE%TRACKING%`]
     );
     
     // Delete existing items and their options
