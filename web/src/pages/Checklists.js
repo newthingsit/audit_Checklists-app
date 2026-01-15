@@ -223,6 +223,9 @@ const createEmptyItem = (category = '') => ({
   target_time_minutes: '', // Target/ideal time in minutes for time-based items
   min_time_minutes: '', // Minimum acceptable time (if faster, may indicate rushing)
   max_time_minutes: '', // Maximum acceptable time (if slower, needs improvement)
+  conditional_item_id: null, // ID of item to check for conditional display
+  conditional_value: '', // Value that triggers showing this item
+  conditional_operator: 'equals', // Operator: 'equals', 'not_equals', 'contains'
   options: defaultOptions.map(option => ({ ...option }))
 });
 
@@ -478,6 +481,10 @@ const Checklists = () => {
         target_time_minutes: item.is_time_based ? parseFloat(item.target_time_minutes) || null : null,
         min_time_minutes: item.is_time_based ? parseFloat(item.min_time_minutes) || null : null,
         max_time_minutes: item.is_time_based ? parseFloat(item.max_time_minutes) || null : null,
+        section: item.section || null,
+        conditional_item_id: item.conditional_item_id || null,
+        conditional_value: item.conditional_value || '',
+        conditional_operator: item.conditional_operator || 'equals',
         order_index: index,
         options: fieldTypeSupportsOptions(getEffectiveItemFieldType(item))
           ? (item.options || []).map((option, optionIndex) => ({
@@ -529,6 +536,10 @@ const Checklists = () => {
         target_time_minutes: item.target_time_minutes || '',
         min_time_minutes: item.min_time_minutes || '',
         max_time_minutes: item.max_time_minutes || '',
+        section: item.section || null,
+        conditional_item_id: item.conditional_item_id || null,
+        conditional_value: item.conditional_value || '',
+        conditional_operator: item.conditional_operator || 'equals',
         options: (item.options || []).map(option => ({
           option_text: option.option_text || option.title || '',
           mark: option.mark ?? ''
@@ -1153,6 +1164,83 @@ const Checklists = () => {
                     </FormControl>
                   </Grid>
                 </Grid>
+                
+                {/* Conditional Logic Section */}
+                <Paper 
+                  elevation={0} 
+                  sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: item.conditional_item_id ? 'warning.light' : 'grey.50',
+                    border: '1px solid',
+                    borderColor: item.conditional_item_id ? 'warning.main' : 'grey.300',
+                    borderRadius: 2
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                    Conditional Display (Show/Hide Logic)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+                    Show this item only when another item has a specific value
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Show if item</InputLabel>
+                        <Select
+                          value={item.conditional_item_id !== null && item.conditional_item_id !== undefined ? item.conditional_item_id : ''}
+                          label="Show if item"
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            handleItemChange(index, 'conditional_item_id', value === '' ? null : (typeof value === 'string' && value.startsWith('temp_') ? parseInt(value.replace('temp_', '')) : value));
+                          }}
+                        >
+                          <MenuItem value="">Always show</MenuItem>
+                          {items
+                            .filter((it, idx) => idx < index && it.title.trim()) // Only show items before this one
+                            .map((it, idx) => {
+                              // Use item ID if available, otherwise use temp index
+                              const itemId = it.id || `temp_${idx}`;
+                              return (
+                                <MenuItem key={idx} value={itemId}>
+                                  {it.title || `Item ${idx + 1}`}
+                                </MenuItem>
+                              );
+                            })}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    {item.conditional_item_id && (
+                      <>
+                        <Grid item xs={12} sm={3}>
+                          <FormControl fullWidth size="small">
+                            <InputLabel>Operator</InputLabel>
+                            <Select
+                              value={item.conditional_operator || 'equals'}
+                              label="Operator"
+                              onChange={(e) => handleItemChange(index, 'conditional_operator', e.target.value)}
+                            >
+                              <MenuItem value="equals">Equals</MenuItem>
+                              <MenuItem value="not_equals">Not Equals</MenuItem>
+                              <MenuItem value="contains">Contains</MenuItem>
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} sm={5}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Value"
+                            value={item.conditional_value || ''}
+                            onChange={(e) => handleItemChange(index, 'conditional_value', e.target.value)}
+                            placeholder="e.g., 'No', 'Failed', 'Yes'"
+                            helperText="Value that triggers showing this item"
+                          />
+                        </Grid>
+                      </>
+                    )}
+                  </Grid>
+                </Paper>
                 
                 {/* Time-Based Scoring Section for Item Making Performance */}
                 <Paper 
