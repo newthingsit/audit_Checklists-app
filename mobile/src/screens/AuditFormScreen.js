@@ -2327,6 +2327,16 @@ const AuditFormScreen = () => {
                   isMissingRequiredPhoto && { borderLeftWidth: 4, borderLeftColor: '#d32f2f' }
                 ]}
               >
+                {/* Missing required photo warning */}
+                {isMissingRequiredPhoto && (
+                  <View style={[styles.previousFailureWarning, { backgroundColor: '#FFF5F5', borderColor: '#d32f2f' }]}>
+                    <Icon name="photo-camera" size={18} color="#d32f2f" />
+                    <Text style={[styles.previousFailureWarningText, { color: '#d32f2f' }]}>
+                      Photo Required - Please add a photo before submitting
+                    </Text>
+                  </View>
+                )}
+                
                 {/* Previous failure warning banner */}
                 {isPreviousFailure && (
                   <View style={styles.previousFailureWarning}>
