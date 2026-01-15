@@ -879,6 +879,60 @@ const AuditForm = () => {
     }
   };
 
+  // Group items by section for display (similar to mobile app) - MUST be before early returns
+  const groupItemsBySection = useCallback((itemsList) => {
+    const sections = {};
+    const itemsWithoutSection = [];
+
+    itemsList.forEach(item => {
+      const section = item.section;
+      if (section && section.trim()) {
+        if (!sections[section]) {
+          sections[section] = [];
+        }
+        sections[section].push(item);
+      } else {
+        itemsWithoutSection.push(item);
+      }
+    });
+
+    // Sort sections (Trnx-1, Trnx-2, Trnx-3, Trnx-4, Avg)
+    const sortedSections = Object.keys(sections).sort((a, b) => {
+      // Custom sort: Trnx-* first, then Avg, then others alphabetically
+      if (a.startsWith('Trnx-') && b.startsWith('Trnx-')) {
+        return a.localeCompare(b);
+      }
+      if (a.startsWith('Trnx-')) return -1;
+      if (b.startsWith('Trnx-')) return 1;
+      if (a === 'Avg') return 1;
+      if (b === 'Avg') return -1;
+      return a.localeCompare(b);
+    });
+
+    return { sections: sortedSections.map(s => ({ name: s, items: sections[s] })), itemsWithoutSection };
+  }, []);
+
+  // Calculate items to display - MUST be before early returns
+  const steps = categories.length > 1 ? ['Store Information', 'Select Category', 'Audit Checklist'] : ['Store Information', 'Audit Checklist'];
+  const completedItems = Object.values(responses).filter(r => r === 'completed').length;
+  const itemsToDisplay = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
+
+  // Get grouped items for current display - MUST be before early returns
+  const groupedItems = React.useMemo(() => {
+    return groupItemsBySection(itemsToDisplay);
+  }, [itemsToDisplay, groupItemsBySection]);
+
+  // Initialize expanded sections (expand all by default) - MUST be before early returns
+  useEffect(() => {
+    if (groupedItems.sections.length > 0) {
+      const initialExpanded = {};
+      groupedItems.sections.forEach(section => {
+        initialExpanded[section.name] = true; // Expand all sections by default
+      });
+      setExpandedSections(prev => ({ ...prev, ...initialExpanded }));
+    }
+  }, [groupedItems.sections]);
+
   // Render a single audit item (extracted for reuse in section grouping)
   const renderAuditItem = (item, index) => {
     const isPreviousFailure = failedItemIds.has(item.id);
@@ -1323,61 +1377,6 @@ const AuditForm = () => {
       </Layout>
     );
   }
-
-  const steps = categories.length > 1 ? ['Store Information', 'Select Category', 'Audit Checklist'] : ['Store Information', 'Audit Checklist'];
-  const completedItems = Object.values(responses).filter(r => r === 'completed').length;
-  
-  // Use filteredItems for display when on checklist step
-  const itemsToDisplay = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
-
-  // Group items by section for display (similar to mobile app)
-  const groupItemsBySection = useCallback((itemsList) => {
-    const sections = {};
-    const itemsWithoutSection = [];
-
-    itemsList.forEach(item => {
-      const section = item.section;
-      if (section && section.trim()) {
-        if (!sections[section]) {
-          sections[section] = [];
-        }
-        sections[section].push(item);
-      } else {
-        itemsWithoutSection.push(item);
-      }
-    });
-
-    // Sort sections (Trnx-1, Trnx-2, Trnx-3, Trnx-4, Avg)
-    const sortedSections = Object.keys(sections).sort((a, b) => {
-      // Custom sort: Trnx-* first, then Avg, then others alphabetically
-      if (a.startsWith('Trnx-') && b.startsWith('Trnx-')) {
-        return a.localeCompare(b);
-      }
-      if (a.startsWith('Trnx-')) return -1;
-      if (b.startsWith('Trnx-')) return 1;
-      if (a === 'Avg') return 1;
-      if (b === 'Avg') return -1;
-      return a.localeCompare(b);
-    });
-
-    return { sections: sortedSections.map(s => ({ name: s, items: sections[s] })), itemsWithoutSection };
-  }, []);
-
-  // Get grouped items for current display
-  const groupedItems = React.useMemo(() => {
-    return groupItemsBySection(itemsToDisplay);
-  }, [itemsToDisplay, groupItemsBySection]);
-
-  // Initialize expanded sections (expand all by default)
-  useEffect(() => {
-    if (groupedItems.sections.length > 0) {
-      const initialExpanded = {};
-      groupedItems.sections.forEach(section => {
-        initialExpanded[section.name] = true; // Expand all sections by default
-      });
-      setExpandedSections(prev => ({ ...prev, ...initialExpanded }));
-    }
-  }, [groupedItems.sections]);
 
   return (
     <Layout>
