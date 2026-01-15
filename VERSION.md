@@ -1,5 +1,70 @@
 # Project Version Information
 
+## Version 1.15.0 - Geo-Fencing & Automated Corrective Actions
+
+**Date:** 2025-01-27
+
+### What's New in This Version
+
+#### Geo-Fencing Validation
+- ✅ **Mobile GPS Validation**: Automatically verifies auditor location when GPS is captured
+- ✅ **Distance Calculation**: Uses Haversine formula for accurate distance calculation
+- ✅ **Distance Thresholds**: 
+  - **500m**: Warning threshold (allows continuation with confirmation)
+  - **1000m**: Block threshold (prevents audit submission)
+- ✅ **Backend Validation**: Server-side validation prevents audit creation if too far
+- ✅ **Visual Indicators**: Clear distance display and verification status
+- ✅ **User Experience**: Shows distance in meters with helpful error messages
+
+#### Automated Corrective Actions
+- ✅ **Auto-Create Actions**: Automatically creates action items for failed audit items
+- ✅ **Failed Item Detection**: Identifies failed items based on status and marks
+- ✅ **Smart Assignment**: 
+  - Priority 1: Location manager
+  - Priority 2: Audit creator
+  - Priority 3: Store owner
+- ✅ **Priority Assignment**: High for critical items, medium for others
+- ✅ **Due Date**: Default 7 days from creation (configurable)
+- ✅ **Duplicate Prevention**: Checks if action items already exist
+- ✅ **Integration Points**: Triggers on audit completion (single, batch, manual)
+
+#### Location Verification
+- ✅ **Auto-Verification**: Automatically verifies location on GPS capture
+- ✅ **Status Display**: Visual indicators (green/red) for verification status
+- ✅ **Distance Display**: Shows distance from expected location
+- ✅ **Warning Messages**: Clear alerts when outside recommended range
+
+### Technical Implementation
+
+#### Mobile App (`mobile/src/screens/AuditFormScreen.js`)
+- Added `calculateDistance` from `useLocation` hook
+- Geo-fencing validation in `handleSubmit` function
+- Auto-verification on location capture
+- Distance-based warnings and blocking
+
+#### Backend (`backend/routes/audits.js`)
+- GPS distance validation on audit creation
+- Haversine formula for distance calculation
+- Error responses with distance details
+- Integration with auto-actions utility
+
+#### Auto-Actions Utility (`backend/utils/autoActions.js`)
+- `autoCreateActionItems()` function
+- Failed item detection logic
+- Smart assignment rules
+- Priority and due date assignment
+
+### Database Requirements
+- **Locations Table**: Requires `latitude` and `longitude` columns
+- **Action Items Table**: Already exists with required columns
+
+### Components Version
+- **Backend:** 1.9.0
+- **Web App:** 1.9.0
+- **Mobile App:** 1.15.0
+
+---
+
 ## Version 1.14.0 - Conditional Logic & Enhanced Photo Management
 
 **Date:** 2025-01-27
