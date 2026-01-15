@@ -660,6 +660,70 @@ const AuditForm = () => {
     }
   };
   
+  // Evaluate conditional logic for items
+  const evaluateConditionalItem = useCallback((item, allItems, responses, selectedOptions, comments, inputValues) => {
+    // If no conditional logic, always show
+    if (!item.conditional_item_id) {
+      return true;
+    }
+
+    // Find the referenced item
+    const referencedItem = allItems.find(it => it.id === item.conditional_item_id);
+    if (!referencedItem) {
+      // Referenced item not found, show by default
+      return true;
+    }
+
+    // Get the value of the referenced item
+    let referencedValue = null;
+    const inputType = (referencedItem.input_type || '').toLowerCase();
+    
+    if (inputType === 'option_select' || inputType === 'select_from_data_source') {
+      // For option select, get the selected option text
+      const selectedOptionId = selectedOptions[referencedItem.id];
+      if (selectedOptionId) {
+        const option = referencedItem.options?.find(opt => opt.id === selectedOptionId);
+        referencedValue = option?.option_text || option?.text || '';
+      }
+    } else if (['open_ended', 'description', 'number', 'date', 'scan_code'].includes(inputType)) {
+      // For text/number inputs, use the input value
+      referencedValue = inputValues[referencedItem.id] || comments[referencedItem.id] || '';
+    } else {
+      // For status-based items, use the status
+      const status = responses[referencedItem.id]?.status || responses[referencedItem.id];
+      referencedValue = status || '';
+    }
+
+    if (referencedValue === null || referencedValue === '') {
+      // No value set yet, don't show conditional item
+      return false;
+    }
+
+    // Evaluate condition
+    const conditionValue = item.conditional_value || '';
+    const operator = item.conditional_operator || 'equals';
+    const refValueStr = String(referencedValue).toLowerCase().trim();
+    const condValueStr = String(conditionValue).toLowerCase().trim();
+
+    switch (operator) {
+      case 'equals':
+        return refValueStr === condValueStr;
+      case 'not_equals':
+        return refValueStr !== condValueStr;
+      case 'contains':
+        return refValueStr.includes(condValueStr);
+      default:
+        return refValueStr === condValueStr;
+    }
+  }, []);
+
+  // Filter items based on conditional logic
+  const filterItemsByCondition = useCallback((itemsToFilter, allItems, responses, selectedOptions, comments, inputValues) => {
+    return itemsToFilter.filter(item => {
+      return evaluateConditionalItem(item, allItems, responses, selectedOptions, comments, inputValues);
+    });
+  }, [evaluateConditionalItem]);
+
   const handleCategorySelect = (category, section = null) => {
     setSelectedCategory(category);
     setSelectedSection(section);
@@ -927,7 +991,12 @@ const AuditForm = () => {
   // Calculate items to display - MUST be before early returns
   const steps = categories.length > 1 ? ['Store Information', 'Select Category', 'Audit Checklist'] : ['Store Information', 'Audit Checklist'];
   const completedItems = Object.values(responses).filter(r => r === 'completed').length;
-  const itemsToDisplay = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
+  // Apply conditional logic filtering to items
+  const itemsToDisplay = React.useMemo(() => {
+    const baseItems = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
+    // Filter items based on conditional logic
+    return filterItemsByCondition(baseItems, items, responses, selectedOptions, comments, inputValues);
+  }, [activeStep, categories.length, selectedCategory, filteredItems, items, filterItemsByCondition, responses, selectedOptions, comments, inputValues]);
 
   // Get grouped items for current display - MUST be before early returns
   const groupedItems = React.useMemo(() => {
