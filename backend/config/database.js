@@ -120,6 +120,11 @@ const createTables = () => {
       // Add section column for grouping items within a category (e.g., Trnx-1, Trnx-2)
       db.run(`ALTER TABLE checklist_items ADD COLUMN section TEXT`, () => {});
       
+      // Add conditional logic columns for show/hide functionality
+      db.run(`ALTER TABLE checklist_items ADD COLUMN conditional_item_id INTEGER`, () => {});
+      db.run(`ALTER TABLE checklist_items ADD COLUMN conditional_value TEXT`, () => {});
+      db.run(`ALTER TABLE checklist_items ADD COLUMN conditional_operator TEXT DEFAULT 'equals'`, () => {});
+      
       // Add critical failure tracking to audits (migration)
       db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});
       db.run(`ALTER TABLE audits ADD COLUMN weighted_score REAL`, () => {});

@@ -1194,6 +1194,28 @@ const addMissingColumns = async () => {
       }
     }
 
+    // Add conditional logic columns for show/hide functionality
+    try {
+      const checkConditionalItemId = await request.query(`
+        SELECT COUNT(*) as count 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'checklist_items' AND COLUMN_NAME = 'conditional_item_id'
+      `);
+      
+      if (checkConditionalItemId.recordset[0].count === 0) {
+        console.log('Adding conditional logic columns to checklist_items table...');
+        await request.query(`
+          ALTER TABLE [dbo].[checklist_items]
+          ADD [conditional_item_id] INT NULL,
+              [conditional_value] NVARCHAR(255) NULL,
+              [conditional_operator] NVARCHAR(50) NULL DEFAULT 'equals'
+        `);
+        console.log('Conditional logic columns added to checklist_items table');
+      }
+    } catch (err) {
+      console.warn('Error adding conditional logic columns to checklist_items:', err.message);
+    }
+    
     // Add section column for grouping items within a category (e.g., Trnx-1, Trnx-2)
     if (!itemsColumns.includes('section')) {
       console.log('Adding section column to checklist_items table...');
