@@ -27,11 +27,29 @@ const envOrigins = process.env.ALLOWED_ORIGINS
   : [];
   
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+const primaryProdOrigin = 'https://app.litebitefoods.com';
 
 // Log allowed origins in production for debugging
 if (process.env.NODE_ENV === 'production') {
   logger.info('CORS allowed origins:', { allowedOrigins });
 }
+
+// Ensure OPTIONS is handled very early with a simple allowlist handler
+app.options('*', cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+    const normalizedAllowed = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
+    if (normalizedAllowed.includes(normalizedOrigin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS policy'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Type', 'Content-Length', 'Authorization'],
+  maxAge: 86400,
+  optionsSuccessStatus: 204
+}));
 
 // CRITICAL: Add CORS headers to EVERY response FIRST (before any other middleware)
 // This ensures CORS headers are present even when errors occur

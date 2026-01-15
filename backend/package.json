@@ -10,7 +10,8 @@
     "test:setup": "node tests/setup-test-data.js",
     "test:roles": "node scripts/check-roles.js",
     "test:all": "node tests/run-all-tests.js",
-    "test:full": "node tests/run-all-tests.js --setup"
+    "test:full": "node tests/run-all-tests.js --setup",
+    "migrate:input-types": "node scripts/migrate-input-types.js"
   },
   "keywords": [
     "restaurant",
