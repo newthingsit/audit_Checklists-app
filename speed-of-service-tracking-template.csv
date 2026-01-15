@@ -1,0 +1,94 @@
+title,description,category,required,options
+"If there was NO queue, were customers greeted within 10 seconds / acceptable time","Speed of Service check","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"If there was a queue, were customers greeted within 20 seconds / acceptable time","Speed of Service check","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"If there was a queue, were you quoted an accurate wait time and provided a menu?","Speed of Service check","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Server offered to take the order within 2 minutes of your having been seated or buzzed","Speed of Service check","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Was the complete food order served in a timely manner?","Speed of Service check","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Straight Drinks on time (3-4 mins)","Beverage timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Cocktails / Mocktails on time (5-8 mins)","Beverage timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Starter on time (15-20 mins)","Food timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Mains on time (15-20 mins)","Food timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Desserts on time (10 mins)","Food timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Station holder checked for the feedback within 3 mins of starters being served","Feedback timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Manager on duty checked for the feedback within 4 mins of main course being served","Feedback timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Dishes cleared within 7 minutes of guests finishing their meals or as required during the meal","Clearing timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Bill promptly presented within 4 mins of requesting","Billing timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Staff took the payment at the table and returned with change or receipt within 5 minutes","Billing timing","Speed of Service",yes,"Yes:3;No:0;NA:NA"
+"Vacated tables cleared and cleaned within 4 minutes","Clearing timing","Speed of Service",yes,"Yes:2;No:0;NA:NA"
+title,description,category,required,input_type,options
+Table no.,Enter table number,Trnx-1,yes,open_ended,
+Greeted (No Queue) (Time),Select time when guest was greeted (no queue),Trnx-1,yes,date,
+Greeted (No Queue) (Sec),Enter seconds for greeting (no queue),Trnx-1,yes,number,
+Greeted (with Queue) (Time),Select time when guest was greeted (with queue),Trnx-1,no,date,
+Greeted (with Queue) (Sec),Enter seconds for greeting (with queue),Trnx-1,no,number,
+Straight Drinks served (Time),Select time when straight drinks were served,Trnx-1,no,date,
+Straight Drinks served (Sec),Enter seconds for straight drinks service,Trnx-1,no,number,
+Cocktails / Mocktails served (Time),Select time when cocktails/mocktails were served,Trnx-1,no,date,
+Cocktails / Mocktails served (Sec),Enter seconds for cocktails/mocktails service,Trnx-1,no,number,
+Starters served (Time),Select time when starters were served,Trnx-1,no,date,
+Starters served (Sec),Enter seconds for starters service,Trnx-1,no,number,
+Captain / F&B Exe. follow-up after starter (Time),Select time for captain follow-up after starter,Trnx-1,no,date,
+Captain / F&B Exe. follow-up after starter (Sec),Enter seconds for captain follow-up,Trnx-1,no,number,
+Manager follow-up after mains (Time),Select time for manager follow-up after mains,Trnx-1,no,date,
+Manager follow-up after mains (Sec),Enter seconds for manager follow-up,Trnx-1,no,number,
+Dishes cleared (Time),Select time when dishes were cleared,Trnx-1,no,date,
+Dishes cleared (Sec),Enter seconds for dish clearing,Trnx-1,no,number,
+Table no.,Enter table number,Trnx-2,yes,open_ended,
+Greeted (No Queue) (Time),Select time when guest was greeted (no queue),Trnx-2,yes,date,
+Greeted (No Queue) (Sec),Enter seconds for greeting (no queue),Trnx-2,yes,number,
+Greeted (with Queue) (Time),Select time when guest was greeted (with queue),Trnx-2,no,date,
+Greeted (with Queue) (Sec),Enter seconds for greeting (with queue),Trnx-2,no,number,
+Straight Drinks served (Time),Select time when straight drinks were served,Trnx-2,no,date,
+Straight Drinks served (Sec),Enter seconds for straight drinks service,Trnx-2,no,number,
+Cocktails / Mocktails served (Time),Select time when cocktails/mocktails were served,Trnx-2,no,date,
+Cocktails / Mocktails served (Sec),Enter seconds for cocktails/mocktails service,Trnx-2,no,number,
+Starters served (Time),Select time when starters were served,Trnx-2,no,date,
+Starters served (Sec),Enter seconds for starters service,Trnx-2,no,number,
+Captain / F&B Exe. follow-up after starter (Time),Select time for captain follow-up after starter,Trnx-2,no,date,
+Captain / F&B Exe. follow-up after starter (Sec),Enter seconds for captain follow-up,Trnx-2,no,number,
+Manager follow-up after mains (Time),Select time for manager follow-up after mains,Trnx-2,no,date,
+Manager follow-up after mains (Sec),Enter seconds for manager follow-up,Trnx-2,no,number,
+Dishes cleared (Time),Select time when dishes were cleared,Trnx-2,no,date,
+Dishes cleared (Sec),Enter seconds for dish clearing,Trnx-2,no,number,
+Table no.,Enter table number,Trnx-3,yes,open_ended,
+Greeted (No Queue) (Time),Select time when guest was greeted (no queue),Trnx-3,yes,date,
+Greeted (No Queue) (Sec),Enter seconds for greeting (no queue),Trnx-3,yes,number,
+Greeted (with Queue) (Time),Select time when guest was greeted (with queue),Trnx-3,no,date,
+Greeted (with Queue) (Sec),Enter seconds for greeting (with queue),Trnx-3,no,number,
+Straight Drinks served (Time),Select time when straight drinks were served,Trnx-3,no,date,
+Straight Drinks served (Sec),Enter seconds for straight drinks service,Trnx-3,no,number,
+Cocktails / Mocktails served (Time),Select time when cocktails/mocktails were served,Trnx-3,no,date,
+Cocktails / Mocktails served (Sec),Enter seconds for cocktails/mocktails service,Trnx-3,no,number,
+Starters served (Time),Select time when starters were served,Trnx-3,no,date,
+Starters served (Sec),Enter seconds for starters service,Trnx-3,no,number,
+Captain / F&B Exe. follow-up after starter (Time),Select time for captain follow-up after starter,Trnx-3,no,date,
+Captain / F&B Exe. follow-up after starter (Sec),Enter seconds for captain follow-up,Trnx-3,no,number,
+Manager follow-up after mains (Time),Select time for manager follow-up after mains,Trnx-3,no,date,
+Manager follow-up after mains (Sec),Enter seconds for manager follow-up,Trnx-3,no,number,
+Dishes cleared (Time),Select time when dishes were cleared,Trnx-3,no,date,
+Dishes cleared (Sec),Enter seconds for dish clearing,Trnx-3,no,number,
+Table no.,Enter table number,Trnx-4,yes,open_ended,
+Greeted (No Queue) (Time),Select time when guest was greeted (no queue),Trnx-4,yes,date,
+Greeted (No Queue) (Sec),Enter seconds for greeting (no queue),Trnx-4,yes,number,
+Greeted (with Queue) (Time),Select time when guest was greeted (with queue),Trnx-4,no,date,
+Greeted (with Queue) (Sec),Enter seconds for greeting (with queue),Trnx-4,no,number,
+Straight Drinks served (Time),Select time when straight drinks were served,Trnx-4,no,date,
+Straight Drinks served (Sec),Enter seconds for straight drinks service,Trnx-4,no,number,
+Cocktails / Mocktails served (Time),Select time when cocktails/mocktails were served,Trnx-4,no,date,
+Cocktails / Mocktails served (Sec),Enter seconds for cocktails/mocktails service,Trnx-4,no,number,
+Starters served (Time),Select time when starters were served,Trnx-4,no,date,
+Starters served (Sec),Enter seconds for starters service,Trnx-4,no,number,
+Captain / F&B Exe. follow-up after starter (Time),Select time for captain follow-up after starter,Trnx-4,no,date,
+Captain / F&B Exe. follow-up after starter (Sec),Enter seconds for captain follow-up,Trnx-4,no,number,
+Manager follow-up after mains (Time),Select time for manager follow-up after mains,Trnx-4,no,date,
+Manager follow-up after mains (Sec),Enter seconds for manager follow-up,Trnx-4,no,number,
+Dishes cleared (Time),Select time when dishes were cleared,Trnx-4,no,date,
+Dishes cleared (Sec),Enter seconds for dish clearing,Trnx-4,no,number,
+Avg Greeted (No Queue) (Sec),Average seconds for greeting (no queue),Avg,no,number,
+Avg Greeted (with Queue) (Sec),Average seconds for greeting (with queue),Avg,no,number,
+Avg Straight Drinks served (Sec),Average seconds for straight drinks service,Avg,no,number,
+Avg Cocktails / Mocktails served (Sec),Average seconds for cocktails/mocktails service,Avg,no,number,
+Avg Starters served (Sec),Average seconds for starters service,Avg,no,number,
+Avg Captain follow-up (Sec),Average seconds for captain follow-up,Avg,no,number,
+Avg Manager follow-up (Sec),Average seconds for manager follow-up,Avg,no,number,
+Avg Dishes cleared (Sec),Average seconds for dish clearing,Avg,no,number,
