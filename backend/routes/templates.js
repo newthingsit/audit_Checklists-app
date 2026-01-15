@@ -247,10 +247,10 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
     const templateId = template.id;
     logger.info(`[Admin] Found template: ${template.name} (ID: ${templateId})`);
     
-    // Get existing items in this category
+    // Get existing items in this category (including sectioned categories like "CATEGORY|Trnx-1")
     const existing = await dbInstance.all(
-      'SELECT id FROM checklist_items WHERE template_id = ? AND category = ?',
-      [templateId, category]
+      `SELECT id FROM checklist_items WHERE template_id = ? AND (category = ? OR category LIKE ?)`,
+      [templateId, category, `${category}|%`]
     );
     
     // Delete existing items and their options
@@ -258,7 +258,7 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
       await dbInstance.run('DELETE FROM checklist_item_options WHERE item_id = ?', [item.id]);
       await dbInstance.run('DELETE FROM checklist_items WHERE id = ?', [item.id]);
     }
-    logger.info(`[Admin] Deleted ${existing.length} existing items`);
+    logger.info(`[Admin] Deleted ${existing.length} existing items from category "${category}" and sub-sections`);
     
     // Insert new items for each section
     let insertedCount = 0;
