@@ -2473,24 +2473,27 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                <View style={styles.actionsContainer}>
-                  <TouchableOpacity
-                    style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
-                    onPress={() => handlePhotoUpload(item.id)}
-                    disabled={uploading[item.id] || auditStatus === 'completed'}
-                  >
-                    {uploading[item.id] ? (
-                      <ActivityIndicator size="small" color={themeConfig.primary.main} />
-                    ) : (
-                      <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
-                    )}
-                    <Text style={styles.photoButtonText}>
-                      {photos[item.id] ? 'Change Photo' : 'Take Photo'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                {/* Only show photo button for items that require photos (input_type === 'image_upload') */}
+                {fieldType === 'image_upload' && (
+                  <View style={styles.actionsContainer}>
+                    <TouchableOpacity
+                      style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
+                      onPress={() => handlePhotoUpload(item.id)}
+                      disabled={uploading[item.id] || auditStatus === 'completed'}
+                    >
+                      {uploading[item.id] ? (
+                        <ActivityIndicator size="small" color={themeConfig.primary.main} />
+                      ) : (
+                        <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
+                      )}
+                      <Text style={styles.photoButtonText}>
+                        {photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-                {photos[item.id] && (
+                {photos[item.id] && fieldType === 'image_upload' && (
                   <View style={styles.photoContainer}>
                     <Image source={{ uri: photos[item.id] }} style={styles.photo} />
                     {auditStatus !== 'completed' && (

@@ -1289,80 +1289,83 @@ const AuditForm = () => {
             disabled={auditStatus === 'completed'}
           />
 
-          <Box sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            mt: 2,
-            flexWrap: isMobile ? 'wrap' : 'nowrap'
-          }}>
-            <input
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              id={`photo-upload-${item.id}`}
-              type="file"
-              onChange={(e) => {
-                const file = e.target.files[0];
-                if (file) handlePhotoUpload(item.id, file);
-              }}
-              disabled={auditStatus === 'completed'}
-            />
-            <label htmlFor={`photo-upload-${item.id}`} style={{ width: isMobile ? '100%' : 'auto' }}>
-              <Tooltip title="Upload photo evidence">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  startIcon={<PhotoCameraIcon />}
-                  size={isMobile ? "medium" : "small"}
-                  disabled={uploading[item.id] || auditStatus === 'completed'}
-                  className="photo-upload-btn"
-                  sx={{
-                    width: isMobile ? '100%' : 'auto',
-                    minHeight: isMobile ? 48 : 36,
-                  }}
-                >
-                  {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
-                </Button>
-              </Tooltip>
-            </label>
-            {photos[item.id] && (
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                width: isMobile ? '100%' : 'auto',
-                justifyContent: isMobile ? 'center' : 'flex-start',
-                mt: isMobile ? 1 : 0
-              }}>
-                <img
-                  src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
-                  alt="Uploaded"
-                  style={{
-                    width: isMobile ? 60 : 50,
-                    height: isMobile ? 60 : 50,
-                    borderRadius: 8,
-                    objectFit: 'cover',
-                    border: '2px solid #e0e0e0'
-                  }}
-                  crossOrigin="anonymous"
-                />
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setPhotos({ ...photos, [item.id]: null });
-                    if (inputType === 'image_upload') {
-                      setResponses({ ...responses, [item.id]: 'pending' });
-                    }
-                  }}
-                  color="error"
-                  disabled={auditStatus === 'completed'}
-                >
-                  <CancelIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-          </Box>
+          {/* Only show photo button for items that require photos (input_type === 'image_upload') */}
+          {inputType === 'image_upload' && (
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              mt: 2,
+              flexWrap: isMobile ? 'wrap' : 'nowrap'
+            }}>
+              <input
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                id={`photo-upload-${item.id}`}
+                type="file"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) handlePhotoUpload(item.id, file);
+                }}
+                disabled={auditStatus === 'completed'}
+              />
+              <label htmlFor={`photo-upload-${item.id}`} style={{ width: isMobile ? '100%' : 'auto' }}>
+                <Tooltip title="Upload photo evidence">
+                  <Button
+                    variant="outlined"
+                    component="span"
+                    startIcon={<PhotoCameraIcon />}
+                    size={isMobile ? "medium" : "small"}
+                    disabled={uploading[item.id] || auditStatus === 'completed'}
+                    className="photo-upload-btn"
+                    sx={{
+                      width: isMobile ? '100%' : 'auto',
+                      minHeight: isMobile ? 48 : 36,
+                    }}
+                  >
+                    {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                  </Button>
+                </Tooltip>
+              </label>
+              {photos[item.id] && (
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  width: isMobile ? '100%' : 'auto',
+                  justifyContent: isMobile ? 'center' : 'flex-start',
+                  mt: isMobile ? 1 : 0
+                }}>
+                  <img
+                    src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
+                    alt="Uploaded"
+                    style={{
+                      width: isMobile ? 60 : 50,
+                      height: isMobile ? 60 : 50,
+                      borderRadius: 8,
+                      objectFit: 'cover',
+                      border: '2px solid #e0e0e0'
+                    }}
+                    crossOrigin="anonymous"
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setPhotos({ ...photos, [item.id]: null });
+                      if (inputType === 'image_upload') {
+                        setResponses({ ...responses, [item.id]: 'pending' });
+                      }
+                    }}
+                    color="error"
+                    disabled={auditStatus === 'completed'}
+                  >
+                    <CancelIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )}
+            </Box>
+          )}
         </CardContent>
       </Card>
     );
