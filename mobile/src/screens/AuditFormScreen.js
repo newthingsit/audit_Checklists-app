@@ -54,9 +54,12 @@ const AuditFormScreen = () => {
   const [auditStatus, setAuditStatus] = useState(null); // Track audit status
   const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
   const [selectedCategory, setSelectedCategory] = useState(null); // Selected category for filtering items
+  const [selectedSection, setSelectedSection] = useState(null); // Selected section within a category
   const [categories, setCategories] = useState([]); // Available categories
   const [filteredItems, setFilteredItems] = useState([]); // Items filtered by selected category
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track which categories have items completed
+  const [groupedCategories, setGroupedCategories] = useState([]); // Grouped categories with sub-categories/sections
+  const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
   
   // GPS Location state
   const { getCurrentLocation, permissionGranted, settings: locationSettings } = useLocation();
@@ -69,7 +72,7 @@ const AuditFormScreen = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
-  
+
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
     return locations.filter(loc => {
@@ -233,7 +236,29 @@ const AuditFormScreen = () => {
           if (infoData.attendees) setAttendees(infoData.attendees);
           if (infoData.pointsDiscussed) setPointsDiscussed(infoData.pointsDiscussed);
           if (infoData.pictures && Array.isArray(infoData.pictures)) {
-            setInfoPictures(infoData.pictures.map(uri => ({ uri })));
+            // Convert picture paths to full URLs for display
+            const baseUrl = API_BASE_URL.replace('/api', '');
+            const pictureUris = infoData.pictures.map(picPath => {
+              const pathStr = String(picPath);
+              
+              // Handle local file paths (file://) - use as-is
+              if (pathStr.startsWith('file://')) {
+                return { uri: pathStr };
+              }
+              
+              // Handle HTTP/HTTPS URLs
+              if (pathStr.startsWith('http://') || pathStr.startsWith('https://')) {
+                return { uri: pathStr };
+              }
+              
+              // Handle server paths (relative paths)
+              if (pathStr.startsWith('/')) {
+                return { uri: `${baseUrl}${pathStr}` };
+              } else {
+                return { uri: `${baseUrl}/${pathStr}` };
+              }
+            });
+            setInfoPictures(pictureUris);
           }
         }
       } catch (e) {
@@ -600,6 +625,22 @@ const AuditFormScreen = () => {
     );
   }, []);
 
+  const isItemComplete = useCallback((item) => {
+    const fieldType = getEffectiveItemFieldType(item);
+    if (isOptionFieldType(fieldType)) {
+      return !!selectedOptions[item.id];
+    }
+    if (fieldType === 'image_upload') {
+      return !!photos[item.id];
+    }
+    if (isAnswerFieldType(fieldType)) {
+      const value = comments[item.id];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    }
+    const status = responses[item.id];
+    return status && status !== 'pending';
+  }, [comments, photos, responses, selectedOptions, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
+
   const handleAnswerChange = useCallback((itemId, value) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
@@ -613,23 +654,47 @@ const AuditFormScreen = () => {
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
     let lastError = null;
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:635',message:'uploadPhotoWithRetry entry',data:{hasAuthToken:!!authToken,authTokenLength:authToken?.length||0,maxRetries},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:638',message:'Upload attempt start',data:{attempt,maxRetries,apiBaseUrl:API_BASE_URL},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (reduced from 30s)
+        let didTimeout = false;
+        const timeoutMs = 30000; // 30 second timeout (uploads can be slow on mobile networks)
+        const timeoutId = setTimeout(() => {
+          didTimeout = true;
+          controller.abort();
+        }, timeoutMs);
         
-        const uploadResponse = await fetch(`${API_BASE_URL}/photo`, {
+        const uploadUrl = `${API_BASE_URL}/photo`;
+        const requestHeaders = {
+          'Accept': 'application/json',
+          ...(authToken ? { 'Authorization': authToken } : {}),
+        };
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:644',message:'Before fetch request',data:{uploadUrl,hasHeaders:!!requestHeaders,hasAuth:!!requestHeaders.Authorization,formDataKeys:formData._parts?.map(p=>p[0])||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            ...(authToken ? { 'Authorization': authToken } : {}),
-          },
+          headers: requestHeaders,
           body: formData,
           signal: controller.signal,
         });
         
         clearTimeout(timeoutId);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:653',message:'Fetch response received',data:{ok:uploadResponse.ok,status:uploadResponse.status,statusText:uploadResponse.statusText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
 
         if (!uploadResponse.ok) {
           const errorData = await uploadResponse.json().catch(() => ({}));
@@ -654,17 +719,37 @@ const AuditFormScreen = () => {
           }
         }
 
-        return await uploadResponse.json();
+        const responseData = await uploadResponse.json();
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:679',message:'Upload success',data:{hasPhotoUrl:!!responseData.photo_url,photoUrl:responseData.photo_url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        return responseData;
       } catch (error) {
         lastError = error;
+        
+        // Metro-visible debug line (device cannot reach 127.0.0.1 ingest endpoint)
+        console.log('[Upload][Debug]', {
+          attempt,
+          maxRetries,
+          didTimeout,
+          errorName: error?.name,
+          errorMessage: error?.message,
+        });
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:681',message:'Upload error caught',data:{errorName:error.name,errorMessage:error.message,errorType:error.type,isAbortError:error.name==='AbortError',isNetworkError:error.message?.includes('Network request failed'),attempt,maxRetries},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
         
         // Don't retry on auth or not found errors
         if (error.noRetry) throw error;
         
         // Handle timeout errors
-        if (error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
+        if (didTimeout || error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
           if (attempt < maxRetries) {
             console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:688',message:'Timeout retry',data:{attempt,maxRetries,waitTime:2000*attempt},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+            // #endregion
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
             continue;
           }
@@ -674,14 +759,25 @@ const AuditFormScreen = () => {
         // Network errors - retry with exponential backoff
         if (error.message?.includes('Network request failed') && attempt < maxRetries) {
           console.log(`Network error. Retrying ${attempt + 1}/${maxRetries}...`);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:697',message:'Network error retry',data:{attempt,maxRetries,waitTime:2000*attempt},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+          // #endregion
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
         
-        if (attempt === maxRetries) throw error;
+        if (attempt === maxRetries) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:703',message:'Max retries reached',data:{attempt,maxRetries,errorName:error.name,errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
+          // #endregion
+          throw error;
+        }
       }
     }
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:707',message:'All retries exhausted',data:{lastErrorName:lastError?.name,lastErrorMessage:lastError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'})}).catch(()=>{});
+    // #endregion
     throw lastError;
   };
 
@@ -778,38 +874,280 @@ const AuditFormScreen = () => {
     }
   }, [auditStatus, photos, uploading]);
 
-  const handleCategorySelect = (category) => {
+  // Group categories by parent and sections (similar to web app)
+  const groupCategories = useCallback((categoryList, itemsList) => {
+    const groups = {};
+    
+    // Define known parent category patterns
+    const parentPatterns = [
+      { pattern: /^SERVICE\s*[-–]\s*/i, parent: 'SERVICE' },
+      { pattern: /^SERVICE\s*\(/i, parent: 'SERVICE' },
+      { pattern: /^HYGIENE\s*(AND|&)\s*CLEANLINESS/i, parent: 'HYGIENE & CLEANLINESS' },
+      { pattern: /^SPEED\s*OF\s*SERVICE/i, parent: 'SPEED OF SERVICE' },
+      { pattern: /^QUALITY/i, parent: 'QUALITY' },
+      { pattern: /^PROCESSES/i, parent: 'PROCESSES' },
+    ];
+    
+    categoryList.forEach(category => {
+      if (!category) return;
+      
+      let parentName = null;
+      let subCategoryName = category;
+      
+      // Try to match with known patterns
+      for (const { pattern, parent } of parentPatterns) {
+        if (pattern.test(category)) {
+          parentName = parent;
+          // Extract sub-category name
+          if (category.includes('(') && category.includes(')')) {
+            const match = category.match(/\(([^)]+)\)/);
+            if (match) {
+              subCategoryName = match[1].trim();
+            }
+          } else if (category.includes(' - ')) {
+            subCategoryName = category.split(' - ').slice(1).join(' - ').trim() || category;
+          } else if (category.includes(' – ')) {
+            subCategoryName = category.split(' – ').slice(1).join(' – ').trim() || category;
+          } else {
+            subCategoryName = category.replace(pattern, '').trim() || category;
+          }
+          break;
+        }
+      }
+      
+      // If no pattern matched, use the category as its own group
+      if (!parentName) {
+        parentName = category;
+        subCategoryName = null;
+      }
+      
+      if (!groups[parentName]) {
+        groups[parentName] = {
+          name: parentName,
+          subCategories: [],
+          totalItems: 0,
+          completedItems: 0
+        };
+      }
+      
+      // Get all items for this category
+      const categoryItems = itemsList.filter(item => item.category === category);
+      
+      // Check if items have sections (e.g., Trnx-1, Trnx-2, Avg)
+      const itemsBySection = {};
+      categoryItems.forEach(item => {
+        const section = item.section || 'General';
+        if (!itemsBySection[section]) {
+          itemsBySection[section] = [];
+        }
+        itemsBySection[section].push(item);
+      });
+      
+      const hasSections = Object.keys(itemsBySection).length > 1 || 
+        (Object.keys(itemsBySection).length === 1 && Object.keys(itemsBySection)[0] !== 'General');
+      
+      if (hasSections) {
+        // Group by sections within the category
+        Object.keys(itemsBySection).sort((a, b) => {
+          // Custom sort: Trnx-* first, then Avg, then others alphabetically
+          if (a.startsWith('Trnx-') && b.startsWith('Trnx-')) {
+            return a.localeCompare(b);
+          }
+          if (a.startsWith('Trnx-')) return -1;
+          if (b.startsWith('Trnx-')) return 1;
+          if (a === 'Avg') return 1;
+          if (b === 'Avg') return -1;
+          return a.localeCompare(b);
+        }).forEach(section => {
+          const sectionItems = itemsBySection[section];
+          const completedCount = sectionItems.filter(item => {
+            const status = responses[item.id];
+            return status && status !== 'pending';
+          }).length;
+          
+          const sectionDisplayName = section === 'General' ? (subCategoryName || category) : section;
+          
+          groups[parentName].subCategories.push({
+            fullName: category,
+            displayName: sectionDisplayName,
+            section: section,
+            itemCount: sectionItems.length,
+            completedCount: completedCount,
+            isComplete: completedCount === sectionItems.length && sectionItems.length > 0
+          });
+          
+          groups[parentName].totalItems += sectionItems.length;
+          groups[parentName].completedItems += completedCount;
+        });
+      } else {
+        // No sections, treat as single sub-category
+        const completedCount = categoryItems.filter(item => {
+          const status = responses[item.id];
+          return status && status !== 'pending';
+        }).length;
+        
+        groups[parentName].subCategories.push({
+          fullName: category,
+          displayName: subCategoryName || category,
+          itemCount: categoryItems.length,
+          completedCount: completedCount,
+          isComplete: completedCount === categoryItems.length && categoryItems.length > 0
+        });
+        
+        groups[parentName].totalItems += categoryItems.length;
+        groups[parentName].completedItems += completedCount;
+      }
+    });
+    
+    // Sort groups and sub-categories
+    return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+  }, [responses]);
+
+  // Update grouped categories when items or categories change
+  useEffect(() => {
+    if (items.length > 0 && categories.length > 0) {
+      const grouped = groupCategories(categories, items);
+      setGroupedCategories(grouped);
+      
+      // Initialize expanded state for new groups
+      const initialExpanded = {};
+      grouped.forEach(group => {
+        initialExpanded[group.name] = false; // All collapsed by default
+      });
+      setExpandedGroups(initialExpanded);
+    }
+  }, [items, categories, groupCategories]);
+
+  const handleCategorySelect = (category, section = null) => {
+    setSelectedCategory(category);
+    setSelectedSection(section);
+    // Filter items by category and optionally by section
+    const filtered = items.filter(item => {
+      if (item.category !== category) return false;
+      if (section && item.section !== section) return false;
+      return true;
+    });
+    setFilteredItems(filtered);
     setSelectedCategory(category);
     const filtered = items.filter(item => item.category === category);
     setFilteredItems(filtered);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep === 0) {
       // Validate required fields
       if (!locationId || !selectedLocation) {
         Alert.alert('Error', 'Please select an outlet');
         return;
       }
-      if (!attendees.trim()) {
-        Alert.alert('Error', 'Please enter name of attendees');
-        return;
-      }
       if (infoPictures.length === 0) {
         Alert.alert('Error', 'Please add at least one picture');
         return;
       }
-      if (!pointsDiscussed.trim()) {
-        Alert.alert('Error', 'Please enter points discussed');
-        return;
+      
+      // Upload info pictures if they haven't been uploaded yet
+      let uploadedPictureUrls = [];
+      if (infoPictures.length > 0) {
+        try {
+          setSaving(true);
+          const authToken = axios.defaults.headers.common['Authorization'];
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:830',message:'Info pictures upload start',data:{pictureCount:infoPictures.length,hasAuthToken:!!authToken,authTokenLength:authToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
+          // #endregion
+          
+          for (let i = 0; i < infoPictures.length; i++) {
+            const picture = infoPictures[i];
+            // Handle both object format { uri: ... } and string format
+            const pictureUri = typeof picture === 'string' ? picture : (picture?.uri || '');
+            const uriString = String(pictureUri);
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:836',message:'Processing picture',data:{index:i+1,total:infoPictures.length,pictureUri:uriString,isFileUri:uriString.startsWith('file://'),isHttpUri:uriString.startsWith('http')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'L'})}).catch(()=>{});
+            // #endregion
+            
+            // Skip local file paths that haven't been uploaded yet - they need to be uploaded
+            if (uriString.startsWith('file://')) {
+              // Upload the local picture - use the original URI from picture object, not converted string
+              const formData = new FormData();
+              const fileName = `info_picture_${Date.now()}_${Math.random()}.jpg`;
+              // Use the original URI (not the stringified version) to ensure proper file access
+              const fileUri = typeof picture === 'string' ? picture : picture?.uri;
+              formData.append('photo', {
+                uri: fileUri,
+                type: 'image/jpeg',
+                name: fileName,
+              });
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:842',message:'FormData created for upload',data:{fileName,fileUri,formDataParts:formData._parts?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
+              // #endregion
+              
+              const responseData = await uploadPhotoWithRetry(formData, authToken);
+              if (responseData?.photo_url) {
+                uploadedPictureUrls.push(responseData.photo_url);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:850',message:'Picture upload success',data:{index:i+1,photoUrl:responseData.photo_url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'N'})}).catch(()=>{});
+                // #endregion
+              } else {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:850',message:'Picture upload missing photo_url',data:{index:i+1,responseData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'N2'})}).catch(()=>{});
+                // #endregion
+              }
+            } else if (uriString.startsWith('http://') || uriString.startsWith('https://')) {
+              // Already a full URL - extract path from URL
+              try {
+                const urlObj = new URL(uriString);
+                uploadedPictureUrls.push(urlObj.pathname);
+              } catch (e) {
+                // If URL parsing fails, try to extract path manually
+                const pathMatch = uriString.match(/\/uploads\/[^?]+/);
+                uploadedPictureUrls.push(pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, ''));
+              }
+            } else {
+              // Already a server path - use as-is
+              uploadedPictureUrls.push(uriString.startsWith('/') ? uriString : `/${uriString}`);
+            }
+          }
+          setSaving(false);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:867',message:'Info pictures upload complete',data:{uploadedCount:uploadedPictureUrls.length,totalCount:infoPictures.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'O'})}).catch(()=>{});
+          // #endregion
+        } catch (uploadError) {
+          setSaving(false);
+          console.error('Error uploading info pictures:', uploadError);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:868',message:'Info pictures upload error',data:{errorName:uploadError?.name,errorMessage:uploadError?.message,errorType:uploadError?.type,uploadedCount:uploadedPictureUrls.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'P'})}).catch(()=>{});
+          // #endregion
+          
+          Alert.alert('Error', 'Failed to upload pictures. Please try again.');
+          return;
+        }
       }
-      // Store info fields in notes for now (can be saved to backend later)
+      
+      // Store info fields in notes (will be saved to backend when submitting)
       const infoData = {
-        attendees: attendees,
-        pointsDiscussed: pointsDiscussed,
-        pictures: infoPictures.map(p => p.uri),
+        pictures: uploadedPictureUrls,
       };
       setNotes(JSON.stringify(infoData));
+      
+      // Update infoPictures with uploaded URLs for display
+      if (uploadedPictureUrls.length > 0) {
+        const baseUrl = API_BASE_URL.replace('/api', '');
+        const updatedPictures = uploadedPictureUrls.map(url => {
+          if (url.startsWith('http')) {
+            return { uri: url };
+          } else if (url.startsWith('/')) {
+            return { uri: `${baseUrl}${url}` };
+          } else {
+            return { uri: `${baseUrl}/${url}` };
+          }
+        });
+        setInfoPictures(updatedPictures);
+      }
+      
       // If no categories or only one category, skip category selection
       if (categories.length <= 1) {
         setCurrentStep(2);
@@ -850,6 +1188,77 @@ const AuditFormScreen = () => {
         return;
       }
 
+      // Validate info step data if we're on step 0 or haven't saved it yet
+      if (currentStep === 0 || !notes || !notes.includes('attendees')) {
+        if (!attendees.trim()) {
+          Alert.alert('Error', 'Please enter name of attendees');
+          setSaving(false);
+          return;
+        }
+        if (infoPictures.length === 0) {
+          Alert.alert('Error', 'Please add at least one picture');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Upload info pictures if they haven't been uploaded yet
+      let uploadedPictureUrls = [];
+      if (infoPictures.length > 0) {
+        try {
+          const authToken = axios.defaults.headers.common['Authorization'];
+          for (const picture of infoPictures) {
+            // Handle both object format { uri: ... } and string format
+            const pictureUri = typeof picture === 'string' ? picture : (picture?.uri || '');
+            const uriString = String(pictureUri);
+            
+            // Skip local file paths that haven't been uploaded yet - they need to be uploaded
+            if (uriString.startsWith('file://')) {
+              // Upload the local picture - use the original URI from picture object, not converted string
+              const formData = new FormData();
+              const fileUri = typeof picture === 'string' ? picture : picture?.uri;
+              formData.append('photo', {
+                uri: fileUri,
+                type: 'image/jpeg',
+                name: `info_picture_${Date.now()}_${Math.random()}.jpg`,
+              });
+              
+              const responseData = await uploadPhotoWithRetry(formData, authToken);
+              if (responseData?.photo_url) {
+                uploadedPictureUrls.push(responseData.photo_url);
+              }
+            } else if (uriString.startsWith('http://') || uriString.startsWith('https://')) {
+              // Already a full URL - extract path from URL
+              try {
+                const urlObj = new URL(uriString);
+                uploadedPictureUrls.push(urlObj.pathname);
+              } catch (e) {
+                // If URL parsing fails, try to extract path manually
+                const pathMatch = uriString.match(/\/uploads\/[^?]+/);
+                uploadedPictureUrls.push(pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, ''));
+              }
+            } else {
+              // Already a server path - use as-is
+              uploadedPictureUrls.push(uriString.startsWith('/') ? uriString : `/${uriString}`);
+            }
+          }
+        } catch (uploadError) {
+          console.error('Error uploading info pictures:', uploadError);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:1063',message:'Info pictures upload error in handleSubmit',data:{errorName:uploadError?.name,errorMessage:uploadError?.message,errorType:uploadError?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'P2'})}).catch(()=>{});
+          // #endregion
+          Alert.alert('Error', 'Failed to upload pictures. Please try again.');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Prepare notes with latest info data
+      const infoData = {
+        pictures: uploadedPictureUrls,
+      };
+      const notesToSave = JSON.stringify(infoData);
+
       // Determine if we're editing an existing audit
       if (auditId) {
         // We have an explicit auditId, update existing audit
@@ -859,7 +1268,7 @@ const AuditFormScreen = () => {
             restaurant_name: selectedLocation.name,
             location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
             location_id: parseInt(locationId),
-            notes
+            notes: notesToSave
           };
           
           // Add GPS location data if captured
@@ -872,6 +1281,8 @@ const AuditFormScreen = () => {
           }
           
           await axios.put(`${API_BASE_URL}/audits/${auditId}`, updateData);
+          // Update local notes state
+          setNotes(notesToSave);
         } catch (updateError) {
           // If update fails, log but continue with item updates
           console.warn('Failed to update audit info, continuing with items:', updateError);
@@ -887,7 +1298,7 @@ const AuditFormScreen = () => {
               restaurant_name: selectedLocation.name,
               location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
               location_id: parseInt(locationId),
-              notes
+              notes: notesToSave
             };
             
             // Add GPS location data if captured
@@ -900,6 +1311,8 @@ const AuditFormScreen = () => {
             }
             
             await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, updateData);
+            // Update local notes state
+            setNotes(notesToSave);
           }
         } catch (error) {
           // If audit doesn't exist (404) or other error, we'll create a new one below
@@ -914,7 +1327,7 @@ const AuditFormScreen = () => {
           restaurant_name: selectedLocation.name,
           location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
           location_id: parseInt(locationId),
-          notes
+          notes: notesToSave
         };
 
         // Don't set audit_category when creating new audit - allow multiple categories in same audit
@@ -937,6 +1350,20 @@ const AuditFormScreen = () => {
         const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
         currentAuditId = auditResponse.data.id;
         setCurrentAuditId(currentAuditId);
+        // Update local notes state
+        setNotes(notesToSave);
+      }
+
+      // Validate required checklist items before saving
+      const requiredItems = (filteredItems || []).filter(item => item?.required);
+      const missingRequired = requiredItems.filter(item => !isItemComplete(item));
+      if (missingRequired.length > 0) {
+        Alert.alert(
+          'Incomplete Checklist',
+          `Please complete all required items (${missingRequired.length} remaining).`
+        );
+        setSaving(false);
+        return;
       }
 
       // Use batch update for faster saves - prepare all items
@@ -1007,7 +1434,7 @@ const AuditFormScreen = () => {
             updateData.photo_url = `/${photoUrl}`;
           }
         }
-        
+
         return updateData;
       });
 
@@ -1043,6 +1470,16 @@ const AuditFormScreen = () => {
         }
       } catch (batchError) {
         console.warn('Batch update failed, trying individual updates:', batchError);
+        
+        // Check if it's a critical error that shouldn't be retried
+        const batchStatus = batchError?.response?.status;
+        const batchMessage = batchError?.response?.data?.error || batchError?.response?.data?.message || batchError?.message || 'Unknown error';
+        
+        // If it's a 400/404/403 error, don't retry - show error immediately
+        if (batchStatus === 400 || batchStatus === 404 || batchStatus === 403) {
+          throw new Error(`Failed to save audit items: ${batchMessage}`);
+        }
+        
         // Fallback to individual updates if batch fails
         // IMPORTANT: Do NOT fire all item updates in parallel (can trigger 429 and make all fail).
         const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${currentAuditId}/items/${itemId}`;
@@ -1067,6 +1504,12 @@ const AuditFormScreen = () => {
 
               console.warn(`Failed to update item ${itemId} (attempt ${attempt}/${maxItemRetries}):`, itemError?.message || itemError);
 
+              // Don't retry on 400/404/403 errors
+              if (status === 400 || status === 404 || status === 403) {
+                errors.push({ itemId, error: itemError });
+                break;
+              }
+
               // Retry on 429 + network-ish errors
               if (attempt < maxItemRetries && (status === 429 || !status)) {
                 await new Promise(resolve => setTimeout(resolve, waitMs));
@@ -1082,11 +1525,19 @@ const AuditFormScreen = () => {
           await new Promise(resolve => setTimeout(resolve, 60));
         }
 
-        if (errors.length > 0 && errors.length === batchItems.length) {
+        if (errors.length > 0) {
+          const failedCount = errors.length;
           const first = errors[0]?.error;
           const firstStatus = first?.response?.status;
           const firstMsg = first?.response?.data?.error || first?.response?.data?.message || first?.message || 'Unknown error';
-          throw new Error(`Failed to save ${errors.length} items (first error${firstStatus ? ` ${firstStatus}` : ''}: ${firstMsg})`);
+          
+          // If all items failed, throw error
+          if (failedCount === batchItems.length) {
+            throw new Error(`Failed to save all ${failedCount} items (first error${firstStatus ? ` ${firstStatus}` : ''}: ${firstMsg})`);
+          } else {
+            // Some items failed - log warning but continue
+            console.warn(`Failed to save ${failedCount} out of ${batchItems.length} items. Continuing...`);
+          }
         }
       }
 
@@ -1195,8 +1646,41 @@ const AuditFormScreen = () => {
       }
     } catch (error) {
       console.error('Error saving audit:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
-      Alert.alert('Error', isEditing ? `Failed to update audit: ${errorMessage}` : `Failed to save audit: ${errorMessage}`);
+      let errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Failed to save')) {
+        errorMessage = error.message;
+      } else if (error.response?.status === 400) {
+        errorMessage = `Invalid data: ${errorMessage}`;
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Session expired. Please login again.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to perform this action.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Audit or item not found. Please refresh and try again.';
+      } else if (error.response?.status === 429) {
+        errorMessage = 'Too many requests. Please wait a moment and try again.';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (error.message?.includes('Network')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      }
+      
+      Alert.alert(
+        'Error', 
+        isEditing ? `Failed to update audit: ${errorMessage}` : `Failed to save audit: ${errorMessage}`,
+        [
+          { text: 'OK' },
+          ...(error.response?.status === 401 ? [{
+            text: 'Login',
+            onPress: () => {
+              // Navigate to login if session expired
+              navigation.navigate('Login');
+            }
+          }] : [])
+        ]
+      );
     } finally {
       setSaving(false);
     }
@@ -1287,19 +1771,6 @@ const AuditFormScreen = () => {
             )}
           </View>
 
-          {/* Name of Attendees (Required) */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Name of Attendees (Required)</Text>
-            <TextInput
-              style={[styles.textInput, auditStatus === 'completed' && styles.disabledInput]}
-              value={attendees}
-              onChangeText={setAttendees}
-              placeholder="Enter attendees name"
-              placeholderTextColor={themeConfig.text.disabled}
-              editable={auditStatus !== 'completed'}
-            />
-          </View>
-
           {/* Picture (Required) */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Picture (Required)</Text>
@@ -1333,10 +1804,11 @@ const AuditFormScreen = () => {
                         return;
                       }
                       const result = await ImagePicker.launchImageLibraryAsync({
-                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                        allowsEditing: true,
-                        aspect: [4, 3],
-                        quality: 0.8,
+                        mediaTypes: ['images'],
+                        allowsEditing: false,
+                        quality: 0.3,
+                        exif: false,
+                        base64: false,
                       });
                       if (!result.canceled && result.assets[0]) {
                         setInfoPictures([...infoPictures, { uri: result.assets[0].uri }]);
@@ -1352,21 +1824,6 @@ const AuditFormScreen = () => {
                 </TouchableOpacity>
               )}
             </View>
-          </View>
-
-          {/* Points Discussed (Required) */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Points Discussed (Required)</Text>
-            <TextInput
-              style={[styles.textInput, styles.textArea, auditStatus === 'completed' && styles.disabledInput]}
-              value={pointsDiscussed}
-              onChangeText={setPointsDiscussed}
-              placeholder="Enter points discussed"
-              placeholderTextColor={themeConfig.text.disabled}
-              multiline
-              numberOfLines={4}
-              editable={auditStatus !== 'completed'}
-            />
           </View>
 
           {/* GPS Location Capture (Hidden but still functional) */}
@@ -1425,7 +1882,7 @@ const AuditFormScreen = () => {
                 }}
               >
                 <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Save Draft</Text>
-              </TouchableOpacity>
+          </TouchableOpacity>
             )}
             {auditStatus === 'completed' ? (
               <TouchableOpacity
@@ -1443,9 +1900,9 @@ const AuditFormScreen = () => {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, (!selectedLocation || !attendees.trim() || infoPictures.length === 0 || !pointsDiscussed.trim()) && styles.buttonDisabled]}
+                style={[styles.button, (!selectedLocation || infoPictures.length === 0) && styles.buttonDisabled]}
                 onPress={handleNext}
-                disabled={!selectedLocation || !attendees.trim() || infoPictures.length === 0 || !pointsDiscussed.trim()}
+                disabled={!selectedLocation || infoPictures.length === 0}
               >
                 <Text style={styles.buttonText}>Submit</Text>
               </TouchableOpacity>
@@ -1472,13 +1929,13 @@ const AuditFormScreen = () => {
             
             <View style={styles.searchInputWrapper}>
               <Icon name="search" size={20} color={themeConfig.text.disabled} style={styles.searchIconInModal} />
-              <TextInput
-                style={styles.searchInput}
+            <TextInput
+              style={styles.searchInput}
                 placeholder="Search"
-                value={storeSearchText}
-                onChangeText={setStoreSearchText}
+              value={storeSearchText}
+              onChangeText={setStoreSearchText}
                 placeholderTextColor={themeConfig.text.disabled}
-              />
+            />
             </View>
             
             <FlatList
@@ -1520,59 +1977,210 @@ const AuditFormScreen = () => {
             </Text>
           </View>
           
-          {categories.map((category, index) => {
-            const categoryItems = items.filter(item => item.category === category);
-            const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
-            return (
-              <TouchableOpacity
-                key={category || `no-category-${index}`}
-                style={[
-                  styles.categoryCard,
-                  selectedCategory === category && styles.categoryCardSelected,
-                  status.isComplete && styles.categoryCardCompleted
-                ]}
-                onPress={() => handleCategorySelect(category)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.categoryCardContent}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+          {groupedCategories.length > 0 ? (
+            groupedCategories.map((group, groupIndex) => {
+              const hasSubCategories = group.subCategories.length > 1 || (group.subCategories.length === 1 && group.subCategories[0].displayName !== group.name);
+              const groupStatus = {
+                completed: group.completedItems,
+                total: group.totalItems,
+                isComplete: group.completedItems === group.totalItems && group.totalItems > 0
+              };
+              const isExpanded = expandedGroups[group.name] || false;
+
+              // If only one sub-category and it's the same as the group, render as simple card
+              if (!hasSubCategories) {
+                const subCat = group.subCategories[0];
+                const status = categoryCompletionStatus[subCat.fullName] || { completed: subCat.completedCount, total: subCat.itemCount, isComplete: subCat.isComplete };
+                return (
+                  <TouchableOpacity
+                    key={group.name}
+                    style={[
+                      styles.categoryCard,
+                      selectedCategory === subCat.fullName && styles.categoryCardSelected,
+                      status.isComplete && styles.categoryCardCompleted
+                    ]}
+                    onPress={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.categoryCardContent}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                            <Text style={styles.categoryName}>{group.name}</Text>
+                            {status.isComplete && (
+                              <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
+                            )}
+                          </View>
+                          <Text style={styles.categoryCount}>
+                            {status.completed} / {status.total} items completed
+                          </Text>
+                          <View style={styles.categoryCardProgressBar}>
+                            <View 
+                              style={[
+                                styles.categoryCardProgressFill, 
+                                { 
+                                  width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
+                                  backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                                }
+                              ]} 
+                            />
+                          </View>
+                          <Text style={styles.categoryProgressPercent}>
+                            {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    {selectedCategory === subCat.fullName && !status.isComplete && (
+                      <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
+                    )}
+                    {!selectedCategory || selectedCategory !== subCat.fullName ? (
+                      <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }
+
+              // Render as collapsible group for categories with multiple sub-categories
+              return (
+                <View key={group.name} style={styles.categoryGroupContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryGroupHeader,
+                      groupStatus.isComplete && styles.categoryCardCompleted
+                    ]}
+                    onPress={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !isExpanded }))}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <Icon 
+                        name={isExpanded ? "keyboard-arrow-down" : "keyboard-arrow-right"} 
+                        size={24} 
+                        color={themeConfig.primary.main} 
+                        style={{ marginRight: 8 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Text style={styles.categoryName}>{group.name}</Text>
+                          {groupStatus.isComplete && (
+                            <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
+                          )}
+                        </View>
+                        <Text style={styles.categoryCount}>
+                          {groupStatus.completed} / {groupStatus.total} items completed
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {isExpanded && (
+                    <View style={styles.categoryGroupContent}>
+                      {group.subCategories.map((subCat, subIndex) => {
+                        const status = categoryCompletionStatus[subCat.fullName] || { completed: subCat.completedCount, total: subCat.itemCount, isComplete: subCat.isComplete };
+                        const isSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
+                        return (
+                          <TouchableOpacity
+                            key={subCat.fullName + (subCat.section || '')}
+                            style={[
+                              styles.categorySubCard,
+                              isSelected && styles.categoryCardSelected,
+                              status.isComplete && styles.categoryCardCompleted
+                            ]}
+                            onPress={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.categoryCardContent}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <View style={{ flex: 1 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={[styles.categoryName, { fontSize: 15 }]}>{subCat.displayName}</Text>
+                                    {status.isComplete && (
+                                      <Icon name="check-circle" size={18} color="#4caf50" style={{ marginLeft: 8 }} />
+                                    )}
+                                  </View>
+                                  <Text style={[styles.categoryCount, { fontSize: 13 }]}>
+                                    {status.completed} / {status.total} items
+                                  </Text>
+                                  <View style={[styles.categoryCardProgressBar, { height: 4 }]}>
+                                    <View 
+                                      style={[
+                                        styles.categoryCardProgressFill, 
+                                        { 
+                                          width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
+                                          backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                                        }
+                                      ]} 
+                                    />
+                                  </View>
+                                </View>
+                              </View>
+                            </View>
+                            {isSelected && !status.isComplete && (
+                              <Icon name="check-circle" size={24} color={themeConfig.primary.main} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          ) : (
+            // Fallback to flat list if no grouped categories
+            categories.map((category, index) => {
+              const categoryItems = items.filter(item => item.category === category);
+              const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
+              return (
+                <TouchableOpacity
+                  key={category || `no-category-${index}`}
+                  style={[
+                    styles.categoryCard,
+                    selectedCategory === category && styles.categoryCardSelected,
+                    status.isComplete && styles.categoryCardCompleted
+                  ]}
+                  onPress={() => handleCategorySelect(category)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.categoryCardContent}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                         <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
-                        {status.isComplete && (
-                          <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
-                        )}
+                          {status.isComplete && (
+                            <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
+                          )}
+                        </View>
+                        <Text style={styles.categoryCount}>
+                          {status.completed} / {status.total} items completed
+                        </Text>
+                        <View style={styles.categoryCardProgressBar}>
+                          <View 
+                            style={[
+                              styles.categoryCardProgressFill, 
+                              { 
+                                width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
+                                backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                              }
+                            ]} 
+                          />
                       </View>
-                      <Text style={styles.categoryCount}>
-                        {status.completed} / {status.total} items completed
-                      </Text>
-                      {/* Progress bar */}
-                      <View style={styles.categoryCardProgressBar}>
-                        <View 
-                          style={[
-                            styles.categoryCardProgressFill, 
-                            { 
-                              width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
-                              backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
-                            }
-                          ]} 
-                        />
-                      </View>
-                      <Text style={styles.categoryProgressPercent}>
-                        {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
-                      </Text>
+                        <Text style={styles.categoryProgressPercent}>
+                          {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
+                        </Text>
+                        </View>
                     </View>
                   </View>
-                </View>
-                {selectedCategory === category && !status.isComplete && (
-                  <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
-                )}
-                {!selectedCategory || selectedCategory !== category ? (
-                  <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
+                  {selectedCategory === category && !status.isComplete && (
+                    <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
+                  )}
+                  {!selectedCategory || selectedCategory !== category ? (
+                    <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })
+          )}
           
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -1650,10 +2258,10 @@ const AuditFormScreen = () => {
             
             {/* Current Category Progress */}
             <View style={styles.currentCategoryProgress}>
-              <Text style={styles.progressText}>
-                Progress: {completedItems} / {filteredItems.length} items
-                {selectedCategory && ` (${selectedCategory})`}
-              </Text>
+            <Text style={styles.progressText}>
+              Progress: {completedItems} / {filteredItems.length} items
+              {selectedCategory && ` (${selectedCategory})`}
+            </Text>
               {(() => {
                 const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
                 if (currentStatus) {
@@ -1886,17 +2494,17 @@ const AuditFormScreen = () => {
                   <View style={styles.photoContainer}>
                     <Image source={{ uri: photos[item.id] }} style={styles.photo} />
                     {auditStatus !== 'completed' && (
-                      <TouchableOpacity
-                        style={styles.removePhotoButton}
-                        onPress={() => {
-                          const newPhotos = { ...photos };
-                          delete newPhotos[item.id];
-                          setPhotos(newPhotos);
-                        }}
+                    <TouchableOpacity
+                      style={styles.removePhotoButton}
+                      onPress={() => {
+                        const newPhotos = { ...photos };
+                        delete newPhotos[item.id];
+                        setPhotos(newPhotos);
+                      }}
                         disabled={auditStatus === 'completed'}
-                      >
-                        <Icon name="close" size={16} color="#fff" />
-                      </TouchableOpacity>
+                    >
+                      <Icon name="close" size={16} color="#fff" />
+                    </TouchableOpacity>
                     )}
                   </View>
                 )}
@@ -1977,7 +2585,7 @@ const AuditFormScreen = () => {
                 </Text>
               </TouchableOpacity>
               {auditStatus === 'completed' ? (
-                <TouchableOpacity
+              <TouchableOpacity
                   style={styles.button}
                   onPress={() => navigation.goBack()}
                 >
@@ -1986,15 +2594,15 @@ const AuditFormScreen = () => {
               ) : (
                 <TouchableOpacity
                   style={[styles.button, saving && styles.buttonDisabled]}
-                  onPress={handleSubmit}
+                onPress={handleSubmit}
                   disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.buttonText}>Save Audit</Text>
-                  )}
-                </TouchableOpacity>
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Save Audit</Text>
+                )}
+              </TouchableOpacity>
               )}
             </View>
           </ScrollView>
@@ -2461,6 +3069,37 @@ const styles = StyleSheet.create({
     borderColor: '#4caf50',
     backgroundColor: '#e8f5e9',
     borderWidth: 2,
+  },
+  categoryGroupContainer: {
+    marginBottom: 16,
+    borderRadius: themeConfig.borderRadius.medium,
+    borderWidth: 2,
+    borderColor: themeConfig.border.default,
+    overflow: 'hidden',
+  },
+  categoryGroupHeader: {
+    backgroundColor: '#fff',
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  categoryGroupContent: {
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: themeConfig.border.default,
+  },
+  categorySubCard: {
+    backgroundColor: '#fff',
+    borderRadius: themeConfig.borderRadius.small,
+    padding: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   categoryCardContent: {
     flex: 1,
