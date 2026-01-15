@@ -43,6 +43,7 @@ import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ScaleIcon from '@mui/icons-material/Scale';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -271,11 +272,16 @@ const Checklists = () => {
 
   const fetchTemplates = async () => {
     try {
+      setLoading(true);
       // Add cache-busting parameter to ensure fresh data after create/update
       const response = await axios.get('/api/templates', {
         params: { _t: Date.now() }
       });
       const serverTemplates = response.data.templates || [];
+      
+      console.log('Templates fetched:', serverTemplates.length, 'templates');
+      console.log('Template data:', serverTemplates);
+      
       setTemplates(serverTemplates);
       
       // Group templates by category
@@ -305,8 +311,21 @@ const Checklists = () => {
       })).sort((a, b) => a.name.localeCompare(b.name));
       
       setCategories(categoryList);
+      
+      if (serverTemplates.length === 0) {
+        console.warn('No templates returned from API. Check:');
+        console.warn('1. Database connection');
+        console.warn('2. User permissions');
+        console.warn('3. API endpoint: /api/templates');
+      }
     } catch (error) {
       console.error('Error fetching templates:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      if (error.response?.status === 403) {
+        console.error('Permission denied - user may not have access to templates');
+      } else if (error.response?.status === 401) {
+        console.error('Authentication required - user may need to login again');
+      }
     } finally {
       setLoading(false);
     }
@@ -532,6 +551,47 @@ const Checklists = () => {
     } catch (error) {
       console.error('Error deleting template:', error);
       showError(error.response?.data?.error || 'Failed to delete template');
+    }
+  };
+
+  const handleCloneTemplate = async (templateId) => {
+    try {
+      const response = await axios.get(`/api/checklists/${templateId}`);
+      const { template, items: templateItems } = response.data;
+      
+      // Create a copy with "Copy of" prefix
+      const clonedName = `Copy of ${template.name}`;
+      setTemplateForm({
+        name: clonedName,
+        description: template.description || ''
+      });
+      
+      // Map items without IDs (so they're treated as new items)
+      const mappedItems = (templateItems || []).map(item => ({
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        input_type: item.input_type || item.inputType || 'auto',
+        required: item.required !== 0,
+        weight: item.weight || 1,
+        is_critical: item.is_critical === 1 || item.is_critical === true,
+        is_time_based: item.is_time_based === 1 || item.is_time_based === true,
+        target_time_minutes: item.target_time_minutes || '',
+        min_time_minutes: item.min_time_minutes || '',
+        max_time_minutes: item.max_time_minutes || '',
+        options: (item.options || []).map(option => ({
+          option_text: option.option_text || option.title || '',
+          mark: option.mark ?? ''
+        }))
+      }));
+      
+      setItems(mappedItems.length > 0 ? mappedItems : [createEmptyItem('')]);
+      setEditingTemplateId(null); // New template, not editing
+      setShowAddDialog(true);
+      showSuccess('Template cloned. Please review and save.');
+    } catch (error) {
+      console.error('Error cloning template:', error);
+      showError(error.response?.data?.error || 'Failed to clone template');
     }
   };
 
@@ -875,22 +935,37 @@ const Checklists = () => {
                         Start Audit
                       </Button>
                       {canEdit && (
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => handleEditTemplate(getTemplateId(template))}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                        <>
+                          <Tooltip title="Edit Template">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => handleEditTemplate(getTemplateId(template))}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Duplicate Template">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => handleCloneTemplate(getTemplateId(template))}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
                       )}
                       {canDelete && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDeleteTemplate(getTemplateId(template))}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Delete Template">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteTemplate(getTemplateId(template))}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </CardActions>
                   </Card>

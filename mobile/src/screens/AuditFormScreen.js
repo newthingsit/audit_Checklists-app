@@ -675,8 +675,8 @@ const AuditFormScreen = () => {
         
         const uploadUrl = `${API_BASE_URL}/photo`;
         const requestHeaders = {
-          'Accept': 'application/json',
-          ...(authToken ? { 'Authorization': authToken } : {}),
+            'Accept': 'application/json',
+            ...(authToken ? { 'Authorization': authToken } : {}),
         };
         
         // #region agent log
@@ -2005,7 +2005,7 @@ const AuditFormScreen = () => {
                 const subCat = group.subCategories[0];
                 const status = categoryCompletionStatus[subCat.fullName] || { completed: subCat.completedCount, total: subCat.itemCount, isComplete: subCat.isComplete };
                 return (
-                  <TouchableOpacity
+              <TouchableOpacity
                     key={group.name}
                     style={[
                       styles.categoryCard,
@@ -2037,13 +2037,13 @@ const AuditFormScreen = () => {
                                 }
                               ]} 
                             />
-                          </View>
+            </View>
                           <Text style={styles.categoryProgressPercent}>
                             {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
                           </Text>
-                        </View>
-                      </View>
-                    </View>
+          </View>
+        </View>
+            </View>
                     {selectedCategory === subCat.fullName && !status.isComplete && (
                       <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
                     )}
@@ -2057,7 +2057,7 @@ const AuditFormScreen = () => {
               // Render as collapsible group for categories with multiple sub-categories
               return (
                 <View key={group.name} style={styles.categoryGroupContainer}>
-                  <TouchableOpacity
+                <TouchableOpacity
                     style={[
                       styles.categoryGroupHeader,
                       groupStatus.isComplete && styles.categoryCardCompleted
@@ -2077,13 +2077,13 @@ const AuditFormScreen = () => {
                           <Text style={styles.categoryName}>{group.name}</Text>
                           {groupStatus.isComplete && (
                             <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
-                          )}
-                        </View>
+                    )}
+                  </View>
                         <Text style={styles.categoryCount}>
                           {groupStatus.completed} / {groupStatus.total} items completed
                         </Text>
-                      </View>
-                    </View>
+          </View>
+        </View>
                   </TouchableOpacity>
                   
                   {isExpanded && (
@@ -2110,7 +2110,7 @@ const AuditFormScreen = () => {
                                     {status.isComplete && (
                                       <Icon name="check-circle" size={18} color="#4caf50" style={{ marginLeft: 8 }} />
                                     )}
-                                  </View>
+            </View>
                                   <Text style={[styles.categoryCount, { fontSize: 13 }]}>
                                     {status.completed} / {status.total} items
                                   </Text>
@@ -2123,10 +2123,10 @@ const AuditFormScreen = () => {
                                           backgroundColor: status.isComplete ? themeConfig.success.main : themeConfig.primary.main
                                         }
                                       ]} 
-                                    />
-                                  </View>
-                                </View>
-                              </View>
+            />
+          </View>
+        </View>
+          </View>
                             </View>
                             {isSelected && !status.isComplete && (
                               <Icon name="check-circle" size={24} color={themeConfig.primary.main} />
@@ -2142,31 +2142,31 @@ const AuditFormScreen = () => {
           ) : (
             // Fallback to flat list if no grouped categories
             categories.map((category, index) => {
-              const categoryItems = items.filter(item => item.category === category);
-              const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
-              return (
-                <TouchableOpacity
-                  key={category || `no-category-${index}`}
-                  style={[
-                    styles.categoryCard,
-                    selectedCategory === category && styles.categoryCardSelected,
-                    status.isComplete && styles.categoryCardCompleted
-                  ]}
-                  onPress={() => handleCategorySelect(category)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.categoryCardContent}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                      <View style={{ flex: 1 }}>
+            const categoryItems = items.filter(item => item.category === category);
+            const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
+            return (
+              <TouchableOpacity
+                key={category || `no-category-${index}`}
+                style={[
+                  styles.categoryCard,
+                  selectedCategory === category && styles.categoryCardSelected,
+                  status.isComplete && styles.categoryCardCompleted
+                ]}
+                onPress={() => handleCategorySelect(category)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.categoryCardContent}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
+                      <Text style={styles.categoryName}>{category || 'Uncategorized'}</Text>
                           {status.isComplete && (
                             <Icon name="check-circle" size={20} color="#4caf50" style={{ marginLeft: 8 }} />
                           )}
                         </View>
-                        <Text style={styles.categoryCount}>
+                      <Text style={styles.categoryCount}>
                           {status.completed} / {status.total} items completed
-                        </Text>
+                      </Text>
                         <View style={styles.categoryCardProgressBar}>
                           <View 
                             style={[
@@ -2177,21 +2177,21 @@ const AuditFormScreen = () => {
                               }
                             ]} 
                           />
-                      </View>
+                    </View>
                         <Text style={styles.categoryProgressPercent}>
                           {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
                         </Text>
-                        </View>
-                    </View>
+                      </View>
                   </View>
-                  {selectedCategory === category && !status.isComplete && (
-                    <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
-                  )}
-                  {!selectedCategory || selectedCategory !== category ? (
-                    <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
-                  ) : null}
-                </TouchableOpacity>
-              );
+                </View>
+                {selectedCategory === category && !status.isComplete && (
+                  <Icon name="check-circle" size={28} color={themeConfig.primary.main} />
+                )}
+                {!selectedCategory || selectedCategory !== category ? (
+                  <Icon name="chevron-right" size={24} color={themeConfig.text.disabled} />
+                ) : null}
+              </TouchableOpacity>
+            );
             })
           )}
           
@@ -2276,20 +2276,45 @@ const AuditFormScreen = () => {
               {selectedCategory && ` (${selectedCategory})`}
             </Text>
               {(() => {
+                // Calculate detailed breakdown
+                const requiredItems = filteredItems.filter(item => item.required);
+                const missingRequired = requiredItems.filter(item => !isItemComplete(item));
+                const itemsNeedingPhotos = filteredItems.filter(item => {
+                  const fieldType = getEffectiveItemFieldType(item);
+                  return item.required && fieldType === 'image_upload' && !photos[item.id];
+                });
+                
                 const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
                 if (currentStatus) {
                   const percent = currentStatus.total > 0 ? Math.round((currentStatus.completed / currentStatus.total) * 100) : 0;
                   return (
-                    <View style={styles.categoryProgressBar}>
-                      <View 
-                        style={[
-                          styles.categoryProgressFill, 
-                          { 
-                            width: `${percent}%`,
-                            backgroundColor: currentStatus.isComplete ? themeConfig.success.main : themeConfig.primary.main
-                          }
-                        ]} 
-                      />
+                    <View>
+                      <View style={styles.categoryProgressBar}>
+                        <View 
+                          style={[
+                            styles.categoryProgressFill, 
+                            { 
+                              width: `${percent}%`,
+                              backgroundColor: currentStatus.isComplete ? themeConfig.success.main : themeConfig.primary.main
+                            }
+                          ]} 
+                        />
+                      </View>
+                      {/* Detailed breakdown */}
+                      {(missingRequired.length > 0 || itemsNeedingPhotos.length > 0) && (
+                        <View style={{ marginTop: 8, gap: 4 }}>
+                          {missingRequired.length > 0 && (
+                            <Text style={[styles.progressText, { fontSize: 12, color: themeConfig.error.main }]}>
+                              ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
+                            </Text>
+                          )}
+                          {itemsNeedingPhotos.length > 0 && (
+                            <Text style={[styles.progressText, { fontSize: 12, color: themeConfig.error.main }]}>
+                              📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
+                </Text>
+                          )}
+                        </View>
+                      )}
                     </View>
                   );
                 }
@@ -2500,22 +2525,22 @@ const AuditFormScreen = () => {
 
                 {/* Only show photo button for items that require photos (input_type === 'image_upload') */}
                 {fieldType === 'image_upload' && (
-                  <View style={styles.actionsContainer}>
-                    <TouchableOpacity
+                <View style={styles.actionsContainer}>
+                  <TouchableOpacity
                       style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
-                      onPress={() => handlePhotoUpload(item.id)}
+                    onPress={() => handlePhotoUpload(item.id)}
                       disabled={uploading[item.id] || auditStatus === 'completed'}
-                    >
-                      {uploading[item.id] ? (
-                        <ActivityIndicator size="small" color={themeConfig.primary.main} />
-                      ) : (
-                        <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
-                      )}
-                      <Text style={styles.photoButtonText}>
-                        {photos[item.id] ? 'Change Photo' : 'Take Photo'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  >
+                    {uploading[item.id] ? (
+                      <ActivityIndicator size="small" color={themeConfig.primary.main} />
+                    ) : (
+                      <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
+                    )}
+                    <Text style={styles.photoButtonText}>
+                      {photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 )}
 
                 {photos[item.id] && fieldType === 'image_upload' && (

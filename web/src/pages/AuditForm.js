@@ -1877,6 +1877,33 @@ const AuditForm = () => {
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                           {totalCompleted} / {totalItems} items • {completedCategories} / {categories.length} categories complete
                         </Typography>
+                        {(() => {
+                          // Calculate detailed breakdown
+                          const requiredItems = items.filter(item => item.required);
+                          const missingRequired = requiredItems.filter(item => !isItemComplete(item));
+                          const itemsNeedingPhotos = items.filter(item => {
+                            const inputType = (item.input_type || '').toLowerCase();
+                            return item.required && inputType === 'image_upload' && !photos[item.id];
+                          });
+                          
+                          if (missingRequired.length > 0 || itemsNeedingPhotos.length > 0) {
+                            return (
+                              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                {missingRequired.length > 0 && (
+                                  <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                                    ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
+                                  </Typography>
+                                )}
+                                {itemsNeedingPhotos.length > 0 && (
+                                  <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                                    📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
+                                  </Typography>
+                                )}
+                              </Box>
+                            );
+                          }
+                          return null;
+                        })()}
                       </Box>
                     );
                   })()}
@@ -1884,27 +1911,56 @@ const AuditForm = () => {
               )}
               
               {/* Current Category Progress */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
-                  {completedItems} / {itemsToDisplay.length}
-                  {selectedCategory && ` (${selectedCategory})`}
-                </Typography>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={(completedItems / itemsToDisplay.length) * 100} 
-                  sx={{ 
-                    flex: 1, 
-                    height: 8, 
-                    borderRadius: 4,
-                    bgcolor: 'rgba(255,255,255,0.5)',
-                    '& .MuiLinearProgress-bar': {
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
+                    {completedItems} / {itemsToDisplay.length}
+                    {selectedCategory && ` (${selectedCategory})`}
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={(completedItems / itemsToDisplay.length) * 100} 
+                    sx={{ 
+                      flex: 1, 
+                      height: 8, 
                       borderRadius: 4,
-                    }
-                  }}
-                />
-                <Typography variant="body2" sx={{ color: 'info.dark', fontWeight: 500, minWidth: 'fit-content' }}>
-                  {Math.round((completedItems / itemsToDisplay.length) * 100)}%
-                </Typography>
+                      bgcolor: 'rgba(255,255,255,0.5)',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 4,
+                      }
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ color: 'info.dark', fontWeight: 500, minWidth: 'fit-content' }}>
+                    {Math.round((completedItems / itemsToDisplay.length) * 100)}%
+                  </Typography>
+                </Box>
+                {(() => {
+                  // Calculate detailed breakdown for current category
+                  const requiredItems = itemsToDisplay.filter(item => item.required);
+                  const missingRequired = requiredItems.filter(item => !isItemComplete(item));
+                  const itemsNeedingPhotos = itemsToDisplay.filter(item => {
+                    const inputType = (item.input_type || '').toLowerCase();
+                    return item.required && inputType === 'image_upload' && !photos[item.id];
+                  });
+                  
+                  if (missingRequired.length > 0 || itemsNeedingPhotos.length > 0) {
+                    return (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                        {missingRequired.length > 0 && (
+                          <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                            ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
+                          </Typography>
+                        )}
+                        {itemsNeedingPhotos.length > 0 && (
+                          <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                            📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  }
+                  return null;
+                })()}
               </Box>
             </Paper>
 
