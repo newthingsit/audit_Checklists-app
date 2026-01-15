@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
@@ -28,15 +28,28 @@ import {
   LinearProgress,
   Select,
   MenuItem,
-  Menu
+  Menu,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Collapse
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import WarningIcon from '@mui/icons-material/Warning';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FolderIcon from '@mui/icons-material/Folder';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
+import SignatureCanvas from 'react-signature-canvas';
 
 const AuditForm = () => {
   const { templateId } = useParams();
@@ -77,12 +90,142 @@ const AuditForm = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [showFailuresAlert, setShowFailuresAlert] = useState(false);
+  const [signatureItemId, setSignatureItemId] = useState(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const signatureRef = useRef(null);
   
   // Category selection state
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedSection, setSelectedSection] = useState(null); // Track selected section within a category
   const [categories, setCategories] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
+  const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
+
+  // Helper function to group categories by their parent (e.g., "SERVICE (Speed of Service)" -> parent: "SERVICE")
+  // Also handles sections within categories (e.g., items with section="Trnx-1" under "SPEED OF SERVICE - TRACKING")
+  const groupCategories = useCallback((categoryList, itemsList) => {
+    const groups = {};
+    
+    // Define known parent category patterns
+    const parentPatterns = [
+      { pattern: /^SERVICE\s*[-–]\s*/i, parent: 'SERVICE' },
+      { pattern: /^SERVICE\s*\(/i, parent: 'SERVICE' },
+      { pattern: /^HYGIENE\s*(AND|&)\s*CLEANLINESS/i, parent: 'HYGIENE & CLEANLINESS' },
+      { pattern: /^SPEED\s*OF\s*SERVICE/i, parent: 'SPEED OF SERVICE' },
+      { pattern: /^QUALITY/i, parent: 'QUALITY' },
+      { pattern: /^PROCESSES/i, parent: 'PROCESSES' },
+    ];
+    
+    categoryList.forEach(category => {
+      if (!category) return;
+      
+      let parentName = null;
+      let subCategoryName = category;
+      
+      // Try to match with known patterns
+      for (const { pattern, parent } of parentPatterns) {
+        if (pattern.test(category)) {
+          parentName = parent;
+          // Extract sub-category name
+          if (category.includes('(') && category.includes(')')) {
+            const match = category.match(/\(([^)]+)\)/);
+            if (match) {
+              subCategoryName = match[1].trim();
+            }
+          } else if (category.includes(' - ')) {
+            subCategoryName = category.split(' - ').slice(1).join(' - ').trim() || category;
+          } else if (category.includes(' – ')) {
+            subCategoryName = category.split(' – ').slice(1).join(' – ').trim() || category;
+          } else {
+            subCategoryName = category.replace(pattern, '').trim() || category;
+          }
+          break;
+        }
+      }
+      
+      // If no pattern matched, use the category as its own group
+      if (!parentName) {
+        parentName = category;
+        subCategoryName = null;
+      }
+      
+      if (!groups[parentName]) {
+        groups[parentName] = {
+          name: parentName,
+          subCategories: [],
+          totalItems: 0,
+          completedItems: 0
+        };
+      }
+      
+      // Get all items for this category
+      const categoryItems = itemsList.filter(item => item.category === category);
+      
+      // Check if items have sections (e.g., Trnx-1, Trnx-2, Avg)
+      const itemsBySection = {};
+      categoryItems.forEach(item => {
+        const section = item.section || 'General';
+        if (!itemsBySection[section]) {
+          itemsBySection[section] = [];
+        }
+        itemsBySection[section].push(item);
+      });
+      
+      const hasSections = Object.keys(itemsBySection).length > 1 || 
+        (Object.keys(itemsBySection).length === 1 && Object.keys(itemsBySection)[0] !== 'General');
+      
+      if (hasSections) {
+        // Group by sections within the category
+        Object.keys(itemsBySection).sort().forEach(section => {
+          const sectionItems = itemsBySection[section];
+          const completedCount = sectionItems.filter(item => {
+            const status = responses[item.id]?.status;
+            return status && status !== 'pending';
+          }).length;
+          
+          const sectionDisplayName = section === 'General' ? (subCategoryName || category) : section;
+          
+          groups[parentName].subCategories.push({
+            fullName: category,
+            displayName: sectionDisplayName,
+            section: section,
+            itemCount: sectionItems.length,
+            completedCount: completedCount,
+            isComplete: completedCount === sectionItems.length && sectionItems.length > 0
+          });
+          
+          groups[parentName].totalItems += sectionItems.length;
+          groups[parentName].completedItems += completedCount;
+        });
+      } else {
+        // No sections, treat as single sub-category
+        const completedCount = categoryItems.filter(item => {
+          const status = responses[item.id]?.status;
+          return status && status !== 'pending';
+        }).length;
+        
+        groups[parentName].subCategories.push({
+          fullName: category,
+          displayName: subCategoryName || category,
+          itemCount: categoryItems.length,
+          completedCount: completedCount,
+          isComplete: completedCount === categoryItems.length && categoryItems.length > 0
+        });
+        
+        groups[parentName].totalItems += categoryItems.length;
+        groups[parentName].completedItems += completedCount;
+      }
+    });
+    
+    // Sort groups and sub-categories
+    return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+  }, [responses]);
+
+  // Get grouped categories
+  const groupedCategories = React.useMemo(() => {
+    return groupCategories(categories, items);
+  }, [categories, items, groupCategories]);
 
   useEffect(() => {
     fetchLocations();
@@ -360,9 +503,8 @@ const AuditForm = () => {
     }
     setInputValues({ ...inputValues, [itemId]: value });
     // Mark as completed when value is entered
-    if (value && value.toString().trim() !== '') {
-      setResponses({ ...responses, [itemId]: 'completed' });
-    }
+    const nextStatus = value && value.toString().trim() !== '' ? 'completed' : 'pending';
+    setResponses({ ...responses, [itemId]: nextStatus });
   };
 
   const handlePhotoUpload = async (itemId, file) => {
@@ -383,6 +525,10 @@ const AuditForm = () => {
       });
 
       setPhotos({ ...photos, [itemId]: uploadResponse.data.photo_url });
+      const item = items.find(i => i.id === itemId);
+      if (item && (item.input_type || '').toLowerCase() === 'image_upload') {
+        setResponses({ ...responses, [itemId]: 'completed' });
+      }
       // Photo upload notification removed as per requirement
     } catch (error) {
       console.error('Error uploading photo:', error);
@@ -390,6 +536,57 @@ const AuditForm = () => {
     } finally {
       setUploading({ ...uploading, [itemId]: false });
     }
+  };
+
+  const openSignatureModal = (itemId) => {
+    setSignatureItemId(itemId);
+    setSignatureModalOpen(true);
+  };
+
+  const closeSignatureModal = () => {
+    setSignatureModalOpen(false);
+    setSignatureItemId(null);
+  };
+
+  const handleSaveSignature = async () => {
+    if (!signatureRef.current || signatureRef.current.isEmpty()) {
+      showError('Please provide a signature first');
+      return;
+    }
+    if (!signatureItemId) {
+      showError('Signature item not found');
+      return;
+    }
+
+    try {
+      const dataUrl = signatureRef.current.toDataURL('image/png');
+      const blob = await fetch(dataUrl).then(res => res.blob());
+      const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' });
+      await handlePhotoUpload(signatureItemId, file);
+      setInputValues({ ...inputValues, [signatureItemId]: 'Signed' });
+      setResponses({ ...responses, [signatureItemId]: 'completed' });
+      closeSignatureModal();
+    } catch (error) {
+      console.error('Error saving signature:', error);
+      showError('Failed to save signature');
+    }
+  };
+
+  const isItemComplete = (item) => {
+    const inputType = (item?.input_type || '').toLowerCase();
+    if (inputType === 'signature') {
+      return !!photos[item.id] || (inputValues[item.id] !== undefined && String(inputValues[item.id]).trim() !== '');
+    }
+    if (inputType === 'image_upload') return !!photos[item.id];
+    if (['number', 'date', 'open_ended', 'description', 'scan_code', 'signature'].includes(inputType)) {
+      const value = inputValues[item.id];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    }
+    if (item.options && item.options.length > 0) {
+      return !!selectedOptions[item.id];
+    }
+    const status = responses[item.id];
+    return status && status !== 'pending';
   };
 
   const validateStep = (step) => {
@@ -401,14 +598,7 @@ const AuditForm = () => {
       }
     } else if (step === 1) {
       const requiredItems = items.filter(item => item.required);
-      const missingRequired = requiredItems.filter(item => {
-        // For items with options, check if an option is selected
-        if (item.options && item.options.length > 0) {
-          return !selectedOptions[item.id];
-        }
-        // For items without options, check status
-        return !responses[item.id] || responses[item.id] === 'pending';
-      });
+      const missingRequired = requiredItems.filter(item => !isItemComplete(item));
       if (missingRequired.length > 0) {
         newErrors.items = `Please complete all required items (${missingRequired.length} remaining)`;
       }
@@ -457,9 +647,15 @@ const AuditForm = () => {
     }
   };
   
-  const handleCategorySelect = (category) => {
+  const handleCategorySelect = (category, section = null) => {
     setSelectedCategory(category);
-    const filtered = items.filter(item => item.category === category);
+    setSelectedSection(section);
+    // Filter items by category and optionally by section
+    const filtered = items.filter(item => {
+      if (item.category !== category) return false;
+      if (section && item.section !== section) return false;
+      return true;
+    });
     setFilteredItems(filtered);
   };
 
@@ -831,79 +1027,218 @@ const AuditForm = () => {
               {template?.name}
             </Typography>
             
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
-              {categories.map((category, index) => {
-                const categoryItems = items.filter(item => item.category === category);
-                const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
-                const completionPercent = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
+            {/* Grouped Categories with Accordions */}
+            <Box sx={{ mb: 3 }}>
+              {groupedCategories.map((group, groupIndex) => {
+                const groupCompletionPercent = group.totalItems > 0 
+                  ? Math.round((group.completedItems / group.totalItems) * 100) 
+                  : 0;
+                const isGroupComplete = group.completedItems === group.totalItems && group.totalItems > 0;
+                const isExpanded = expandedGroups[group.name] !== false; // Default to expanded
+                const hasSubCategories = group.subCategories.length > 1 || 
+                  (group.subCategories.length === 1 && group.subCategories[0].displayName !== group.name);
                 
+                // If only one sub-category and it's the same as the group, render as simple card
+                if (!hasSubCategories) {
+                  const subCat = group.subCategories[0];
+                  const status = categoryCompletionStatus[subCat.fullName] || { completed: 0, total: subCat.itemCount, isComplete: false };
+                  const completionPercent = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
+                  
+                  return (
+                    <Card
+                      key={group.name}
+                      sx={{
+                        mb: 2,
+                        cursor: 'pointer',
+                        border: 2,
+                        borderColor: status.isComplete 
+                          ? 'success.main' 
+                          : (selectedCategory === subCat.fullName && 
+                              (subCat.section ? selectedSection === subCat.section : !selectedSection))
+                            ? 'primary.main' 
+                            : 'divider',
+                        bgcolor: status.isComplete
+                          ? 'success.light'
+                          : (selectedCategory === subCat.fullName && 
+                              (subCat.section ? selectedSection === subCat.section : !selectedSection))
+                            ? 'primary.light' 
+                            : 'background.paper',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          borderColor: status.isComplete ? 'success.dark' : 'primary.main',
+                          bgcolor: status.isComplete ? 'success.light' : 'action.hover',
+                          transform: 'translateY(-2px)',
+                          boxShadow: 4
+                        }
+                      }}
+                      onClick={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+                            {group.name}
+                          </Typography>
+                          {status.isComplete && (
+                            <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main' }} />
+                          )}
+                        </Box>
+                        <Box sx={{ mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                            {status.completed} / {status.total} items completed
+                          </Typography>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={completionPercent}
+                            sx={{
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: 'grey.200',
+                              '& .MuiLinearProgress-bar': {
+                                bgcolor: status.isComplete ? 'success.main' : 'primary.main',
+                                borderRadius: 3
+                              }
+                            }}
+                          />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                
+                // Render as accordion for groups with multiple sub-categories
                 return (
-                  <Card
-                    key={category || `no-category-${index}`}
-                    sx={{
-                      cursor: 'pointer',
+                  <Accordion 
+                    key={group.name}
+                    expanded={isExpanded}
+                    onChange={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !isExpanded }))}
+                    sx={{ 
+                      mb: 2,
                       border: 2,
-                      borderColor: status.isComplete 
-                        ? 'success.main' 
-                        : selectedCategory === category 
-                          ? 'primary.main' 
-                          : 'divider',
-                      bgcolor: status.isComplete
-                        ? 'success.light'
-                        : selectedCategory === category 
-                          ? 'primary.light' 
-                          : 'background.paper',
-                      position: 'relative',
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        borderColor: status.isComplete ? 'success.dark' : 'primary.main',
-                        bgcolor: status.isComplete ? 'success.light' : 'action.hover',
-                        transform: 'translateY(-2px)',
-                        boxShadow: 4
-                      }
+                      borderColor: isGroupComplete ? 'success.main' : 'divider',
+                      borderRadius: '8px !important',
+                      '&:before': { display: 'none' },
+                      bgcolor: isGroupComplete ? 'success.light' : 'background.paper',
+                      overflow: 'hidden'
                     }}
-                    onClick={() => handleCategorySelect(category)}
                   >
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
-                          {category || 'Uncategorized'}
-                        </Typography>
-                        {status.isComplete && (
-                          <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main' }} />
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                      sx={{ 
+                        bgcolor: isGroupComplete ? 'success.light' : 'grey.50',
+                        '&:hover': { bgcolor: isGroupComplete ? 'success.light' : 'grey.100' }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', pr: 2 }}>
+                        {isExpanded ? (
+                          <FolderOpenIcon sx={{ mr: 1.5, color: isGroupComplete ? 'success.main' : 'primary.main' }} />
+                        ) : (
+                          <FolderIcon sx={{ mr: 1.5, color: isGroupComplete ? 'success.main' : 'primary.main' }} />
+                        )}
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
+                            {group.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {group.subCategories.length} sub-categories • {group.completedItems}/{group.totalItems} items
+                            </Typography>
+                            <Chip 
+                              label={`${groupCompletionPercent}%`}
+                              size="small"
+                              color={isGroupComplete ? 'success' : 'default'}
+                              sx={{ height: 20, fontSize: '0.7rem' }}
+                            />
+                          </Box>
+                        </Box>
+                        {isGroupComplete && (
+                          <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main', ml: 1 }} />
                         )}
                       </Box>
-                      
-                      <Box sx={{ mb: 1.5 }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                          {status.completed} / {status.total} items completed
-                        </Typography>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={completionPercent}
-                          sx={{
-                            height: 6,
-                            borderRadius: 3,
-                            bgcolor: 'grey.200',
-                            '& .MuiLinearProgress-bar': {
-                              bgcolor: status.isComplete ? 'success.main' : 'primary.main',
-                              borderRadius: 3
-                            }
-                          }}
-                        />
-                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                          {completionPercent}% complete
-                        </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ p: 2, bgcolor: 'background.paper' }}>
+                      <Box sx={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
+                        gap: 1.5 
+                      }}>
+                        {group.subCategories.map((subCat, subIndex) => {
+                          const status = categoryCompletionStatus[subCat.fullName] || { 
+                            completed: 0, 
+                            total: subCat.itemCount, 
+                            isComplete: false 
+                          };
+                          const completionPercent = status.total > 0 
+                            ? Math.round((status.completed / status.total) * 100) 
+                            : 0;
+                          
+                          return (
+                            <Card
+                              key={subCat.fullName}
+                              sx={{
+                                cursor: 'pointer',
+                                border: 2,
+                                borderColor: status.isComplete 
+                                  ? 'success.main' 
+                                  : (selectedCategory === subCat.fullName && 
+                                      (subCat.section ? selectedSection === subCat.section : !selectedSection))
+                                    ? 'primary.main' 
+                                    : 'grey.300',
+                                bgcolor: status.isComplete
+                                  ? 'success.light'
+                                  : (selectedCategory === subCat.fullName && 
+                                      (subCat.section ? selectedSection === subCat.section : !selectedSection))
+                                    ? 'primary.light' 
+                                    : 'background.paper',
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  borderColor: status.isComplete ? 'success.dark' : 'primary.main',
+                                  bgcolor: status.isComplete ? 'success.light' : 'action.hover',
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: 3
+                                }
+                              }}
+                              onClick={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
+                            >
+                              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.9rem', flex: 1 }}>
+                                    {subCat.displayName}
+                                  </Typography>
+                                  {status.isComplete && (
+                                    <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main', ml: 0.5 }} />
+                                  )}
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  {status.completed} / {status.total} items
+                                </Typography>
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={completionPercent}
+                                  sx={{
+                                    height: 4,
+                                    borderRadius: 2,
+                                    bgcolor: 'grey.200',
+                                    '& .MuiLinearProgress-bar': {
+                                      bgcolor: status.isComplete ? 'success.main' : 'primary.main',
+                                      borderRadius: 2
+                                    }
+                                  }}
+                                />
+                                {selectedCategory === subCat.fullName && 
+                                 (subCat.section ? selectedSection === subCat.section : !selectedSection) && 
+                                 !status.isComplete && (
+                                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
+                                    <CheckCircleIcon sx={{ fontSize: 14, mr: 0.5 }} />
+                                    <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>Selected</Typography>
+                                  </Box>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
                       </Box>
-                      
-                      {selectedCategory === category && !status.isComplete && (
-                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
-                          <CheckCircleIcon sx={{ fontSize: 18, mr: 0.5 }} />
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>Currently Selected</Typography>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
+                    </AccordionDetails>
+                  </Accordion>
                 );
               })}
             </Box>
@@ -1090,6 +1425,7 @@ const AuditForm = () => {
             })()}
             {itemsToDisplay.map((item, index) => {
               const isPreviousFailure = failedItemIds.has(item.id);
+              const inputType = (item.input_type || '').toLowerCase();
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               
               return (
@@ -1208,7 +1544,6 @@ const AuditForm = () => {
                   />
                   {/* Render input based on input_type */}
                   {(() => {
-                    const inputType = (item.input_type || '').toLowerCase();
                     
                     // Number input type
                     if (inputType === 'number') {
@@ -1259,6 +1594,60 @@ const AuditForm = () => {
                           size="small"
                           sx={{ mt: 2, mb: 1 }}
                         />
+                      );
+                    }
+
+                    // Scan code input type
+                    if (inputType === 'scan_code') {
+                      return (
+                        <TextField
+                          fullWidth
+                          label="Scan Code"
+                          placeholder="Enter scanned code..."
+                          value={inputValues[item.id] || ''}
+                          onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                          size="small"
+                          sx={{ mt: 2, mb: 1 }}
+                        />
+                      );
+                    }
+
+                    // Signature input type (draw pad)
+                    if (inputType === 'signature') {
+                      return (
+                        <Box sx={{ mt: 2, mb: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button
+                              variant="outlined"
+                              startIcon={<DrawOutlinedIcon />}
+                              onClick={() => openSignatureModal(item.id)}
+                            >
+                              {photos[item.id] ? 'Edit Signature' : 'Add Signature'}
+                            </Button>
+                            {photos[item.id] && (
+                              <Button
+                                variant="text"
+                                color="error"
+                                onClick={() => {
+                                  setPhotos({ ...photos, [item.id]: null });
+                                  setInputValues({ ...inputValues, [item.id]: '' });
+                                  setResponses({ ...responses, [item.id]: 'pending' });
+                                }}
+                              >
+                                Clear Signature
+                              </Button>
+                            )}
+                          </Box>
+                          {photos[item.id] && (
+                            <Box sx={{ mt: 1 }}>
+                              <img
+                                src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
+                                alt="Signature"
+                                style={{ maxWidth: '100%', height: 120, border: '1px solid #e0e0e0', borderRadius: 6 }}
+                              />
+                            </Box>
+                          )}
+                        </Box>
                       );
                     }
                     
@@ -1382,6 +1771,7 @@ const AuditForm = () => {
                     sx={{ mb: 2 }}
                   />
 
+                  {inputType !== 'signature' && (
                   <Box sx={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1441,7 +1831,13 @@ const AuditForm = () => {
                         />
                         <IconButton
                           size="small"
-                          onClick={() => setPhotos({ ...photos, [item.id]: null })}
+                          onClick={() => {
+                            setPhotos({ ...photos, [item.id]: null });
+                            setInputValues({ ...inputValues, [item.id]: '' });
+                            if (inputType === 'image_upload') {
+                              setResponses({ ...responses, [item.id]: 'pending' });
+                            }
+                          }}
                           color="error"
                         >
                           <CancelIcon fontSize="small" />
@@ -1449,6 +1845,7 @@ const AuditForm = () => {
                       </Box>
                     )}
                   </Box>
+                  )}
                 </CardContent>
               </Card>
               );
@@ -1499,6 +1896,23 @@ const AuditForm = () => {
               </Button>
             </Box>
             )}
+            <Dialog open={signatureModalOpen} onClose={closeSignatureModal} maxWidth="sm" fullWidth>
+              <DialogTitle>Signature</DialogTitle>
+              <DialogContent>
+                <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, p: 1, mt: 1 }}>
+                  <SignatureCanvas
+                    ref={signatureRef}
+                    penColor="#111827"
+                    canvasProps={{ width: 520, height: 200, style: { width: '100%', height: 200 } }}
+                  />
+                </Box>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => signatureRef.current?.clear()}>Clear</Button>
+                <Button onClick={closeSignatureModal}>Cancel</Button>
+                <Button onClick={handleSaveSignature} variant="contained">Save</Button>
+              </DialogActions>
+            </Dialog>
           </Box>
         )}
       </Container>
