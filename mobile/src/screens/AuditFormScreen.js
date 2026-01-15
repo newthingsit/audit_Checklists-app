@@ -1022,14 +1022,14 @@ const AuditFormScreen = () => {
     setSelectedCategory(category);
     setSelectedSection(section);
     // Filter items by category and optionally by section
+    setSelectedCategory(category);
+    setSelectedSection(section);
+    // Filter items by category and optionally by section
     const filtered = items.filter(item => {
       if (item.category !== category) return false;
       if (section && item.section !== section) return false;
       return true;
     });
-    setFilteredItems(filtered);
-    setSelectedCategory(category);
-    const filtered = items.filter(item => item.category === category);
     setFilteredItems(filtered);
   };
 
