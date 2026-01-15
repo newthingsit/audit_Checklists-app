@@ -1193,6 +1193,20 @@ const addMissingColumns = async () => {
         console.warn('Error adding input_type to checklist_items:', err.message);
       }
     }
+
+    // Add section column for grouping items within a category (e.g., Trnx-1, Trnx-2)
+    if (!itemsColumns.includes('section')) {
+      console.log('Adding section column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [section] NVARCHAR(255) NULL;
+        `);
+        console.log('section column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding section to checklist_items:', err.message);
+      }
+    }
     
     // Add critical failure tracking to audits table
     if (!auditsColumns.includes('has_critical_failure')) {
