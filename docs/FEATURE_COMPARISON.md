@@ -1,7 +1,9 @@
 # Audit Checklist App - Feature Comparison & Improvement Plan
 
 **Date:** 2025-01-27  
-**Based on:** Industry research of leading audit/inspection apps (GoAudits, QuickTapSurvey, Lumiform, Axonator, etc.)
+**Based on:** Industry research of leading audit/inspection apps (GoAudits, QuickTapSurvey, Lumiform, Axonator, Taqtics, etc.)
+
+**See Also:** [Competitor Analysis - Taqtics](./COMPETITOR_ANALYSIS_TAQTICS.md)
 
 ---
 
