@@ -166,7 +166,7 @@ router.get('/', authenticate, (req, res) => {
   });
 });
 
-// Admin endpoint to update Speed of Service category items
+// Admin endpoint to update Speed of Service TRACKING category items
 // POST /api/templates/admin/update-speed-of-service
 router.post('/admin/update-speed-of-service', authenticate, async (req, res) => {
   try {
@@ -175,30 +175,68 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
       return res.status(403).json({ error: 'Admin access required' });
     }
     
-    const { templateName = 'CVR - CDR', category = 'SERVICE - Speed of Service' } = req.body;
+    const { templateName = 'CVR - CDR', category = 'SPEED OF SERVICE – TRACKING' } = req.body;
     const dbInstance = db.getDb();
     
-    logger.info(`[Admin] Updating Speed of Service - Template: "${templateName}", Category: "${category}"`);
+    logger.info(`[Admin] Updating Speed of Service Tracking - Template: "${templateName}", Category: "${category}"`);
     
-    // Curated items from user's requirements
-    const ITEMS = [
-      { title: 'If there was NO queue, were customers greeted within 10 seconds / acceptable time', yesMark: '3' },
-      { title: 'If there was a queue, were customers greeted within 20 seconds / acceptable time', yesMark: '3' },
-      { title: 'If there was a queue, were you quoted an accurate wait time and provided a menu?', yesMark: '3' },
-      { title: 'Server offered to take the order within 2 minutes of your having been seated or buzzed', yesMark: '3' },
-      { title: 'Was the complete food order served in a timely manner?', yesMark: '0', isHeader: true },
-      { title: '- Straight Drinks on time (3-4 mins)', yesMark: '3' },
-      { title: '- Cocktails / Mocktails on time (5-8 mins)', yesMark: '3' },
-      { title: '- Starter on time (15-20 mins)', yesMark: '3' },
-      { title: '- Mains on time (15-20 mins)', yesMark: '3' },
-      { title: '- Desserts on time (10 mins)', yesMark: '3' },
-      { title: 'Station holder checked for the feedback within 3 mins of starters being served', yesMark: '3' },
-      { title: 'Manager on duty checked for the feedback within 4 mins of main course being served', yesMark: '3' },
-      { title: 'Dishes cleared within 7 minutes of guests finishing their meals or as required during the meal', yesMark: '3' },
-      { title: 'Bill promptly presented within 4 mins of requesting', yesMark: '3' },
-      { title: 'Staff took the payment at the table and returned with change or receipt within 5 minutes', yesMark: '3' },
-      { title: 'Vacated tables cleared and cleaned within 4 minutes', yesMark: '2' },
+    // Define the tracking items for each transaction section
+    const TRACKING_FIELDS = [
+      { title: 'Table no.', inputType: 'number', required: true },
+      { title: 'Greeted (No Queue) (Time)', inputType: 'date', required: false },
+      { title: 'Greeted (No Queue) (Sec)', inputType: 'number', required: false },
+      { title: 'Greeted (with Queue) (Time)', inputType: 'date', required: false },
+      { title: 'Greeted (with Queue) (Sec)', inputType: 'number', required: false },
+      { title: 'Order taker approached (Time)', inputType: 'date', required: false },
+      { title: 'Order taker approached (Sec)', inputType: 'number', required: false },
+      { title: 'Order taking time (Time)', inputType: 'date', required: false },
+      { title: 'Order taking time (Sec)', inputType: 'number', required: false },
+      { title: 'Straight Drinks served (Time)', inputType: 'date', required: false },
+      { title: 'Straight Drinks served (Sec)', inputType: 'number', required: false },
+      { title: 'Cocktails / Mocktails served (Time)', inputType: 'date', required: false },
+      { title: 'Cocktails / Mocktails served (Sec)', inputType: 'number', required: false },
+      { title: 'Starters served (Time)', inputType: 'date', required: false },
+      { title: 'Starters served (Sec)', inputType: 'number', required: false },
+      { title: 'Main Course served (no starters) (Time)', inputType: 'date', required: false },
+      { title: 'Main Course served (no starters) (Sec)', inputType: 'number', required: false },
+      { title: 'Main Course served (after starters) (Time)', inputType: 'date', required: false },
+      { title: 'Main Course served (after starters) (Sec)', inputType: 'number', required: false },
+      { title: 'Captain / F&B Exe. follow-up after starter (Time)', inputType: 'date', required: false },
+      { title: 'Captain / F&B Exe. follow-up after starter (Sec)', inputType: 'number', required: false },
+      { title: 'Manager follow-up after mains (Time)', inputType: 'date', required: false },
+      { title: 'Manager follow-up after mains (Sec)', inputType: 'number', required: false },
+      { title: 'Dishes cleared (Time)', inputType: 'date', required: false },
+      { title: 'Dishes cleared (Sec)', inputType: 'number', required: false },
+      { title: 'Bill presented (Time)', inputType: 'date', required: false },
+      { title: 'Bill presented (Sec)', inputType: 'number', required: false },
+      { title: 'Receipt & change given (Time)', inputType: 'date', required: false },
+      { title: 'Receipt & change given (Sec)', inputType: 'number', required: false },
+      { title: 'Tables cleared, cleaned & set back (Time)', inputType: 'date', required: false },
+      { title: 'Tables cleared, cleaned & set back (Sec)', inputType: 'number', required: false },
     ];
+    
+    // Average fields (only Sec fields)
+    const AVG_FIELDS = [
+      { title: 'Table no.', inputType: 'number', required: false },
+      { title: 'Greeted (with Queue) (Sec)', inputType: 'number', required: false },
+      { title: 'Greeted (No Queue) (Sec)', inputType: 'number', required: false },
+      { title: 'Order taker approached (Sec)', inputType: 'number', required: false },
+      { title: 'Order taking time (Sec)', inputType: 'number', required: false },
+      { title: 'Straight Drinks served (Sec)', inputType: 'number', required: false },
+      { title: 'Cocktails / Mocktails served (Sec)', inputType: 'number', required: false },
+      { title: 'Starters served (Sec)', inputType: 'number', required: false },
+      { title: 'Main Course served (no starters) (Sec)', inputType: 'number', required: false },
+      { title: 'Main Course served (after starters) (Sec)', inputType: 'number', required: false },
+      { title: 'Captain / F&B Exe. follow-up after starter (Sec)', inputType: 'number', required: false },
+      { title: 'Manager follow-up after mains (Sec)', inputType: 'number', required: false },
+      { title: 'Dishes cleared (Sec)', inputType: 'number', required: false },
+      { title: 'Bill presented (Sec)', inputType: 'number', required: false },
+      { title: 'Receipt & change given (Sec)', inputType: 'number', required: false },
+      { title: 'Tables cleared, cleaned & set back (Sec)', inputType: 'number', required: false },
+    ];
+    
+    // Sections: Trnx-1, Trnx-2, Trnx-3, Trnx-4, Avg
+    const SECTIONS = ['Trnx-1', 'Trnx-2', 'Trnx-3', 'Trnx-4', 'Avg'];
     
     // Find template
     const template = await dbInstance.get('SELECT id, name FROM checklist_templates WHERE name = ?', [templateName]);
@@ -222,49 +260,53 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
     }
     logger.info(`[Admin] Deleted ${existing.length} existing items`);
     
-    // Insert new items
+    // Insert new items for each section
     let insertedCount = 0;
-    for (let i = 0; i < ITEMS.length; i++) {
-      const item = ITEMS[i];
+    let orderIndex = 0;
+    
+    for (const section of SECTIONS) {
+      const fields = section === 'Avg' ? AVG_FIELDS : TRACKING_FIELDS;
       
-      const result = await dbInstance.run(
-        `INSERT INTO checklist_items 
-         (template_id, title, description, category, required, order_index, input_type, weight, is_critical)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [templateId, item.title, '', category, 1, i, 'option_select', 1, 0]
-      );
-      
-      const itemId = result.lastID;
-      if (itemId) {
-        // Insert options
-        await dbInstance.run(
-          'INSERT INTO checklist_item_options (item_id, option_text, mark, order_index) VALUES (?, ?, ?, ?)',
-          [itemId, 'Yes', item.yesMark, 0]
+      for (const field of fields) {
+        // Create a unique title with section prefix for grouping
+        const fullCategory = `${category}|${section}`;
+        
+        const result = await dbInstance.run(
+          `INSERT INTO checklist_items 
+           (template_id, title, description, category, required, order_index, input_type, weight, is_critical)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            templateId,
+            field.title,
+            '',
+            fullCategory,
+            field.required ? 1 : 0,
+            orderIndex,
+            field.inputType,
+            1,
+            0
+          ]
         );
-        await dbInstance.run(
-          'INSERT INTO checklist_item_options (item_id, option_text, mark, order_index) VALUES (?, ?, ?, ?)',
-          [itemId, 'No', '0', 1]
-        );
-        await dbInstance.run(
-          'INSERT INTO checklist_item_options (item_id, option_text, mark, order_index) VALUES (?, ?, ?, ?)',
-          [itemId, 'N/A', 'NA', 2]
-        );
-        insertedCount++;
+        
+        if (result.lastID) {
+          insertedCount++;
+        }
+        orderIndex++;
       }
     }
     
-    logger.info(`[Admin] Inserted ${insertedCount} items`);
+    logger.info(`[Admin] Inserted ${insertedCount} tracking items`);
     
     res.json({
       success: true,
       message: `Updated ${category} in template "${templateName}"`,
       deletedItems: existing.length,
       insertedItems: insertedCount,
-      perfectScore: 44
+      sections: SECTIONS
     });
     
   } catch (error) {
-    logger.error('[Admin] Error updating Speed of Service:', error);
+    logger.error('[Admin] Error updating Speed of Service Tracking:', error);
     res.status(500).json({ error: 'Failed to update', details: error.message });
   }
 });
