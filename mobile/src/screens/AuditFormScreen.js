@@ -27,6 +27,7 @@ import { SignatureModal, SignatureDisplay } from '../components';
 const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
+  const { calculateDistance } = useLocation(); // Get distance calculation function
   const { templateId, auditId, scheduledAuditId, locationId: initialLocationId } = route.params || {};
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
@@ -62,7 +63,7 @@ const AuditFormScreen = () => {
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
   
   // GPS Location state
-  const { getCurrentLocation, permissionGranted, settings: locationSettings } = useLocation();
+  const { getCurrentLocation, permissionGranted, settings: locationSettings, calculateDistance } = useLocation();
   const [capturedLocation, setCapturedLocation] = useState(null);
   const [locationVerified, setLocationVerified] = useState(false);
   const [showLocationVerification, setShowLocationVerification] = useState(false);
@@ -1265,6 +1266,48 @@ const AuditFormScreen = () => {
         return;
       }
 
+      // Geo-fencing validation: Check if captured location is within allowed distance
+      if (capturedLocation && selectedLocation?.latitude && selectedLocation?.longitude) {
+        const storeLat = parseFloat(selectedLocation.latitude);
+        const storeLon = parseFloat(selectedLocation.longitude);
+        const distance = calculateDistance(
+          capturedLocation.latitude,
+          capturedLocation.longitude,
+          storeLat,
+          storeLon
+        );
+
+        const MAX_ALLOWED_DISTANCE = 1000; // 1000 meters = 1 km (block submission)
+        const WARNING_DISTANCE = 500; // 500 meters = warning threshold
+
+        if (distance > MAX_ALLOWED_DISTANCE) {
+          Alert.alert(
+            'Location Too Far',
+            `You are ${Math.round(distance)}m from ${selectedLocation.name}.\n\nAudits must be conducted within ${MAX_ALLOWED_DISTANCE}m of the store location. Please move closer to the store or capture your location again.`,
+            [{ text: 'OK', style: 'cancel' }]
+          );
+          setSaving(false);
+          return;
+        } else if (distance > WARNING_DISTANCE && !locationVerified) {
+          // Show warning but allow with confirmation
+          const confirmed = await new Promise((resolve) => {
+            Alert.alert(
+              'Location Warning',
+              `You are ${Math.round(distance)}m from ${selectedLocation.name}.\n\nYou are outside the recommended range (${WARNING_DISTANCE}m). Are you sure you want to continue?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Continue Anyway', onPress: () => resolve(true) },
+              ]
+            );
+          });
+          
+          if (!confirmed) {
+            setSaving(false);
+            return;
+          }
+        }
+      }
+
       // Validate info step data if we're on step 0 or haven't saved it yet
       if (currentStep === 0 || !notes || !notes.includes('attendees')) {
         if (!attendees.trim()) {
@@ -1921,8 +1964,20 @@ const AuditFormScreen = () => {
             <LocationCaptureButton
               onCapture={(location) => {
                 setCapturedLocation(location);
+                // Auto-verify if store has coordinates
                 if (selectedLocation?.latitude && selectedLocation?.longitude) {
                   setShowLocationVerification(true);
+                  // Auto-verify location
+                  const storeLat = parseFloat(selectedLocation.latitude);
+                  const storeLon = parseFloat(selectedLocation.longitude);
+                  const distance = calculateDistance(
+                    location.latitude,
+                    location.longitude,
+                    storeLat,
+                    storeLon
+                  );
+                  const verified = distance <= 500; // Verified if within 500m
+                  setLocationVerified(verified);
                 }
               }}
               captured={!!capturedLocation}
@@ -1940,16 +1995,27 @@ const AuditFormScreen = () => {
                   latitude: parseFloat(selectedLocation.latitude),
                   longitude: parseFloat(selectedLocation.longitude),
                 }}
-                maxDistance={100}
+                maxDistance={500} // Warning threshold: 500m
                 locationName={selectedLocation.name}
                 onVerificationComplete={(result) => {
                   setLocationVerified(result.verified);
                   if (!result.verified) {
-                    Alert.alert(
-                      'Location Mismatch',
-                      `You are ${result.distance}m from ${selectedLocation.name}. The maximum allowed distance is ${result.maxDistance}m.\n\nYou must be within 100 meters to start or continue an audit.`,
-                      [{ text: 'OK', style: 'cancel' }]
-                    );
+                    const distance = result.distance || 0;
+                    if (distance > 1000) {
+                      // Block if > 1000m
+                      Alert.alert(
+                        'Location Too Far',
+                        `You are ${distance}m from ${selectedLocation.name}.\n\nAudits must be conducted within 1000 meters of the store location. Please move closer to the store to continue.`,
+                        [{ text: 'OK', style: 'cancel' }]
+                      );
+                    } else if (distance > 500) {
+                      // Warning if > 500m but < 1000m
+                      Alert.alert(
+                        'Location Warning',
+                        `You are ${distance}m from ${selectedLocation.name}.\n\nYou are outside the recommended range (500m). Audits must be within 1000m to submit.`,
+                        [{ text: 'OK', style: 'cancel' }]
+                      );
+                    }
                   }
                 }}
               />

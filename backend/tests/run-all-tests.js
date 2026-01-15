@@ -114,6 +114,7 @@ async function main() {
   // Run tests
   const tests = [
     { name: 'API Endpoints', script: 'tests/api.test.js' },
+    { name: 'Required Validation', script: 'tests/required-validation.test.js' },
   ];
   
   if (!quickMode) {

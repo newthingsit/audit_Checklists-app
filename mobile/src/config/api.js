@@ -65,25 +65,50 @@ axios.defaults.timeout = API_TIMEOUT;
 axios.defaults.headers.common['Accept'] = 'application/json';
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 
-// Add request interceptor for request throttling
+// Add request interceptor for request throttling and deduplication
 axios.interceptors.request.use(
   async config => {
     config.metadata = { startTime: new Date() };
     
-    // Skip throttling for non-GET requests
-    if (config.method && config.method.toLowerCase() !== 'get') {
-      return config;
-    }
-    
-    // Check if request should be throttled - wait instead of rejecting
-    if (shouldThrottle(config)) {
-      const url = config.url || '';
-      const throttleDelay = getThrottleDelay(url);
-      if (__DEV__) {
-        console.warn(`[API] Request throttled, waiting ${throttleDelay}ms: ${url}`);
+    // Only process GET requests for caching/throttling
+    if (config.method && config.method.toLowerCase() === 'get') {
+      // Check for cached response first
+      const cached = getCachedResponse(config);
+      if (cached) {
+        // Create a fake response that will be intercepted and returned
+        config.__useCache = true;
+        config.__cachedResponse = cached;
+        return config;
       }
-      // Wait for throttle delay before proceeding
-      await new Promise(resolve => setTimeout(resolve, throttleDelay));
+      
+      // Check if same request is already pending (deduplication)
+      if (isPending(config)) {
+        const pendingPromise = getPendingPromise(config);
+        if (pendingPromise) {
+          // Wait for pending request and use its result
+          try {
+            await pendingPromise;
+            const cachedAfter = getCachedResponse(config);
+            if (cachedAfter) {
+              config.__useCache = true;
+              config.__cachedResponse = cachedAfter;
+            }
+          } catch (e) {
+            // Pending request failed, continue with new request
+          }
+        }
+      }
+      
+      // Check if request should be throttled - wait instead of rejecting
+      if (shouldThrottle(config)) {
+        const url = config.url || '';
+        const throttleDelay = getThrottleDelay(url);
+        if (__DEV__) {
+          console.warn(`[API] Request throttled, waiting ${throttleDelay}ms: ${url}`);
+        }
+        // Wait for throttle delay before proceeding
+        await new Promise(resolve => setTimeout(resolve, throttleDelay));
+      }
     }
     
     return config;
@@ -94,6 +119,11 @@ axios.interceptors.request.use(
 // Add response interceptor for performance tracking, caching, and retry logic
 axios.interceptors.response.use(
   response => {
+    // Check if we should use cached response instead
+    if (response.config.__useCache && response.config.__cachedResponse) {
+      return response.config.__cachedResponse;
+    }
+    
     const endTime = new Date();
     const duration = endTime - response.config.metadata?.startTime;
     if (__DEV__ && duration > 1000) {
@@ -108,27 +138,39 @@ axios.interceptors.response.use(
     return response;
   },
   async error => {
+    // Check if we should use cached response on error
+    if (error.config?.__useCache && error.config?.__cachedResponse) {
+      return error.config.__cachedResponse;
+    }
+    
     const config = error.config || {};
     
     // Handle network errors (timeouts, connection issues)
     const isNetworkError = !error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout'));
     
-    // Handle 429 Too Many Requests with exponential backoff
+    // Handle 429 Too Many Requests - DO NOT RETRY to prevent cascading failures
+    // When rate limited, reject immediately to prevent all requests from retrying simultaneously
     if (error.response?.status === 429) {
       const retryAfter = error.response.headers['retry-after'];
-      const waitTime = retryAfter 
-        ? parseInt(retryAfter) * 1000 
-        : Math.min(30000, 1000 * Math.pow(2, config.__retryCount || 0)); // Max 30 seconds
+      const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : null;
       
-      if (!config.__retryCount || config.__retryCount < 2) {
-        config.__retryCount = (config.__retryCount || 0) + 1;
-        console.warn(`[API] Rate limited (429), retrying after ${waitTime}ms (attempt ${config.__retryCount})`);
-        
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        return axios(config);
+      // Try to use cached response if available
+      if (config.method && config.method.toLowerCase() === 'get') {
+        const cached = getCachedResponse(config);
+        if (cached) {
+          console.warn(`[API] Rate limited (429), using cached response: ${config.url}`);
+          return cached;
+        }
       }
       
-      console.error(`[API] Rate limited (429), max retries reached for: ${config.url}`);
+      // Log the rate limit but don't retry - let the caller handle it
+      if (waitTime) {
+        console.warn(`[API] Rate limited (429), retry after ${waitTime}ms: ${config.url}`);
+      } else {
+        console.warn(`[API] Rate limited (429): ${config.url}`);
+      }
+      
+      // Reject immediately - no retry to prevent cascading rate limit failures
       return Promise.reject(error);
     }
     

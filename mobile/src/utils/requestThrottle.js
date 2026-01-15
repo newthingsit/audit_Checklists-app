@@ -8,28 +8,31 @@ const requestCache = new Map();
 const lastRequestTime = new Map();
 
 // Cache duration for different endpoints (in milliseconds)
-// Increased to reduce API calls and prevent 429 errors
+// Significantly increased to reduce API calls and prevent 429 errors
 const CACHE_DURATIONS = {
-  '/templates': 60000,           // 60 seconds (increased from 30s)
-  '/scheduled-audits': 45000,   // 45 seconds (increased from 30s)
-  '/notifications/unread-count': 30000, // 30 seconds (increased from 10s)
-  '/notifications': 45000,      // 45 seconds (increased from 30s)
-  '/analytics/dashboard': 120000, // 2 minutes (increased from 60s)
-  '/locations': 600000,          // 10 minutes (increased from 5 min)
-  '/users': 600000,             // 10 minutes (increased from 5 min)
-  '/auth/me': 60000,            // 60 seconds - session check can be cached
-  default: 45000,               // 45 seconds (increased from 30s)
+  '/templates': 300000,           // 5 minutes (increased from 60s)
+  '/scheduled-audits': 120000,   // 2 minutes (increased from 45s)
+  '/notifications/unread-count': 60000, // 60 seconds (increased from 30s)
+  '/notifications': 120000,      // 2 minutes (increased from 45s)
+  '/analytics/dashboard': 300000, // 5 minutes (increased from 2 min)
+  '/locations': 600000,          // 10 minutes (unchanged)
+  '/users': 600000,             // 10 minutes (unchanged)
+  '/auth/me': 120000,            // 2 minutes - session check can be cached longer
+  '/audits': 60000,              // 60 seconds for audit data
+  default: 120000,               // 2 minutes (increased from 45s)
 };
 
 // Minimum time between requests for the same endpoint (in milliseconds)
-// Increased to reduce API calls and prevent 429 errors
+// Significantly increased to prevent 429 errors
 const THROTTLE_DELAYS = {
-  '/notifications/unread-count': 30000, // 30 seconds minimum (increased from 10s)
-  '/notifications': 30000,      // 30 seconds minimum (increased from 15s)
-  '/scheduled-audits': 30000,   // 30 seconds minimum (increased from 20s)
-  '/templates': 30000,          // 30 seconds minimum (increased from 15s)
-  '/auth/me': 30000,            // 30 seconds minimum - don't spam session checks
-  default: 20000,               // 20 seconds minimum (increased from 10s)
+  '/notifications/unread-count': 60000, // 60 seconds minimum (increased from 30s)
+  '/notifications': 60000,      // 60 seconds minimum (increased from 30s)
+  '/scheduled-audits': 60000,   // 60 seconds minimum (increased from 30s)
+  '/templates': 60000,          // 60 seconds minimum (increased from 30s)
+  '/auth/me': 60000,            // 60 seconds minimum - don't spam session checks
+  '/audits': 30000,             // 30 seconds minimum for audit endpoints
+  '/locations': 30000,          // 30 seconds minimum for locations
+  default: 30000,               // 30 seconds minimum (increased from 20s)
 };
 
 /**

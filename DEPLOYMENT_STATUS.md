@@ -1,103 +1,76 @@
-# 📊 Deployment Status
+# 🚀 Deployment Status
 
-Last Updated: December 1, 2025
-
----
-
-## ✅ Completed Steps
-
-| Step | Status | Details |
-|------|--------|---------|
-| Azure Resources | ✅ | Resource group, SQL, App Service, Static Web App created |
-| Environment Variables | ✅ | Backend App Service configured |
-| Code on GitHub | ✅ | Pushed to `main` branch |
-| Workflow Files | ✅ | GitHub Actions workflows ready |
-| App Names Updated | ✅ | Workflow uses `audit-app-backend-2221` |
+**Last Updated:** December 30, 2025  
+**GitHub Billing:** ✅ Resolved
 
 ---
 
-## ⏳ Pending Steps
+## 📦 Recent Commits Waiting for Deployment
 
-| Step | Action Required | Priority |
-|------|----------------|----------|
-| GitHub Secrets | Add 3 secrets to repository | 🔴 High |
-| CORS Settings | Update with frontend URL | 🔴 High |
-| First Deployment | Trigger via push or manual | 🟡 Medium |
-| Storage Account | Create for photo uploads | 🟢 Low |
+1. **Print Preview Modal** (commit `27e4887`) - ✅ Ready
+2. **Status & Category Completion Fixes** (commit `46e183c`) - ✅ Ready  
+3. **Mobile Crash Fixes** (commits `9989106`, `d056743`) - ✅ Ready
 
 ---
 
-## 🔐 Required GitHub Secrets
+## 🔄 How to Trigger Deployment
 
-Add these at: https://github.com/newthingsit/audit_Checklists-app/settings/secrets/actions
+### Option 1: Re-run Failed Workflows (Recommended)
 
-1. **`AZURE_STATIC_WEB_APPS_API_TOKEN`**
-   - Get from: Azure Portal → Static Web Apps → Manage deployment token
+1. Go to: https://github.com/newthingsit/audit_Checklists-app/actions
+2. Find the failed workflow runs
+3. Click on a failed run
+4. Click **"Re-run all jobs"** button
+5. Wait for deployment to complete (5-10 minutes)
 
-2. **`AZURE_WEBAPP_PUBLISH_PROFILE`**
-   - Get from: Azure Portal → App Service → Get publish profile
+### Option 2: Manual Workflow Trigger
 
-3. **`REACT_APP_API_URL`**
-   - Value: `https://audit-app-backend-2221.azurewebsites.net/api`
+1. Go to: https://github.com/newthingsit/audit_Checklists-app/actions
+2. Select **"Azure Static Web Apps CI/CD"** workflow
+3. Click **"Run workflow"** button
+4. Select branch: **master**
+5. Click **"Run workflow"**
+6. Repeat for **"Azure App Service CI/CD - Backend"** workflow
 
----
+### Option 3: Trigger via New Commit
 
-## 🌐 CORS Configuration
-
-**Current Status**: Needs frontend URL
-
-**Action**: Update `CORS_ORIGINS` in App Service with:
-```
-https://audit-app-frontend-xxxxx.azurestaticapps.net,http://localhost:3000
+Make a small change to trigger workflows automatically:
+```bash
+# Create empty commit to trigger workflows
+git commit --allow-empty -m "Trigger deployment after billing resolution"
+git push
 ```
 
 ---
 
-## 📍 Your Azure Resources
+## ✅ Deployment Checklist
 
-| Resource | Name | Status |
-|----------|------|--------|
-| Resource Group | `audit-app-rg` | ✅ Active |
-| SQL Database | `audit_checklists` | ✅ Running |
-| SQL Server | `audit-sql-server-2221` | ✅ Running |
-| App Service | `audit-app-backend-2221` | ✅ Running |
-| Static Web App | `audit-app-frontend` | ✅ Running |
+After workflows run:
 
----
-
-## 🔗 Important URLs
-
-| Service | URL |
-|---------|-----|
-| Backend API | `https://audit-app-backend-2221.azurewebsites.net/api` |
-| Frontend | `https://audit-app-frontend-xxxxx.azurestaticapps.net` |
-| Azure Portal | `https://portal.azure.com` |
-| GitHub Repo | `https://github.com/newthingsit/audit_Checklists-app` |
-| GitHub Actions | `https://github.com/newthingsit/audit_Checklists-app/actions` |
+- [ ] Frontend workflow completed successfully
+- [ ] Backend workflow completed successfully
+- [ ] Frontend accessible at Static Web App URL
+- [ ] Backend API responding at App Service URL
+- [ ] Print preview feature working
+- [ ] Category completion fixes working
+- [ ] Mobile app no longer crashing
 
 ---
 
-## 📋 Next Actions
+## 🔍 Verify Deployment
 
-1. **Add GitHub Secrets** (5 min)
-2. **Update CORS** (2 min)
-3. **Trigger Deployment** (automatic on push)
-4. **Verify Deployment** (test URLs)
+### Check Frontend
+- Visit your Static Web App URL
+- Test print preview feature
+- Verify category completion status
 
----
-
-## 💰 Cost Summary
-
-| Service | Monthly Cost |
-|---------|--------------|
-| App Service (B1) | ~$13 |
-| Static Web Apps | FREE |
-| SQL Database | ~$5 |
-| **Total** | **~$18-19/month** |
+### Check Backend
+- Test API: `https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api/health`
+- Check Azure Portal → App Service → Logs
 
 ---
 
-**Status**: 🟡 Ready for final configuration steps
+## 📊 Workflow Status
 
-**Next**: Add GitHub secrets and update CORS settings
-
+Monitor deployment progress at:
+https://github.com/newthingsit/audit_Checklists-app/actions

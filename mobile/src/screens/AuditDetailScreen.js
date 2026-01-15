@@ -220,7 +220,39 @@ const AuditDetailScreen = () => {
       {audit.notes && (
         <View style={styles.notesContainer}>
           <Text style={styles.notesTitle}>Notes:</Text>
-          <Text style={styles.notesText}>{audit.notes}</Text>
+          {(() => {
+            // Try to parse as JSON and format nicely
+            try {
+              const notesData = JSON.parse(audit.notes);
+              if (notesData && typeof notesData === 'object' && !Array.isArray(notesData)) {
+                // Format info data nicely
+                return (
+                  <View>
+                    {notesData.attendees && (
+                      <View style={styles.notesItem}>
+                        <Text style={styles.notesLabel}>Attendees:</Text>
+                        <Text style={styles.notesValue}>{notesData.attendees}</Text>
+                      </View>
+                    )}
+                    {notesData.pointsDiscussed && (
+                      <View style={styles.notesItem}>
+                        <Text style={styles.notesLabel}>Points Discussed:</Text>
+                        <Text style={styles.notesValue}>{notesData.pointsDiscussed}</Text>
+                      </View>
+                    )}
+                    {notesData.pictures && Array.isArray(notesData.pictures) && notesData.pictures.length > 0 && (
+                      <View style={styles.notesItem}>
+                        <Text style={styles.notesLabel}>Pictures: {notesData.pictures.length}</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              }
+            } catch (e) {
+              // Not JSON, display as plain text
+            }
+            return <Text style={styles.notesText}>{audit.notes}</Text>;
+          })()}
         </View>
       )}
 
@@ -277,8 +309,9 @@ const AuditDetailScreen = () => {
             .trim();
         }
 
+        const itemKey = item?.item_id ?? item?.id ?? 'item';
         return (
-          <View key={item.id} style={styles.itemCard}>
+          <View key={`${itemKey}-${index}`} style={styles.itemCard}>
             <View style={styles.itemHeader}>
               <View style={styles.itemTitleContainer}>
                 <Text style={styles.itemTitle}>
@@ -334,21 +367,43 @@ const AuditDetailScreen = () => {
             </View>
           )}
 
+          {!item.comment && item.mark && !item.selected_option_id && (() => {
+            const inputType = String(item.input_type || '').toLowerCase();
+            const allowedTypes = ['number', 'date', 'open_ended', 'description', 'scan_code', 'signature'];
+            if (!allowedTypes.includes(inputType)) return null;
+            if (String(item.mark).toUpperCase() === 'NA') return null;
+            return (
+              <View style={styles.commentContainer}>
+                <Text style={styles.commentLabel}>Response:</Text>
+                <Text style={styles.commentText}>{String(item.mark)}</Text>
+              </View>
+            );
+          })()}
+
           {item.photo_url && (
             <View style={styles.photoContainer}>
               <Image 
                 source={{ 
                   uri: (() => {
-                    let photoUrl = item.photo_url;
-                    if (!photoUrl.startsWith('http')) {
-                      const baseUrl = API_BASE_URL.replace('/api', '');
-                      if (photoUrl.startsWith('/')) {
-                        photoUrl = `${baseUrl}${photoUrl}`;
-                      } else {
-                        photoUrl = `${baseUrl}/${photoUrl}`;
-                      }
+                    let photoUrl = String(item.photo_url);
+                    
+                    // Handle local file paths (file://)
+                    if (photoUrl.startsWith('file://')) {
+                      return photoUrl; // Use local file path as-is for React Native Image
                     }
-                    return photoUrl;
+                    
+                    // Handle HTTP/HTTPS URLs
+                    if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+                      return photoUrl;
+                    }
+                    
+                    // Handle server paths (relative paths)
+                    const baseUrl = API_BASE_URL.replace('/api', '');
+                    if (photoUrl.startsWith('/')) {
+                      return `${baseUrl}${photoUrl}`;
+                    } else {
+                      return `${baseUrl}/${photoUrl}`;
+                    }
                   })()
                 }} 
                 style={styles.itemPhoto}
@@ -494,6 +549,20 @@ const styles = StyleSheet.create({
   notesText: {
     fontSize: 14,
     color: '#666',
+  },
+  notesItem: {
+    marginBottom: 10,
+  },
+  notesLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  notesValue: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
   },
   sectionTitle: {
     fontSize: 20,

@@ -47,6 +47,42 @@ const computeAverageMinutes = (time_entries) => {
   return Math.round(avg * 100) / 100;
 };
 
+const parseInfoNotes = (notes) => {
+  if (!notes) return null;
+  if (typeof notes === 'object') return notes;
+  if (typeof notes !== 'string') return null;
+  try {
+    const parsed = JSON.parse(notes);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const validateInfoStepNotes = (notes) => {
+  const parsed = parseInfoNotes(notes);
+  if (!parsed) return null;
+  const hasInfoFields = ['attendees', 'pointsDiscussed', 'infoPictures']
+    .some(key => Object.prototype.hasOwnProperty.call(parsed, key));
+  if (!hasInfoFields) return null;
+
+  const attendees = String(parsed.attendees || '').trim();
+  const pointsDiscussed = String(parsed.pointsDiscussed || '').trim();
+  const infoPictures = Array.isArray(parsed.infoPictures) ? parsed.infoPictures : [];
+
+  if (!attendees || !pointsDiscussed || infoPictures.length === 0) {
+    return {
+      error: 'Info step data is incomplete',
+      details: {
+        hasAttendees: !!attendees,
+        hasPointsDiscussed: !!pointsDiscussed,
+        pictureCount: infoPictures.length
+      }
+    };
+  }
+  return null;
+};
+
 const getNextScheduledDate = (currentDate, frequency) => {
   if (!frequency) return null;
   const date = new Date(currentDate || new Date());
@@ -631,6 +667,44 @@ router.post('/', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Template ID and restaurant name are required' });
   }
 
+  // Geo-fencing validation: Check if GPS location is within allowed distance from store
+  // This must be done synchronously before proceeding
+  if (gps_latitude && gps_longitude && location_id) {
+    return dbInstance.get('SELECT latitude, longitude FROM locations WHERE id = ?', [location_id], (err, storeLocation) => {
+      if (!err && storeLocation && storeLocation.latitude && storeLocation.longitude) {
+        // Calculate distance using Haversine formula
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = (parseFloat(storeLocation.latitude) * Math.PI) / 180;
+        const φ2 = (parseFloat(gps_latitude) * Math.PI) / 180;
+        const Δφ = ((parseFloat(gps_latitude) - parseFloat(storeLocation.latitude)) * Math.PI) / 180;
+        const Δλ = ((parseFloat(gps_longitude) - parseFloat(storeLocation.longitude)) * Math.PI) / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c; // Distance in meters
+
+        const MAX_ALLOWED_DISTANCE = 1000; // 1000 meters = 1 km
+
+        if (distance > MAX_ALLOWED_DISTANCE) {
+          return res.status(400).json({ 
+            error: 'Location too far from store',
+            message: `You are ${Math.round(distance)}m from the store location. Audits must be conducted within ${MAX_ALLOWED_DISTANCE}m.`,
+            distance: Math.round(distance),
+            maxDistance: MAX_ALLOWED_DISTANCE
+          });
+        }
+      }
+      // Continue with audit creation if validation passes
+      proceedWithAuditCreation();
+    });
+  }
+  
+  // If no GPS validation needed, proceed directly
+  proceedWithAuditCreation();
+  
+  function proceedWithAuditCreation() {
+
   // If creating audit from scheduled audit, check permission
   const validateScheduledAudit = (callback) => {
     if (!scheduled_audit_id) {
@@ -774,7 +848,12 @@ router.post('/', authenticate, (req, res) => {
             return res.status(400).json({ error: `No checklist items found for category: ${normalizedAuditCategory}` });
           }
 
-          // Create audit - use location_id if provided, otherwise use location text
+      const infoValidation = validateInfoStepNotes(notes);
+      if (infoValidation) {
+        return res.status(400).json(infoValidation);
+      }
+
+      // Create audit - use location_id if provided, otherwise use location text
           // Store original_scheduled_date for Schedule Adherence tracking
           const originalScheduledDate = linkedSchedule ? linkedSchedule.scheduled_date : null;
           
@@ -971,6 +1050,10 @@ router.put('/:id', authenticate, (req, res) => {
       updateValues.push(location_id);
     }
     if (notes !== undefined) {
+      const infoValidation = validateInfoStepNotes(notes);
+      if (infoValidation) {
+        return res.status(400).json(infoValidation);
+      }
       updateFields.push('notes = ?');
       updateValues.push(notes);
     }
@@ -1075,6 +1158,51 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
     }
 
     function updateAuditItem() {
+      const isFilledValue = (value) =>
+        value !== undefined && value !== null && String(value).trim() !== '';
+
+      const isItemComplete = (payload, meta) => {
+        const inputType = String(meta?.input_type || '').toLowerCase();
+        const statusValue = payload.status;
+        const hasStatus = statusValue && statusValue !== 'pending';
+        const hasOption = payload.selected_option_id !== undefined && payload.selected_option_id !== null;
+        const hasPhoto = isFilledValue(payload.photo_url);
+        const hasComment = isFilledValue(payload.comment);
+        const hasMarkValue = isFilledValue(payload.mark) && String(payload.mark).toUpperCase() !== 'NA';
+
+        if (inputType === 'option_select' || inputType === 'select_from_data_source') return !!hasOption;
+        if (inputType === 'image_upload') return !!hasPhoto;
+        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature'].includes(inputType)) {
+          return hasComment || hasMarkValue;
+        }
+        return !!hasStatus;
+      };
+
+      const payloadForValidation = {
+        status,
+        comment,
+        photo_url,
+        selected_option_id: validSelectedOptionId,
+        mark: finalMark
+      };
+
+      dbInstance.get(
+        'SELECT input_type, required FROM checklist_items WHERE id = ?',
+        [itemId],
+        (metaErr, meta) => {
+          if (metaErr) {
+            logger.error('Error loading checklist item meta for validation:', metaErr.message);
+            return res.status(500).json({ error: 'Database error validating item' });
+          }
+          const isRequired = meta && (meta.required === 1 || meta.required === true);
+          if (isRequired && !isItemComplete(payloadForValidation, meta)) {
+            return res.status(400).json({
+              error: 'Required checklist item is incomplete',
+              itemId,
+              input_type: meta?.input_type || null
+            });
+          }
+
       // First check if audit has scheduled_audit_id and mark as in_progress if needed
       dbInstance.get(
         'SELECT scheduled_audit_id FROM audits WHERE id = ?',
@@ -1098,6 +1226,8 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
           } else {
             continueWithItemUpdate();
           }
+        }
+      );
         }
       );
       
@@ -1407,6 +1537,15 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                       }
                       if (auditStatus === 'completed') {
                         handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
+                        // Auto-create action items for failed items
+                        const { autoCreateActionItems } = require('../utils/autoActions');
+                        autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
+                          if (err) {
+                            logger.error('Error auto-creating action items:', err);
+                          } else if (actions && actions.length > 0) {
+                            logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
+                          }
+                        });
                       }
                       res.json({ 
                         message: 'Audit item updated successfully',
@@ -1532,6 +1671,15 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                             }
                             if (auditStatus === 'completed') {
                               handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
+                              // Auto-create action items for failed items
+                              const { autoCreateActionItems } = require('../utils/autoActions');
+                              autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
+                                if (err) {
+                                  logger.error('Error auto-creating action items:', err);
+                                } else if (actions && actions.length > 0) {
+                                  logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
+                                }
+                              });
                             }
                             res.json({ message: 'Audit item updated successfully' });
                           }
@@ -1612,7 +1760,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         if (uniqueItemIds.length === 0) return resolve({});
         const placeholders = uniqueItemIds.map(() => '?').join(',');
         dbInstance.all(
-          `SELECT id, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes 
+          `SELECT id, input_type, required, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes 
            FROM checklist_items WHERE id IN (${placeholders})`,
           uniqueItemIds,
           (metaErr, rows) => {
@@ -1626,6 +1774,46 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
           }
         );
       });
+
+      const isFilledValue = (value) =>
+        value !== undefined && value !== null && String(value).trim() !== '';
+
+      const isItemComplete = (payload, meta) => {
+        const inputType = String(meta?.input_type || '').toLowerCase();
+        const status = payload.status;
+        const hasStatus = status && status !== 'pending';
+        const hasOption = payload.selected_option_id !== undefined && payload.selected_option_id !== null;
+        const hasPhoto = isFilledValue(payload.photo_url);
+        const hasComment = isFilledValue(payload.comment);
+        const hasMarkValue = isFilledValue(payload.mark) && String(payload.mark).toUpperCase() !== 'NA';
+
+        if (inputType === 'option_select' || inputType === 'select_from_data_source') return !!hasOption;
+        if (inputType === 'image_upload') return !!hasPhoto;
+        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature'].includes(inputType)) {
+          return hasComment || hasMarkValue;
+        }
+        // task or unknown types fall back to status
+        return !!hasStatus;
+      };
+
+      const missingRequired = items
+        .map(item => {
+          const itemId = parseInt(item.itemId, 10);
+          if (isNaN(itemId)) return null;
+          const meta = itemMetaById[itemId];
+          const isRequired = meta && (meta.required === 1 || meta.required === true);
+          if (!isRequired) return null;
+          return isItemComplete(item, meta) ? null : { itemId, input_type: meta?.input_type || null };
+        })
+        .filter(Boolean);
+
+      if (missingRequired.length > 0) {
+        logger.warn('[Batch Update] Required items missing', { auditId, count: missingRequired.length });
+        return res.status(400).json({
+          error: 'Required checklist items are incomplete',
+          missingRequired
+        });
+      }
 
       // Process all items in parallel using Promise.all
       const updatePromises = items.map(item => {
@@ -1921,6 +2109,18 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         // Log completion status for debugging
         if (scoreData) {
           logger.info(`[Batch Update] Audit ${auditId} - Status: ${scoreData.status}, Score: ${scoreData.score}%, Completed: ${scoreData.completed}/${scoreData.total} items`);
+          
+          // Auto-create action items for failed items when audit is completed
+          if (scoreData.status === 'completed') {
+            const { autoCreateActionItems } = require('../utils/autoActions');
+            autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
+              if (err) {
+                logger.error('Error auto-creating action items:', err);
+              } else if (actions && actions.length > 0) {
+                logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
+              }
+            });
+          }
         }
         
         if (scoreData && scoreData.status === 'completed') {
@@ -2166,6 +2366,16 @@ router.put('/:id/complete', authenticate, (req, res) => {
             }
 
             handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
+
+            // Auto-create action items for failed items
+            const { autoCreateActionItems } = require('../utils/autoActions');
+            autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
+              if (err) {
+                logger.error('Error auto-creating action items:', err);
+              } else if (actions && actions.length > 0) {
+                logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
+              }
+            });
 
             // Send notification to audit creator
             try {

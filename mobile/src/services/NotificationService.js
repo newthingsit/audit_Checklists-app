@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -104,9 +105,54 @@ class NotificationServiceClass {
         return null;
       }
 
-      token = (await Notifications.getExpoPushTokenAsync({
-        projectId: 'your-project-id', // Replace with your Expo project ID
-      })).data;
+      // Expo Go no longer supports remote push notifications (SDK 53+).
+      // Avoid calling getExpoPushTokenAsync in Expo Go to prevent noisy errors.
+      const executionEnvironment = Constants.executionEnvironment;
+      const appOwnership = Constants.appOwnership;
+      const isExpoGo = appOwnership === 'expo' || executionEnvironment === 'storeClient';
+
+      console.log('[Notifications][Debug] env', {
+        platform: Platform.OS,
+        appOwnership,
+        executionEnvironment,
+        isExpoGo,
+      });
+      if (isExpoGo) {
+        console.log('[Notifications] Expo Go detected; skipping push token registration (use a dev build/standalone).');
+        return null;
+      }
+
+      // EAS projectId is required for getExpoPushTokenAsync in many environments.
+      const rawProjectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      const projectId = typeof rawProjectId === 'string' ? rawProjectId : null;
+
+      if (!projectId) {
+        console.log('[Notifications] Missing/invalid EAS projectId; skipping push token registration.', {
+          rawType: typeof rawProjectId,
+        });
+        return null;
+      }
+
+      // Basic format check to avoid sending invalid values
+      const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+      if (!looksLikeUuid) {
+        console.log('[Notifications] EAS projectId does not look like UUID; skipping push token registration.', {
+          length: projectId.length,
+        });
+        return null;
+      }
+
+      try {
+        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      } catch (error) {
+        // Don't crash app if push token fails; local notifications can still work.
+        console.log('[Notifications] Failed to get Expo push token; continuing without push token.', {
+          message: error?.message,
+        });
+        return null;
+      }
     } else {
       console.log('Push notifications require a physical device');
     }
