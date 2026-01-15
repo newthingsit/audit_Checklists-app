@@ -1358,9 +1358,22 @@ const AuditFormScreen = () => {
       const requiredItems = (filteredItems || []).filter(item => item?.required);
       const missingRequired = requiredItems.filter(item => !isItemComplete(item));
       if (missingRequired.length > 0) {
+        // Check for missing photos specifically
+        const missingPhotos = missingRequired.filter(item => {
+          const fieldType = getEffectiveItemFieldType(item);
+          return fieldType === 'image_upload' && !photos[item.id];
+        });
+        
+        let errorMessage = `Please complete all required items (${missingRequired.length} remaining).`;
+        if (missingPhotos.length > 0) {
+          const photoItems = missingPhotos.slice(0, 3).map(item => `• ${item.title}`).join('\n');
+          const moreText = missingPhotos.length > 3 ? `\n...and ${missingPhotos.length - 3} more` : '';
+          errorMessage = `Missing required photos for:\n${photoItems}${moreText}\n\nPlease add photos before submitting.`;
+        }
+        
         Alert.alert(
           'Incomplete Checklist',
-          `Please complete all required items (${missingRequired.length} remaining).`
+          errorMessage
         );
         setSaving(false);
         return;
@@ -2303,13 +2316,15 @@ const AuditFormScreen = () => {
               const fieldType = getEffectiveItemFieldType(item);
               const optionType = isOptionFieldType(fieldType);
               const answerType = isAnswerFieldType(fieldType);
+              const isMissingRequiredPhoto = item.required && fieldType === 'image_upload' && !photos[item.id];
               
               return (
               <View 
                 key={item.id} 
                 style={[
                   styles.itemCard,
-                  isPreviousFailure && styles.itemCardPreviousFailure
+                  isPreviousFailure && styles.itemCardPreviousFailure,
+                  isMissingRequiredPhoto && { borderLeftWidth: 4, borderLeftColor: '#d32f2f' }
                 ]}
               >
                 {/* Previous failure warning banner */}

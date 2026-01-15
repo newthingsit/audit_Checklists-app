@@ -601,7 +601,19 @@ const AuditForm = () => {
       const requiredItems = items.filter(item => item.required);
       const missingRequired = requiredItems.filter(item => !isItemComplete(item));
       if (missingRequired.length > 0) {
-        newErrors.items = `Please complete all required items (${missingRequired.length} remaining)`;
+        // Check for missing photos specifically
+        const missingPhotos = missingRequired.filter(item => {
+          const inputType = (item?.input_type || '').toLowerCase();
+          return inputType === 'image_upload' && !photos[item.id];
+        });
+        
+        if (missingPhotos.length > 0) {
+          const photoItems = missingPhotos.slice(0, 3).map(item => item.title).join(', ');
+          const moreText = missingPhotos.length > 3 ? ` and ${missingPhotos.length - 3} more` : '';
+          newErrors.items = `Missing required photos for: ${photoItems}${moreText}. Please add photos before submitting.`;
+        } else {
+          newErrors.items = `Please complete all required items (${missingRequired.length} remaining)`;
+        }
       }
     }
     
@@ -937,23 +949,48 @@ const AuditForm = () => {
   const renderAuditItem = (item, index) => {
     const isPreviousFailure = failedItemIds.has(item.id);
     const inputType = (item.input_type || '').toLowerCase();
+    const isMissingRequiredPhoto = item.required && inputType === 'image_upload' && !photos[item.id];
+    const inputType = (item.input_type || '').toLowerCase();
     const failureInfo = previousFailures.find(f => f.item_id === item.id);
     
     return (
       <Card 
         key={item.id} 
-        className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''}`}
+        className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''} ${isMissingRequiredPhoto ? 'missing-photo' : ''}`}
         sx={{ 
           mb: isMobile ? 2 : 2,
-          border: isPreviousFailure ? '2px solid' : '1px solid',
+          border: isPreviousFailure || isMissingRequiredPhoto ? '2px solid' : '1px solid',
           borderColor: isPreviousFailure 
             ? 'error.main' 
+            : isMissingRequiredPhoto
+            ? 'error.main'
             : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
-          backgroundColor: isPreviousFailure ? '#FFF5F5' : 'background.paper',
+          borderLeft: isMissingRequiredPhoto ? '4px solid' : 'none',
+          borderLeftColor: isMissingRequiredPhoto ? 'error.main' : 'transparent',
+          backgroundColor: isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper',
           transition: 'border-color 0.2s',
         }}
       >
         <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+          {/* Missing required photo warning */}
+          {isMissingRequiredPhoto && (
+            <Alert 
+              severity="error" 
+              icon={<PhotoCameraIcon />}
+              sx={{
+                mb: 2,
+                '& .MuiAlert-message': { width: '100%' }
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Photo Required
+              </Typography>
+              <Typography variant="body2" sx={{ fontSize: '0.875rem', mt: 0.5 }}>
+                A photo is required for this item before submission.
+              </Typography>
+            </Alert>
+          )}
+          
           {/* Previous failure warning banner */}
           {isPreviousFailure && (
             <Alert 
