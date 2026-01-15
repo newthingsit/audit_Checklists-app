@@ -1,5 +1,75 @@
 # Project Version Information
 
+## Version 1.14.0 - Conditional Logic & Enhanced Photo Management
+
+**Date:** 2025-01-27
+
+### What's New in This Version
+
+#### Conditional Logic (Show/Hide Fields)
+- ✅ **Database Schema**: Added `conditional_item_id`, `conditional_value`, and `conditional_operator` columns to `checklist_items` table
+- ✅ **Template Editor UI**: New "Conditional Display" section allowing admins to configure show/hide logic
+- ✅ **Dynamic Item Filtering**: Items automatically show/hide based on previous answers
+- ✅ **Multiple Operators**: Supports "equals", "not_equals", and "contains" operators
+- ✅ **Real-time Evaluation**: Conditions re-evaluate automatically when referenced items change
+- ✅ **Cross-Platform**: Works identically on web and mobile apps
+- ✅ **Use Cases**: Show follow-up questions only when items fail, conditional photo requirements, branching logic
+
+#### Photo Requirements Management
+- ✅ **Smart Photo Display**: Photo button only appears when `input_type === 'image_upload'`
+- ✅ **Enhanced Validation**: Clear error messages listing which items need photos
+- ✅ **Visual Indicators**: Red borders and warning banners on items missing required photos
+- ✅ **Detailed Error Messages**: Shows up to 3 item names + count of missing photos
+- ✅ **Submission Prevention**: Prevents audit submission until all required photos are uploaded
+
+#### Detailed Progress Indicators
+- ✅ **Progress Breakdown**: Shows "X required items incomplete" and "X items need photos"
+- ✅ **Category-Level Details**: Progress details shown for both overall and category-specific views
+- ✅ **Real-time Updates**: Progress indicators update as items are completed
+- ✅ **Visual Feedback**: Color-coded warnings (red) for incomplete items
+
+#### Template Management Enhancements
+- ✅ **Template Cloning**: New "Duplicate Template" button with copy icon
+- ✅ **Quick Duplication**: One-click template duplication with "Copy of [Name]" prefix
+- ✅ **Pre-filled Editor**: Cloned templates open in editor with all items pre-filled
+- ✅ **Tooltips**: Added helpful tooltips to all template action buttons
+
+#### Feature Comparison & Research
+- ✅ **Industry Analysis**: Comprehensive feature comparison document (`docs/FEATURE_COMPARISON.md`)
+- ✅ **Best Practices**: Research-based recommendations from leading audit apps
+- ✅ **Gap Analysis**: Identified missing features and implementation priorities
+- ✅ **Roadmap**: Phased implementation plan for future enhancements
+
+### Technical Implementation
+
+#### Database Changes
+- Added conditional logic columns to all database types (SQLite, MSSQL, PostgreSQL, MySQL)
+- Migration scripts handle existing databases gracefully
+- Backward compatible - existing templates continue to work
+
+#### Frontend Conditional Logic
+- **Web App**: `evaluateConditionalItem()` function evaluates conditions based on item types
+- **Mobile App**: Same evaluation logic with React Native optimizations
+- **Supported Item Types**: Option select, text/number inputs, status-based items
+- **Performance**: Uses `useMemo` and `useCallback` for efficient re-rendering
+
+#### Photo Validation
+- **Backend Validation**: Server-side checks ensure required photos are present
+- **Frontend Validation**: Client-side validation with immediate feedback
+- **Error Handling**: Graceful handling of missing photos with clear user guidance
+
+### Bug Fixes
+- ✅ **Photo Button Display**: Fixed issue where photo button showed for all items regardless of requirement
+- ✅ **Duplicate Variable Declaration**: Fixed syntax error in mobile app's `handleCategorySelect`
+- ✅ **Progress Calculation**: Fixed progress indicators to accurately reflect completion status
+
+### Components Version
+- **Backend:** 1.8.0
+- **Web App:** 1.9.0
+- **Mobile App:** 1.14.0
+
+---
+
 ## Version 1.13.0 - Mobile App Profile & Navigation Enhancements
 
 **Date:** 2025-12-03

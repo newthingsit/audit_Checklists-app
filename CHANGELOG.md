@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.0] - 2025-01-27
+
+### Added
+- **Conditional Logic**: Items can now show/hide based on previous answers
+  - Database schema: `conditional_item_id`, `conditional_value`, `conditional_operator` columns
+  - Template editor UI for configuring conditional display rules
+  - Real-time evaluation in both web and mobile audit forms
+  - Supports "equals", "not_equals", and "contains" operators
+- **Photo Requirements Management**: 
+  - Photo button only appears when `input_type === 'image_upload'`
+  - Enhanced validation with clear error messages
+  - Visual indicators (red borders, warning banners) for missing required photos
+- **Detailed Progress Indicators**:
+  - Shows "X required items incomplete"
+  - Shows "X items need photos"
+  - Category-level and overall progress breakdowns
+- **Template Cloning**: 
+  - "Duplicate Template" button with one-click duplication
+  - Pre-filled editor with all items copied
+- **Feature Comparison Document**: Industry research and best practices analysis
+
+### Changed
+- Photo button display logic to only show when required
+- Progress indicators to show detailed breakdowns
+- Error messages to be more specific about missing requirements
+
+### Fixed
+- Photo button showing for all items regardless of requirement
+- Duplicate variable declaration in mobile app
+- Progress calculation accuracy
+
+### Technical
+- Added conditional logic evaluation functions to web and mobile apps
+- Updated database migrations for all supported database types
+- Enhanced template editor with conditional logic UI
+- Improved validation messages and visual feedback
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
