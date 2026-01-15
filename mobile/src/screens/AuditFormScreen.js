@@ -527,6 +527,20 @@ const AuditFormScreen = () => {
     }
   };
 
+  // Re-evaluate conditional logic when responses change
+  useEffect(() => {
+    if (selectedCategory && filteredItems.length > 0) {
+      // Re-filter items based on updated conditional logic
+      const filtered = items.filter(item => {
+        if (item.category !== selectedCategory) return false;
+        if (selectedSection && item.section !== selectedSection) return false;
+        return true;
+      });
+      const conditionallyFiltered = filterItemsByCondition(filtered, items, responses, selectedOptions, comments);
+      setFilteredItems(conditionallyFiltered);
+    }
+  }, [responses, selectedOptions, comments, selectedCategory, selectedSection, items, filterItemsByCondition]);
+
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
     if (auditStatus === 'completed') {
@@ -1018,10 +1032,71 @@ const AuditFormScreen = () => {
     }
   }, [items, categories, groupCategories]);
 
+  // Evaluate conditional logic for items
+  const evaluateConditionalItem = useCallback((item, allItems, responses, selectedOptions, comments) => {
+    // If no conditional logic, always show
+    if (!item.conditional_item_id) {
+      return true;
+    }
+
+    // Find the referenced item
+    const referencedItem = allItems.find(it => it.id === item.conditional_item_id);
+    if (!referencedItem) {
+      // Referenced item not found, show by default
+      return true;
+    }
+
+    // Get the value of the referenced item
+    let referencedValue = null;
+    const fieldType = getEffectiveItemFieldType(referencedItem);
+    
+    if (isOptionFieldType(fieldType)) {
+      // For option select, get the selected option text
+      const selectedOptionId = selectedOptions[referencedItem.id];
+      if (selectedOptionId) {
+        const option = referencedItem.options?.find(opt => opt.id === selectedOptionId);
+        referencedValue = option?.option_text || option?.text || '';
+      }
+    } else if (isAnswerFieldType(fieldType)) {
+      // For text/number inputs, use the comment/input value
+      referencedValue = comments[referencedItem.id] || '';
+    } else {
+      // For status-based items, use the status
+      const status = responses[referencedItem.id];
+      referencedValue = status || '';
+    }
+
+    if (referencedValue === null || referencedValue === '') {
+      // No value set yet, don't show conditional item
+      return false;
+    }
+
+    // Evaluate condition
+    const conditionValue = item.conditional_value || '';
+    const operator = item.conditional_operator || 'equals';
+    const refValueStr = String(referencedValue).toLowerCase().trim();
+    const condValueStr = String(conditionValue).toLowerCase().trim();
+
+    switch (operator) {
+      case 'equals':
+        return refValueStr === condValueStr;
+      case 'not_equals':
+        return refValueStr !== condValueStr;
+      case 'contains':
+        return refValueStr.includes(condValueStr);
+      default:
+        return refValueStr === condValueStr;
+    }
+  }, [getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
+
+  // Filter items based on conditional logic
+  const filterItemsByCondition = useCallback((itemsToFilter, allItems, responses, selectedOptions, comments) => {
+    return itemsToFilter.filter(item => {
+      return evaluateConditionalItem(item, allItems, responses, selectedOptions, comments);
+    });
+  }, [evaluateConditionalItem]);
+
   const handleCategorySelect = (category, section = null) => {
-    setSelectedCategory(category);
-    setSelectedSection(section);
-    // Filter items by category and optionally by section
     setSelectedCategory(category);
     setSelectedSection(section);
     // Filter items by category and optionally by section
@@ -1030,7 +1105,9 @@ const AuditFormScreen = () => {
       if (section && item.section !== section) return false;
       return true;
     });
-    setFilteredItems(filtered);
+    // Apply conditional logic filtering
+    const conditionallyFiltered = filterItemsByCondition(filtered, items, responses, selectedOptions, comments);
+    setFilteredItems(conditionallyFiltered);
   };
 
   const handleNext = async () => {
