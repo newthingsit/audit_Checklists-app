@@ -78,13 +78,20 @@ function createSOSChecklist() {
           `INSERT INTO checklist_templates (name, category, description)
            VALUES (?, ?, ?)`,
           [sosTemplate.name, sosTemplate.category, sosTemplate.description],
-          function(insertErr) {
+          function(insertErr, result) {
             if (insertErr) {
               logger.error('Error creating SOS template:', insertErr);
               return reject(insertErr);
             }
             
-            const templateId = this.lastID;
+            // Handle both SQL Server (result.lastID) and SQLite (this.lastID)
+            const templateId = (result && result.lastID !== undefined) ? result.lastID : (this.lastID || 0);
+            
+            if (!templateId || templateId === 0) {
+              logger.error('[SOS Checklist] Failed to get template ID after insert');
+              return reject(new Error('Failed to create template - no ID returned'));
+            }
+            
             logger.info(`[SOS Checklist] Created template with ID ${templateId}`);
             
             // Insert items
@@ -96,27 +103,33 @@ function createSOSChecklist() {
                 `INSERT INTO checklist_items (template_id, title, description, category, required, order_index, input_type, max_score)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [templateId, item.title, item.description, item.category, item.required ? 1 : 0, item.order_index, item.input_type || 'option_select', 3],
-                function(itemErr) {
+                function(itemErr, itemResult) {
                   if (itemErr) {
                     logger.error(`Error creating item "${item.title}":`, itemErr);
                     errors.push({ item: item.title, error: itemErr.message });
                   } else {
-                    const itemId = this.lastID;
+                    // Handle both SQL Server (itemResult.lastID) and SQLite (this.lastID)
+                    const itemId = (itemResult && itemResult.lastID !== undefined) ? itemResult.lastID : (this.lastID || 0);
                     
-                    // Add options for option_select items
-                    if (item.input_type === 'option_select' || !item.input_type) {
-                      defaultOptions.forEach((option, optIndex) => {
-                        dbInstance.run(
-                          `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index)
-                           VALUES (?, ?, ?, ?)`,
-                          [itemId, option.option_text, option.mark, optIndex],
-                          (optErr) => {
-                            if (optErr) {
-                              logger.error(`Error creating option for "${item.title}":`, optErr);
+                    if (itemId && itemId !== 0) {
+                      // Add options for option_select items
+                      if (item.input_type === 'option_select' || !item.input_type) {
+                        defaultOptions.forEach((option, optIndex) => {
+                          dbInstance.run(
+                            `INSERT INTO checklist_item_options (item_id, option_text, mark, order_index)
+                             VALUES (?, ?, ?, ?)`,
+                            [itemId, option.option_text, option.mark, optIndex],
+                            (optErr) => {
+                              if (optErr) {
+                                logger.error(`Error creating option for "${item.title}":`, optErr);
+                              }
                             }
-                          }
-                        );
-                      });
+                          );
+                        });
+                      }
+                    } else {
+                      logger.error(`[SOS Checklist] Failed to get item ID for "${item.title}"`);
+                      errors.push({ item: item.title, error: 'Failed to get item ID after insert' });
                     }
                   }
                   
