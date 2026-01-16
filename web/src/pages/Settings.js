@@ -37,6 +37,210 @@ import { showSuccess, showError } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
 import { isAdmin, hasPermission } from '../utils/permissions';
 
+// Escalation Paths List Component
+const EscalationPathsList = ({ paths, groupedPaths, onAddPath, onEditPath, onDeletePath, showError, showSuccess }) => {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingPath, setEditingPath] = useState(null);
+  const [newPath, setNewPath] = useState({ name: 'Standard', level: 1, role: 'supervisor', days_before_escalation: 3 });
+
+  const roles = ['supervisor', 'manager', 'admin', 'location_manager', 'director'];
+
+  const handleAdd = () => {
+    if (!newPath.name || !newPath.level || !newPath.role) {
+      showError('Please fill in all required fields');
+      return;
+    }
+    onAddPath(newPath.name, newPath.level, newPath.role, newPath.days_before_escalation);
+    setNewPath({ name: 'Standard', level: 1, role: 'supervisor', days_before_escalation: 3 });
+    setShowAddDialog(false);
+  };
+
+  const handleEdit = (path) => {
+    setEditingPath(path);
+    setNewPath({
+      name: path.name,
+      level: path.level,
+      role: path.role,
+      days_before_escalation: path.days_before_escalation
+    });
+    setShowAddDialog(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!newPath.name || !newPath.level || !newPath.role) {
+      showError('Please fill in all required fields');
+      return;
+    }
+    onEditPath(editingPath.id, newPath.name, newPath.level, newPath.role, newPath.days_before_escalation, editingPath.is_active);
+    setEditingPath(null);
+    setNewPath({ name: 'Standard', level: 1, role: 'supervisor', days_before_escalation: 3 });
+    setShowAddDialog(false);
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="body2" sx={{ color: '#666' }}>
+          {Object.keys(groupedPaths).length} path(s) configured
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setEditingPath(null);
+            // Auto-increment level based on existing paths
+            const maxLevel = paths.length > 0 ? Math.max(...paths.map(p => p.level)) : 0;
+            setNewPath({ name: 'Standard', level: maxLevel + 1, role: 'supervisor', days_before_escalation: 3 });
+            setShowAddDialog(true);
+          }}
+        >
+          Add Level
+        </Button>
+      </Box>
+
+      {Object.keys(groupedPaths).length === 0 ? (
+        <Alert severity="info">
+          No escalation paths configured. Add levels to create a multi-level escalation path.
+        </Alert>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {Object.entries(groupedPaths).map(([pathName, pathLevels]) => (
+            <Box key={pathName} sx={{ border: '1px solid #e0e0e0', borderRadius: 1, p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {pathName} Path
+                </Typography>
+                <Chip label={`${pathLevels.length} level(s)`} size="small" />
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {pathLevels.sort((a, b) => a.level - b.level).map((path) => (
+                  <Box
+                    key={path.id}
+                    sx={{
+                      p: 2,
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 1,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      bgcolor: path.is_active ? 'background.paper' : 'action.disabledBackground'
+                    }}
+                  >
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Chip label={`Level ${path.level}`} size="small" color="primary" />
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          → {path.role}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ color: '#666' }}>
+                        Escalates after {path.days_before_escalation} day(s) overdue
+                        {!path.is_active && ' • Inactive'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        startIcon={<EditIcon />}
+                        onClick={() => handleEdit(path)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<DeleteIcon />}
+                        onClick={() => onDeletePath(path.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {/* Add/Edit Dialog */}
+      {showAddDialog && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1300
+          }}
+          onClick={() => setShowAddDialog(false)}
+        >
+          <Card
+            sx={{ p: 3, minWidth: 400, maxWidth: 600 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              {editingPath ? 'Edit Escalation Path Level' : 'Add Escalation Path Level'}
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Path Name"
+                value={newPath.name}
+                onChange={(e) => setNewPath({ ...newPath, name: e.target.value })}
+                placeholder="e.g., Standard, Critical"
+                fullWidth
+              />
+              <TextField
+                label="Level"
+                type="number"
+                value={newPath.level}
+                onChange={(e) => setNewPath({ ...newPath, level: parseInt(e.target.value, 10) || 1 })}
+                helperText="Level 1 = first escalation, Level 2 = second, etc."
+                fullWidth
+              />
+              <FormControl fullWidth>
+                <InputLabel>Role</InputLabel>
+                <Select
+                  value={newPath.role}
+                  label="Role"
+                  onChange={(e) => setNewPath({ ...newPath, role: e.target.value })}
+                >
+                  {roles.map(role => (
+                    <MenuItem key={role} value={role}>{role}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Days Before Escalation"
+                type="number"
+                value={newPath.days_before_escalation}
+                onChange={(e) => setNewPath({ ...newPath, days_before_escalation: parseInt(e.target.value, 10) || 3 })}
+                helperText="How many days overdue before escalating to this level"
+                fullWidth
+              />
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+                <Button onClick={() => setShowAddDialog(false)}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  onClick={editingPath ? handleSaveEdit : handleAdd}
+                >
+                  {editingPath ? 'Update' : 'Add'}
+                </Button>
+              </Box>
+            </Box>
+          </Card>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 // Assignment Rules List Component
 const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDeleteRule, showError, showSuccess, templates = [] }) => {
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -300,12 +504,17 @@ const Settings = () => {
   const [loadingRules, setLoadingRules] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [templates, setTemplates] = useState([]);
+  // Escalation paths state
+  const [escalationPaths, setEscalationPaths] = useState([]);
+  const [groupedPaths, setGroupedPaths] = useState({});
+  const [loadingPaths, setLoadingPaths] = useState(false);
 
   useEffect(() => {
     fetchPreferences();
     if (canManageRules) {
       fetchAssignmentRules();
       fetchTemplates();
+      fetchEscalationPaths();
     }
   }, [canManageRules]);
 
@@ -315,6 +524,19 @@ const Settings = () => {
       setTemplates(response.data.templates || []);
     } catch (error) {
       console.error('Error fetching templates:', error);
+    }
+  };
+
+  const fetchEscalationPaths = async () => {
+    try {
+      setLoadingPaths(true);
+      const response = await axios.get('/api/escalation-paths');
+      setEscalationPaths(response.data.paths || []);
+      setGroupedPaths(response.data.grouped || {});
+    } catch (error) {
+      console.error('Error fetching escalation paths:', error);
+    } finally {
+      setLoadingPaths(false);
     }
   };
 
@@ -487,6 +709,56 @@ const Settings = () => {
       ...prev,
       escalationDays: parseInt(days, 10) || 3
     }));
+  };
+
+  const handleAddEscalationPath = async (name, level, role, days_before_escalation) => {
+    try {
+      await axios.post('/api/escalation-paths', {
+        name,
+        level,
+        role,
+        days_before_escalation
+      });
+      showSuccess('Escalation path level added successfully');
+      await fetchEscalationPaths();
+    } catch (error) {
+      console.error('Error adding escalation path:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to add escalation path';
+      showError(errorMessage);
+    }
+  };
+
+  const handleEditEscalationPath = async (id, name, level, role, days_before_escalation, is_active) => {
+    try {
+      await axios.put(`/api/escalation-paths/${id}`, {
+        name,
+        level,
+        role,
+        days_before_escalation,
+        is_active: is_active !== undefined ? is_active : true
+      });
+      showSuccess('Escalation path updated successfully');
+      await fetchEscalationPaths();
+    } catch (error) {
+      console.error('Error updating escalation path:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to update escalation path';
+      showError(errorMessage);
+    }
+  };
+
+  const handleDeleteEscalationPath = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this escalation path level?')) {
+      return;
+    }
+    try {
+      await axios.delete(`/api/escalation-paths/${id}`);
+      showSuccess('Escalation path deleted successfully');
+      await fetchEscalationPaths();
+    } catch (error) {
+      console.error('Error deleting escalation path:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to delete escalation path';
+      showError(errorMessage);
+    }
   };
 
   if (loading) {
@@ -773,6 +1045,56 @@ const Settings = () => {
                           disabled={savingRules}
                         >
                           {savingRules ? 'Saving...' : 'Save Rules'}
+                        </Button>
+                      </Box>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Escalation Paths - Admin/Manager Only */}
+          {canManageRules && (
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <EscalatorIcon sx={{ mr: 2, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Escalation Paths
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ mb: 3 }} />
+
+                  {loadingPaths ? (
+                    <Box display="flex" justifyContent="center" p={3}>
+                      <CircularProgress />
+                    </Box>
+                  ) : (
+                    <>
+                      <Alert severity="info" sx={{ mb: 3 }}>
+                        Configure multi-level escalation paths. Action items will escalate through these levels automatically when overdue.
+                        Example: Level 1 (Supervisor) → Level 2 (Manager) → Level 3 (Director).
+                      </Alert>
+
+                      <EscalationPathsList
+                        paths={escalationPaths}
+                        groupedPaths={groupedPaths}
+                        onAddPath={handleAddEscalationPath}
+                        onEditPath={handleEditEscalationPath}
+                        onDeletePath={handleDeleteEscalationPath}
+                        showError={showError}
+                        showSuccess={showSuccess}
+                      />
+
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 3 }}>
+                        <Button
+                          variant="outlined"
+                          onClick={fetchEscalationPaths}
+                          disabled={loadingPaths}
+                        >
+                          Refresh
                         </Button>
                       </Box>
                     </>

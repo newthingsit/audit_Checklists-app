@@ -210,6 +210,25 @@ const createTables = async () => {
     `CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`,
     `CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`,
     
+    // Escalation Paths table (for multi-level escalation configuration)
+    `CREATE TABLE IF NOT EXISTS escalation_paths (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      level INT NOT NULL,
+      role VARCHAR(50) NOT NULL,
+      days_before_escalation INT NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    
+    `CREATE INDEX IF NOT EXISTS idx_escalation_paths_name ON escalation_paths(name)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_paths_level ON escalation_paths(level)`,
+    `CREATE INDEX IF NOT EXISTS idx_escalation_paths_active ON escalation_paths(is_active)`,
+    
+    // Add escalation_level to action_items if it doesn't exist
+    `ALTER TABLE action_items ADD COLUMN escalation_level INT DEFAULT 0`,
+    
     // Scheduled Audits table
     `CREATE TABLE IF NOT EXISTS scheduled_audits (
       id INT AUTO_INCREMENT PRIMARY KEY,

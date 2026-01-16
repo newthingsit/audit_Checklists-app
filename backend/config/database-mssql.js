@@ -391,6 +391,32 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_assignment_rules_active')
      CREATE INDEX idx_assignment_rules_active ON assignment_rules(is_active)`,
     
+    // Escalation Paths table (for multi-level escalation configuration)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[escalation_paths]') AND type in (N'U'))
+     CREATE TABLE [dbo].[escalation_paths] (
+       [id] INT IDENTITY(1,1) PRIMARY KEY,
+       [name] NVARCHAR(255) NOT NULL,
+       [level] INT NOT NULL,
+       [role] NVARCHAR(50) NOT NULL,
+       [days_before_escalation] INT NOT NULL,
+       [is_active] BIT DEFAULT 1,
+       [created_at] DATETIME DEFAULT GETDATE(),
+       [updated_at] DATETIME DEFAULT GETDATE()
+     )`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_escalation_paths_name')
+     CREATE INDEX idx_escalation_paths_name ON escalation_paths(name)`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_escalation_paths_level')
+     CREATE INDEX idx_escalation_paths_level ON escalation_paths(level)`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_escalation_paths_active')
+     CREATE INDEX idx_escalation_paths_active ON escalation_paths(is_active)`,
+    
+    // Add escalation_level to action_items if it doesn't exist
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_items]') AND name = 'escalation_level')
+     ALTER TABLE [dbo].[action_items] ADD [escalation_level] INT DEFAULT 0`,
+    
     // Scheduled Audits table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[scheduled_audits]') AND type in (N'U'))
     CREATE TABLE [dbo].[scheduled_audits] (

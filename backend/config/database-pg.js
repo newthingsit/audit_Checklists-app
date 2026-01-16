@@ -211,6 +211,30 @@ const createTables = () => {
       `CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`,
       `CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`,
       
+      // Escalation Paths table (for multi-level escalation configuration)
+      `CREATE TABLE IF NOT EXISTS escalation_paths (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        level INTEGER NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        days_before_escalation INTEGER NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_escalation_paths_name ON escalation_paths(name)`,
+      `CREATE INDEX IF NOT EXISTS idx_escalation_paths_level ON escalation_paths(level)`,
+      `CREATE INDEX IF NOT EXISTS idx_escalation_paths_active ON escalation_paths(is_active)`,
+      
+      // Add escalation_level to action_items if it doesn't exist
+      `DO $$ 
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='action_items' AND column_name='escalation_level') THEN
+            ALTER TABLE action_items ADD COLUMN escalation_level INTEGER DEFAULT 0;
+          END IF;
+        END $$`,
+      
       // Scheduled Audits table
       `CREATE TABLE IF NOT EXISTS scheduled_audits (
         id SERIAL PRIMARY KEY,

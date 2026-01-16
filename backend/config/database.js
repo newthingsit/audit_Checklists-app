@@ -227,6 +227,29 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`);
 
+      // Escalation Paths table (for multi-level escalation configuration)
+      db.run(`CREATE TABLE IF NOT EXISTS escalation_paths (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        days_before_escalation INTEGER NOT NULL,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      
+      db.run(`CREATE INDEX IF NOT EXISTS idx_escalation_paths_name ON escalation_paths(name)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_escalation_paths_level ON escalation_paths(level)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_escalation_paths_active ON escalation_paths(is_active)`);
+
+      // Add escalation_level to action_items to track current escalation level
+      db.run(`ALTER TABLE action_items ADD COLUMN escalation_level INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column')) {
+          console.log('Note: escalation_level column may already exist');
+        }
+      });
+
       // Scheduled Audits table
       db.run(`CREATE TABLE IF NOT EXISTS scheduled_audits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

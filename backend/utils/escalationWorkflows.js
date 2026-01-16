@@ -126,7 +126,9 @@ function escalateActionItem(dbInstance, action, callback) {
 
     // Update action item with escalation info
     const escalationDate = new Date().toISOString();
-    const escalationReason = `Auto-escalated after ${Math.floor((new Date() - new Date(action.due_date)) / (1000 * 60 * 60 * 24))} days overdue`;
+    const currentLevel = action.escalation_level || 0;
+    const newLevel = currentLevel + 1;
+    const escalationReason = `Auto-escalated to level ${newLevel} after ${Math.floor((new Date() - new Date(action.due_date)) / (1000 * 60 * 60 * 24))} days overdue`;
 
     // Check if escalated_to column exists, if not use a workaround
     dbInstance.run(
@@ -134,9 +136,10 @@ function escalateActionItem(dbInstance, action, callback) {
        SET escalated = 1, 
            escalated_to = ?,
            escalated_at = ?,
-           assigned_to = ?
+           assigned_to = ?,
+           escalation_level = ?
        WHERE id = ?`,
-      [escalationTarget.id, escalationDate, escalationTarget.id, action.id],
+      [escalationTarget.id, escalationDate, escalationTarget.id, newLevel, action.id],
       function(updateErr) {
         if (updateErr) {
           // Try without escalated_to column (backward compatibility)
@@ -144,9 +147,10 @@ function escalateActionItem(dbInstance, action, callback) {
             `UPDATE action_items 
              SET escalated = 1, 
                  escalated_at = ?,
-                 assigned_to = ?
+                 assigned_to = ?,
+                 escalation_level = ?
              WHERE id = ?`,
-            [escalationDate, escalationTarget.id, action.id],
+            [escalationDate, escalationTarget.id, newLevel, action.id],
             (err) => {
               if (err) {
                 logger.error(`Error updating action ${action.id} for escalation:`, err);
@@ -201,11 +205,104 @@ function escalateActionItem(dbInstance, action, callback) {
 }
 
 /**
+ * Get escalation target using configured escalation paths
+ */
+function getEscalationTargetFromPath(dbInstance, action, callback) {
+  const currentLevel = action.escalation_level || 0;
+  
+  // Try to find a configured escalation path
+  // For now, use default path name "Standard" - can be made configurable later
+  dbInstance.all(
+    `SELECT * FROM escalation_paths 
+     WHERE name = 'Standard' AND is_active = 1 
+     ORDER BY level ASC`,
+    [],
+    (err, paths) => {
+      if (err || !paths || paths.length === 0) {
+        // No configured path, fall back to default logic
+        return getEscalationTarget(dbInstance, action, callback);
+      }
+      
+      // Find the next level in the path
+      const nextLevel = currentLevel + 1;
+      const nextPath = paths.find(p => p.level === nextLevel);
+      
+      if (!nextPath) {
+        // No more levels, use highest level or fallback
+        const highestPath = paths[paths.length - 1];
+        if (highestPath && currentLevel < highestPath.level) {
+          // Use highest level
+          return findUserByRole(dbInstance, highestPath.role, action.location_id, callback);
+        }
+        // Fall back to default logic
+        return getEscalationTarget(dbInstance, action, callback);
+      }
+      
+      // Find user with the role specified in the next level
+      findUserByRole(dbInstance, nextPath.role, action.location_id, (err, user) => {
+        if (err || !user) {
+          // If can't find user for this role, try next level or fallback
+          const nextNextPath = paths.find(p => p.level === nextLevel + 1);
+          if (nextNextPath) {
+            return findUserByRole(dbInstance, nextNextPath.role, action.location_id, callback);
+          }
+          return getEscalationTarget(dbInstance, action, callback);
+        }
+        callback(null, user);
+      });
+    }
+  );
+}
+
+/**
+ * Find user by role, optionally filtered by location
+ */
+function findUserByRole(dbInstance, role, locationId, callback) {
+  if (locationId) {
+    // Try to find user with role assigned to location first
+    dbInstance.get(
+      `SELECT u.id, u.name, u.role, u.email
+       FROM users u
+       INNER JOIN user_locations ul ON u.id = ul.user_id
+       WHERE ul.location_id = ? AND u.role = ?
+       LIMIT 1`,
+      [locationId, role],
+      (err, user) => {
+        if (!err && user) {
+          return callback(null, user);
+        }
+        // Fall back to any user with the role
+        dbInstance.get(
+          `SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1`,
+          [role],
+          callback
+        );
+      }
+    );
+  } else {
+    // No location, find any user with the role
+    dbInstance.get(
+      `SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1`,
+      [role],
+      callback
+    );
+  }
+}
+
+/**
  * Get escalation target for an action item
+ * Uses configured escalation paths if available, otherwise falls back to default logic
  */
 function getEscalationTarget(dbInstance, action, callback) {
-  // Priority 1: Find supervisor/manager of current assignee
-  if (action.assigned_to) {
+  // First, try to use configured escalation path
+  getEscalationTargetFromPath(dbInstance, action, (err, target) => {
+    if (!err && target) {
+      return callback(null, target);
+    }
+    
+    // Fall back to default logic
+    // Priority 1: Find supervisor/manager of current assignee
+    if (action.assigned_to) {
     dbInstance.get(
       `SELECT u.id, u.name, u.role, u.email
        FROM users u
