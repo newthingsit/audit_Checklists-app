@@ -27,7 +27,6 @@ import { SignatureModal, SignatureDisplay } from '../components';
 const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
-  const { calculateDistance } = useLocation(); // Get distance calculation function
   const { templateId, auditId, scheduledAuditId, locationId: initialLocationId } = route.params || {};
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
