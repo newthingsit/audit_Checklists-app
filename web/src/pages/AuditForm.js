@@ -1019,7 +1019,6 @@ const AuditForm = () => {
     const isPreviousFailure = failedItemIds.has(item.id);
     const inputType = (item.input_type || '').toLowerCase();
     const isMissingRequiredPhoto = item.required && inputType === 'image_upload' && !photos[item.id];
-    const inputType = (item.input_type || '').toLowerCase();
     const failureInfo = previousFailures.find(f => f.item_id === item.id);
     
     return (
