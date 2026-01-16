@@ -368,6 +368,29 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_comments_user')
      CREATE INDEX idx_action_comments_user ON action_comments(user_id)`,
     
+    // Assignment Rules table (for category-based assignment rules)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[assignment_rules]') AND type in (N'U'))
+     CREATE TABLE [dbo].[assignment_rules] (
+       [id] INT IDENTITY(1,1) PRIMARY KEY,
+       [category] NVARCHAR(255) NOT NULL,
+       [assigned_role] NVARCHAR(50) NOT NULL,
+       [template_id] INT,
+       [priority_level] INT DEFAULT 0,
+       [is_active] BIT DEFAULT 1,
+       [created_at] DATETIME DEFAULT GETDATE(),
+       [updated_at] DATETIME DEFAULT GETDATE(),
+       FOREIGN KEY ([template_id]) REFERENCES [checklist_templates]([id]) ON DELETE CASCADE
+     )`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_assignment_rules_category')
+     CREATE INDEX idx_assignment_rules_category ON assignment_rules(category)`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_assignment_rules_template')
+     CREATE INDEX idx_assignment_rules_template ON assignment_rules(template_id)`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_assignment_rules_active')
+     CREATE INDEX idx_assignment_rules_active ON assignment_rules(is_active)`,
+    
     // Scheduled Audits table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[scheduled_audits]') AND type in (N'U'))
     CREATE TABLE [dbo].[scheduled_audits] (

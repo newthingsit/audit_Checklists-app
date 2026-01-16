@@ -25,13 +25,196 @@ import {
   Save as SaveIcon,
   Assignment as AssignmentIcon,
   TrendingUp as EscalatorIcon,
-  History as HistoryIcon
+  History as HistoryIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
 import { isAdmin, hasPermission } from '../utils/permissions';
+
+// Assignment Rules List Component
+const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDeleteRule, showError, showSuccess }) => {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
+  const [newRule, setNewRule] = useState({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+
+  const roles = ['supervisor', 'manager', 'admin', 'location_manager'];
+
+  const handleAdd = () => {
+    if (!newRule.category) {
+      showError('Please enter a category');
+      return;
+    }
+    onAddRule(newRule.category, newRule.assigned_role, newRule.priority_level);
+    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+    setShowAddDialog(false);
+  };
+
+  const handleEdit = (rule) => {
+    setEditingRule(rule);
+    setNewRule({
+      category: rule.category,
+      assigned_role: rule.assigned_role,
+      priority_level: rule.priority_level || 0
+    });
+    setShowAddDialog(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!newRule.category) {
+      showError('Please enter a category');
+      return;
+    }
+    onEditRule(editingRule.id, newRule.category, newRule.assigned_role, newRule.priority_level, editingRule.is_active);
+    setEditingRule(null);
+    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+    setShowAddDialog(false);
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="body2" sx={{ color: '#666' }}>
+          {rules.length} rule(s) configured
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setEditingRule(null);
+            setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+            setShowAddDialog(true);
+          }}
+        >
+          Add Rule
+        </Button>
+      </Box>
+
+      {rules.length === 0 ? (
+        <Alert severity="info">
+          No assignment rules configured. Add rules to automatically assign action items based on category.
+        </Alert>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {rules.map((rule) => (
+            <Box
+              key={rule.id}
+              sx={{
+                p: 2,
+                border: '1px solid #e0e0e0',
+                borderRadius: 1,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                bgcolor: rule.is_active ? 'background.paper' : 'action.disabledBackground'
+              }}
+            >
+              <Box>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  {rule.category}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#666' }}>
+                  → {rule.assigned_role}
+                  {rule.template_name && ` (Template: ${rule.template_name})`}
+                  {rule.priority_level > 0 && ` • Priority: ${rule.priority_level}`}
+                  {!rule.is_active && ' • Inactive'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  size="small"
+                  startIcon={<EditIcon />}
+                  onClick={() => handleEdit(rule)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => onDeleteRule(rule.id)}
+                >
+                  Delete
+                </Button>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {/* Add/Edit Dialog */}
+      {showAddDialog && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1300
+          }}
+          onClick={() => setShowAddDialog(false)}
+        >
+          <Card
+            sx={{ p: 3, minWidth: 400, maxWidth: 600 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              {editingRule ? 'Edit Assignment Rule' : 'Add Assignment Rule'}
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="Category"
+                value={newRule.category}
+                onChange={(e) => setNewRule({ ...newRule, category: e.target.value.toUpperCase() })}
+                placeholder="e.g., FOOD SAFETY"
+                fullWidth
+              />
+              <FormControl fullWidth>
+                <InputLabel>Assigned Role</InputLabel>
+                <Select
+                  value={newRule.assigned_role}
+                  label="Assigned Role"
+                  onChange={(e) => setNewRule({ ...newRule, assigned_role: e.target.value })}
+                >
+                  {roles.map(role => (
+                    <MenuItem key={role} value={role}>{role}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Priority Level"
+                type="number"
+                value={newRule.priority_level}
+                onChange={(e) => setNewRule({ ...newRule, priority_level: parseInt(e.target.value, 10) || 0 })}
+                helperText="Higher priority rules are evaluated first"
+                fullWidth
+              />
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
+                <Button onClick={() => setShowAddDialog(false)}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  onClick={editingRule ? handleSaveEdit : handleAdd}
+                >
+                  {editingRule ? 'Update' : 'Add'}
+                </Button>
+              </Box>
+            </Box>
+          </Card>
+        </Box>
+      )}
+    </Box>
+  );
+};
 
 const Settings = () => {
   const { user } = useAuth();
@@ -110,6 +293,7 @@ const Settings = () => {
       const response = await axios.get('/api/assignment-rules');
       if (response.data) {
         setAssignmentRules({
+          rules: response.data.rules || [],
           categoryRules: response.data.categoryRules || {},
           escalationDays: response.data.escalationDays || 3
         });
@@ -156,7 +340,10 @@ const Settings = () => {
   const handleSaveRules = async () => {
     try {
       setSavingRules(true);
-      await axios.put('/api/assignment-rules', assignmentRules);
+      // Save escalation days
+      await axios.put('/api/assignment-rules/escalation/settings', {
+        escalationDays: assignmentRules.escalationDays
+      });
       showSuccess('Assignment rules saved successfully');
       await fetchAssignmentRules();
     } catch (error) {
@@ -165,6 +352,54 @@ const Settings = () => {
       showError(errorMessage);
     } finally {
       setSavingRules(false);
+    }
+  };
+
+  const handleAddRule = async (category, assigned_role, priority_level) => {
+    try {
+      await axios.post('/api/assignment-rules', {
+        category,
+        assigned_role,
+        priority_level: priority_level || 0
+      });
+      showSuccess('Assignment rule added successfully');
+      await fetchAssignmentRules();
+    } catch (error) {
+      console.error('Error adding assignment rule:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to add assignment rule';
+      showError(errorMessage);
+    }
+  };
+
+  const handleEditRule = async (id, category, assigned_role, priority_level, is_active) => {
+    try {
+      await axios.put(`/api/assignment-rules/${id}`, {
+        category,
+        assigned_role,
+        priority_level: priority_level || 0,
+        is_active: is_active !== undefined ? is_active : true
+      });
+      showSuccess('Assignment rule updated successfully');
+      await fetchAssignmentRules();
+    } catch (error) {
+      console.error('Error updating assignment rule:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to update assignment rule';
+      showError(errorMessage);
+    }
+  };
+
+  const handleDeleteRule = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this assignment rule?')) {
+      return;
+    }
+    try {
+      await axios.delete(`/api/assignment-rules/${id}`);
+      showSuccess('Assignment rule deleted successfully');
+      await fetchAssignmentRules();
+    } catch (error) {
+      console.error('Error deleting assignment rule:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to delete assignment rule';
+      showError(errorMessage);
     }
   };
 
@@ -391,6 +626,91 @@ const Settings = () => {
               </CardContent>
             </Card>
           </Grid>
+
+          {/* Assignment Rules - Admin/Manager Only */}
+          {canManageRules && (
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <AssignmentIcon sx={{ mr: 2, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Assignment Rules
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ mb: 3 }} />
+
+                  {loadingRules ? (
+                    <Box display="flex" justifyContent="center" p={3}>
+                      <CircularProgress />
+                    </Box>
+                  ) : (
+                    <>
+                      <Alert severity="info" sx={{ mb: 3 }}>
+                        Configure which role should handle action items based on category. Rules are applied when action items are automatically created from failed audit items.
+                      </Alert>
+
+                      {/* Category Rules List */}
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                          Category-Based Assignment Rules
+                        </Typography>
+                        <AssignmentRulesList
+                          rules={assignmentRules.rules || []}
+                          categoryRules={assignmentRules.categoryRules}
+                          onAddRule={handleAddRule}
+                          onEditRule={handleEditRule}
+                          onDeleteRule={handleDeleteRule}
+                          showError={showError}
+                          showSuccess={showSuccess}
+                        />
+                      </Box>
+
+                      {/* Escalation Settings */}
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                          Escalation Settings
+                        </Typography>
+                        <FormControl fullWidth>
+                          <InputLabel>Days Before Escalation</InputLabel>
+                          <Select
+                            value={assignmentRules.escalationDays}
+                            label="Days Before Escalation"
+                            onChange={(e) => handleEscalationDaysChange(e.target.value)}
+                          >
+                            <MenuItem value={1}>1 Day</MenuItem>
+                            <MenuItem value={2}>2 Days</MenuItem>
+                            <MenuItem value={3}>3 Days</MenuItem>
+                            <MenuItem value={5}>5 Days</MenuItem>
+                            <MenuItem value={7}>7 Days</MenuItem>
+                            <MenuItem value={14}>14 Days</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                        <Button
+                          variant="outlined"
+                          onClick={fetchAssignmentRules}
+                          disabled={loadingRules}
+                        >
+                          Refresh
+                        </Button>
+                        <Button
+                          variant="contained"
+                          startIcon={savingRules ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                          onClick={handleSaveRules}
+                          disabled={savingRules}
+                        >
+                          {savingRules ? 'Saving...' : 'Save Rules'}
+                        </Button>
+                      </Box>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
 
           {/* Save Button */}
           <Grid item xs={12}>

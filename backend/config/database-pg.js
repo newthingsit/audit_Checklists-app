@@ -195,6 +195,22 @@ const createTables = () => {
       `CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`,
       `CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`,
       
+      // Assignment Rules table (for category-based assignment rules)
+      `CREATE TABLE IF NOT EXISTS assignment_rules (
+        id SERIAL PRIMARY KEY,
+        category VARCHAR(255) NOT NULL,
+        assigned_role VARCHAR(50) NOT NULL,
+        template_id INTEGER,
+        priority_level INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_assignment_rules_category ON assignment_rules(category)`,
+      `CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`,
+      
       // Scheduled Audits table
       `CREATE TABLE IF NOT EXISTS scheduled_audits (
         id SERIAL PRIMARY KEY,

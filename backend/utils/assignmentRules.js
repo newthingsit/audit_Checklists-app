@@ -16,10 +16,10 @@ const logger = require('./logger');
  * @param {Function} callback - Callback function (err, assignee)
  */
 function getAssigneeByRules(dbInstance, context, callback) {
-  const { category, locationId, isCritical, auditUserId } = context;
+  const { category, locationId, isCritical, auditUserId, templateId } = context;
   
   // Try rules in priority order: Category → Location → Severity → Default
-  evaluateCategoryRule(dbInstance, category, locationId, (err, assignee) => {
+  evaluateCategoryRule(dbInstance, category, locationId, templateId, (err, assignee) => {
     if (err || !assignee) {
       return evaluateLocationRule(dbInstance, locationId, (err, assignee) => {
         if (err || !assignee) {
@@ -41,14 +41,94 @@ function getAssigneeByRules(dbInstance, context, callback) {
 /**
  * Category-based assignment rule
  * Assigns based on item category (e.g., "Food Safety" → Food Safety Manager)
+ * Now reads from database assignment_rules table
  */
-function evaluateCategoryRule(dbInstance, category, locationId, callback) {
+function evaluateCategoryRule(dbInstance, category, locationId, templateId, callback) {
   if (!category) {
     return callback(null, null);
   }
 
-  // Map categories to roles or specific users
-  // Priority: Category-specific role → Manager role → Supervisor role
+  // First, try to find a template-specific rule
+  // Then fall back to a general category rule
+  const query = templateId ? `
+    SELECT assigned_role, priority_level
+    FROM assignment_rules
+    WHERE category = ? AND is_active = 1
+      AND (template_id = ? OR template_id IS NULL)
+    ORDER BY 
+      CASE WHEN template_id = ? THEN 0 ELSE 1 END,
+      priority_level DESC
+    LIMIT 1
+  ` : `
+    SELECT assigned_role, priority_level
+    FROM assignment_rules
+    WHERE category = ? AND is_active = 1 AND template_id IS NULL
+    ORDER BY priority_level DESC
+    LIMIT 1
+  `;
+
+  const params = templateId ? [category.toUpperCase(), templateId, templateId] : [category.toUpperCase()];
+
+  dbInstance.get(query, params, (err, rule) => {
+    if (err) {
+      logger.error('Error fetching category rule from database:', err);
+      // Fall back to hardcoded rules for backward compatibility
+      return evaluateCategoryRuleFallback(dbInstance, category, locationId, callback);
+    }
+
+    if (!rule || !rule.assigned_role) {
+      // No rule found in database, try fallback
+      return evaluateCategoryRuleFallback(dbInstance, category, locationId, callback);
+    }
+
+    const targetRole = rule.assigned_role;
+
+    // Find user with target role assigned to this location
+    const userQuery = locationId ? `
+      SELECT u.id, u.name, u.role, u.email
+      FROM users u
+      INNER JOIN user_locations ul ON u.id = ul.user_id
+      WHERE u.role = ? AND ul.location_id = ?
+      LIMIT 1
+    ` : `
+      SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1
+    `;
+
+    const userParams = locationId ? [targetRole, locationId] : [targetRole];
+
+    dbInstance.get(userQuery, userParams, (err, user) => {
+      if (err) {
+        logger.error('Error finding user for category rule:', err);
+        return callback(err);
+      }
+      
+      if (user) {
+        logger.info(`[Assignment Rules] Category rule matched: ${category} → ${user.name} (${user.role})`);
+        return callback(null, user);
+      }
+
+      // If no location-specific user, try to find any user with the role
+      dbInstance.get(
+        'SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1',
+        [targetRole],
+        (err, user) => {
+          if (err) {
+            return callback(err);
+          }
+          if (user) {
+            logger.info(`[Assignment Rules] Category rule matched (any location): ${category} → ${user.name} (${user.role})`);
+          }
+          callback(null, user);
+        }
+      );
+    });
+  });
+}
+
+/**
+ * Fallback to hardcoded category rules (for backward compatibility)
+ */
+function evaluateCategoryRuleFallback(dbInstance, category, locationId, callback) {
   const categoryRoleMap = {
     'FOOD SAFETY': 'manager',
     'FOOD SAFETY - TRACKING': 'manager',
@@ -65,22 +145,26 @@ function evaluateCategoryRule(dbInstance, category, locationId, callback) {
   }
 
   // Find user with target role assigned to this location
-  const query = `
+  const query = locationId ? `
     SELECT u.id, u.name, u.role, u.email
     FROM users u
     INNER JOIN user_locations ul ON u.id = ul.user_id
     WHERE u.role = ? AND ul.location_id = ?
     LIMIT 1
+  ` : `
+    SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1
   `;
 
-  dbInstance.get(query, [targetRole, locationId], (err, user) => {
+  const params = locationId ? [targetRole, locationId] : [targetRole];
+
+  dbInstance.get(query, params, (err, user) => {
     if (err) {
-      logger.error('Error evaluating category rule:', err);
+      logger.error('Error evaluating category rule (fallback):', err);
       return callback(err);
     }
     
     if (user) {
-      logger.info(`[Assignment Rules] Category rule matched: ${category} → ${user.name} (${user.role})`);
+      logger.info(`[Assignment Rules] Category rule matched (fallback): ${category} → ${user.name} (${user.role})`);
       return callback(null, user);
     }
 
@@ -93,7 +177,7 @@ function evaluateCategoryRule(dbInstance, category, locationId, callback) {
           return callback(err);
         }
         if (user) {
-          logger.info(`[Assignment Rules] Category rule matched (any location): ${category} → ${user.name} (${user.role})`);
+          logger.info(`[Assignment Rules] Category rule matched (fallback, any location): ${category} → ${user.name} (${user.role})`);
         }
         callback(null, user);
       }

@@ -193,6 +193,23 @@ const createTables = async () => {
     `CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`,
     `CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`,
     
+    // Assignment Rules table (for category-based assignment rules)
+    `CREATE TABLE IF NOT EXISTS assignment_rules (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      category VARCHAR(255) NOT NULL,
+      assigned_role VARCHAR(50) NOT NULL,
+      template_id INT,
+      priority_level INT DEFAULT 0,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (template_id) REFERENCES checklist_templates(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    
+    `CREATE INDEX IF NOT EXISTS idx_assignment_rules_category ON assignment_rules(category)`,
+    `CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`,
+    
     // Scheduled Audits table
     `CREATE TABLE IF NOT EXISTS scheduled_audits (
       id INT AUTO_INCREMENT PRIMARY KEY,

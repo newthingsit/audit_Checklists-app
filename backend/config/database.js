@@ -210,6 +210,23 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`);
 
+      // Assignment Rules table (for category-based assignment rules)
+      db.run(`CREATE TABLE IF NOT EXISTS assignment_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        assigned_role TEXT NOT NULL,
+        template_id INTEGER,
+        priority_level INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (template_id) REFERENCES checklist_templates(id) ON DELETE CASCADE
+      )`);
+      
+      db.run(`CREATE INDEX IF NOT EXISTS idx_assignment_rules_category ON assignment_rules(category)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_assignment_rules_template ON assignment_rules(template_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_assignment_rules_active ON assignment_rules(is_active)`);
+
       // Scheduled Audits table
       db.run(`CREATE TABLE IF NOT EXISTS scheduled_audits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

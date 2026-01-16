@@ -90,15 +90,15 @@ function autoCreateActionItems(dbInstance, auditId, options = {}, callback) {
             itemsByCategory[category].push(item);
           });
 
-          // Get audit info for context
-          dbInstance.get(
-            `SELECT location_id, user_id FROM audits WHERE id = ?`,
-            [auditId],
-            (err, auditInfo) => {
-              if (err) {
-                logger.error('Error fetching audit info for assignment:', err);
-                return callback(err);
-              }
+              // Get audit info for context
+              dbInstance.get(
+                `SELECT location_id, user_id, template_id FROM audits WHERE id = ?`,
+                [auditId],
+                (err, auditInfo) => {
+                  if (err) {
+                    logger.error('Error fetching audit info for assignment:', err);
+                    return callback(err);
+                  }
 
               // Process items by category to apply category-based rules
               const categories = Object.keys(itemsByCategory);
@@ -120,7 +120,8 @@ function autoCreateActionItems(dbInstance, auditId, options = {}, callback) {
                     category: category,
                     locationId: auditInfo?.location_id,
                     isCritical: firstItem.is_critical,
-                    auditUserId: audit.user_id
+                    auditUserId: audit.user_id,
+                    templateId: audit.template_id || auditInfo?.template_id
                   },
                   (err, assignee) => {
                     processedCategories++;
