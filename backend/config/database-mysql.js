@@ -165,10 +165,19 @@ const createTables = async () => {
       due_date TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       completed_at TIMESTAMP NULL,
+      escalated TINYINT(1) DEFAULT 0,
+      escalated_to INT,
+      escalated_at TIMESTAMP NULL,
       FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
       FOREIGN KEY (item_id) REFERENCES checklist_items(id),
-      FOREIGN KEY (assigned_to) REFERENCES users(id)
+      FOREIGN KEY (assigned_to) REFERENCES users(id),
+      FOREIGN KEY (escalated_to) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    
+    // Add escalation columns if they don't exist (for existing databases)
+    `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated TINYINT(1) DEFAULT 0`,
+    `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_to INT`,
+    `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP NULL`,
     
     // Scheduled Audits table
     `CREATE TABLE IF NOT EXISTS scheduled_audits (

@@ -164,10 +164,22 @@ const createTables = () => {
         due_date TIMESTAMP,
         completed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        escalated BOOLEAN DEFAULT FALSE,
+        escalated_to INTEGER,
+        escalated_at TIMESTAMP,
         FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
         FOREIGN KEY (audit_item_id) REFERENCES audit_items(id) ON DELETE SET NULL,
-        FOREIGN KEY (assigned_to) REFERENCES users(id)
+        FOREIGN KEY (assigned_to) REFERENCES users(id),
+        FOREIGN KEY (escalated_to) REFERENCES users(id)
       )`,
+      
+      // Add escalation columns if they don't exist (for existing databases)
+      `DO $$ BEGIN
+         ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated BOOLEAN DEFAULT FALSE;
+         ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_to INTEGER;
+         ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP;
+       EXCEPTION WHEN duplicate_column THEN NULL;
+       END $$`,
       
       // Scheduled Audits table
       `CREATE TABLE IF NOT EXISTS scheduled_audits (

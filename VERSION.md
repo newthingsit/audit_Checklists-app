@@ -1,5 +1,87 @@
 # Project Version Information
 
+## Version 1.16.0 - Assignment Rules & Escalation Workflows
+
+**Date:** 2025-01-28
+
+### What's New in This Version
+
+#### Smart Assignment Rules
+- ✅ **Category-Based Assignment**: Items in specific categories (e.g., "Food Safety") automatically assigned to managers
+- ✅ **Location-Based Assignment**: Items assigned to location managers or supervisors assigned to that location
+- ✅ **Severity-Based Assignment**: Critical items automatically assigned to managers/supervisors
+- ✅ **Default Fallback**: Falls back to audit creator if no rules match
+- ✅ **Batch Assignment**: Items grouped by category for efficient batch assignment
+- ✅ **Priority System**: Location-specific users prioritized over general role matches
+
+#### Escalation Workflows
+- ✅ **Auto-Escalation**: Overdue action items automatically escalated after configurable days (default: 3)
+- ✅ **Smart Escalation Target**: Escalates to supervisor → manager → admin based on hierarchy
+- ✅ **Escalation Tracking**: Tracks escalation history with `escalated`, `escalated_to`, and `escalated_at` columns
+- ✅ **Scheduled Job**: Daily escalation check runs at 10:00 AM via cron
+- ✅ **Notifications**: Sends notifications to escalation target and original assignee
+- ✅ **Escalation Comments**: Automatically adds escalation comments to action items
+- ✅ **Multi-Database Support**: Works with SQLite, MSSQL, MySQL, and PostgreSQL
+
+#### Database Schema Updates
+- ✅ **Action Items Table**: Added `escalated`, `escalated_to`, and `escalated_at` columns
+- ✅ **Migration Support**: Safe column addition for existing databases
+- ✅ **Foreign Key Constraints**: Proper relationships for escalation targets
+
+### Technical Implementation
+
+#### Assignment Rules (`backend/utils/assignmentRules.js`)
+- `getAssigneeByRules()`: Main function to determine assignee based on rules
+- `evaluateCategoryRule()`: Category-based assignment logic
+- `evaluateLocationRule()`: Location-based assignment logic
+- `evaluateSeverityRule()`: Severity-based assignment logic
+- `getDefaultAssignee()`: Fallback to audit creator
+
+#### Escalation Workflows (`backend/utils/escalationWorkflows.js`)
+- `checkAndEscalateActions()`: Main function to find and escalate overdue items
+- `escalateActionItem()`: Escalates a single action item
+- `getEscalationTarget()`: Determines escalation target based on hierarchy
+- `addEscalationComment()`: Adds escalation comments
+- `sendEscalationNotifications()`: Sends notifications
+
+#### Scheduled Job (`backend/jobs/escalation-job.js`)
+- `runEscalationCheck()`: Daily job entry point
+- Configurable via `ESCALATION_DAYS` environment variable
+- Integrated into server.js cron schedule
+
+#### Integration
+- Auto-actions now use assignment rules for smart assignment
+- Escalation job runs daily at 10:00 AM
+- Can be triggered on startup with `RUN_JOBS_ON_STARTUP=true`
+
+### Configuration
+
+#### Environment Variables
+```bash
+# Escalation threshold (days)
+ESCALATION_DAYS=3
+
+# Run jobs on startup (for testing)
+RUN_JOBS_ON_STARTUP=true
+```
+
+#### Customizing Assignment Rules
+Edit `backend/utils/assignmentRules.js` to add new category mappings:
+```javascript
+const categoryRoleMap = {
+  'FOOD SAFETY': 'manager',
+  'YOUR_CATEGORY': 'supervisor',
+  // ... add more
+};
+```
+
+### Components Version
+- **Backend:** 1.10.0
+- **Web App:** 1.9.0
+- **Mobile App:** 1.15.0
+
+---
+
 ## Version 1.15.0 - Geo-Fencing & Automated Corrective Actions
 
 **Date:** 2025-01-27

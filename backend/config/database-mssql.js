@@ -333,10 +333,22 @@ const createTables = async () => {
       [due_date] DATETIME NULL,
       [created_at] DATETIME DEFAULT GETDATE(),
       [completed_at] DATETIME NULL,
+      [escalated] BIT DEFAULT 0,
+      [escalated_to] INT,
+      [escalated_at] DATETIME NULL,
       FOREIGN KEY ([audit_id]) REFERENCES [audits]([id]) ON DELETE CASCADE,
       FOREIGN KEY ([item_id]) REFERENCES [checklist_items]([id]),
-      FOREIGN KEY ([assigned_to]) REFERENCES [users]([id])
+      FOREIGN KEY ([assigned_to]) REFERENCES [users]([id]),
+      FOREIGN KEY ([escalated_to]) REFERENCES [users]([id])
     )`,
+    
+    // Add escalation columns if they don't exist (for existing databases)
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated')
+     ALTER TABLE action_items ADD escalated BIT DEFAULT 0`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated_to')
+     ALTER TABLE action_items ADD escalated_to INT`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated_at')
+     ALTER TABLE action_items ADD escalated_at DATETIME NULL`,
     
     // Scheduled Audits table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[scheduled_audits]') AND type in (N'U'))

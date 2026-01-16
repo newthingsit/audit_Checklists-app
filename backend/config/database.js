@@ -182,10 +182,19 @@ const createTables = () => {
         due_date DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         completed_at DATETIME,
+        escalated INTEGER DEFAULT 0,
+        escalated_to INTEGER,
+        escalated_at DATETIME,
         FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
         FOREIGN KEY (item_id) REFERENCES checklist_items(id),
-        FOREIGN KEY (assigned_to) REFERENCES users(id)
+        FOREIGN KEY (assigned_to) REFERENCES users(id),
+        FOREIGN KEY (escalated_to) REFERENCES users(id)
       )`);
+      
+      // Add escalation columns if they don't exist (for existing databases)
+      db.run(`ALTER TABLE action_items ADD COLUMN escalated INTEGER DEFAULT 0`, () => {});
+      db.run(`ALTER TABLE action_items ADD COLUMN escalated_to INTEGER`, () => {});
+      db.run(`ALTER TABLE action_items ADD COLUMN escalated_at DATETIME`, () => {});
 
       // Scheduled Audits table
       db.run(`CREATE TABLE IF NOT EXISTS scheduled_audits (

@@ -551,6 +551,7 @@ db.init().then(async () => {
   
   // Initialize background jobs after database is ready
   const jobs = require('./jobs/scheduled-audits');
+  const escalationJob = require('./jobs/escalation-job');
   const cron = require('node-cron');
 
   // Schedule job to process scheduled audits daily at 9 AM
@@ -565,12 +566,20 @@ db.init().then(async () => {
     jobs.sendReminders();
   });
 
+  // Schedule escalation job daily at 10 AM (after reminders and audits)
+  cron.schedule('0 10 * * *', () => {
+    logger.info('[Cron] Running escalation check job...');
+    escalationJob.runEscalationCheck();
+  });
+
   // Run jobs immediately on startup (for testing)
   if (process.env.RUN_JOBS_ON_STARTUP === 'true') {
     logger.info('[Startup] Running scheduled audits job on startup...');
     jobs.processScheduledAudits();
     logger.info('[Startup] Running reminders job on startup...');
     jobs.sendReminders();
+    logger.info('[Startup] Running escalation check job on startup...');
+    escalationJob.runEscalationCheck();
   }
 
   app.listen(PORT, '0.0.0.0', () => {
@@ -579,6 +588,7 @@ db.init().then(async () => {
     logger.info(`Local access: http://localhost:${PORT}`);
     logger.info('[Background Jobs] Scheduled audits job: Daily at 9:00 AM');
     logger.info('[Background Jobs] Reminders job: Daily at 8:00 AM');
+    logger.info('[Background Jobs] Escalation check job: Daily at 10:00 AM');
   });
 }).catch(err => {
   logger.error('Database initialization failed:', err);
