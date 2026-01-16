@@ -34,14 +34,13 @@ if (process.env.NODE_ENV === 'production') {
   logger.info('CORS allowed origins:', { allowedOrigins });
 }
 
-// Ensure OPTIONS is handled very early with a simple allowlist handler
+// Ensure OPTIONS is handled very early - ALWAYS allow preflight to set headers
+// The custom middleware below will handle the actual validation
 app.options('*', cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
-    const normalizedAllowed = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
-    if (normalizedAllowed.includes(normalizedOrigin)) return callback(null, true);
-    return callback(new Error('Not allowed by CORS policy'));
+    // Always allow preflight requests - headers will be set by custom middleware
+    // This ensures browsers can see CORS headers even if origin validation fails
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
