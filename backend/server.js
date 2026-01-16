@@ -34,6 +34,40 @@ if (process.env.NODE_ENV === 'production') {
   logger.info('CORS allowed origins:', { allowedOrigins });
 }
 
+// CRITICAL: Handle OPTIONS requests FIRST, before ANY other middleware
+// This must be the absolute first route handler to ensure preflight requests work
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    
+    // Normalize origin for comparison
+    const normalizedOrigin = origin ? origin.toLowerCase().replace(/\/$/, '') : null;
+    const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
+    const originInList = origin && normalizedAllowedOrigins.includes(normalizedOrigin);
+    
+    // Set CORS headers for preflight
+    if (origin) {
+      // If origin is in allowlist, use it; otherwise still set it for preflight
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
+    
+    logger.info('OPTIONS preflight handled:', { origin, originInList });
+    
+    // Return 204 No Content for preflight
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Ensure OPTIONS is handled very early - ALWAYS allow preflight to set headers
 // The custom middleware below will handle the actual validation
 app.options('*', cors({
