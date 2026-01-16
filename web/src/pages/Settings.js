@@ -16,7 +16,8 @@ import {
   InputLabel,
   CircularProgress,
   Alert,
-  TextField
+  TextField,
+  Chip
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -37,20 +38,28 @@ import { useAuth } from '../context/AuthContext';
 import { isAdmin, hasPermission } from '../utils/permissions';
 
 // Assignment Rules List Component
-const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDeleteRule, showError, showSuccess }) => {
+const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDeleteRule, showError, showSuccess, templates = [] }) => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
-  const [newRule, setNewRule] = useState({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+  const [newRule, setNewRule] = useState({ category: '', assigned_role: 'supervisor', priority_level: 0, template_id: '' });
+  const [filterType, setFilterType] = useState('all'); // 'all', 'general', 'template'
 
   const roles = ['supervisor', 'manager', 'admin', 'location_manager'];
+
+  // Filter rules based on filterType
+  const filteredRules = filterType === 'all' 
+    ? rules 
+    : filterType === 'general' 
+      ? rules.filter(r => !r.template_id)
+      : rules.filter(r => r.template_id);
 
   const handleAdd = () => {
     if (!newRule.category) {
       showError('Please enter a category');
       return;
     }
-    onAddRule(newRule.category, newRule.assigned_role, newRule.priority_level);
-    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+    onAddRule(newRule.category, newRule.assigned_role, newRule.priority_level, newRule.template_id || null);
+    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0, template_id: '' });
     setShowAddDialog(false);
   };
 
@@ -59,7 +68,8 @@ const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDe
     setNewRule({
       category: rule.category,
       assigned_role: rule.assigned_role,
-      priority_level: rule.priority_level || 0
+      priority_level: rule.priority_level || 0,
+      template_id: rule.template_id || ''
     });
     setShowAddDialog(true);
   };
@@ -69,25 +79,39 @@ const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDe
       showError('Please enter a category');
       return;
     }
-    onEditRule(editingRule.id, newRule.category, newRule.assigned_role, newRule.priority_level, editingRule.is_active);
+    onEditRule(editingRule.id, newRule.category, newRule.assigned_role, newRule.priority_level, editingRule.is_active, newRule.template_id || null);
     setEditingRule(null);
-    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+    setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0, template_id: '' });
     setShowAddDialog(false);
   };
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="body2" sx={{ color: '#666' }}>
-          {rules.length} rule(s) configured
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            {filteredRules.length} rule(s) {filterType !== 'all' && `(${filterType === 'general' ? 'General' : 'Template-Specific'})`}
+          </Typography>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Filter</InputLabel>
+            <Select
+              value={filterType}
+              label="Filter"
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <MenuItem value="all">All Rules</MenuItem>
+              <MenuItem value="general">General Rules</MenuItem>
+              <MenuItem value="template">Template-Specific</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
         <Button
           variant="outlined"
           size="small"
           startIcon={<AddIcon />}
           onClick={() => {
             setEditingRule(null);
-            setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0 });
+            setNewRule({ category: '', assigned_role: 'supervisor', priority_level: 0, template_id: '' });
             setShowAddDialog(true);
           }}
         >
@@ -95,13 +119,13 @@ const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDe
         </Button>
       </Box>
 
-      {rules.length === 0 ? (
+      {filteredRules.length === 0 ? (
         <Alert severity="info">
           No assignment rules configured. Add rules to automatically assign action items based on category.
         </Alert>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {rules.map((rule) => (
+          {filteredRules.map((rule) => (
             <Box
               key={rule.id}
               sx={{
@@ -115,12 +139,29 @@ const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDe
               }}
             >
               <Box>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {rule.category}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                    {rule.category}
+                  </Typography>
+                  {rule.template_id && (
+                    <Chip 
+                      label={`Template: ${rule.template_name || 'Unknown'}`} 
+                      size="small" 
+                      color="primary" 
+                      variant="outlined"
+                    />
+                  )}
+                  {!rule.template_id && (
+                    <Chip 
+                      label="General" 
+                      size="small" 
+                      color="default" 
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
                 <Typography variant="body2" sx={{ color: '#666' }}>
                   → {rule.assigned_role}
-                  {rule.template_name && ` (Template: ${rule.template_name})`}
                   {rule.priority_level > 0 && ` • Priority: ${rule.priority_level}`}
                   {!rule.is_active && ' • Inactive'}
                 </Typography>
@@ -191,12 +232,27 @@ const AssignmentRulesList = ({ rules, categoryRules, onAddRule, onEditRule, onDe
                   ))}
                 </Select>
               </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Template (Optional)</InputLabel>
+                <Select
+                  value={newRule.template_id || ''}
+                  label="Template (Optional)"
+                  onChange={(e) => setNewRule({ ...newRule, template_id: e.target.value })}
+                >
+                  <MenuItem value="">All Templates (General Rule)</MenuItem>
+                  {templates.map(template => (
+                    <MenuItem key={template.id} value={template.id}>
+                      {template.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField
                 label="Priority Level"
                 type="number"
                 value={newRule.priority_level}
                 onChange={(e) => setNewRule({ ...newRule, priority_level: parseInt(e.target.value, 10) || 0 })}
-                helperText="Higher priority rules are evaluated first"
+                helperText="Higher priority rules are evaluated first. Template-specific rules override general rules."
                 fullWidth
               />
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
@@ -243,13 +299,24 @@ const Settings = () => {
   });
   const [loadingRules, setLoadingRules] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
+  const [templates, setTemplates] = useState([]);
 
   useEffect(() => {
     fetchPreferences();
     if (canManageRules) {
       fetchAssignmentRules();
+      fetchTemplates();
     }
   }, [canManageRules]);
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await axios.get('/api/templates');
+      setTemplates(response.data.templates || []);
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+  };
 
   const fetchPreferences = async () => {
     try {
@@ -355,12 +422,13 @@ const Settings = () => {
     }
   };
 
-  const handleAddRule = async (category, assigned_role, priority_level) => {
+  const handleAddRule = async (category, assigned_role, priority_level, template_id) => {
     try {
       await axios.post('/api/assignment-rules', {
         category,
         assigned_role,
-        priority_level: priority_level || 0
+        priority_level: priority_level || 0,
+        template_id: template_id || null
       });
       showSuccess('Assignment rule added successfully');
       await fetchAssignmentRules();
@@ -371,13 +439,14 @@ const Settings = () => {
     }
   };
 
-  const handleEditRule = async (id, category, assigned_role, priority_level, is_active) => {
+  const handleEditRule = async (id, category, assigned_role, priority_level, is_active, template_id) => {
     try {
       await axios.put(`/api/assignment-rules/${id}`, {
         category,
         assigned_role,
         priority_level: priority_level || 0,
-        is_active: is_active !== undefined ? is_active : true
+        is_active: is_active !== undefined ? is_active : true,
+        template_id: template_id || null
       });
       showSuccess('Assignment rule updated successfully');
       await fetchAssignmentRules();
@@ -663,6 +732,7 @@ const Settings = () => {
                           onDeleteRule={handleDeleteRule}
                           showError={showError}
                           showSuccess={showSuccess}
+                          templates={templates}
                         />
                       </Box>
 
