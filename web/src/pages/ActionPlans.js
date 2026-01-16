@@ -26,6 +26,9 @@ import PendingIcon from '@mui/icons-material/Pending';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import HistoryIcon from '@mui/icons-material/History';
+import Tooltip from '@mui/material/Tooltip';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -71,9 +74,31 @@ const ActionPlans = () => {
     if (priorityFilter !== 'all') {
       filtered = filtered.filter(action => action.priority === priorityFilter);
     }
+    if (escalationFilter !== 'all') {
+      if (escalationFilter === 'escalated') {
+        filtered = filtered.filter(action => action.escalated === true || action.escalated === 1);
+      } else if (escalationFilter === 'not_escalated') {
+        filtered = filtered.filter(action => !action.escalated || action.escalated === 0);
+      }
+    }
 
     setFilteredActions(filtered);
-  }, [statusFilter, priorityFilter, actions]);
+  }, [statusFilter, priorityFilter, escalationFilter, actions]);
+  
+  const fetchEscalationHistory = async (actionId) => {
+    try {
+      setLoadingHistory(true);
+      const response = await axios.get(`/api/assignment-rules/escalation-history/${actionId}`);
+      setEscalationHistory(response.data);
+      setSelectedActionForHistory(actionId);
+      setShowEscalationHistory(true);
+    } catch (error) {
+      console.error('Error fetching escalation history:', error);
+      showError('Failed to load escalation history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const fetchActions = async () => {
     try {
@@ -303,8 +328,42 @@ const ActionPlans = () => {
                             📋 Related to: {action.item_title}
                           </Typography>
                         )}
+                        {(action.escalated === true || action.escalated === 1) && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, mb: 1 }}>
+                            <Tooltip title="This action item has been escalated">
+                              <Chip 
+                                icon={<TrendingUpIcon />}
+                                label="Escalated" 
+                                size="small" 
+                                color="warning"
+                                sx={{ fontWeight: 600 }}
+                              />
+                            </Tooltip>
+                            {action.escalated_to_name && (
+                              <Typography variant="caption" color="text.secondary">
+                                → {action.escalated_to_name}
+                              </Typography>
+                            )}
+                            {action.escalated_at && (
+                              <Typography variant="caption" color="text.secondary">
+                                on {new Date(action.escalated_at).toLocaleDateString()}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
                       </Box>
                       <Box>
+                        {(action.escalated === true || action.escalated === 1) && (
+                          <Tooltip title="View Escalation History">
+                            <IconButton
+                              size="small"
+                              onClick={() => fetchEscalationHistory(action.id)}
+                              sx={{ mr: 1, color: 'warning.main' }}
+                            >
+                              <HistoryIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <IconButton
                           size="small"
                           onClick={() => handleOpenDialog(action)}
@@ -480,6 +539,94 @@ const ActionPlans = () => {
               }}
             >
               Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Escalation History Dialog */}
+        <Dialog
+          open={showEscalationHistory}
+          onClose={() => {
+            setShowEscalationHistory(false);
+            setEscalationHistory(null);
+            setSelectedActionForHistory(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <HistoryIcon />
+              <Typography variant="h6">Escalation History</Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            {loadingHistory ? (
+              <Box display="flex" justifyContent="center" p={3}>
+                <CircularProgress />
+              </Box>
+            ) : escalationHistory ? (
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                  {escalationHistory.action?.title}
+                </Typography>
+                
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Original Assignee: {escalationHistory.action?.assigned_to_name || 'Unassigned'}
+                  </Typography>
+                  {escalationHistory.action?.escalated_to_name && (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Escalated To: {escalationHistory.action.escalated_to_name}
+                    </Typography>
+                  )}
+                  {escalationHistory.action?.escalated_at && (
+                    <Typography variant="body2" color="text.secondary">
+                      Escalated At: {new Date(escalationHistory.action.escalated_at).toLocaleString()}
+                    </Typography>
+                  )}
+                </Box>
+
+                {escalationHistory.escalationComments && escalationHistory.escalationComments.length > 0 ? (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
+                      Escalation Comments
+                    </Typography>
+                    {escalationHistory.escalationComments.map((comment, index) => (
+                      <Card key={index} sx={{ mb: 2, bgcolor: 'background.default' }}>
+                        <CardContent>
+                          <Typography variant="body2" paragraph>
+                            {comment.comment}
+                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {comment.user_name || 'System'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {new Date(comment.created_at).toLocaleString()}
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No escalation comments found.
+                  </Typography>
+                )}
+              </Box>
+            ) : (
+              <Typography>No escalation history available.</Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setShowEscalationHistory(false);
+              setEscalationHistory(null);
+              setSelectedActionForHistory(null);
+            }}>
+              Close
             </Button>
           </DialogActions>
         </Dialog>

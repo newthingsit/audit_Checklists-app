@@ -179,6 +179,20 @@ const createTables = async () => {
     `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_to INT`,
     `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP NULL`,
     
+    // Action Comments table for escalation history tracking
+    `CREATE TABLE IF NOT EXISTS action_comments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      action_id INT NOT NULL,
+      user_id INT NOT NULL,
+      comment TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (action_id) REFERENCES action_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    
+    `CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`,
+    
     // Scheduled Audits table
     `CREATE TABLE IF NOT EXISTS scheduled_audits (
       id INT AUTO_INCREMENT PRIMARY KEY,

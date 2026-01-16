@@ -115,10 +115,16 @@ router.get('/', authenticate, requirePermission('view_actions', 'manage_actions'
   const { status, priority } = req.query;
 
   // Use LEFT JOIN to include standalone action items (where audit_id is NULL)
-  let query = `SELECT ai.*, a.restaurant_name, ci.title as item_title
+  let query = `SELECT ai.*, 
+                      a.restaurant_name, 
+                      ci.title as item_title,
+                      u1.name as assigned_to_name,
+                      u2.name as escalated_to_name
      FROM action_items ai
      LEFT JOIN audits a ON ai.audit_id = a.id
      LEFT JOIN checklist_items ci ON ai.item_id = ci.id
+     LEFT JOIN users u1 ON ai.assigned_to = u1.id
+     LEFT JOIN users u2 ON ai.escalated_to = u2.id
      WHERE (ai.assigned_to = ? OR a.user_id = ? OR (ai.audit_id IS NULL AND ai.assigned_to IS NULL))`;
   
   const params = [userId, userId];

@@ -15,19 +15,29 @@ import {
   FormControl,
   InputLabel,
   CircularProgress,
-  Alert
+  Alert,
+  TextField
 } from '@mui/material';
 import {
   Email as EmailIcon,
   Palette as PaletteIcon,
   ViewModule as ViewModuleIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  Assignment as AssignmentIcon,
+  TrendingUp as EscalatorIcon,
+  History as HistoryIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
+import { useAuth } from '../context/AuthContext';
+import { isAdmin, hasPermission } from '../utils/permissions';
 
 const Settings = () => {
+  const { user } = useAuth();
+  const userPermissions = user?.permissions || [];
+  const canManageRules = isAdmin(user) || hasPermission(userPermissions, 'manage_templates');
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [preferences, setPreferences] = useState({
@@ -42,10 +52,21 @@ const Settings = () => {
     theme: 'light',
     dashboard_default_view: 'cards'
   });
+  
+  // Assignment rules state
+  const [assignmentRules, setAssignmentRules] = useState({
+    categoryRules: {},
+    escalationDays: 3
+  });
+  const [loadingRules, setLoadingRules] = useState(false);
+  const [savingRules, setSavingRules] = useState(false);
 
   useEffect(() => {
     fetchPreferences();
-  }, []);
+    if (canManageRules) {
+      fetchAssignmentRules();
+    }
+  }, [canManageRules]);
 
   const fetchPreferences = async () => {
     try {
@@ -83,6 +104,23 @@ const Settings = () => {
     });
   };
 
+  const fetchAssignmentRules = async () => {
+    try {
+      setLoadingRules(true);
+      const response = await axios.get('/api/assignment-rules');
+      if (response.data) {
+        setAssignmentRules({
+          categoryRules: response.data.categoryRules || {},
+          escalationDays: response.data.escalationDays || 3
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching assignment rules:', error);
+    } finally {
+      setLoadingRules(false);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -113,6 +151,38 @@ const Settings = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveRules = async () => {
+    try {
+      setSavingRules(true);
+      await axios.put('/api/assignment-rules', assignmentRules);
+      showSuccess('Assignment rules saved successfully');
+      await fetchAssignmentRules();
+    } catch (error) {
+      console.error('Error saving assignment rules:', error);
+      const errorMessage = error.response?.data?.error || 'Failed to save assignment rules';
+      showError(errorMessage);
+    } finally {
+      setSavingRules(false);
+    }
+  };
+
+  const handleCategoryRuleChange = (category, role) => {
+    setAssignmentRules(prev => ({
+      ...prev,
+      categoryRules: {
+        ...prev.categoryRules,
+        [category]: role || null
+      }
+    }));
+  };
+
+  const handleEscalationDaysChange = (days) => {
+    setAssignmentRules(prev => ({
+      ...prev,
+      escalationDays: parseInt(days, 10) || 3
+    }));
   };
 
   if (loading) {

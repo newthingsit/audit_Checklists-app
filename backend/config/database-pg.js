@@ -181,6 +181,20 @@ const createTables = () => {
        EXCEPTION WHEN duplicate_column THEN NULL;
        END $$`,
       
+      // Action Comments table for escalation history tracking
+      `CREATE TABLE IF NOT EXISTS action_comments (
+        id SERIAL PRIMARY KEY,
+        action_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        comment TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (action_id) REFERENCES action_items(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`,
+      
       // Scheduled Audits table
       `CREATE TABLE IF NOT EXISTS scheduled_audits (
         id SERIAL PRIMARY KEY,

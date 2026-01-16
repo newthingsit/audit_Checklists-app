@@ -195,6 +195,20 @@ const createTables = () => {
       db.run(`ALTER TABLE action_items ADD COLUMN escalated INTEGER DEFAULT 0`, () => {});
       db.run(`ALTER TABLE action_items ADD COLUMN escalated_to INTEGER`, () => {});
       db.run(`ALTER TABLE action_items ADD COLUMN escalated_at DATETIME`, () => {});
+      
+      // Action Comments table for escalation history tracking
+      db.run(`CREATE TABLE IF NOT EXISTS action_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        comment TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (action_id) REFERENCES action_items(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`);
+      
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_comments_action ON action_comments(action_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_comments_user ON action_comments(user_id)`);
 
       // Scheduled Audits table
       db.run(`CREATE TABLE IF NOT EXISTS scheduled_audits (

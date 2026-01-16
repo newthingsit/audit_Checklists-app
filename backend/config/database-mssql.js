@@ -350,6 +350,24 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated_at')
      ALTER TABLE action_items ADD escalated_at DATETIME NULL`,
     
+    // Action Comments table for escalation history tracking
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[action_comments]') AND type in (N'U'))
+     CREATE TABLE [dbo].[action_comments] (
+       [id] INT IDENTITY(1,1) PRIMARY KEY,
+       [action_id] INT NOT NULL,
+       [user_id] INT NOT NULL,
+       [comment] NTEXT NOT NULL,
+       [created_at] DATETIME DEFAULT GETDATE(),
+       FOREIGN KEY ([action_id]) REFERENCES [action_items]([id]) ON DELETE CASCADE,
+       FOREIGN KEY ([user_id]) REFERENCES [users]([id])
+     )`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_comments_action')
+     CREATE INDEX idx_action_comments_action ON action_comments(action_id)`,
+    
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_comments_user')
+     CREATE INDEX idx_action_comments_user ON action_comments(user_id)`,
+    
     // Scheduled Audits table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[scheduled_audits]') AND type in (N'U'))
     CREATE TABLE [dbo].[scheduled_audits] (

@@ -489,6 +489,7 @@ app.use('/api/tasks', require('./routes/tasks')); // Tasks and workflows
 app.use('/api/teams', require('./routes/teams')); // Team collaboration
 app.use('/api/notifications', require('./routes/notifications')); // Notifications
 app.use('/api/settings', require('./routes/settings')); // User Settings & Preferences
+app.use('/api/assignment-rules', require('./routes/assignment-rules')); // Assignment Rules & Escalation
 app.use('/api', require('./routes/dynamic-audit-items')); // Dynamic item entry during audits
 
 // Health check
