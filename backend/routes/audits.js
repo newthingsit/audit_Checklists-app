@@ -966,6 +966,8 @@ router.post('/', authenticate, (req, res) => {
       });
     });
   });
+  } // Close proceedWithAuditCreation function
+}); // Close router.post handler
 
 // Update audit details
 router.put('/:id', authenticate, (req, res) => {
