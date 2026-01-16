@@ -39,6 +39,7 @@ const ActionPlans = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [escalationFilter, setEscalationFilter] = useState('all');
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAction, setEditingAction] = useState(null);
   const [audits, setAudits] = useState([]);
@@ -50,6 +51,11 @@ const ActionPlans = () => {
     assigned_to: '',
     audit_id: ''
   });
+  // Escalation history state
+  const [showEscalationHistory, setShowEscalationHistory] = useState(false);
+  const [selectedActionForHistory, setSelectedActionForHistory] = useState(null);
+  const [escalationHistory, setEscalationHistory] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchActions();
@@ -278,6 +284,18 @@ const ActionPlans = () => {
               <MenuItem value="high">High</MenuItem>
               <MenuItem value="medium">Medium</MenuItem>
               <MenuItem value="low">Low</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl sx={{ minWidth: 150 }}>
+            <InputLabel>Escalation</InputLabel>
+            <Select
+              value={escalationFilter}
+              label="Escalation"
+              onChange={(e) => setEscalationFilter(e.target.value)}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="escalated">Escalated</MenuItem>
+              <MenuItem value="not_escalated">Not Escalated</MenuItem>
             </Select>
           </FormControl>
         </Box>
