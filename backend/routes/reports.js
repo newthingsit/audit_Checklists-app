@@ -146,16 +146,94 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           doc.text(`Submitted by: ${audit.user_name || 'N/A'}`, 50, doc.y + 12);
           doc.moveDown(1.5);
 
-          // Score By Section
+          // Score By Section - Category-wise scores (Quality, Speed, Cleanliness & Hygiene, Processes, HK)
           doc.fontSize(12).fillColor('#000').text('Score By Section', { underline: true });
           doc.moveDown(0.5);
           
-          Object.keys(categoryData).sort().forEach(cat => {
-            const data = categoryData[cat];
-            const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
-            doc.fontSize(10).fillColor('#333');
-            doc.text(`${cat.toUpperCase()}: Perfect Score: ${Math.round(data.perfectScore)}, Actual Score: ${Math.round(data.actualScore)}, Percentage: ${percentage}%`);
+          // Define required categories in order
+          const requiredCategories = ['Quality', 'Speed', 'Cleanliness & Hygiene', 'Processes', 'HK'];
+          
+          // Map existing categories to required categories
+          const categoryMapping = {
+            'Quality': 'Quality',
+            'Speed': 'Speed',
+            'Speed of Service': 'Speed',
+            'Cleanliness & Hygiene': 'Cleanliness & Hygiene',
+            'Cleanliness': 'Cleanliness & Hygiene',
+            'Hygiene': 'Cleanliness & Hygiene',
+            'Processes': 'Processes',
+            'HK': 'HK',
+            'Housekeeping': 'HK'
+          };
+          
+          // Group categories by required categories
+          const groupedCategoryData = {};
+          Object.keys(categoryData).forEach(cat => {
+            const mappedCat = categoryMapping[cat] || cat;
+            if (!groupedCategoryData[mappedCat]) {
+              groupedCategoryData[mappedCat] = { perfectScore: 0, actualScore: 0, count: 0 };
+            }
+            groupedCategoryData[mappedCat].perfectScore += categoryData[cat].perfectScore;
+            groupedCategoryData[mappedCat].actualScore += categoryData[cat].actualScore;
+            groupedCategoryData[mappedCat].count += categoryData[cat].count;
           });
+          
+          // Display in required order
+          requiredCategories.forEach(cat => {
+            if (groupedCategoryData[cat]) {
+              const data = groupedCategoryData[cat];
+              const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+              doc.fontSize(10).fillColor('#333');
+              doc.text(`${cat}: ${percentage}% (${Math.round(data.actualScore)}/${Math.round(data.perfectScore)})`);
+            }
+          });
+          
+          // Also show any other categories not in the required list
+          Object.keys(groupedCategoryData).forEach(cat => {
+            if (!requiredCategories.includes(cat)) {
+              const data = groupedCategoryData[cat];
+              const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+              doc.fontSize(10).fillColor('#333');
+              doc.text(`${cat}: ${percentage}% (${Math.round(data.actualScore)}/${Math.round(data.perfectScore)})`);
+            }
+          });
+          
+          doc.moveDown(1);
+          
+          // Action Plan with Top-3 Deviations
+          doc.fontSize(12).fillColor('#000').text('Action Plan - Top 3 Deviations', { underline: true });
+          doc.moveDown(0.5);
+          
+          // Get failed items (top 3)
+          const failedItems = itemsWithMaxScores
+            .filter(item => {
+              const mark = parseFloat(item.mark) || 0;
+              return mark === 0 || item.status === 'failed' || item.selected_mark === '0' || item.selected_mark === 'No';
+            })
+            .sort((a, b) => {
+              // Sort by critical first, then by mark
+              if (a.is_critical && !b.is_critical) return -1;
+              if (!a.is_critical && b.is_critical) return 1;
+              return parseFloat(a.mark || 0) - parseFloat(b.mark || 0);
+            })
+            .slice(0, 3);
+          
+          if (failedItems.length > 0) {
+            failedItems.forEach((item, index) => {
+              doc.fontSize(10).fillColor('#000');
+              doc.text(`${index + 1}. ${item.title}`, { continued: false });
+              doc.fontSize(9).fillColor('#666');
+              doc.text(`   Category: ${item.category || 'Uncategorized'}`, { continued: false });
+              if (item.comment) {
+                doc.text(`   Remarks: ${item.comment}`, { continued: false });
+              }
+              doc.moveDown(0.3);
+            });
+          } else {
+            doc.fontSize(10).fillColor('#22c55e');
+            doc.text('No deviations found. All items passed.');
+          }
+          
           doc.moveDown(1);
 
           // Add footer function for all pages

@@ -1259,32 +1259,22 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
         // Get current month in YYYY-MM format for tracking (kept for historical purposes)
         const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
 
-        // Update the scheduled audit
+        // Update ONLY this specific scheduled audit occurrence
+        // For recurring audits, we update only the scheduled_date, NOT the next_run_date
+        // This ensures rescheduling one occurrence doesn't affect future occurrences
         const updateQuery = `UPDATE scheduled_audits 
-                            SET scheduled_date = ?, 
-                                next_run_date = CASE 
-                                  WHEN frequency = 'daily' THEN DATE(?, '+1 day')
-                                  WHEN frequency = 'weekly' THEN DATE(?, '+7 days')
-                                  WHEN frequency = 'monthly' THEN DATE(?, '+1 month')
-                                  ELSE ?
-                                END
+                            SET scheduled_date = ?
                             WHERE id = ?`;
 
         // Database-specific date calculations
         let updateParams;
         if (dbType === 'mssql' || dbType === 'sqlserver') {
-          // SQL Server syntax
+          // SQL Server syntax - Only update scheduled_date, not next_run_date
           dbInstance.run(
             `UPDATE scheduled_audits 
-             SET scheduled_date = ?, 
-                 next_run_date = CASE 
-                   WHEN frequency = 'daily' THEN DATEADD(day, 1, ?)
-                   WHEN frequency = 'weekly' THEN DATEADD(day, 7, ?)
-                   WHEN frequency = 'monthly' THEN DATEADD(month, 1, ?)
-                   ELSE ?
-                 END
+             SET scheduled_date = ?
              WHERE id = ?`,
-            [new_date, new_date, new_date, new_date, new_date, id],
+            [new_date, id],
             function(updateErr) {
               if (updateErr) {
                 logger.error('Error updating scheduled audit:', updateErr);
@@ -1312,18 +1302,12 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
             }
           );
         } else if (dbType === 'mysql') {
-          // MySQL syntax
+          // MySQL syntax - Only update scheduled_date, not next_run_date
           dbInstance.run(
             `UPDATE scheduled_audits 
-             SET scheduled_date = ?, 
-                 next_run_date = CASE 
-                   WHEN frequency = 'daily' THEN DATE_ADD(?, INTERVAL 1 DAY)
-                   WHEN frequency = 'weekly' THEN DATE_ADD(?, INTERVAL 7 DAY)
-                   WHEN frequency = 'monthly' THEN DATE_ADD(?, INTERVAL 1 MONTH)
-                   ELSE ?
-                 END
+             SET scheduled_date = ?
              WHERE id = ?`,
-            [new_date, new_date, new_date, new_date, new_date, id],
+            [new_date, id],
             function(updateErr) {
               if (updateErr) {
                 logger.error('Error updating scheduled audit:', updateErr);
@@ -1357,29 +1341,17 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
           let updateParams;
           
           if (dbType === 'postgres' || dbType === 'postgresql') {
-            // PostgreSQL syntax
+            // PostgreSQL syntax - Only update scheduled_date, not next_run_date
             updateQuery = `UPDATE scheduled_audits 
-             SET scheduled_date = $1, 
-                 next_run_date = CASE 
-                   WHEN frequency = 'daily' THEN $2::date + INTERVAL '1 day'
-                   WHEN frequency = 'weekly' THEN $2::date + INTERVAL '7 days'
-                   WHEN frequency = 'monthly' THEN $2::date + INTERVAL '1 month'
-                   ELSE $2::date
-                 END
-             WHERE id = $3`;
-            updateParams = [new_date, new_date, id];
+             SET scheduled_date = $1
+             WHERE id = $2`;
+            updateParams = [new_date, id];
           } else {
-            // SQLite syntax
+            // SQLite syntax - Only update scheduled_date, not next_run_date
             updateQuery = `UPDATE scheduled_audits 
-             SET scheduled_date = ?, 
-                 next_run_date = CASE 
-                   WHEN frequency = 'daily' THEN DATE(?, '+1 day')
-                   WHEN frequency = 'weekly' THEN DATE(?, '+7 days')
-                   WHEN frequency = 'monthly' THEN DATE(?, '+1 month')
-                   ELSE ?
-                 END
+             SET scheduled_date = ?
              WHERE id = ?`;
-            updateParams = [new_date, new_date, new_date, new_date, new_date, id];
+            updateParams = [new_date, id];
           }
           
           dbInstance.run(updateQuery, updateParams,

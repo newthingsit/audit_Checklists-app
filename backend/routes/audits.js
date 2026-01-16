@@ -232,6 +232,57 @@ const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null)
   }
 };
 
+/**
+ * Generate Action Plan with top-3 deviations for a completed audit
+ */
+function generateActionPlanWithDeviations(dbInstance, auditId, callback) {
+  // Get failed items (items with mark = 0 or status = 'failed')
+  dbInstance.all(
+    `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
+            cio.option_text as selected_option_text, cio.mark as selected_mark,
+            ai.comment, ai.photo_url
+     FROM audit_items ai
+     JOIN checklist_items ci ON ai.item_id = ci.id
+     LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+     WHERE ai.audit_id = ?
+       AND (
+         ai.status = 'failed' 
+         OR ai.mark = '0' 
+         OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
+         OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
+       )
+     ORDER BY 
+       CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
+       CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC,
+       ci.category
+     LIMIT 3`,
+    [auditId],
+    (err, failedItems) => {
+      if (err) {
+        return callback(err);
+      }
+
+      const deviations = (failedItems || []).map(item => ({
+        item_id: item.item_id,
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        is_critical: item.is_critical,
+        selected_option: item.selected_option_text,
+        mark: item.selected_mark || item.mark,
+        comment: item.comment,
+        photo_url: item.photo_url
+      }));
+
+      callback(null, {
+        audit_id: auditId,
+        deviations: deviations,
+        total_deviations: deviations.length
+      });
+    }
+  );
+}
+
 const router = express.Router();
 
 
@@ -741,21 +792,43 @@ router.post('/', authenticate, (req, res) => {
             return callback({ status: 400, message: 'Scheduled audit is already completed' });
           }
           
-          // Validate that scheduled audit can only be opened on the scheduled date (same day)
+          // Validate that scheduled audit can only be opened on or after the scheduled date
+          // This allows pre-poning (rescheduling to earlier date) and opening on scheduled date
           if (schedule.scheduled_date) {
             const scheduledDate = new Date(schedule.scheduled_date);
             scheduledDate.setHours(0, 0, 0, 0);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             
-            // Check if dates are the same
-            if (scheduledDate.getTime() !== today.getTime()) {
-              const scheduledDateStr = scheduledDate.toLocaleDateString();
-              return callback({ 
-                status: 400, 
-                message: `This audit is scheduled for ${scheduledDateStr}. Scheduled audits can only be opened on the scheduled date.` 
-              });
+            // Allow opening if scheduled date is today or in the past (allows pre-poning)
+            // But prevent opening if scheduled for future (unless rescheduled)
+            if (scheduledDate.getTime() > today.getTime()) {
+              // Check if it was rescheduled to today
+              dbInstance.get(
+                `SELECT new_date FROM reschedule_tracking 
+                 WHERE scheduled_audit_id = ? 
+                 ORDER BY created_at DESC LIMIT 1`,
+                [schedule.id],
+                (rescheduleErr, reschedule) => {
+                  if (!rescheduleErr && reschedule && reschedule.new_date) {
+                    const rescheduledDate = new Date(reschedule.new_date);
+                    rescheduledDate.setHours(0, 0, 0, 0);
+                    if (rescheduledDate.getTime() <= today.getTime()) {
+                      // Was rescheduled to today or earlier, allow opening
+                      return callback(null, schedule);
+                    }
+                  }
+                  // Not rescheduled or still in future, prevent opening
+                  const scheduledDateStr = scheduledDate.toLocaleDateString();
+                  return callback({ 
+                    status: 400, 
+                    message: `This audit is scheduled for ${scheduledDateStr}. Please wait until the scheduled date or reschedule it first.` 
+                  });
+                }
+              );
+              return; // Exit early, callback will be called above
             }
+            // Scheduled date is today or in the past, allow opening
           }
           
           callback(null, schedule);
@@ -2395,11 +2468,81 @@ router.put('/:id/complete', authenticate, (req, res) => {
               logger.error('Error creating completion notification:', notifErr.message);
             }
 
-            res.json({ message: 'Audit completed successfully', score });
+            // Generate PDF report automatically after completion
+            try {
+              const pdfUrl = `/api/reports/audit/${auditId}/pdf`;
+              logger.info(`[PDF Generation] PDF will be available at: ${pdfUrl}`);
+              // PDF is generated on-demand when accessed, so we just log the URL
+            } catch (pdfErr) {
+              logger.error('Error preparing PDF generation:', pdfErr.message);
+            }
+
+            // Generate Action Plan with top-3 deviations
+            try {
+              generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
+                if (err) {
+                  logger.error('Error generating action plan:', err);
+                } else {
+                  logger.info(`[Action Plan] Generated action plan with ${actionPlan?.deviations?.length || 0} deviations`);
+                }
+              });
+            } catch (actionPlanErr) {
+              logger.error('Error generating action plan:', actionPlanErr.message);
+            }
+
+            res.json({ 
+              message: 'Audit completed successfully', 
+              score,
+              pdfUrl: `/api/reports/audit/${auditId}/pdf`,
+              actionPlanUrl: `/api/audits/${auditId}/action-plan`
+            });
           }
         );
       }
     );
+  });
+});
+
+// Get Action Plan with top-3 deviations for a completed audit
+router.get('/:id/action-plan', authenticate, (req, res) => {
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) {
+    return res.status(400).json({ error: 'Invalid audit ID' });
+  }
+
+  const dbInstance = db.getDb();
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+
+  const whereClause = isAdmin ? 'WHERE id = ?' : 'WHERE id = ? AND user_id = ?';
+  const params = isAdmin ? [auditId] : [auditId, userId];
+
+  dbInstance.get(`SELECT * FROM audits ${whereClause}`, params, (err, audit) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found' });
+    }
+    if (audit.status !== 'completed') {
+      return res.status(400).json({ error: 'Audit must be completed to generate action plan' });
+    }
+
+    generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
+      if (err) {
+        logger.error('Error generating action plan:', err);
+        return res.status(500).json({ error: 'Error generating action plan', details: err.message });
+      }
+
+      res.json({
+        audit_id: auditId,
+        restaurant_name: audit.restaurant_name,
+        completed_at: audit.completed_at,
+        score: audit.score,
+        deviations: actionPlan.deviations,
+        total_deviations: actionPlan.total_deviations
+      });
+    });
   });
 });
 
