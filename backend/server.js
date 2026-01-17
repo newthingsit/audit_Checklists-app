@@ -34,37 +34,54 @@ if (process.env.NODE_ENV === 'production') {
   logger.info('CORS allowed origins:', { allowedOrigins });
 }
 
-// CRITICAL: Handle OPTIONS requests FIRST, before ANY other middleware
-// This must be the absolute first route handler to ensure preflight requests work
+// ============================================================================
+// CRITICAL: CORS PREFLIGHT HANDLER - MUST BE ABSOLUTE FIRST MIDDLEWARE
+// ============================================================================
+// This handler MUST be the very first middleware to ensure preflight requests
+// always get CORS headers, even during Azure cold starts or app restarts.
+// ============================================================================
 app.use((req, res, next) => {
+  // Handle OPTIONS (preflight) requests IMMEDIATELY - before ANY other processing
   if (req.method === 'OPTIONS') {
     const origin = req.headers.origin;
     
-    // Normalize origin for comparison
+    // CRITICAL: ALWAYS set CORS headers for preflight, regardless of origin validation
+    // Browsers REQUIRE these headers to be present on preflight responses
+    // If headers are missing, browser will block the actual request
+    
+    if (origin) {
+      // Always use the requesting origin for preflight (browser needs exact match)
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      // No origin header (mobile apps, Postman, etc.)
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    
+    // Set all required CORS headers
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
+    res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
+    
+    // Log for debugging (helps track if preflight is being handled)
     const normalizedOrigin = origin ? origin.toLowerCase().replace(/\/$/, '') : null;
     const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
     const originInList = origin && normalizedAllowedOrigins.includes(normalizedOrigin);
     
-    // Set CORS headers for preflight
-    if (origin) {
-      // If origin is in allowlist, use it; otherwise still set it for preflight
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    }
+    logger.info('✅ OPTIONS preflight handled:', { 
+      origin, 
+      originInList,
+      path: req.path,
+      timestamp: new Date().toISOString()
+    });
     
-    res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
-    
-    logger.info('OPTIONS preflight handled:', { origin, originInList });
-    
-    // Return 204 No Content for preflight
+    // Return 204 No Content immediately - don't call next()
     return res.status(204).end();
   }
+  
+  // For non-OPTIONS requests, continue to next middleware
   next();
 });
 
@@ -84,13 +101,22 @@ app.options('*', cors({
   optionsSuccessStatus: 204
 }));
 
-// CRITICAL: Add CORS headers to EVERY response FIRST (before any other middleware)
-// This ensures CORS headers are present even when errors occur
+// ============================================================================
+// CORS HEADERS MIDDLEWARE - Set CORS headers for ALL requests
+// ============================================================================
+// This middleware sets CORS headers for all non-OPTIONS requests.
+// OPTIONS requests are already handled by the first middleware above.
+// ============================================================================
 app.use((req, res, next) => {
+  // Skip if already handled by OPTIONS handler above
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  
   const origin = req.headers.origin;
   const isProduction = process.env.NODE_ENV === 'production';
   
-  // Normalize origin (remove trailing slashes, lowercase for comparison)
+  // Normalize origin for comparison
   const normalizedOrigin = origin ? origin.toLowerCase().replace(/\/$/, '') : null;
   const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
   
@@ -100,44 +126,21 @@ app.use((req, res, next) => {
   // 3. Development mode - allow all for easier testing
   const isAllowed = !origin || normalizedAllowedOrigins.includes(normalizedOrigin) || !isProduction;
   
-  // CRITICAL FIX: ALWAYS set CORS headers for OPTIONS requests (preflight)
-  // Browsers require CORS headers on preflight responses, even if origin is not allowed
-  // For other requests, only set if allowed
-  const isPreflight = req.method === 'OPTIONS';
-  const shouldSetHeaders = isPreflight || isAllowed;
-  
-  if (shouldSetHeaders) {
+  if (isAllowed) {
     // Use specific origin when sending credentials; never send credentials with "*"
     let corsOrigin = '*';
     let allowCredentials = false;
 
     if (origin) {
       const originInList = normalizedAllowedOrigins.includes(normalizedOrigin);
-      if (originInList) {
+      if (originInList || !isProduction) {
         // Use the original origin (not normalized) to preserve case
         corsOrigin = origin;
         allowCredentials = true;
-      } else if (!isProduction) {
-        // In development allow any origin, but still only allow credentials for explicit origin
-        corsOrigin = origin;
-        allowCredentials = true;
-      } else if (isPreflight) {
-        // CRITICAL FIX: For preflight requests, always use the requesting origin
-        // This allows the browser to see the CORS headers and proceed
-        corsOrigin = origin;
-        allowCredentials = true;
-      } else {
-        // Production and not in allowlist: use "*" but no credentials
-        corsOrigin = '*';
-        allowCredentials = false;
       }
-    } else {
-      // No origin (mobile/Postman): use "*" and no credentials
-      corsOrigin = '*';
-      allowCredentials = false;
     }
 
-    // CRITICAL: Set CORS headers BEFORE any other processing
+    // Set CORS headers BEFORE any other processing
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -147,28 +150,16 @@ app.use((req, res, next) => {
     }
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Length, Authorization');
-    
-    // Log preflight requests for debugging
-    if (isPreflight) {
-      logger.info('CORS preflight request:', { 
-        origin, 
-        corsOrigin, 
-        allowCredentials,
-        allowedOrigins: allowedOrigins.slice(0, 3) // Log first 3 for brevity
-      });
-    }
   }
   
-  // Handle preflight immediately - always return 204 for OPTIONS
-  if (isPreflight) {
-    // Always return 204 for OPTIONS, even if origin is not in allowlist
-    // The browser needs to see the CORS headers to determine if the actual request can proceed
-    return res.status(204).end();
-  }
-  
-  // For non-OPTIONS requests, only proceed if allowed
+  // For non-allowed origins in production, block the request
   if (!isAllowed && isProduction) {
     logger.security('cors_blocked', { origin, allowedOrigins, method: req.method, path: req.path });
+    // Still set CORS headers on error response so browser can see the error
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
     return res.status(403).json({ error: 'Not allowed by CORS policy' });
   }
   
@@ -320,7 +311,12 @@ const authLimiter = rateLimit({
     xForwardedForHeader: isDevelopment ? false : true,
   },
   // Skip rate limiting for /auth/me - it's called frequently and is not a security risk
+  // Also skip OPTIONS requests (preflight) - they need to pass through for CORS to work
   skip: (req) => {
+    // Skip rate limiting for OPTIONS requests (preflight)
+    if (req.method === 'OPTIONS') {
+      return true;
+    }
     // Skip rate limiting for /auth/me endpoint (session check, not login)
     if (req.path === '/me' || req.originalUrl?.includes('/auth/me')) {
       return true;
@@ -332,6 +328,18 @@ const authLimiter = rateLimit({
   skipFailedRequests: false, // Count failed requests too
   // Add handler to provide better error message
   handler: (req, res) => {
+    // CRITICAL: Set CORS headers before sending rate limit response
+    const origin = req.headers.origin;
+    if (origin) {
+      const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+      const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
+      if (normalizedAllowedOrigins.includes(normalizedOrigin) || process.env.NODE_ENV !== 'production') {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
+      }
+    }
     res.status(429).json({
       error: 'Too many login attempts',
       message: 'You have exceeded the maximum number of login attempts. Please wait 15 minutes before trying again.',
@@ -528,19 +536,27 @@ app.get('/api/warmup', async (req, res) => {
   }
 });
 
-// Global error handler - MUST be after all routes but before listen
-// This catches any unhandled errors and prevents 500 responses
+// ============================================================================
+// GLOBAL ERROR HANDLER - MUST be after all routes but before listen
+// ============================================================================
+// This catches any unhandled errors and ensures CORS headers are ALWAYS present
+// on error responses, even if something goes wrong.
+// ============================================================================
 app.use((err, req, res, next) => {
-  // CORS headers should already be set by the first middleware
-  // But ensure they're present on error responses too
+  // CRITICAL: Always set CORS headers on error responses
+  // Even if previous middleware failed, we need CORS headers for browser to see the error
   const origin = req.headers.origin;
-  if (origin && !res.getHeader('Access-Control-Allow-Origin')) {
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With');
-    }
+  
+  if (origin) {
+    // Always set CORS headers for error responses so browser can see them
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
+    res.setHeader('Vary', 'Origin');
+  } else if (!res.getHeader('Access-Control-Allow-Origin')) {
+    // No origin but headers not set - set wildcard
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   
   // For reschedule-count endpoint, ALWAYS return 200 (never 500)
