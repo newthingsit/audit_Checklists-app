@@ -175,7 +175,7 @@ router.post('/admin/update-speed-of-service', authenticate, async (req, res) => 
       return res.status(403).json({ error: 'Admin access required' });
     }
     
-    const { templateName = 'CVR - CDR', category = 'SPEED OF SERVICE – TRACKING' } = req.body;
+    const { templateName = 'CVR - CDR', category = 'SERVICE (Speed of Service)' } = req.body;
     const dbInstance = db.getDb();
     
     logger.info(`[Admin] Updating Speed of Service Tracking - Template: "${templateName}", Category: "${category}"`);

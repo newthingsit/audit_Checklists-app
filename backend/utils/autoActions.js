@@ -10,7 +10,7 @@ const logger = require('./logger');
  * @param {Function} callback - Callback function
  */
 function autoCreateActionItems(dbInstance, auditId, options = {}, callback) {
-  const { onlyCritical = false, defaultDueDays = 7 } = options;
+  const { onlyCritical = false, defaultDueDays = 7, specificItems = null } = options;
   
   // Get audit details
   dbInstance.get('SELECT * FROM audits WHERE id = ?', [auditId], (err, audit) => {
@@ -43,8 +43,18 @@ function autoCreateActionItems(dbInstance, auditId, options = {}, callback) {
     }
     
     failedItemsQuery += ' ORDER BY ci.is_critical DESC, ci.order_index';
+    
+    // If specificItems provided, only create actions for those items
+    if (specificItems && Array.isArray(specificItems) && specificItems.length > 0) {
+      const itemPlaceholders = specificItems.map(() => '?').join(',');
+      failedItemsQuery += ` AND ai.item_id IN (${itemPlaceholders})`;
+    }
 
-    dbInstance.all(failedItemsQuery, [auditId], (err, failedItems) => {
+    const queryParams = specificItems && Array.isArray(specificItems) && specificItems.length > 0
+      ? [auditId, ...specificItems]
+      : [auditId];
+
+    dbInstance.all(failedItemsQuery, queryParams, (err, failedItems) => {
       if (err) {
         logger.error('Error fetching failed items for auto-actions:', err);
         return callback(err);

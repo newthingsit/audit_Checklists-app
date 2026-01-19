@@ -43,7 +43,9 @@ if (process.env.NODE_ENV === 'production') {
 app.use((req, res, next) => {
   // Handle OPTIONS (preflight) requests IMMEDIATELY - before ANY other processing
   if (req.method === 'OPTIONS') {
-    const origin = req.headers.origin;
+    const raw = req.headers.origin;
+    // Mobile/Expo may send Origin: "null" (string); treat as no origin
+    const origin = (raw && String(raw).toLowerCase() !== 'null') ? raw : null;
     
     // CRITICAL: ALWAYS set CORS headers for preflight, regardless of origin validation
     // Browsers REQUIRE these headers to be present on preflight responses
@@ -54,7 +56,7 @@ app.use((req, res, next) => {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     } else {
-      // No origin header (mobile apps, Postman, etc.)
+      // No origin or "null" (mobile apps, Postman, Expo Go, etc.)
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
     
@@ -113,7 +115,9 @@ app.use((req, res, next) => {
     return next();
   }
   
-  const origin = req.headers.origin;
+  const rawOrigin = req.headers.origin;
+  // Mobile/Expo/React Native often send Origin: "null" (string); treat as no origin
+  const origin = (rawOrigin && String(rawOrigin).toLowerCase() !== 'null') ? rawOrigin : null;
   const isProduction = process.env.NODE_ENV === 'production';
   
   // Normalize origin for comparison
@@ -121,7 +125,7 @@ app.use((req, res, next) => {
   const normalizedAllowedOrigins = allowedOrigins.map(o => o.toLowerCase().replace(/\/$/, ''));
   
   // Determine if origin is allowed:
-  // 1. No origin (mobile apps, Postman, etc.) - always allow
+  // 1. No origin or "null" (mobile apps, Postman, Expo Go, etc.) - always allow
   // 2. Origin is in the allowlist - always allow
   // 3. Development mode - allow all for easier testing
   const isAllowed = !origin || normalizedAllowedOrigins.includes(normalizedOrigin) || !isProduction;
@@ -201,8 +205,8 @@ app.use(cors({
     const isProduction = process.env.NODE_ENV === 'production';
     const strictCORS = process.env.STRICT_CORS === 'true';
     
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
+    // Allow requests with no origin or "null" (mobile apps, Postman, Expo Go, etc.)
+    if (!origin || String(origin).toLowerCase() === 'null') return callback(null, true);
     
     // Normalize origin for comparison (match custom middleware logic)
     const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');

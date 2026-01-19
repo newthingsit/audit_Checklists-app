@@ -24,6 +24,7 @@ const AuditDetailScreen = () => {
   const { id } = route.params;
   const [audit, setAudit] = useState(null);
   const [items, setItems] = useState([]);
+  const [timeStats, setTimeStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,6 +46,7 @@ const AuditDetailScreen = () => {
       const response = await axios.get(`${API_BASE_URL}/audits/${id}`);
       setAudit(response.data.audit);
       setItems(response.data.items || []);
+      setTimeStats(response.data.timeStats || null);
     } catch (error) {
       console.error('Error fetching audit:', error);
     } finally {
@@ -163,6 +165,27 @@ const AuditDetailScreen = () => {
           {audit.completed_items || 0} / {audit.total_items || items.length} items completed
         </Text>
       </View>
+
+      {/* Time Statistics */}
+      {timeStats && timeStats.itemsWithTime > 0 && (
+        <View style={styles.timeStatsContainer}>
+          <Text style={styles.timeStatsTitle}>⏱️ Item Making Performance</Text>
+          <View style={styles.timeStatsRow}>
+            <View style={styles.timeStatBox}>
+              <Text style={styles.timeStatLabel}>Average Time</Text>
+              <Text style={styles.timeStatValue}>{timeStats.averageTime} min</Text>
+            </View>
+            <View style={styles.timeStatBox}>
+              <Text style={styles.timeStatLabel}>Total Time</Text>
+              <Text style={styles.timeStatValue}>{timeStats.totalTime} min</Text>
+            </View>
+            <View style={styles.timeStatBox}>
+              <Text style={styles.timeStatLabel}>Items Tracked</Text>
+              <Text style={styles.timeStatValue}>{timeStats.itemsWithTime} / {timeStats.totalItems}</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {audit.status === 'in_progress' && (
         <View style={styles.actionContainer}>
@@ -531,6 +554,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
+  },
+  timeStatsContainer: {
+    backgroundColor: '#e3f2fd',
+    borderRadius: themeConfig.borderRadius.medium,
+    padding: 15,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#90caf9',
+    ...themeConfig.shadows.small,
+  },
+  timeStatsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1976d2',
+    marginBottom: 12,
+  },
+  timeStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  timeStatBox: {
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  timeStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  timeStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1976d2',
   },
   notesContainer: {
     backgroundColor: '#fff',

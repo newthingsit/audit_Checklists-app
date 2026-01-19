@@ -154,10 +154,14 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           const requiredCategories = ['Quality', 'Speed', 'Cleanliness & Hygiene', 'Processes', 'HK'];
           
           // Map existing categories to required categories
+          // Handle variations like "SERVICE (Speed of Service)", "SERVICE - Speed of Service", etc.
           const categoryMapping = {
             'Quality': 'Quality',
             'Speed': 'Speed',
             'Speed of Service': 'Speed',
+            'SERVICE (Speed of Service)': 'Speed',
+            'SERVICE - Speed of Service': 'Speed',
+            'SERVICE – Speed of Service': 'Speed',
             'Cleanliness & Hygiene': 'Cleanliness & Hygiene',
             'Cleanliness': 'Cleanliness & Hygiene',
             'Hygiene': 'Cleanliness & Hygiene',
@@ -166,10 +170,22 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             'Housekeeping': 'HK'
           };
           
+          // Also handle dynamic mapping for categories containing "Speed of Service" or "Speed"
+          const normalizeCategory = (cat) => {
+            if (!cat) return cat;
+            const catLower = cat.toLowerCase();
+            // Check if category contains speed-related keywords
+            if (catLower.includes('speed of service') || (catLower.includes('speed') && !catLower.includes('speed of service - tracking'))) {
+              return 'Speed';
+            }
+            // Check for other mappings
+            return categoryMapping[cat] || cat;
+          };
+          
           // Group categories by required categories
           const groupedCategoryData = {};
           Object.keys(categoryData).forEach(cat => {
-            const mappedCat = categoryMapping[cat] || cat;
+            const mappedCat = normalizeCategory(cat);
             if (!groupedCategoryData[mappedCat]) {
               groupedCategoryData[mappedCat] = { perfectScore: 0, actualScore: 0, count: 0 };
             }
@@ -1964,6 +1980,310 @@ router.get('/analytics-by-store', authenticate, (req, res) => {
         stores: storeAnalytics
       });
     }
+  });
+});
+
+// Storewise PDF Report - Groups audits by store/location (similar to CVR 2 (CDR) Plan format)
+router.get('/storewise/pdf', authenticate, (req, res) => {
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const { date_from, date_to, template_id } = req.query;
+  const dbInstance = db.getDb();
+
+  // Build date filter
+  let dateFilter = '';
+  let params = [];
+  const dbType = process.env.DB_TYPE || 'sqlite';
+
+  if (date_from && date_to) {
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      dateFilter = 'AND CAST(a.created_at AS DATE) >= CAST(? AS DATE) AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
+    } else {
+      dateFilter = 'AND DATE(a.created_at) >= ? AND DATE(a.created_at) <= ?';
+    }
+    params.push(date_from, date_to);
+  } else if (date_from) {
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      dateFilter = 'AND CAST(a.created_at AS DATE) >= CAST(? AS DATE)';
+    } else {
+      dateFilter = 'AND DATE(a.created_at) >= ?';
+    }
+    params.push(date_from);
+  } else if (date_to) {
+    if (dbType === 'mssql' || dbType === 'sqlserver') {
+      dateFilter = 'AND CAST(a.created_at AS DATE) <= CAST(? AS DATE)';
+    } else {
+      dateFilter = 'AND DATE(a.created_at) <= ?';
+    }
+    params.push(date_to);
+  }
+
+  // Build user filter
+  const userFilter = isAdmin ? '' : 'AND a.user_id = ?';
+  if (!isAdmin) {
+    params.push(userId);
+  }
+
+  // Build template filter
+  let templateFilter = '';
+  if (template_id) {
+    templateFilter = 'AND a.template_id = ?';
+    params.push(template_id);
+  }
+
+  // Query to get all audits with location information
+  const query = `
+    SELECT 
+      a.id,
+      a.restaurant_name,
+      a.location,
+      a.location_id,
+      a.status,
+      a.score,
+      a.completed_items,
+      a.total_items,
+      a.created_at,
+      a.completed_at,
+      a.scheduled_audit_id,
+      l.name as location_name,
+      l.store_number,
+      l.address,
+      l.city,
+      l.state,
+      ct.id as template_id,
+      ct.name as template_name,
+      u.name as auditor_name,
+      sa.scheduled_date
+    FROM audits a
+    LEFT JOIN locations l ON a.location_id = l.id
+    LEFT JOIN checklist_templates ct ON a.template_id = ct.id
+    LEFT JOIN users u ON a.user_id = u.id
+    LEFT JOIN scheduled_audits sa ON a.scheduled_audit_id = sa.id
+    WHERE 1=1 ${userFilter} ${dateFilter} ${templateFilter}
+    ORDER BY l.store_number, l.name, a.created_at DESC
+  `;
+
+  dbInstance.all(query, params, async (err, audits) => {
+    if (err) {
+      logger.error('Storewise PDF error:', err);
+      return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+
+    // Group audits by store/location
+    const storeData = {};
+    
+    audits.forEach(audit => {
+      const storeKey = audit.location_id 
+        ? `${audit.location_id}_${audit.location_name || audit.location || 'Unknown'}`
+        : `text_${audit.location || 'Unknown'}`;
+      
+      if (!storeData[storeKey]) {
+        storeData[storeKey] = {
+          store_id: audit.location_id || null,
+          store_name: audit.location_name || audit.location || 'Unknown Store',
+          store_number: audit.store_number || null,
+          address: audit.address || null,
+          city: audit.city || null,
+          state: audit.state || null,
+          total_audits: 0,
+          completed_audits: 0,
+          in_progress_audits: 0,
+          total_score: 0,
+          score_count: 0,
+          average_score: 0,
+          min_score: null,
+          max_score: null,
+          audits: []
+        };
+      }
+
+      const store = storeData[storeKey];
+      store.total_audits++;
+      
+      if (audit.status === 'completed') {
+        store.completed_audits++;
+      } else if (audit.status === 'in_progress') {
+        store.in_progress_audits++;
+      }
+
+      if (audit.score !== null) {
+        store.total_score += audit.score;
+        store.score_count++;
+        if (store.min_score === null || audit.score < store.min_score) {
+          store.min_score = audit.score;
+        }
+        if (store.max_score === null || audit.score > store.max_score) {
+          store.max_score = audit.score;
+        }
+      }
+
+      store.audits.push({
+        id: audit.id,
+        restaurant_name: audit.restaurant_name,
+        template_name: audit.template_name,
+        status: audit.status,
+        score: audit.score,
+        auditor_name: audit.auditor_name,
+        created_at: audit.created_at,
+        completed_at: audit.completed_at,
+        scheduled_date: audit.scheduled_date
+      });
+    });
+
+    // Calculate averages
+    const storeAnalytics = Object.values(storeData).map(store => {
+      store.average_score = store.score_count > 0 
+        ? Math.round((store.total_score / store.score_count) * 100) / 100 
+        : 0;
+      store.completion_rate = store.total_audits > 0
+        ? Math.round((store.completed_audits / store.total_audits) * 100)
+        : 0;
+      return store;
+    });
+
+    // Sort by store number, then by store name
+    storeAnalytics.sort((a, b) => {
+      if (a.store_number && b.store_number) {
+        const numCompare = a.store_number.localeCompare(b.store_number);
+        if (numCompare !== 0) return numCompare;
+      } else if (a.store_number) return -1;
+      else if (b.store_number) return 1;
+      return (a.store_name || '').localeCompare(b.store_name || '');
+    });
+
+    // Create PDF
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    
+    // Determine template name for filename
+    let templateName = 'All Templates';
+    if (template_id && audits.length > 0) {
+      templateName = audits[0].template_name || 'Report';
+    } else if (audits.length > 0) {
+      templateName = audits[0].template_name || 'Report';
+    }
+    
+    const fileName = `${templateName} - Report Storewise.pdf`;
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    doc.pipe(res);
+
+    // Helper function to format date
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch (error) {
+        return dateString;
+      }
+    };
+
+    // Header Section
+    doc.fontSize(18).fillColor('#000').text(`${templateName} - Report Storewise`, { align: 'center' });
+    doc.fontSize(14).fillColor('#666').text('Lite Bite Foods', { align: 'center' });
+    
+    // Date range
+    if (date_from || date_to) {
+      doc.fontSize(10).fillColor('#666');
+      const dateRange = date_from && date_to 
+        ? `${formatDate(date_from)} to ${formatDate(date_to)}`
+        : date_from 
+          ? `From ${formatDate(date_from)}`
+          : `Until ${formatDate(date_to)}`;
+      doc.text(`Period: ${dateRange}`, { align: 'center' });
+    }
+    
+    doc.moveDown(1);
+
+    // Summary Section
+    doc.fontSize(12).fillColor('#000').text('Summary', { underline: true });
+    doc.fontSize(10).fillColor('#333');
+    doc.text(`Total Stores: ${storeAnalytics.length}`);
+    doc.text(`Total Audits: ${audits.length}`);
+    doc.text(`Completed Audits: ${audits.filter(a => a.status === 'completed').length}`);
+    doc.text(`In Progress: ${audits.filter(a => a.status === 'in_progress').length}`);
+    
+    const allScores = audits.filter(a => a.score !== null).map(a => a.score);
+    const overallAvg = allScores.length > 0 
+      ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 100) / 100 
+      : 0;
+    doc.text(`Overall Average Score: ${overallAvg}%`);
+    doc.moveDown(1.5);
+
+    // Store-wise Details
+    doc.fontSize(12).fillColor('#000').text('Store-wise Details', { underline: true });
+    doc.moveDown(0.5);
+
+    let pageNumber = 1;
+    const addFooter = () => {
+      doc.fontSize(8).fillColor('#999');
+      doc.text(`Page ${pageNumber}`, 50, doc.page.height - 50);
+      doc.text('Powered By Accrue', doc.page.width - 150, doc.page.height - 50, { align: 'right' });
+    };
+
+    storeAnalytics.forEach((store, index) => {
+      // Check if we need a new page
+      if (doc.y > 700) {
+        addFooter();
+        doc.addPage();
+        pageNumber++;
+      }
+
+      // Store Header
+      doc.fontSize(11).fillColor('#000').text(`${index + 1}. ${store.store_name}`, { underline: true });
+      
+      // Store Details
+      doc.fontSize(9).fillColor('#333');
+      if (store.store_number) {
+        doc.text(`Store Number: ${store.store_number}`);
+      }
+      if (store.address) {
+        doc.text(`Address: ${store.address}`);
+      }
+      if (store.city || store.state) {
+        doc.text(`Location: ${[store.city, store.state].filter(Boolean).join(', ')}`);
+      }
+      doc.moveDown(0.3);
+
+      // Store Statistics
+      doc.fontSize(9).fillColor('#000');
+      doc.text(`Total Audits: ${store.total_audits}`, { continued: true });
+      doc.text(`  |  Completed: ${store.completed_audits}`, { continued: true });
+      doc.text(`  |  In Progress: ${store.in_progress_audits}`, { continued: false });
+      
+      if (store.score_count > 0) {
+        doc.text(`Average Score: ${store.average_score}%`, { continued: true });
+        doc.text(`  |  Min: ${store.min_score}%`, { continued: true });
+        doc.text(`  |  Max: ${store.max_score}%`, { continued: true });
+        doc.text(`  |  Completion Rate: ${store.completion_rate}%`, { continued: false });
+      }
+      doc.moveDown(0.3);
+
+      // Individual Audit Details
+      if (store.audits.length > 0) {
+        doc.fontSize(9).fillColor('#666').text('Audit Details:', { underline: true });
+        store.audits.slice(0, 5).forEach((audit, auditIndex) => {
+          const auditDate = formatDate(audit.created_at);
+          const scoreText = audit.score !== null ? `${audit.score}%` : 'N/A';
+          doc.fontSize(8).fillColor('#333');
+          doc.text(`  ${auditIndex + 1}. ${audit.template_name || 'Audit'} - ${auditDate} - ${audit.status} - Score: ${scoreText}`);
+          if (audit.auditor_name) {
+            doc.text(`     Auditor: ${audit.auditor_name}`, { indent: 5 });
+          }
+        });
+        if (store.audits.length > 5) {
+          doc.fontSize(8).fillColor('#666');
+          doc.text(`  ... and ${store.audits.length - 5} more audit(s)`, { indent: 5 });
+        }
+      }
+
+      doc.moveDown(0.8);
+    });
+
+    // Final footer
+    addFooter();
+
+    doc.end();
   });
 });
 

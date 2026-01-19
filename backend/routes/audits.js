@@ -669,9 +669,66 @@ router.get('/:id', authenticate, (req, res) => {
                 }
               });
               
-              // Calculate percentage scores for each category
-              Object.keys(categoryScores).forEach(category => {
-                const cat = categoryScores[category];
+              // Map categories to required categories (Quality, Speed, Cleanliness & Hygiene, Processes, HK)
+              // Handle variations like "SERVICE (Speed of Service)", "SERVICE - Speed of Service", etc.
+              const categoryMapping = {
+                'Quality': 'Quality',
+                'Speed': 'Speed',
+                'Speed of Service': 'Speed',
+                'SERVICE (Speed of Service)': 'Speed',
+                'SERVICE - Speed of Service': 'Speed',
+                'SERVICE – Speed of Service': 'Speed',
+                'Cleanliness & Hygiene': 'Cleanliness & Hygiene',
+                'Cleanliness': 'Cleanliness & Hygiene',
+                'Hygiene': 'Cleanliness & Hygiene',
+                'Processes': 'Processes',
+                'HK': 'HK',
+                'Housekeeping': 'HK'
+              };
+              
+              // Also handle dynamic mapping for categories containing "Speed of Service" or "Speed"
+              const normalizeCategory = (cat) => {
+                if (!cat) return cat;
+                const catLower = cat.toLowerCase();
+                // Check if category contains speed-related keywords
+                if (catLower.includes('speed of service') || (catLower.includes('speed') && !catLower.includes('speed of service - tracking'))) {
+                  return 'Speed';
+                }
+                // Check for other mappings
+                return categoryMapping[cat] || cat;
+              };
+              
+              // Group categories by required categories
+              const groupedCategoryScores = {};
+              Object.keys(categoryScores).forEach(cat => {
+                const mappedCat = normalizeCategory(cat);
+                if (!groupedCategoryScores[mappedCat]) {
+                  groupedCategoryScores[mappedCat] = {
+                    totalItems: 0,
+                    completedItems: 0,
+                    totalPossibleScore: 0,
+                    actualScore: 0,
+                    weightedPossible: 0,
+                    weightedActual: 0,
+                    hasCriticalFailure: false
+                  };
+                }
+                const grouped = groupedCategoryScores[mappedCat];
+                const original = categoryScores[cat];
+                grouped.totalItems += original.totalItems;
+                grouped.completedItems += original.completedItems;
+                grouped.totalPossibleScore += original.totalPossibleScore;
+                grouped.actualScore += original.actualScore;
+                grouped.weightedPossible += original.weightedPossible;
+                grouped.weightedActual += original.weightedActual;
+                if (original.hasCriticalFailure) {
+                  grouped.hasCriticalFailure = true;
+                }
+              });
+              
+              // Calculate percentage scores for each grouped category
+              Object.keys(groupedCategoryScores).forEach(category => {
+                const cat = groupedCategoryScores[category];
                 cat.score = cat.totalPossibleScore > 0 
                   ? Math.round((cat.actualScore / cat.totalPossibleScore) * 100) 
                   : 0;
@@ -689,7 +746,7 @@ router.get('/:id', authenticate, (req, res) => {
                 }))
               }));
               
-              res.json({ audit, items: itemsWithOptions, categoryScores, timeStats });
+              res.json({ audit, items: itemsWithOptions, categoryScores: groupedCategoryScores, timeStats });
             }
           );
         }
@@ -800,9 +857,9 @@ router.post('/', authenticate, (req, res) => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             
-            // Allow opening if scheduled date is today or in the past (allows pre-poning)
-            // But prevent opening if scheduled for future (unless rescheduled)
-            if (scheduledDate.getTime() > today.getTime()) {
+            // Requirement: "Audit template should open on the same day of audit and not other days"
+            // Only allow opening on the exact scheduled date (same day), not before or after
+            if (scheduledDate.getTime() !== today.getTime()) {
               // Check if it was rescheduled to today
               dbInstance.get(
                 `SELECT new_date FROM reschedule_tracking 
@@ -818,17 +875,17 @@ router.post('/', authenticate, (req, res) => {
                       return callback(null, schedule);
                     }
                   }
-                  // Not rescheduled or still in future, prevent opening
+                  // Not rescheduled to today, prevent opening
                   const scheduledDateStr = scheduledDate.toLocaleDateString();
                   return callback({ 
                     status: 400, 
-                    message: `This audit is scheduled for ${scheduledDateStr}. Please wait until the scheduled date or reschedule it first.` 
+                    message: `This audit is scheduled for ${scheduledDateStr}. Please open it on the scheduled date or reschedule it first.` 
                   });
                 }
               );
               return; // Exit early, callback will be called above
             }
-            // Scheduled date is today or in the past, allow opening
+            // Scheduled date is today, allow opening
           }
           
           callback(null, schedule);
@@ -2477,13 +2534,52 @@ router.put('/:id/complete', authenticate, (req, res) => {
               logger.error('Error preparing PDF generation:', pdfErr.message);
             }
 
-            // Generate Action Plan with top-3 deviations
+            // Generate Action Plan with top-3 deviations and CREATE action items
             try {
               generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
                 if (err) {
                   logger.error('Error generating action plan:', err);
-                } else {
-                  logger.info(`[Action Plan] Generated action plan with ${actionPlan?.deviations?.length || 0} deviations`);
+                } else if (actionPlan && actionPlan.deviations && actionPlan.deviations.length > 0) {
+                  logger.info(`[Action Plan] Generated action plan with ${actionPlan.deviations.length} deviations`);
+                  
+                  // Create actual action items from top-3 deviations
+                  const { autoCreateActionItems } = require('../utils/autoActions');
+                  // Get top 3 failed items to create action items
+                  dbInstance.all(
+                    `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
+                            cio.option_text, cio.mark
+                     FROM audit_items ai
+                     JOIN checklist_items ci ON ai.item_id = ci.id
+                     LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+                     WHERE ai.audit_id = ?
+                       AND (
+                         ai.status = 'failed' 
+                         OR ai.mark = '0' 
+                         OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'Fail', 'F', '0'))
+                         OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
+                       )
+                     ORDER BY 
+                       CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
+                       CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC
+                     LIMIT 3`,
+                    [auditId],
+                    (err, topDeviations) => {
+                      if (!err && topDeviations && topDeviations.length > 0) {
+                        // Create action items for top 3 deviations
+                        autoCreateActionItems(dbInstance, auditId, { 
+                          onlyCritical: false, 
+                          defaultDueDays: 7,
+                          specificItems: topDeviations.map(d => d.item_id) // Only create for top 3
+                        }, (err, actions) => {
+                          if (err) {
+                            logger.error('Error creating action items from deviations:', err);
+                          } else if (actions && actions.length > 0) {
+                            logger.info(`[Action Plan] Created ${actions.length} action items from top-3 deviations for audit ${auditId}`);
+                          }
+                        });
+                      }
+                    }
+                  );
                 }
               });
             } catch (actionPlanErr) {

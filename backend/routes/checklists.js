@@ -1001,5 +1001,282 @@ router.delete('/:id/permissions/user/:userId', authenticate, requirePermission('
   );
 });
 
+// ============================================================================
+// CSV EXPORT - Download checklist template as CSV
+// ============================================================================
+router.get('/:id/export/csv', authenticate, async (req, res) => {
+  try {
+    const templateId = req.params.id;
+    const dbInstance = db.getDb();
+    
+    // Get template
+    const template = await getDbRow(dbInstance, 'SELECT * FROM checklist_templates WHERE id = ?', [templateId]);
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    // Get items
+    const items = await getAllRows(
+      dbInstance, 
+      'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id', 
+      [templateId]
+    );
+    
+    // Get options for all items
+    let optionsByItem = {};
+    if (items.length > 0) {
+      const itemIds = items.map(i => i.id);
+      const placeholders = itemIds.map(() => '?').join(',');
+      const options = await getAllRows(
+        dbInstance,
+        `SELECT * FROM checklist_item_options WHERE item_id IN (${placeholders}) ORDER BY item_id, order_index`,
+        itemIds
+      );
+      options.forEach(opt => {
+        if (!optionsByItem[opt.item_id]) optionsByItem[opt.item_id] = [];
+        optionsByItem[opt.item_id].push(opt);
+      });
+    }
+    
+    // Helper to escape CSV values
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+    
+    // Build CSV with proper category/subcategory/section structure
+    // Parse category to extract main category and subcategory
+    // e.g., "SERVICE (Speed of Service)" -> category: "SERVICE", subcategory: "Speed of Service"
+    const parseCategory = (cat) => {
+      if (!cat) return { mainCategory: '', subCategory: '' };
+      const match = cat.match(/^([^(]+)\s*\(([^)]+)\)$/);
+      if (match) {
+        return { mainCategory: match[1].trim(), subCategory: match[2].trim() };
+      }
+      return { mainCategory: cat.trim(), subCategory: '' };
+    };
+    
+    const headers = [
+      'title',
+      'description', 
+      'category',
+      'subcategory',
+      'section',
+      'input_type',
+      'required',
+      'weight',
+      'is_critical',
+      'options'
+    ];
+    
+    const rows = [headers.join(',')];
+    
+    items.forEach(item => {
+      const itemOptions = optionsByItem[item.id] || [];
+      // Format options as "text:mark|text:mark|..."
+      const optionsStr = itemOptions.map(o => `${o.option_text || ''}:${o.mark || ''}`).join('|');
+      
+      // Parse category into main and sub
+      const { mainCategory, subCategory } = parseCategory(item.category);
+      
+      // Normalize special characters (em-dash to regular dash)
+      const normalizeText = (text) => {
+        if (!text) return '';
+        return text.replace(/–/g, '-').replace(/—/g, '-').replace(/'/g, "'").replace(/"/g, '"').replace(/"/g, '"');
+      };
+      
+      const row = [
+        escapeCSV(normalizeText(item.title)),
+        escapeCSV(normalizeText(item.description)),
+        escapeCSV(mainCategory),
+        escapeCSV(subCategory),
+        escapeCSV(item.section),
+        escapeCSV(item.input_type),
+        item.required ? 'yes' : 'no',
+        escapeCSV(item.weight || 1),
+        item.is_critical ? 'yes' : 'no',
+        escapeCSV(optionsStr)
+      ];
+      rows.push(row.join(','));
+    });
+    
+    const csvContent = rows.join('\n');
+    
+    // Set headers for file download
+    const filename = `${template.name.replace(/[^a-zA-Z0-9]/g, '_')}_checklist.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvContent);
+    
+    logger.info(`[CSV Export] Template ${templateId} (${template.name}) exported with ${items.length} items`);
+    
+  } catch (error) {
+    logger.error('[CSV Export] Error:', error);
+    res.status(500).json({ error: 'Failed to export CSV', details: error.message });
+  }
+});
+
+// ============================================================================
+// CSV IMPORT - Import checklist from CSV (with options parsing)
+// ============================================================================
+router.post('/import/csv', authenticate, requirePermission('manage_templates'), async (req, res) => {
+  try {
+    const { templateName, description, category, csvData } = req.body;
+    
+    if (!templateName || !csvData) {
+      return res.status(400).json({ error: 'Template name and CSV data are required' });
+    }
+    
+    const dbInstance = db.getDb();
+    
+    // Parse CSV
+    const lines = csvData.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV must have at least a header row and one data row' });
+    }
+    
+    // Parse header
+    const parseCSVLine = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+    
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/"/g, ''));
+    const titleIdx = headers.findIndex(h => h === 'title' || h === 'item' || h === 'name');
+    
+    if (titleIdx === -1) {
+      return res.status(400).json({ error: 'CSV must have a "title" column' });
+    }
+    
+    const descIdx = headers.findIndex(h => h === 'description' || h === 'desc');
+    const catIdx = headers.findIndex(h => h === 'category' || h === 'cat');
+    const secIdx = headers.findIndex(h => h === 'section' || h === 'sec');
+    const typeIdx = headers.findIndex(h => h === 'input_type' || h === 'type' || h === 'field_type');
+    const reqIdx = headers.findIndex(h => h === 'required' || h === 'req');
+    const weightIdx = headers.findIndex(h => h === 'weight');
+    const critIdx = headers.findIndex(h => h === 'is_critical' || h === 'critical');
+    const optIdx = headers.findIndex(h => h === 'options' || h === 'choices');
+    
+    // Parse items
+    const items = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]);
+      const title = values[titleIdx]?.replace(/^"|"$/g, '').trim();
+      if (!title) continue;
+      
+      // Parse options string: "text:mark|text:mark|..."
+      let options = [];
+      if (optIdx !== -1 && values[optIdx]) {
+        const optStr = values[optIdx].replace(/^"|"$/g, '').trim();
+        if (optStr) {
+          options = optStr.split('|').map((part, idx) => {
+            const [text, mark] = part.split(':');
+            return {
+              option_text: text?.trim() || '',
+              mark: mark?.trim() || '',
+              order_index: idx
+            };
+          }).filter(o => o.option_text);
+        }
+      }
+      
+      const reqVal = reqIdx !== -1 ? values[reqIdx]?.toLowerCase().trim() : 'yes';
+      const critVal = critIdx !== -1 ? values[critIdx]?.toLowerCase().trim() : 'no';
+      
+      items.push({
+        title,
+        description: descIdx !== -1 ? values[descIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
+        category: catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || category || '' : category || '',
+        section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
+        input_type: typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
+        required: reqVal === 'yes' || reqVal === 'true' || reqVal === '1',
+        weight: weightIdx !== -1 ? parseInt(values[weightIdx]) || 1 : 1,
+        is_critical: critVal === 'yes' || critVal === 'true' || critVal === '1',
+        options,
+        order_index: i - 1
+      });
+    }
+    
+    if (items.length === 0) {
+      return res.status(400).json({ error: 'No valid items found in CSV' });
+    }
+    
+    // Create template
+    const { lastID: templateId } = await runDb(
+      dbInstance,
+      'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
+      [templateName, category || '', description || '', req.user.id]
+    );
+    
+    // Insert items with options
+    for (const item of items) {
+      const { lastID: itemId } = await runDb(
+        dbInstance,
+        `INSERT INTO checklist_items (template_id, title, description, category, section, required, order_index, input_type, weight, is_critical)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          templateId,
+          item.title,
+          item.description,
+          item.category,
+          item.section || null,
+          item.required ? 1 : 0,
+          item.order_index,
+          item.input_type,
+          item.weight,
+          item.is_critical ? 1 : 0
+        ]
+      );
+      
+      // Insert options
+      if (item.options && item.options.length > 0) {
+        for (const opt of item.options) {
+          await runDb(
+            dbInstance,
+            'INSERT INTO checklist_item_options (item_id, option_text, mark, order_index) VALUES (?, ?, ?, ?)',
+            [itemId, opt.option_text, opt.mark, opt.order_index]
+          );
+        }
+      }
+    }
+    
+    logger.info(`[CSV Import] Created template "${templateName}" (ID: ${templateId}) with ${items.length} items`);
+    
+    res.json({
+      success: true,
+      message: `Template "${templateName}" created with ${items.length} items`,
+      templateId,
+      itemCount: items.length
+    });
+    
+  } catch (error) {
+    logger.error('[CSV Import] Error:', error);
+    res.status(500).json({ error: 'Failed to import CSV', details: error.message });
+  }
+});
+
 module.exports = router;
 

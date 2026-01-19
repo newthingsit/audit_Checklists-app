@@ -175,16 +175,9 @@ const ScheduledAuditsScreen = () => {
     const isPending = !schedule.status || statusValue === 'pending';
     if (!isPending) return false;
     
-    // Validate that scheduled audit can only be opened on the scheduled date (same day)
-    if (schedule.scheduled_date) {
-      const scheduledDate = new Date(schedule.scheduled_date);
-      scheduledDate.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (scheduledDate.getTime() !== today.getTime()) {
-        return false; // Cannot start before or after scheduled date
-      }
-    }
+    // Allow starting on scheduled date or any date (allows pre-poning)
+    // Backend will handle the actual date validation
+    // Frontend allows any date to enable pre-poning functionality
     
     const isCreator = schedule.created_by === user?.id;
     const isAssignee = schedule.assigned_to ? schedule.assigned_to === user?.id : false;

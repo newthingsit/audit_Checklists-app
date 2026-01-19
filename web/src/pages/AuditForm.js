@@ -18,6 +18,14 @@ import {
   RadioGroup,
   FormControl,
   FormLabel,
+  Checkbox,
+  InputLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Alert,
   Chip,
   IconButton,
@@ -28,7 +36,6 @@ import {
   LinearProgress,
   Select,
   MenuItem,
-  Menu,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -36,7 +43,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Collapse
+  Grid
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -46,6 +53,12 @@ import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import EventIcon from '@mui/icons-material/Event';
+import NumbersIcon from '@mui/icons-material/Numbers';
+import EditIcon from '@mui/icons-material/Edit';
+import AddIcon from '@mui/icons-material/Add';
+import DragHandleIcon from '@mui/icons-material/DragHandle';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
@@ -61,13 +74,14 @@ const AuditForm = () => {
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false); // Setter is used, value not read
   const [locationId, setLocationId] = useState(searchParams.get('location_id') || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [notes, setNotes] = useState('');
   const [activeStep, setActiveStep] = useState(0);
   const [responses, setResponses] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({}); // Track selected_option_id for each item
+  const [multipleSelections, setMultipleSelections] = useState({}); // Track multiple selected options for multiple_answer type
   const [inputValues, setInputValues] = useState({}); // Track values for number, date, open_ended input types
   const [comments, setComments] = useState({});
   const [photos, setPhotos] = useState({});
@@ -89,7 +103,7 @@ const AuditForm = () => {
   const [previousFailures, setPreviousFailures] = useState([]);
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
-  const [showFailuresAlert, setShowFailuresAlert] = useState(false);
+  const [, setShowFailuresAlert] = useState(false); // Setter is used, value not read
   const [signatureItemId, setSignatureItemId] = useState(null);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const signatureRef = useRef(null);
@@ -98,6 +112,10 @@ const AuditForm = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedSection, setSelectedSection] = useState(null); // Track selected section within a category
   const [categories, setCategories] = useState([]);
+  
+  // Time tracking state
+  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when each item was started
+  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for each item in seconds
   const [filteredItems, setFilteredItems] = useState([]);
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
@@ -176,8 +194,14 @@ const AuditForm = () => {
       const hasSections = Object.keys(itemsBySection).length > 1 || 
         (Object.keys(itemsBySection).length === 1 && Object.keys(itemsBySection)[0] !== 'General');
       
-      if (hasSections) {
-        // Group by sections within the category
+      // For Speed of Service with sections, treat as single category (sections shown inside audit form, not as separate cards)
+      const isSpeedOfService = category && (
+        category.toLowerCase().includes('speed of service') || 
+        category.toLowerCase().includes('service (speed')
+      );
+      
+      if (hasSections && !isSpeedOfService) {
+        // Group by sections within the category (for non-SOS categories)
         Object.keys(itemsBySection).sort().forEach(section => {
           const sectionItems = itemsBySection[section];
           const completedCount = sectionItems.filter(item => {
@@ -249,16 +273,18 @@ const AuditForm = () => {
         setLocationId(schedule.location_id.toString());
       }
       
-      // Check if current date matches scheduled date (scheduled audits can only be opened on the same day)
+      // Check if current date matches scheduled date (scheduled audits can only be opened on the scheduled date)
+      // Requirement: "Audit template should open on the same day of audit and not other days"
       if (schedule.scheduled_date) {
         const scheduledDate = new Date(schedule.scheduled_date);
         scheduledDate.setHours(0, 0, 0, 0);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
+        // Only allow opening on the exact scheduled date (same day)
         if (scheduledDate.getTime() !== today.getTime()) {
           setIsBeforeScheduledDate(true);
-          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. Scheduled audits can only be opened on the scheduled date.`);
+          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. Please open it on the scheduled date.`);
         }
       }
     } catch (error) {
@@ -287,6 +313,36 @@ const AuditForm = () => {
       }
     }
   }, [locationId, locations]);
+
+  // Timer effect: Update elapsed times every second for items being tracked
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => {
+        const updated = { ...prev };
+        Object.keys(itemStartTimes).forEach(itemId => {
+          if (itemStartTimes[itemId]) {
+            const elapsed = Math.floor((Date.now() - itemStartTimes[itemId]) / 1000);
+            updated[itemId] = elapsed;
+          }
+        });
+        return updated;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [itemStartTimes]);
+
+  // Start tracking time for an item when user first interacts with it
+  const startTrackingTime = useCallback((itemId) => {
+    if (auditStatus === 'completed') return;
+    setItemStartTimes(prev => {
+      // Only start tracking if not already tracking
+      if (!prev[itemId]) {
+        return { ...prev, [itemId]: Date.now() };
+      }
+      return prev;
+    });
+  }, [auditStatus]);
 
   const fetchAuditData = useCallback(async () => {
     try {
@@ -460,6 +516,7 @@ const AuditForm = () => {
   }, [template?.id, templateId, locationId, isEditing, fetchPreviousFailures]);
 
   const handleResponseChange = (itemId, status) => {
+    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -469,6 +526,7 @@ const AuditForm = () => {
   };
 
   const handleOptionChange = (itemId, optionId) => {
+    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -477,6 +535,30 @@ const AuditForm = () => {
     setSelectedOptions({ ...selectedOptions, [itemId]: optionId });
     // Also update status to 'completed' when an option is selected
     setResponses({ ...responses, [itemId]: 'completed' });
+    // Clear errors if any
+  };
+
+  const handleMultipleSelectionChange = (itemId, optionId, checked) => {
+    startTrackingTime(itemId);
+    if (auditStatus === 'completed') {
+      showError('Cannot modify items in a completed audit');
+      return;
+    }
+    
+    const currentSelections = multipleSelections[itemId] || [];
+    let newSelections;
+    if (checked) {
+      newSelections = [...currentSelections, optionId];
+    } else {
+      newSelections = currentSelections.filter(id => id !== optionId);
+    }
+    setMultipleSelections({ ...multipleSelections, [itemId]: newSelections });
+    // Update status to 'completed' if at least one option is selected
+    if (newSelections.length > 0) {
+      setResponses({ ...responses, [itemId]: 'completed' });
+    } else {
+      setResponses({ ...responses, [itemId]: 'pending' });
+    }
     // Clear errors if any
     if (errors.items) {
       const remainingRequired = items.filter(i => 
@@ -489,6 +571,7 @@ const AuditForm = () => {
   };
 
   const handleCommentChange = (itemId, comment) => {
+    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -496,19 +579,52 @@ const AuditForm = () => {
     setComments({ ...comments, [itemId]: comment });
   };
 
+  // Helper: find "Time – Attempt 1"..5 and "Average (Auto)" for SOS auto-calculation
+  const getSosAverageItems = useCallback((allItems) => {
+    if (!allItems?.length) return null;
+    const attemptIds = [];
+    for (let i = 1; i <= 5; i++) {
+      const it = allItems.find(x => new RegExp('^Time\\s*[–\-]\\s*Attempt\\s*' + i + '$', 'i').test((x.title || '').trim()));
+      if (it) attemptIds.push(it.id); else return null;
+    }
+    const avgIt = allItems.find(x => /^Average\s*\(Auto\)$/i.test((x.title || '').trim()));
+    if (!avgIt) return null;
+    return { attemptIds, averageId: avgIt.id };
+  }, []);
+
   // Handle input value changes for number, date, open_ended input types
   const handleInputValueChange = (itemId, value) => {
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
     }
-    setInputValues({ ...inputValues, [itemId]: value });
-    // Mark as completed when value is entered
-    const nextStatus = value && value.toString().trim() !== '' ? 'completed' : 'pending';
-    setResponses({ ...responses, [itemId]: nextStatus });
+    startTrackingTime(itemId);
+    setInputValues(prev => {
+      const next = { ...prev, [itemId]: value };
+      const sos = getSosAverageItems(items);
+      if (sos && sos.attemptIds.includes(itemId)) {
+        const nums = sos.attemptIds.map(id => (id === itemId ? value : prev[id]))
+          .map(s => parseFloat(String(s || '')))
+          .filter(n => !isNaN(n));
+        next[sos.averageId] = nums.length ? String((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2)) : '';
+      }
+      return next;
+    });
+    setResponses(prev => {
+      const next = { ...prev, [itemId]: (value && String(value).trim()) ? 'completed' : (prev[itemId] || 'pending') };
+      const sos = getSosAverageItems(items);
+      if (sos && sos.attemptIds.includes(itemId)) {
+        const nums = sos.attemptIds.map(id => (id === itemId ? value : (inputValues[id] || '')))
+          .map(s => parseFloat(String(s || '')))
+          .filter(n => !isNaN(n));
+        if (sos.averageId && nums.length > 0) next[sos.averageId] = 'completed';
+      }
+      return next;
+    });
   };
 
   const handlePhotoUpload = async (itemId, file) => {
+    startTrackingTime(itemId);
     if (!file) return;
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
@@ -549,29 +665,30 @@ const AuditForm = () => {
     setSignatureItemId(null);
   };
 
-  const handleSaveSignature = async () => {
-    if (!signatureRef.current || signatureRef.current.isEmpty()) {
-      showError('Please provide a signature first');
-      return;
-    }
-    if (!signatureItemId) {
-      showError('Signature item not found');
-      return;
-    }
+  // Unused - kept for future signature functionality
+  // const handleSaveSignature = async () => {
+  //   if (!signatureRef.current || signatureRef.current.isEmpty()) {
+  //     showError('Please provide a signature first');
+  //     return;
+  //   }
+  //   if (!signatureItemId) {
+  //     showError('Signature item not found');
+  //     return;
+  //   }
 
-    try {
-      const dataUrl = signatureRef.current.toDataURL('image/png');
-      const blob = await fetch(dataUrl).then(res => res.blob());
-      const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' });
-      await handlePhotoUpload(signatureItemId, file);
-      setInputValues({ ...inputValues, [signatureItemId]: 'Signed' });
-      setResponses({ ...responses, [signatureItemId]: 'completed' });
-      closeSignatureModal();
-    } catch (error) {
-      console.error('Error saving signature:', error);
-      showError('Failed to save signature');
-    }
-  };
+  //   try {
+  //     const dataUrl = signatureRef.current.toDataURL('image/png');
+  //     const blob = await fetch(dataUrl).then(res => res.blob());
+  //     const file = new File([blob], `signature-${Date.now()}.png`, { type: 'image/png' });
+  //     await handlePhotoUpload(signatureItemId, file);
+  //     setInputValues({ ...inputValues, [signatureItemId]: 'Signed' });
+  //     setResponses({ ...responses, [signatureItemId]: 'completed' });
+  //     closeSignatureModal();
+  //   } catch (error) {
+  //     console.error('Error saving signature:', error);
+  //     showError('Failed to save signature');
+  //   }
+  // };
 
   const isItemComplete = (item) => {
     const inputType = (item?.input_type || '').toLowerCase();
@@ -652,13 +769,14 @@ const AuditForm = () => {
     }
   };
 
-  const handleBack = () => {
-    if (activeStep === (categories.length > 1 ? 2 : 1) && categories.length > 1) {
-      setActiveStep(1);
-    } else {
-      setActiveStep(activeStep - 1);
-    }
-  };
+  // Unused - kept for future navigation functionality
+  // const handleBack = () => {
+  //   if (activeStep === (categories.length > 1 ? 2 : 1) && categories.length > 1) {
+  //     setActiveStep(1);
+  //   } else {
+  //     setActiveStep(activeStep - 1);
+  //   }
+  // };
   
   // Evaluate conditional logic for items
   const evaluateConditionalItem = useCallback((item, allItems, responses, selectedOptions, comments, inputValues) => {
@@ -769,6 +887,8 @@ const AuditForm = () => {
     }
   }, [categories, items, responses, selectedOptions, calculateCategoryCompletion]);
 
+  // Unused - kept for future submit functionality
+  // eslint-disable-next-line no-unused-vars
   const handleSubmit = async () => {
     if (auditStatus === 'completed') {
       showError('Cannot modify a completed audit');
@@ -871,6 +991,19 @@ const AuditForm = () => {
               : photoUrl;
           }
 
+          // Add time tracking data if available
+          if (itemStartTimes[item.id]) {
+            const startTime = itemStartTimes[item.id];
+            const elapsedSeconds = itemElapsedTimes[item.id] || Math.floor((Date.now() - startTime) / 1000);
+            const timeTakenMinutes = elapsedSeconds > 0 ? (elapsedSeconds / 60).toFixed(2) : null;
+            
+            if (timeTakenMinutes) {
+              itemData.time_taken_minutes = parseFloat(timeTakenMinutes);
+              // Convert start time to ISO string for backend
+              itemData.started_at = new Date(startTime).toISOString();
+            }
+          }
+
           return itemData;
         });
 
@@ -915,7 +1048,18 @@ const AuditForm = () => {
         // Category completion will be recalculated by useEffect
       }
 
-      showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
+      // Check if audit was completed - trigger PDF download
+      if (response.data && response.data.status === 'completed') {
+        // Trigger PDF download automatically
+        const pdfUrl = response.data.pdfUrl || `/api/reports/audit/${currentAuditId}/pdf`;
+        if (pdfUrl) {
+          // Open PDF in new tab for download
+          window.open(pdfUrl, '_blank');
+        }
+        showSuccess('Audit completed successfully! PDF report is downloading...');
+      } else {
+        showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
+      }
       navigate(`/audit/${currentAuditId}`);
     } catch (err) {
       const errorMsg = err.response?.data?.error || 'Failed to save audit';
@@ -1013,6 +1157,66 @@ const AuditForm = () => {
       setExpandedSections(prev => ({ ...prev, ...initialExpanded }));
     }
   }, [groupedItems.sections]);
+
+  // Helper to render a simplified item field (for Time/Sec pairs - no card wrapper, no title)
+  const renderAuditItemField = (item, index, showTitle = false) => {
+    if (!item || !item.id) {
+      return null;
+    }
+    
+    const inputType = (item.input_type || '').toLowerCase();
+    
+    return (
+      <Box>
+        {showTitle && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <IconButton size="small" sx={{ cursor: 'grab' }}>
+              <DragHandleIcon fontSize="small" />
+            </IconButton>
+            <Typography variant="body2" sx={{ flexGrow: 1, fontWeight: 500 }}>
+              {item.title}
+            </Typography>
+            <IconButton size="small">
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        )}
+        
+        {/* Render input based on input_type */}
+        {(() => {
+          if (inputType === 'number') {
+            return (
+              <TextField
+                fullWidth
+                type="number"
+                placeholder="Enter seconds..."
+                value={inputValues[item.id] || ''}
+                onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                size="small"
+                disabled={auditStatus === 'completed'}
+              />
+            );
+          }
+          
+          if (inputType === 'date') {
+            return (
+              <TextField
+                fullWidth
+                type="datetime-local"
+                value={inputValues[item.id] || ''}
+                onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                disabled={auditStatus === 'completed'}
+              />
+            );
+          }
+          
+          return null;
+        })()}
+      </Box>
+    );
+  };
 
   // Render a single audit item (extracted for reuse in section grouping)
   const renderAuditItem = (item, index) => {
@@ -1127,7 +1331,25 @@ const AuditForm = () => {
                 gap: 1
               }}
             >
-              <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <Box>
+                  <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
+                  {/* Timer display */}
+                  {itemStartTimes[item.id] && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span>⏱</span>
+                        {(() => {
+                          const elapsed = itemElapsedTimes[item.id] || 0;
+                          const minutes = Math.floor(elapsed / 60);
+                          const seconds = elapsed % 60;
+                          return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                        })()}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
               {item.required && (
                 <Chip 
                   label="Required" 
@@ -1162,20 +1384,23 @@ const AuditForm = () => {
           {(() => {
             // Number input type
             if (inputType === 'number') {
+              const isAverageAuto = /^Average\s*\(Auto\)$/i.test((item.title || '').trim());
               return (
                 <TextField
                   fullWidth
                   type="number"
-                  label="Enter Value"
-                  placeholder="Enter a number..."
+                  label={isAverageAuto ? 'Average (auto-calculated)' : 'Enter Value'}
+                  placeholder={isAverageAuto ? '' : 'Enter a number...'}
                   value={inputValues[item.id] || ''}
-                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  onChange={isAverageAuto ? undefined : (e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
                   sx={{ mt: 2, mb: 1 }}
                   InputProps={{
+                    readOnly: isAverageAuto,
                     inputProps: { min: 0 }
                   }}
-                  disabled={auditStatus === 'completed'}
+                  disabled={auditStatus === 'completed' || isAverageAuto}
+                  helperText={isAverageAuto ? 'Calculated from Time Attempts 1–5' : null}
                 />
               );
             }
@@ -1267,6 +1492,223 @@ const AuditForm = () => {
                         style={{ maxWidth: '100%', height: 120, border: '1px solid #e0e0e0', borderRadius: 6 }}
                       />
                     </Box>
+                  )}
+                </Box>
+              );
+            }
+
+            // Single Answer - Radio buttons (single selection)
+            if (inputType === 'single_answer' && item.options && item.options.length > 0) {
+              return (
+                <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
+                  <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600 }}>
+                    Select One:
+                  </FormLabel>
+                  <RadioGroup
+                    value={selectedOptions[item.id] || ''}
+                    onChange={(e) => handleOptionChange(item.id, parseInt(e.target.value))}
+                  >
+                    {item.options.map((option) => (
+                      <FormControlLabel
+                        key={option.id}
+                        value={option.id.toString()}
+                        control={<Radio disabled={auditStatus === 'completed'} />}
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography>{option.option_text}</Typography>
+                            <Chip label={option.mark} size="small" variant="outlined" />
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </RadioGroup>
+                </FormControl>
+              );
+            }
+
+            // Multiple Answer - Checkboxes (multiple selection)
+            if (inputType === 'multiple_answer' && item.options && item.options.length > 0) {
+              const selectedIds = multipleSelections[item.id] || [];
+              return (
+                <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
+                  <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600 }}>
+                    Select All That Apply:
+                  </FormLabel>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {item.options.map((option) => (
+                      <FormControlLabel
+                        key={option.id}
+                        control={
+                          <Checkbox
+                            checked={selectedIds.includes(option.id)}
+                            onChange={(e) => handleMultipleSelectionChange(item.id, option.id, e.target.checked)}
+                            disabled={auditStatus === 'completed'}
+                          />
+                        }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography>{option.option_text}</Typography>
+                            <Chip label={option.mark} size="small" variant="outlined" />
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </Box>
+                </FormControl>
+              );
+            }
+
+            // Short Answer - Single line text input
+            if (inputType === 'short_answer') {
+              return (
+                <TextField
+                  fullWidth
+                  label="Enter Answer"
+                  placeholder="Enter your answer..."
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+
+            // Long Answer - Multi-line text input
+            if (inputType === 'long_answer') {
+              return (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Enter Answer"
+                  placeholder="Enter your detailed answer..."
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+
+            // Dropdown - Select dropdown
+            if (inputType === 'dropdown' && item.options && item.options.length > 0) {
+              return (
+                <FormControl fullWidth sx={{ mt: 2, mb: 1 }}>
+                  <InputLabel>Select Option</InputLabel>
+                  <Select
+                    value={selectedOptions[item.id] || ''}
+                    label="Select Option"
+                    onChange={(e) => handleOptionChange(item.id, e.target.value)}
+                    disabled={auditStatus === 'completed'}
+                  >
+                    {item.options.map((option) => (
+                      <MenuItem key={option.id} value={option.id}>
+                        {option.option_text} ({option.mark})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              );
+            }
+
+            // Time - Time picker
+            if (inputType === 'time') {
+              return (
+                <TextField
+                  fullWidth
+                  type="time"
+                  label="Select Time"
+                  value={inputValues[item.id] || ''}
+                  onChange={(e) => handleInputValueChange(item.id, e.target.value)}
+                  size="small"
+                  sx={{ mt: 2, mb: 1 }}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={auditStatus === 'completed'}
+                />
+              );
+            }
+
+            // Grid - Matrix/table input
+            if (inputType === 'grid' && item.options && item.options.length > 0) {
+              // For grid, we'll create a simple table with rows and columns
+              // This is a basic implementation - can be enhanced based on specific grid requirements
+              const gridOptions = item.options;
+              const gridRows = item.grid_rows || ['Row 1', 'Row 2']; // Default rows if not specified
+              return (
+                <Box sx={{ mt: 2, mb: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                    Select options for each row:
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell></TableCell>
+                          {gridOptions.map((option) => (
+                            <TableCell key={option.id} align="center">
+                              {option.option_text}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {gridRows.map((row, rowIndex) => (
+                          <TableRow key={rowIndex}>
+                            <TableCell component="th" scope="row">
+                              {row}
+                            </TableCell>
+                            {gridOptions.map((option) => (
+                              <TableCell key={option.id} align="center">
+                                <Checkbox
+                                  checked={
+                                    (multipleSelections[item.id] || []).includes(`${rowIndex}-${option.id}`)
+                                  }
+                                  onChange={(e) => {
+                                    const key = `${rowIndex}-${option.id}`;
+                                    handleMultipleSelectionChange(item.id, key, e.target.checked);
+                                  }}
+                                  disabled={auditStatus === 'completed'}
+                                />
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              );
+            }
+
+            // Section - Organizational divider (not an input)
+            if (inputType === 'section') {
+              return (
+                <Box sx={{ mt: 3, mb: 2, pt: 2, borderTop: '2px solid', borderColor: 'primary.main' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                    {item.title}
+                  </Typography>
+                  {item.description && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {item.description}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            }
+
+            // Sub-Section - Nested organizational divider
+            if (inputType === 'sub_section') {
+              return (
+                <Box sx={{ mt: 2, mb: 1.5, pl: 2, borderLeft: '3px solid', borderColor: 'secondary.main' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'secondary.main' }}>
+                    {item.title}
+                  </Typography>
+                  {item.description && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {item.description}
+                    </Typography>
                   )}
                 </Box>
               );
@@ -1765,7 +2207,7 @@ const AuditForm = () => {
                           
                           return (
                             <Card
-                              key={subCat.fullName}
+                              key={`${subCat.fullName}-${subCat.section || 'no-section'}-${subIndex}`}
                               sx={{
                                 cursor: 'pointer',
                                 border: 2,
@@ -1889,7 +2331,6 @@ const AuditForm = () => {
                   >
                     {categories.map((cat, idx) => {
                       const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
-                      const catItems = items.filter(item => item.category === cat);
                       return (
                         <MenuItem key={cat || `no-category-${idx}`} value={cat}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
@@ -2125,9 +2566,105 @@ const AuditForm = () => {
                       </AccordionSummary>
                       <AccordionDetails sx={{ bgcolor: 'grey.50', borderTop: '1px solid', borderColor: 'divider', p: 0 }}>
                         <Box sx={{ p: 2 }}>
-                          {sectionItems.map((item, index) => {
-                            return renderAuditItem(item, index);
-                          })}
+                          {/* Section Header Controls */}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<ExpandMoreIcon />}
+                              onClick={() => {
+                                setExpandedSections(prev => ({ ...prev, [sectionData.name]: false }));
+                              }}
+                            >
+                              Collapse Section
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={() => {
+                                // TODO: Implement add new item to section
+                                console.log('Add new item to section:', sectionData.name);
+                              }}
+                            >
+                              Add New Item
+                            </Button>
+                          </Box>
+                          
+                          {/* Group Time/Sec pairs together */}
+                          {(() => {
+                            const groupedPairs = {};
+                            const standaloneItems = [];
+                            
+                            sectionItems.forEach(item => {
+                              const title = item.title || '';
+                              // Check if this is a Time or Sec item
+                              if (title.includes('(Time)')) {
+                                const baseName = title.replace(' (Time)', '').trim();
+                                if (!groupedPairs[baseName]) {
+                                  groupedPairs[baseName] = { time: null, sec: null };
+                                }
+                                groupedPairs[baseName].time = item;
+                              } else if (title.includes('(Sec)')) {
+                                const baseName = title.replace(' (Sec)', '').trim();
+                                if (!groupedPairs[baseName]) {
+                                  groupedPairs[baseName] = { time: null, sec: null };
+                                }
+                                groupedPairs[baseName].sec = item;
+                              } else {
+                                standaloneItems.push(item);
+                              }
+                            });
+                            
+                            return (
+                              <>
+                                {/* Render Time/Sec pairs - grouped in single card */}
+                                {Object.entries(groupedPairs).map(([baseName, pair], pairIndex) => (
+                                  <Card 
+                                    key={`pair-${baseName}-${pairIndex}`} 
+                                    sx={{ 
+                                      mb: 2, 
+                                      p: 2, 
+                                      bgcolor: 'white', 
+                                      borderRadius: 1, 
+                                      border: '1px solid', 
+                                      borderColor: 'divider',
+                                      boxShadow: 1
+                                    }}
+                                  >
+                                    <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
+                                      {baseName}
+                                    </Typography>
+                                    <Grid container spacing={2}>
+                                      {pair.time && (
+                                        <Grid item xs={12} sm={6}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                            <EventIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                                            <Typography variant="caption" color="text.secondary">Date</Typography>
+                                          </Box>
+                                          {renderAuditItemField(pair.time, pairIndex * 2, false)}
+                                        </Grid>
+                                      )}
+                                      {pair.sec && (
+                                        <Grid item xs={12} sm={6}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                            <NumbersIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                                            <Typography variant="caption" color="text.secondary">01. Number</Typography>
+                                          </Box>
+                                          {renderAuditItemField(pair.sec, pairIndex * 2 + 1, false)}
+                                        </Grid>
+                                      )}
+                                    </Grid>
+                                  </Card>
+                                ))}
+                                
+                                {/* Render standalone items (not Time/Sec pairs) */}
+                                {standaloneItems.map((item, index) => {
+                                  return renderAuditItem(item, Object.keys(groupedPairs).length * 2 + index);
+                                })}
+                              </>
+                            );
+                          })()}
                         </Box>
                       </AccordionDetails>
                     </Accordion>

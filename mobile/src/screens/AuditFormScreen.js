@@ -37,6 +37,7 @@ const AuditFormScreen = () => {
   const [notes, setNotes] = useState('');
   const [responses, setResponses] = useState({});
   const [selectedOptions, setSelectedOptions] = useState({});
+  const [multipleSelections, setMultipleSelections] = useState({}); // Track multiple selected options for multiple_answer type
   const [comments, setComments] = useState({});
   const [photos, setPhotos] = useState({});
   const [uploading, setUploading] = useState({});
@@ -60,6 +61,10 @@ const AuditFormScreen = () => {
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track which categories have items completed
   const [groupedCategories, setGroupedCategories] = useState([]); // Grouped categories with sub-categories/sections
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
+  
+  // Time tracking state
+  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when each item was started
+  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for each item in seconds
   
   // GPS Location state
   const { getCurrentLocation, permissionGranted, settings: locationSettings, calculateDistance } = useLocation();
@@ -91,12 +96,14 @@ const AuditFormScreen = () => {
     const title = (item.title || '').toLowerCase();
     const category = (item.category || '').toLowerCase();
     
-    // Check for time-related keywords in title
-    const timeKeywords = ['(time)', '(sec)', 'time tracking', 'speed of service', 'tracking'];
+    // Check for time-related keywords in title (only specific time tracking items)
+    // DO NOT filter out "Speed of Service" checklist - only filter time tracking items
+    const timeKeywords = ['(time)', '(sec)', 'time tracking'];
     const hasTimeKeyword = timeKeywords.some(keyword => title.includes(keyword));
     
-    // Check for time-related categories
-    const timeCategories = ['speed of service - tracking', 'time tracking', 'tracking'];
+    // Check for time-related categories (only tracking categories, not SOS checklist)
+    // Allow "Speed of Service" category - only filter "Speed of Service - Tracking"
+    const timeCategories = ['speed of service - tracking', 'time tracking'];
     const hasTimeCategory = timeCategories.some(keyword => category.includes(keyword));
     
     return hasTimeKeyword || hasTimeCategory;
@@ -147,6 +154,24 @@ const AuditFormScreen = () => {
 
     return unsubscribe;
   }, [navigation, auditId, scheduledAuditId, templateId]);
+
+  // Timer effect: Update elapsed times every second for items being tracked
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setItemElapsedTimes(prev => {
+        const updated = { ...prev };
+        Object.keys(itemStartTimes).forEach(itemId => {
+          if (itemStartTimes[itemId]) {
+            const elapsed = Math.floor((Date.now() - itemStartTimes[itemId]) / 1000);
+            updated[itemId] = elapsed;
+          }
+        });
+        return updated;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [itemStartTimes]);
 
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
@@ -282,15 +307,15 @@ const AuditFormScreen = () => {
       const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
       setItems(filteredItems);
       
-      // Extract unique categories from filtered items (excluding time-related categories)
-      const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
-        if (!cat || !cat.trim()) return false;
-        const categoryLower = cat.toLowerCase();
-        // Filter out time-related categories
-        return !categoryLower.includes('speed of service - tracking') && 
-               !categoryLower.includes('time tracking') &&
-               !categoryLower.includes('tracking');
-      }))];
+        // Extract unique categories from filtered items (excluding only time-tracking categories)
+        // Allow "Speed of Service" category - only filter "Speed of Service - Tracking"
+        const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
+          if (!cat || !cat.trim()) return false;
+          const categoryLower = cat.toLowerCase();
+          // Filter out only time-tracking categories, NOT "Speed of Service" checklist
+          return !categoryLower.includes('speed of service - tracking') && 
+                 !categoryLower.includes('time tracking');
+        }))];
       setCategories(uniqueCategories);
       
       // Check which categories have been completed in this audit
@@ -421,14 +446,14 @@ const AuditFormScreen = () => {
         const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
         setItems(filteredItems);
         
-        // Extract unique categories from filtered items (excluding time-related categories)
+        // Extract unique categories from filtered items (excluding only time-tracking categories)
+        // Allow "Speed of Service" category - only filter "Speed of Service - Tracking"
         const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
           if (!cat || !cat.trim()) return false;
           const categoryLower = cat.toLowerCase();
-          // Filter out time-related categories
+          // Filter out only time-tracking categories, NOT "Speed of Service" checklist
           return !categoryLower.includes('speed of service - tracking') && 
-                 !categoryLower.includes('time tracking') &&
-                 !categoryLower.includes('tracking');
+                 !categoryLower.includes('time tracking');
         }))];
         setCategories(uniqueCategories);
         
@@ -541,12 +566,25 @@ const AuditFormScreen = () => {
     }
   }, [responses, selectedOptions, comments, selectedCategory, selectedSection, items, filterItemsByCondition]);
 
+  // Start tracking time for an item when user first interacts with it
+  const startTrackingTime = useCallback((itemId) => {
+    if (auditStatus === 'completed') return;
+    setItemStartTimes(prev => {
+      // Only start tracking if not already tracking
+      if (!prev[itemId]) {
+        return { ...prev, [itemId]: Date.now() };
+      }
+      return prev;
+    });
+  }, [auditStatus]);
+
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
+    startTrackingTime(itemId);
     setResponses(prev => {
       const updated = { ...prev, [itemId]: status };
       // Recalculate category completion after state update
@@ -580,6 +618,7 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
+    startTrackingTime(itemId);
     setSelectedOptions(prev => ({ ...prev, [itemId]: optionId }));
     setResponses(prev => {
       const updated = { ...prev, [itemId]: 'completed' };
@@ -617,6 +656,32 @@ const AuditFormScreen = () => {
     setComments(prev => ({ ...prev, [itemId]: comment }));
   }, [auditStatus]);
 
+  const handleMultipleSelectionChange = useCallback((itemId, optionId, checked) => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify items in a completed audit');
+      return;
+    }
+    startTrackingTime(itemId);
+    setMultipleSelections(prev => {
+      const currentSelections = prev[itemId] || [];
+      let newSelections;
+      if (checked) {
+        newSelections = [...currentSelections, optionId];
+      } else {
+        newSelections = currentSelections.filter(id => id !== optionId);
+      }
+      const updated = { ...prev, [itemId]: newSelections };
+      
+      // Update response status
+      setResponses(prev => ({
+        ...prev,
+        [itemId]: newSelections.length > 0 ? 'completed' : 'pending'
+      }));
+      
+      return updated;
+    });
+  }, [auditStatus]);
+
   const getEffectiveItemFieldType = useCallback((item) => {
     const raw = item?.input_type || item?.inputType || 'auto';
     if (raw && raw !== 'auto') return raw;
@@ -625,7 +690,12 @@ const AuditFormScreen = () => {
   }, []);
 
   const isOptionFieldType = useCallback((fieldType) => {
-    return fieldType === 'option_select' || fieldType === 'select_from_data_source';
+    return fieldType === 'option_select' || 
+           fieldType === 'select_from_data_source' ||
+           fieldType === 'single_answer' ||
+           fieldType === 'multiple_answer' ||
+           fieldType === 'dropdown' ||
+           fieldType === 'grid';
   }, []);
 
   const isAnswerFieldType = useCallback((fieldType) => {
@@ -634,8 +704,11 @@ const AuditFormScreen = () => {
       fieldType === 'description' ||
       fieldType === 'number' ||
       fieldType === 'date' ||
+      fieldType === 'time' ||
       fieldType === 'scan_code' ||
-      fieldType === 'signature'
+      fieldType === 'signature' ||
+      fieldType === 'short_answer' ||
+      fieldType === 'long_answer'
     );
   }, []);
 
@@ -655,14 +728,38 @@ const AuditFormScreen = () => {
     return status && status !== 'pending';
   }, [comments, photos, responses, selectedOptions, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
 
+  // Helper: find "Time – Attempt 1"..5 and "Average (Auto)" for SOS auto-calculation
+  const getSosAverageItems = useCallback((allItems) => {
+    if (!allItems?.length) return null;
+    const attemptIds = [];
+    for (let i = 1; i <= 5; i++) {
+      const it = allItems.find(x => new RegExp('^Time\\s*[–\-]\\s*Attempt\\s*' + i + '$', 'i').test((x.title || '').trim()));
+      if (it) attemptIds.push(it.id); else return null;
+    }
+    const avgIt = allItems.find(x => /^Average\s*\(Auto\)$/i.test((x.title || '').trim()));
+    if (!avgIt) return null;
+    return { attemptIds, averageId: avgIt.id };
+  }, []);
+
   const handleAnswerChange = useCallback((itemId, value) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setComments(prev => ({ ...prev, [itemId]: value }));
+    startTrackingTime(itemId);
+    setComments(prev => {
+      const next = { ...prev, [itemId]: value };
+      const sos = getSosAverageItems(items);
+      if (sos && sos.attemptIds.includes(itemId)) {
+        const nums = sos.attemptIds.map(id => (id === itemId ? value : prev[id]))
+          .map(s => parseFloat(String(s || '')))
+          .filter(n => !isNaN(n));
+        next[sos.averageId] = nums.length ? String((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2)) : '';
+      }
+      return next;
+    });
     setResponses(prev => ({ ...prev, [itemId]: value && String(value).trim() ? 'completed' : (prev[itemId] || 'pending') }));
-  }, [auditStatus]);
+  }, [auditStatus, getSosAverageItems, items]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
@@ -797,6 +894,7 @@ const AuditFormScreen = () => {
 
   // Optimized photo upload handler
   const handlePhotoUpload = useCallback(async (itemId) => {
+    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -1567,6 +1665,19 @@ const AuditFormScreen = () => {
           }
         }
 
+        // Add time tracking data if available
+        if (itemStartTimes[item.id]) {
+          const startTime = itemStartTimes[item.id];
+          const elapsedSeconds = itemElapsedTimes[item.id] || Math.floor((Date.now() - startTime) / 1000);
+          const timeTakenMinutes = elapsedSeconds > 0 ? (elapsedSeconds / 60).toFixed(2) : null;
+          
+          if (timeTakenMinutes) {
+            updateData.time_taken_minutes = parseFloat(timeTakenMinutes);
+            // Convert start time to ISO string for backend
+            updateData.started_at = new Date(startTime).toISOString();
+          }
+        }
+
         return updateData;
       });
 
@@ -1720,13 +1831,21 @@ const AuditFormScreen = () => {
         // IMPORTANT: Use backend's completion status as source of truth
         // If backend says completed, ALL categories are done (regardless of frontend calculation)
         if (isAuditCompleted) {
+          // Audit is fully completed - trigger PDF download
+          const pdfUrl = `${API_BASE_URL.replace('/api', '')}/api/reports/audit/${currentAuditId}/pdf`;
+          
           // Audit is fully completed - all categories are done
           Alert.alert(
             'Success', 
-            'All categories completed! Audit is now complete.',
+            'All categories completed! Audit is now complete. PDF report will be available in audit details.',
             [
               { 
-                text: 'Done', 
+                text: 'View Audit', 
+                onPress: () => navigation.navigate('AuditDetail', { id: currentAuditId })
+              },
+              {
+                text: 'Done',
+                style: 'cancel',
                 onPress: () => navigation.goBack()
               }
             ]
@@ -2528,6 +2647,20 @@ const AuditFormScreen = () => {
                       {index + 1}. {item.title}
                       {item.required && <Text style={styles.required}> *</Text>}
                     </Text>
+                    {/* Timer display */}
+                    {itemStartTimes[item.id] && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Icon name="timer" size={14} color={themeConfig.text.secondary} />
+                        <Text style={{ fontSize: 12, color: themeConfig.text.secondary, marginLeft: 4 }}>
+                          {(() => {
+                            const elapsed = itemElapsedTimes[item.id] || 0;
+                            const minutes = Math.floor(elapsed / 60);
+                            const seconds = elapsed % 60;
+                            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                          })()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   {getStatusIcon(responses[item.id])}
                 </View>
@@ -2535,7 +2668,162 @@ const AuditFormScreen = () => {
                   <Text style={styles.itemDescription}>{item.description}</Text>
                 )}
                 
-                {optionType && item.options && item.options.length > 0 ? (
+                {fieldType === 'single_answer' && item.options && item.options.length > 0 ? (
+                  <View style={styles.optionsContainer}>
+                    {item.options.map((option) => (
+                      <TouchableOpacity
+                        key={option.id}
+                        style={[
+                          styles.optionButton,
+                          selectedOptions[item.id] === option.id && styles.optionButtonActive,
+                          auditStatus === 'completed' && styles.disabledButton
+                        ]}
+                        onPress={() => handleOptionChange(item.id, option.id)}
+                        disabled={auditStatus === 'completed'}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <Text
+                            style={[
+                              styles.optionText,
+                              selectedOptions[item.id] === option.id && styles.optionTextActive
+                            ]}
+                          >
+                            {option.text || option.option_text}
+                          </Text>
+                          <Text style={[styles.optionText, { fontSize: 12, marginLeft: 8 }]}>
+                            ({option.mark})
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : fieldType === 'multiple_answer' && item.options && item.options.length > 0 ? (
+                  <View style={styles.optionsContainer}>
+                    {item.options.map((option) => {
+                      const selectedIds = multipleSelections[item.id] || [];
+                      const isSelected = selectedIds.includes(option.id);
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.optionButton,
+                            isSelected && styles.optionButtonActive,
+                            auditStatus === 'completed' && styles.disabledButton
+                          ]}
+                          onPress={() => handleMultipleSelectionChange(item.id, option.id, !isSelected)}
+                          disabled={auditStatus === 'completed'}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <Text
+                              style={[
+                                styles.optionText,
+                                isSelected && styles.optionTextActive
+                              ]}
+                            >
+                              {option.text || option.option_text}
+                            </Text>
+                            <Text style={[styles.optionText, { fontSize: 12, marginLeft: 8 }]}>
+                              ({option.mark})
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : fieldType === 'dropdown' && item.options && item.options.length > 0 ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Select Option</Text>
+                    <TouchableOpacity
+                      style={[styles.commentInput, { justifyContent: 'center' }]}
+                      onPress={() => {
+                        Alert.alert(
+                          'Select Option',
+                          '',
+                          item.options.map(opt => ({
+                            text: `${opt.text || opt.option_text} (${opt.mark})`,
+                            onPress: () => handleOptionChange(item.id, opt.id)
+                          })).concat([{ text: 'Cancel', style: 'cancel' }])
+                        );
+                      }}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      <Text style={{ color: (selectedOptions[item.id] ? themeConfig.text.primary : themeConfig.text.disabled) }}>
+                        {(() => {
+                          const selected = item.options.find(opt => opt.id === selectedOptions[item.id]);
+                          return selected ? `${selected.text || selected.option_text} (${selected.mark})` : 'Select option...';
+                        })()}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : fieldType === 'short_answer' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Short Answer</Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Enter your answer..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
+                ) : fieldType === 'long_answer' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Long Answer</Text>
+                    <TextInput
+                      style={[styles.commentInput, { minHeight: 100 }]}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Enter your detailed answer..."
+                      placeholderTextColor={themeConfig.text.disabled}
+                      multiline
+                      numberOfLines={5}
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
+                ) : fieldType === 'time' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Time</Text>
+                    <TouchableOpacity
+                      style={[styles.commentInput, { justifyContent: 'center' }]}
+                      onPress={() => {
+                        const timeStr = comments[item.id] || '';
+                        const [hours = 0, minutes = 0] = timeStr.split(':').map(Number);
+                        const current = new Date();
+                        current.setHours(hours, minutes);
+                        setDatePickerValue(isNaN(current.getTime()) ? new Date() : current);
+                        setDatePickerItemId(item.id);
+                      }}
+                      disabled={auditStatus === 'completed'}
+                    >
+                      <Text style={{ color: (comments[item.id] ? themeConfig.text.primary : themeConfig.text.disabled) }}>
+                        {comments[item.id] || 'Select time...'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : fieldType === 'section' ? (
+                  <View style={{ marginTop: 16, marginBottom: 12, paddingTop: 12, borderTopWidth: 2, borderTopColor: themeConfig.primary.main }}>
+                    <Text style={[styles.itemTitle, { fontSize: 18, color: themeConfig.primary.main, fontWeight: 'bold' }]}>
+                      {item.title}
+                    </Text>
+                    {item.description && (
+                      <Text style={[styles.itemDescription, { marginTop: 4 }]}>
+                        {item.description}
+                      </Text>
+                    )}
+                  </View>
+                ) : fieldType === 'sub_section' ? (
+                  <View style={{ marginTop: 12, marginBottom: 8, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: themeConfig.secondary?.main || themeConfig.primary.light }}>
+                    <Text style={[styles.itemTitle, { fontSize: 16, color: themeConfig.secondary?.main || themeConfig.primary.main, fontWeight: '600' }]}>
+                      {item.title}
+                    </Text>
+                    {item.description && (
+                      <Text style={[styles.itemDescription, { marginTop: 4 }]}>
+                        {item.description}
+                      </Text>
+                    )}
+                  </View>
+                ) : optionType && item.options && item.options.length > 0 ? (
                   <View style={styles.optionsContainer}>
                     {item.options.map((option) => (
                       <TouchableOpacity
@@ -2560,23 +2848,39 @@ const AuditFormScreen = () => {
                     ))}
                   </View>
                 ) : fieldType === 'date' ? (
-                  <View style={styles.commentContainer}>
-                    <Text style={styles.commentLabel}>Date</Text>
-                    <TouchableOpacity
-                      style={[styles.commentInput, { justifyContent: 'center' }]}
-                      onPress={() => {
-                        const dateStr = comments[item.id] || '';
-                        const current = dateStr ? new Date(dateStr) : new Date();
-                        setDatePickerValue(isNaN(current.getTime()) ? new Date() : current);
-                        setDatePickerItemId(item.id);
-                      }}
-                      disabled={auditStatus === 'completed'}
-                    >
-                      <Text style={{ color: (comments[item.id] ? themeConfig.text.primary : themeConfig.text.disabled) }}>
-                        {comments[item.id] || 'Select date...'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  (() => {
+                    const isTimeItem = /\(Time\)$/i.test(item?.title || '');
+                    const dateStr = comments[item.id] || '';
+                    let initial = new Date();
+                    if (dateStr) {
+                      const timeOnly = dateStr.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+                      if (timeOnly) {
+                        initial = new Date();
+                        initial.setHours(parseInt(timeOnly[1], 10), parseInt(timeOnly[2], 10), parseInt(timeOnly[3] || '0', 10), 0);
+                      } else {
+                        const toParse = /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}/.test(dateStr) ? dateStr.replace(' ', 'T') : dateStr;
+                        initial = new Date(toParse);
+                      }
+                    }
+                    if (isNaN(initial.getTime())) initial = new Date();
+                    return (
+                      <View style={styles.commentContainer}>
+                        <Text style={styles.commentLabel}>{isTimeItem ? 'Date & time' : 'Date'}</Text>
+                        <TouchableOpacity
+                          style={[styles.commentInput, { justifyContent: 'center' }]}
+                          onPress={() => {
+                            setDatePickerValue(initial);
+                            setDatePickerItemId(item.id);
+                          }}
+                          disabled={auditStatus === 'completed'}
+                        >
+                          <Text style={{ color: (comments[item.id] ? themeConfig.text.primary : themeConfig.text.disabled) }}>
+                            {comments[item.id] || (isTimeItem ? 'Select date & time...' : 'Select date...')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()
                 ) : fieldType === 'signature' ? (
                   <View style={styles.commentContainer}>
                     <Text style={styles.commentLabel}>Signature</Text>
@@ -2601,18 +2905,28 @@ const AuditFormScreen = () => {
                     })()}
                   </View>
                 ) : fieldType === 'number' ? (
-                  <View style={styles.commentContainer}>
-                    <Text style={styles.commentLabel}>Number</Text>
-                    <TextInput
-                      style={styles.commentInput}
-                      value={comments[item.id] || ''}
-                      onChangeText={(text) => handleAnswerChange(item.id, text)}
-                      placeholder="Enter number..."
-                      placeholderTextColor={themeConfig.text.disabled}
-                      keyboardType="decimal-pad"
-                      editable={auditStatus !== 'completed'}
-                    />
-                  </View>
+                  (() => {
+                    const isAverageAuto = /^Average\s*\(Auto\)$/i.test((item.title || '').trim());
+                    return (
+                      <View style={styles.commentContainer}>
+                        <Text style={styles.commentLabel}>{isAverageAuto ? 'Average (auto-calculated)' : 'Number'}</Text>
+                        <TextInput
+                          style={styles.commentInput}
+                          value={comments[item.id] || ''}
+                          onChangeText={isAverageAuto ? undefined : (text) => handleAnswerChange(item.id, text)}
+                          placeholder={isAverageAuto ? '' : 'Enter number...'}
+                          placeholderTextColor={themeConfig.text.disabled}
+                          keyboardType="decimal-pad"
+                          editable={auditStatus !== 'completed' && !isAverageAuto}
+                        />
+                        {isAverageAuto && (
+                          <Text style={{ fontSize: 12, color: themeConfig.text.secondary, marginTop: 4 }}>
+                            From Time Attempts 1–5
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()
                 ) : fieldType === 'scan_code' ? (
                   <View style={styles.commentContainer}>
                     <Text style={styles.commentLabel}>Scan Code</Text>
@@ -2723,33 +3037,54 @@ const AuditFormScreen = () => {
               );
             })}
 
-            {/* Date Picker (Android inline / iOS modal) */}
-            {datePickerItemId !== null && (
-              <DateTimePicker
-                value={datePickerValue}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(event, selectedDate) => {
-                  // Android can dismiss without selecting
-                  if (Platform.OS !== 'ios' && event?.type === 'dismissed') {
-                    setDatePickerItemId(null);
-                    return;
-                  }
+            {/* Date/Time Picker (Android inline / iOS modal) */}
+            {datePickerItemId !== null && (() => {
+              const item = filteredItems.find(i => i.id === datePickerItemId);
+              const fieldType = item ? getEffectiveItemFieldType(item) : 'date';
+              const isTimeMode = fieldType === 'time';
+              const isDateTimeMode = fieldType === 'date' && /\(Time\)$/i.test(item?.title || '');
+              const mode = isDateTimeMode ? 'datetime' : (isTimeMode ? 'time' : 'date');
 
-                  const d = selectedDate || datePickerValue;
-                  const y = d.getFullYear();
-                  const m = String(d.getMonth() + 1).padStart(2, '0');
-                  const day = String(d.getDate()).padStart(2, '0');
-                  handleAnswerChange(datePickerItemId, `${y}-${m}-${day}`);
+              return (
+                <DateTimePicker
+                  value={datePickerValue}
+                  mode={mode}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selectedDate) => {
+                    // Android can dismiss without selecting
+                    if (Platform.OS !== 'ios' && event?.type === 'dismissed') {
+                      setDatePickerItemId(null);
+                      return;
+                    }
 
-                  if (Platform.OS !== 'ios') {
-                    setDatePickerItemId(null);
-                  } else {
-                    setDatePickerValue(d);
-                  }
-                }}
-              />
-            )}
+                    const d = selectedDate || datePickerValue;
+                    if (isTimeMode) {
+                      const hours = String(d.getHours()).padStart(2, '0');
+                      const minutes = String(d.getMinutes()).padStart(2, '0');
+                      handleAnswerChange(datePickerItemId, `${hours}:${minutes}`);
+                    } else if (isDateTimeMode) {
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      const hours = String(d.getHours()).padStart(2, '0');
+                      const minutes = String(d.getMinutes()).padStart(2, '0');
+                      handleAnswerChange(datePickerItemId, `${y}-${m}-${day} ${hours}:${minutes}`);
+                    } else {
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      handleAnswerChange(datePickerItemId, `${y}-${m}-${day}`);
+                    }
+
+                    if (Platform.OS !== 'ios') {
+                      setDatePickerItemId(null);
+                    } else {
+                      setDatePickerValue(d);
+                    }
+                  }}
+                />
+              );
+            })()}
 
             {/* Signature Modal */}
             <SignatureModal
