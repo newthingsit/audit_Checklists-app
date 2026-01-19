@@ -303,91 +303,91 @@ function getEscalationTarget(dbInstance, action, callback) {
     // Fall back to default logic
     // Priority 1: Find supervisor/manager of current assignee
     if (action.assigned_to) {
-    dbInstance.get(
-      `SELECT u.id, u.name, u.role, u.email
-       FROM users u
-       WHERE u.id = (
-         SELECT supervisor_id FROM users WHERE id = ?
-       ) OR u.role = 'manager'
-       ORDER BY CASE 
-         WHEN u.id = (SELECT supervisor_id FROM users WHERE id = ?) THEN 1
-         WHEN u.role = 'manager' THEN 2
-         ELSE 3
-       END
-       LIMIT 1`,
-      [action.assigned_to, action.assigned_to],
-      (err, supervisor) => {
-        if (!err && supervisor) {
-          return callback(null, supervisor);
-        }
+      dbInstance.get(
+        `SELECT u.id, u.name, u.role, u.email
+         FROM users u
+         WHERE u.id = (
+           SELECT supervisor_id FROM users WHERE id = ?
+         ) OR u.role = 'manager'
+         ORDER BY CASE 
+           WHEN u.id = (SELECT supervisor_id FROM users WHERE id = ?) THEN 1
+           WHEN u.role = 'manager' THEN 2
+           ELSE 3
+         END
+         LIMIT 1`,
+        [action.assigned_to, action.assigned_to],
+        (err, supervisor) => {
+          if (!err && supervisor) {
+            return callback(null, supervisor);
+          }
         
-        // Priority 2: Find manager assigned to same location
-        if (action.location_id) {
-          dbInstance.get(
-            `SELECT u.id, u.name, u.role, u.email
-             FROM users u
-             INNER JOIN user_locations ul ON u.id = ul.user_id
-             WHERE ul.location_id = ? AND u.role = 'manager'
-             LIMIT 1`,
-            [action.location_id],
-            (err, manager) => {
-              if (!err && manager) {
-                return callback(null, manager);
-              }
-              
-              // Priority 3: Find any manager
-              dbInstance.get(
-                `SELECT id, name, role, email 
-                 FROM users 
-                 WHERE role = 'manager' 
-                 LIMIT 1`,
-                [],
-                (err, manager) => {
-                  if (!err && manager) {
-                    return callback(null, manager);
-                  }
-                  
-                  // Priority 4: Find admin
-                  dbInstance.get(
-                    `SELECT id, name, role, email 
-                     FROM users 
-                     WHERE role = 'admin' 
-                     LIMIT 1`,
-                    [],
-                    callback
-                  );
+          // Priority 2: Find manager assigned to same location
+          if (action.location_id) {
+            dbInstance.get(
+              `SELECT u.id, u.name, u.role, u.email
+               FROM users u
+               INNER JOIN user_locations ul ON u.id = ul.user_id
+               WHERE ul.location_id = ? AND u.role = 'manager'
+               LIMIT 1`,
+              [action.location_id],
+              (err, manager) => {
+                if (!err && manager) {
+                  return callback(null, manager);
                 }
-              );
-            }
-          );
-        } else {
-          // No location, find any manager
-          dbInstance.get(
-            `SELECT id, name, role, email 
-             FROM users 
-             WHERE role = 'manager' 
-             LIMIT 1`,
-            [],
-            (err, manager) => {
-              if (!err && manager) {
-                return callback(null, manager);
+                
+                // Priority 3: Find any manager
+                dbInstance.get(
+                  `SELECT id, name, role, email 
+                   FROM users 
+                   WHERE role = 'manager' 
+                   LIMIT 1`,
+                  [],
+                  (err, manager) => {
+                    if (!err && manager) {
+                      return callback(null, manager);
+                    }
+                    
+                    // Priority 4: Find admin
+                    dbInstance.get(
+                      `SELECT id, name, role, email 
+                       FROM users 
+                       WHERE role = 'admin' 
+                       LIMIT 1`,
+                      [],
+                      callback
+                    );
+                  }
+                );
               }
-              
-              // Fallback to admin
-              dbInstance.get(
-                `SELECT id, name, role, email 
-                 FROM users 
-                 WHERE role = 'admin' 
-                 LIMIT 1`,
-                [],
-                callback
-              );
-            }
-          );
+            );
+          } else {
+            // No location, find any manager
+            dbInstance.get(
+              `SELECT id, name, role, email 
+               FROM users 
+               WHERE role = 'manager' 
+               LIMIT 1`,
+              [],
+              (err, manager) => {
+                if (!err && manager) {
+                  return callback(null, manager);
+                }
+                
+                // Fallback to admin
+                dbInstance.get(
+                  `SELECT id, name, role, email 
+                   FROM users 
+                   WHERE role = 'admin' 
+                   LIMIT 1`,
+                  [],
+                  callback
+                );
+              }
+            );
+          }
         }
-      }
-    );
-  } else {
+      );
+    } else {
     // No assignee, find manager for location or any manager
     if (action.location_id) {
       dbInstance.get(
@@ -427,6 +427,7 @@ function getEscalationTarget(dbInstance, action, callback) {
       );
     }
   }
+  });
 }
 
 /**
