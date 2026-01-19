@@ -109,249 +109,419 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             totalActualScore += actualMark;
           });
 
-          // Create PDF with detailed format matching the screenshot
-          const doc = new PDFDocument({ margin: 50, size: 'A4' });
+          // Create PDF with professional table-based format matching CVR 2 CDR Plan Report
+          const doc = new PDFDocument({ margin: 40, size: 'A4' });
           res.setHeader('Content-Type', 'application/pdf');
           const storeName = audit.restaurant_name || audit.location || 'Restaurant';
           const fileName = `${audit.template_name || 'Report'} - ${storeName}.pdf`;
           res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
           doc.pipe(res);
 
-          // Helper function to get score color
-          const getScoreColor = (score) => {
-            if (score >= 90) return '#22c55e'; // Green
-            if (score >= 80) return '#4caf50'; // Light Green
-            if (score >= 60) return '#f59e0b'; // Orange
-            return '#ef4444'; // Red
-          };
-
-          // Header Section (matching screenshot format)
-          doc.fontSize(18).fillColor('#000').text(`${audit.template_name || 'Report'} - Report`, { align: 'center' });
-          doc.fontSize(14).fillColor('#666').text('Lite Bite Foods', { align: 'center' });
-          doc.moveDown(0.5);
+          const pageWidth = 595.28; // A4 width in points
+          const pageHeight = 841.89; // A4 height in points
+          const margin = 40;
+          const contentWidth = pageWidth - (margin * 2);
+          const BLUE = '#1a365d'; // Dark blue for headers
+          const LIGHT_BLUE = '#e8f4fd';
+          const GRAY = '#f5f5f5';
+          const BORDER_COLOR = '#333';
           
-          // Overall Score
-          const overallScore = totalPerfectScore > 0 ? Math.round((totalActualScore / totalPerfectScore) * 100 * 10) / 10 : 0;
-          doc.fontSize(16).fillColor('#000').text(`${overallScore}% (${Math.round(totalActualScore)}/${Math.round(totalPerfectScore)})`, { align: 'center' });
-          doc.moveDown(1);
-
-          // Details Section
-          doc.fontSize(12).fillColor('#000').text('Details', { underline: true });
-          doc.fontSize(10).fillColor('#333');
-          doc.text(`Outlet Name: ${storeName}`, 50, doc.y);
-          doc.text(`Start Date: ${new Date(audit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, doc.y + 12);
-          if (audit.completed_at) {
-            doc.text(`End Date: ${new Date(audit.completed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 50, doc.y + 12);
-          }
-          doc.text(`Submitted by: ${audit.user_name || 'N/A'}`, 50, doc.y + 12);
-          doc.moveDown(1.5);
-
-          // Score By Section - Category-wise scores (Quality, Speed, Cleanliness & Hygiene, Processes, HK)
-          doc.fontSize(12).fillColor('#000').text('Score By Section', { underline: true });
-          doc.moveDown(0.5);
+          // Calculate overall score
+          const overallScore = totalPerfectScore > 0 ? Math.round((totalActualScore / totalPerfectScore) * 1000) / 10 : 0;
           
-          // Define required categories in order
-          const requiredCategories = ['Quality', 'Speed', 'Cleanliness & Hygiene', 'Processes', 'HK'];
+          // Track page numbers
+          let currentPage = 1;
+          const totalPagesEstimate = Math.ceil(itemsWithMaxScores.length / 8) + 2;
           
-          // Map existing categories to required categories
-          // Handle variations like "SERVICE (Speed of Service)", "SERVICE - Speed of Service", etc.
-          const categoryMapping = {
-            'Quality': 'Quality',
-            'Speed': 'Speed',
-            'Speed of Service': 'Speed',
-            'SERVICE (Speed of Service)': 'Speed',
-            'SERVICE - Speed of Service': 'Speed',
-            'SERVICE – Speed of Service': 'Speed',
-            'Cleanliness & Hygiene': 'Cleanliness & Hygiene',
-            'Cleanliness': 'Cleanliness & Hygiene',
-            'Hygiene': 'Cleanliness & Hygiene',
-            'Processes': 'Processes',
-            'HK': 'HK',
-            'Housekeeping': 'HK'
+          // Helper: Draw footer
+          const drawFooter = () => {
+            doc.fontSize(9).fillColor('#666');
+            doc.text(`Page ${currentPage} of ${totalPagesEstimate}`, margin, pageHeight - 30, { width: 100 });
+            doc.text('Powered By LBF Audit App', pageWidth - margin - 150, pageHeight - 30, { width: 150, align: 'right' });
           };
           
-          // Also handle dynamic mapping for categories containing "Speed of Service" or "Speed"
-          const normalizeCategory = (cat) => {
-            if (!cat) return cat;
-            const catLower = cat.toLowerCase();
-            // Check if category contains speed-related keywords
-            if (catLower.includes('speed of service') || (catLower.includes('speed') && !catLower.includes('speed of service - tracking'))) {
-              return 'Speed';
-            }
-            // Check for other mappings
-            return categoryMapping[cat] || cat;
-          };
-          
-          // Group categories by required categories
-          const groupedCategoryData = {};
-          Object.keys(categoryData).forEach(cat => {
-            const mappedCat = normalizeCategory(cat);
-            if (!groupedCategoryData[mappedCat]) {
-              groupedCategoryData[mappedCat] = { perfectScore: 0, actualScore: 0, count: 0 };
-            }
-            groupedCategoryData[mappedCat].perfectScore += categoryData[cat].perfectScore;
-            groupedCategoryData[mappedCat].actualScore += categoryData[cat].actualScore;
-            groupedCategoryData[mappedCat].count += categoryData[cat].count;
-          });
-          
-          // Display in required order
-          requiredCategories.forEach(cat => {
-            if (groupedCategoryData[cat]) {
-              const data = groupedCategoryData[cat];
-              const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
-              doc.fontSize(10).fillColor('#333');
-              doc.text(`${cat}: ${percentage}% (${Math.round(data.actualScore)}/${Math.round(data.perfectScore)})`);
-            }
-          });
-          
-          // Also show any other categories not in the required list
-          Object.keys(groupedCategoryData).forEach(cat => {
-            if (!requiredCategories.includes(cat)) {
-              const data = groupedCategoryData[cat];
-              const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
-              doc.fontSize(10).fillColor('#333');
-              doc.text(`${cat}: ${percentage}% (${Math.round(data.actualScore)}/${Math.round(data.perfectScore)})`);
-            }
-          });
-          
-          doc.moveDown(1);
-          
-          // Action Plan with Top-3 Deviations
-          doc.fontSize(12).fillColor('#000').text('Action Plan - Top 3 Deviations', { underline: true });
-          doc.moveDown(0.5);
-          
-          // Get failed items (top 3)
-          const failedItems = itemsWithMaxScores
-            .filter(item => {
-              const mark = parseFloat(item.mark) || 0;
-              return mark === 0 || item.status === 'failed' || item.selected_mark === '0' || item.selected_mark === 'No';
-            })
-            .sort((a, b) => {
-              // Sort by critical first, then by mark
-              if (a.is_critical && !b.is_critical) return -1;
-              if (!a.is_critical && b.is_critical) return 1;
-              return parseFloat(a.mark || 0) - parseFloat(b.mark || 0);
-            })
-            .slice(0, 3);
-          
-          if (failedItems.length > 0) {
-            failedItems.forEach((item, index) => {
-              doc.fontSize(10).fillColor('#000');
-              doc.text(`${index + 1}. ${item.title}`, { continued: false });
-              doc.fontSize(9).fillColor('#666');
-              doc.text(`   Category: ${item.category || 'Uncategorized'}`, { continued: false });
-              if (item.comment) {
-                doc.text(`   Remarks: ${item.comment}`, { continued: false });
-              }
-              doc.moveDown(0.3);
-            });
-          } else {
-            doc.fontSize(10).fillColor('#22c55e');
-            doc.text('No deviations found. All items passed.');
-          }
-          
-          doc.moveDown(1);
-
-          // Add footer function for all pages
-          const addFooter = (pageNum, totalPages) => {
-            doc.fontSize(8).fillColor('#999');
-            doc.text(`Page ${pageNum} of ${totalPages}`, 50, 780);
-            doc.text('Powered By Accrue', 450, 780, { align: 'right' });
-          };
-
-          // Detailed Questions Section (grouped by category)
-          let currentCategory = null;
-          let questionNumber = 1;
-          let pageNumber = 1;
-          
-          // Estimate total pages (rough calculation)
-          const itemsPerPage = 12;
-          let estimatedTotalPages = Math.ceil(itemsWithMaxScores.length / itemsPerPage) + 1;
-          
-          for (const item of itemsWithMaxScores) {
-            // Check if we need a new page
-            if (doc.y > 700) {
-              addFooter(pageNumber, estimatedTotalPages);
+          // Helper: Check if need new page
+          const checkNewPage = (neededSpace = 100) => {
+            if (doc.y > pageHeight - neededSpace - 50) {
+              drawFooter();
               doc.addPage();
-              pageNumber++;
+              currentPage++;
+              return true;
             }
+            return false;
+          };
+          
+          // Helper: Draw table row
+          const drawTableRow = (y, columns, heights, isHeader = false, bgColor = null) => {
+            let x = margin;
+            const rowHeight = heights || 25;
             
-            // Group by category
-            const itemCategory = item.category || 'Uncategorized';
-            if (currentCategory !== itemCategory) {
-              if (currentCategory !== null) {
-                doc.moveDown(0.5);
+            columns.forEach((col, idx) => {
+              const colWidth = col.width || 100;
+              
+              // Background
+              if (isHeader) {
+                doc.rect(x, y, colWidth, rowHeight).fill(BLUE);
+                doc.fillColor('#fff');
+              } else if (bgColor) {
+                doc.rect(x, y, colWidth, rowHeight).fill(bgColor);
+                doc.fillColor('#000');
+              } else {
+                doc.rect(x, y, colWidth, rowHeight).stroke(BORDER_COLOR);
+                doc.fillColor('#000');
               }
-              currentCategory = itemCategory;
               
-              // Category header with score (matching screenshot format)
-              const catData = categoryData[itemCategory];
-              const catPercentage = catData.perfectScore > 0 ? Math.round((catData.actualScore / catData.perfectScore) * 100) : 0;
-              const catActual = Math.round(catData.actualScore);
-              const catPerfect = Math.round(catData.perfectScore);
+              // Border
+              doc.rect(x, y, colWidth, rowHeight).stroke(BORDER_COLOR);
               
-              doc.fontSize(12).fillColor('#000').text(`${itemCategory.toUpperCase()} - ${catPercentage}% (${catActual}/${catPerfect})`, { underline: true });
-              doc.moveDown(0.3);
-            }
+              // Text
+              doc.fontSize(col.fontSize || 9);
+              if (isHeader) doc.fillColor('#fff');
+              else doc.fillColor('#000');
+              
+              const textY = y + (rowHeight - (col.fontSize || 9)) / 2;
+              doc.text(col.text || '', x + 4, textY, { 
+                width: colWidth - 8, 
+                align: col.align || 'left',
+                lineBreak: false
+              });
+              
+              x += colWidth;
+            });
+            
+            return y + rowHeight;
+          };
 
-            // Question format: "Question X: [Title]" with Score and Response
-            doc.fontSize(10).fillColor('#000');
-            doc.text(`Question ${questionNumber}: ${item.title}`, { continued: false });
+          // ==================== PAGE 1: HEADER AND SUMMARY ====================
+          
+          // Blue Header Bar
+          doc.rect(0, 0, pageWidth, 50).fill(BLUE);
+          doc.fontSize(16).fillColor('#fff');
+          doc.text(`${audit.template_name || 'Audit'} - Report`, margin, 15, { width: contentWidth - 100 });
+          doc.fontSize(12).fillColor('#fff');
+          doc.text('Lite Bite Foods', pageWidth - margin - 120, 18, { width: 120, align: 'right' });
+          
+          // Overall Score (large, centered)
+          doc.y = 70;
+          doc.fontSize(32).fillColor('#000');
+          doc.text(`${overallScore}%`, margin, 70, { width: contentWidth, align: 'center' });
+          doc.fontSize(14).fillColor('#666');
+          doc.text(`(${Math.round(totalActualScore)}/${Math.round(totalPerfectScore)})`, margin, 105, { width: contentWidth, align: 'center' });
+          
+          // Details Section
+          doc.y = 140;
+          doc.fontSize(12).fillColor('#000').text('Details', margin, doc.y, { underline: true });
+          doc.moveDown(0.5);
+          
+          // Details Table
+          const detailsY = doc.y;
+          const detailColWidths = [contentWidth / 4, contentWidth / 4, contentWidth / 4, contentWidth / 4];
+          
+          // Header row
+          let rowY = drawTableRow(detailsY, [
+            { text: 'Outlet Name', width: detailColWidths[0], align: 'center' },
+            { text: 'Start Date', width: detailColWidths[1], align: 'center' },
+            { text: 'End Date', width: detailColWidths[2], align: 'center' },
+            { text: 'Submitted by', width: detailColWidths[3], align: 'center' }
+          ], 25, true);
+          
+          // Data row
+          const startDate = new Date(audit.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+          const endDate = audit.completed_at ? new Date(audit.completed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'In Progress';
+          
+          rowY = drawTableRow(rowY, [
+            { text: storeName, width: detailColWidths[0], align: 'center', fontSize: 8 },
+            { text: startDate, width: detailColWidths[1], align: 'center', fontSize: 8 },
+            { text: endDate, width: detailColWidths[2], align: 'center', fontSize: 8 },
+            { text: audit.user_name || 'N/A', width: detailColWidths[3], align: 'center', fontSize: 8 }
+          ], 35);
+          
+          doc.y = rowY + 20;
+          
+          // Score By Section
+          doc.fontSize(12).fillColor('#000').text('Score By', margin, doc.y, { underline: true });
+          doc.moveDown(0.5);
+          
+          // Define display categories with mappings
+          const displayCategories = [
+            { name: 'QUALITY', match: ['quality', 'QUALITY'] },
+            { name: 'SERVICE', match: ['service', 'SERVICE', 'speed', 'Speed of Service'] },
+            { name: 'HYGIENE & CLEANLINESS', match: ['hygiene', 'cleanliness', 'HYGIENE', 'CLEANLINESS'] },
+            { name: 'PROCESSES', match: ['processes', 'PROCESSES', 'process'] },
+            { name: 'House Keeping', match: ['hk', 'HK', 'housekeeping', 'House Keeping', 'house keeping'] }
+          ];
+          
+          // Group all categories into display categories
+          const displayCategoryData = {};
+          displayCategories.forEach(dc => {
+            displayCategoryData[dc.name] = { perfectScore: 0, actualScore: 0, count: 0 };
+          });
+          
+          // Map raw categories to display categories
+          Object.keys(categoryData).forEach(rawCat => {
+            const catLower = rawCat.toLowerCase();
+            let matched = false;
             
-            // Score and Response in table format
-            const actualMark = parseFloat(item.mark) || 0;
-            const maxMark = item.maxScore || 3;
-            const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
-            
-            // Score: X/Y format
-            doc.fontSize(10).fillColor('#333');
-            doc.text(`   Score: ${actualMark}/${maxMark}`, { continued: true });
-            doc.text(`   Response: ${response}`, { continued: false });
-            
-            // Remarks/Comment
-            if (item.comment) {
-              doc.fontSize(9).fillColor('#666');
-              doc.text(`   Remarks: ${item.comment}`);
-            }
-            
-            // Photo evidence - try to embed image if available
-            if (item.photo_url) {
-              try {
-                const appUrl = process.env.APP_URL || 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net';
-                let photoPath = item.photo_url;
-                if (!photoPath.startsWith('http')) {
-                  photoPath = photoPath.startsWith('/') ? `${appUrl}${photoPath}` : `${appUrl}/${photoPath}`;
+            for (const dc of displayCategories) {
+              for (const matchStr of dc.match) {
+                if (catLower.includes(matchStr.toLowerCase())) {
+                  displayCategoryData[dc.name].perfectScore += categoryData[rawCat].perfectScore;
+                  displayCategoryData[dc.name].actualScore += categoryData[rawCat].actualScore;
+                  displayCategoryData[dc.name].count += categoryData[rawCat].count;
+                  matched = true;
+                  break;
                 }
-                
-                // Try to add image (small thumbnail)
-                const fs = require('fs');
-                const path = require('path');
-                const uploadsPath = path.join(__dirname, '..', 'uploads');
-                const localPath = path.join(uploadsPath, path.basename(photoPath));
-                
-                if (fs.existsSync(localPath)) {
-                  const imageY = doc.y;
-                  doc.image(localPath, 400, imageY, { width: 80, height: 60, fit: [80, 60] });
-                } else {
-                  // If image not found locally, just show URL
-                  doc.fontSize(8).fillColor('#1976d2');
-                  doc.text(`   Photo: ${photoPath}`, { link: photoPath });
-                }
-              } catch (imgErr) {
-                // If image loading fails, just show URL
-                doc.fontSize(8).fillColor('#1976d2');
-                doc.text(`   Photo: ${item.photo_url}`);
               }
+              if (matched) break;
             }
             
-            doc.fillColor('#000');
-            doc.moveDown(0.5);
-            questionNumber++;
+            // If no match, add to the original category name
+            if (!matched) {
+              if (!displayCategoryData[rawCat]) {
+                displayCategoryData[rawCat] = { perfectScore: 0, actualScore: 0, count: 0 };
+              }
+              displayCategoryData[rawCat].perfectScore += categoryData[rawCat].perfectScore;
+              displayCategoryData[rawCat].actualScore += categoryData[rawCat].actualScore;
+              displayCategoryData[rawCat].count += categoryData[rawCat].count;
+            }
+          });
+          
+          // Score By Table
+          const scoreByY = doc.y;
+          const scoreColWidths = [contentWidth * 0.4, contentWidth * 0.2, contentWidth * 0.2, contentWidth * 0.2];
+          
+          // Header
+          rowY = drawTableRow(scoreByY, [
+            { text: '', width: scoreColWidths[0] },
+            { text: 'Perfect Score', width: scoreColWidths[1], align: 'center' },
+            { text: 'Actual Score', width: scoreColWidths[2], align: 'center' },
+            { text: 'Percentage', width: scoreColWidths[3], align: 'center' }
+          ], 22, true);
+          
+          // Main categories (not House Keeping)
+          const mainCategories = ['QUALITY', 'SERVICE', 'HYGIENE & CLEANLINESS', 'PROCESSES'];
+          mainCategories.forEach(cat => {
+            const data = displayCategoryData[cat];
+            if (data && data.count > 0) {
+              const pct = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+              rowY = drawTableRow(rowY, [
+                { text: cat, width: scoreColWidths[0], fontSize: 9 },
+                { text: Math.round(data.perfectScore).toString(), width: scoreColWidths[1], align: 'center' },
+                { text: Math.round(data.actualScore).toString(), width: scoreColWidths[2], align: 'center' },
+                { text: `${pct}%`, width: scoreColWidths[3], align: 'center' }
+              ], 22);
+            }
+          });
+          
+          doc.y = rowY + 15;
+          
+          // House Keeping Table (separate)
+          const hkData = displayCategoryData['House Keeping'];
+          if (hkData && hkData.count > 0) {
+            const hkY = doc.y;
+            const hkPct = hkData.perfectScore > 0 ? Math.round((hkData.actualScore / hkData.perfectScore) * 100) : 0;
+            
+            // Header
+            rowY = drawTableRow(hkY, [
+              { text: '', width: scoreColWidths[0] },
+              { text: 'Perfect Score', width: scoreColWidths[1], align: 'center' },
+              { text: 'Actual Score', width: scoreColWidths[2], align: 'center' },
+              { text: 'Percentage', width: scoreColWidths[3], align: 'center' }
+            ], 22, true);
+            
+            rowY = drawTableRow(rowY, [
+              { text: 'House Keeping', width: scoreColWidths[0], fontSize: 9 },
+              { text: Math.round(hkData.perfectScore).toString(), width: scoreColWidths[1], align: 'center' },
+              { text: Math.round(hkData.actualScore).toString(), width: scoreColWidths[2], align: 'center' },
+              { text: `${hkPct}%`, width: scoreColWidths[3], align: 'center' }
+            ], 22);
+            
+            doc.y = rowY + 15;
           }
-
-          // Final footer
-          addFooter(pageNumber, pageNumber);
-
+          
+          // Other categories not matched
+          Object.keys(displayCategoryData).forEach(cat => {
+            if (!mainCategories.includes(cat) && cat !== 'House Keeping') {
+              const data = displayCategoryData[cat];
+              if (data && data.count > 0) {
+                const pct = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+                
+                rowY = drawTableRow(doc.y, [
+                  { text: '', width: scoreColWidths[0] },
+                  { text: 'Perfect Score', width: scoreColWidths[1], align: 'center' },
+                  { text: 'Actual Score', width: scoreColWidths[2], align: 'center' },
+                  { text: 'Percentage', width: scoreColWidths[3], align: 'center' }
+                ], 22, true);
+                
+                rowY = drawTableRow(rowY, [
+                  { text: cat, width: scoreColWidths[0], fontSize: 9 },
+                  { text: Math.round(data.perfectScore).toString(), width: scoreColWidths[1], align: 'center' },
+                  { text: Math.round(data.actualScore).toString(), width: scoreColWidths[2], align: 'center' },
+                  { text: `${pct}%`, width: scoreColWidths[3], align: 'center' }
+                ], 22);
+                
+                doc.y = rowY + 15;
+              }
+            }
+          });
+          
+          // Details Section - OUTLET question/response table
+          checkNewPage(100);
+          doc.fontSize(12).fillColor('#000').text('Details', margin, doc.y, { underline: true });
+          doc.moveDown(0.5);
+          
+          const detailQY = doc.y;
+          const detailQColWidths = [40, contentWidth * 0.25, contentWidth - 40 - (contentWidth * 0.25)];
+          
+          rowY = drawTableRow(detailQY, [
+            { text: '', width: detailQColWidths[0] },
+            { text: 'Question', width: detailQColWidths[1], align: 'center' },
+            { text: 'Response', width: detailQColWidths[2], align: 'center' }
+          ], 22, true);
+          
+          // Find OUTLET question
+          const outletItem = itemsWithMaxScores.find(item => 
+            item.title && item.title.toLowerCase().includes('outlet')
+          );
+          
+          if (outletItem) {
+            const outletResponse = outletItem.selected_option_text || outletItem.comment || storeName;
+            rowY = drawTableRow(rowY, [
+              { text: '1', width: detailQColWidths[0], align: 'center' },
+              { text: 'OUTLET', width: detailQColWidths[1] },
+              { text: outletResponse, width: detailQColWidths[2], align: 'center' }
+            ], 25);
+          } else {
+            rowY = drawTableRow(rowY, [
+              { text: '1', width: detailQColWidths[0], align: 'center' },
+              { text: 'OUTLET', width: detailQColWidths[1] },
+              { text: storeName, width: detailQColWidths[2], align: 'center' }
+            ], 25);
+          }
+          
+          doc.y = rowY + 20;
+          drawFooter();
+          
+          // ==================== CATEGORY DETAIL PAGES ====================
+          // Group items by category
+          const sortedCategories = Object.keys(categoryData).sort((a, b) => {
+            const order = ['QUALITY', 'SERVICE', 'HYGIENE', 'CLEANLINESS', 'PROCESSES', 'HK', 'House Keeping'];
+            const aIdx = order.findIndex(o => a.toUpperCase().includes(o));
+            const bIdx = order.findIndex(o => b.toUpperCase().includes(o));
+            if (aIdx === -1 && bIdx === -1) return 0;
+            if (aIdx === -1) return 1;
+            if (bIdx === -1) return -1;
+            return aIdx - bIdx;
+          });
+          
+          for (const cat of sortedCategories) {
+            const catItems = categoryData[cat].items;
+            const catPerfect = Math.round(categoryData[cat].perfectScore);
+            const catActual = Math.round(categoryData[cat].actualScore);
+            const catPct = catPerfect > 0 ? Math.round((catActual / catPerfect) * 100) : 0;
+            
+            // New page for each major category
+            doc.addPage();
+            currentPage++;
+            
+            // Category Header with blue background
+            doc.rect(margin, 40, contentWidth, 30).fill(LIGHT_BLUE);
+            doc.rect(margin, 40, contentWidth, 30).stroke(BORDER_COLOR);
+            doc.fontSize(14).fillColor(BLUE);
+            doc.text(`${cat.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect})`, margin + 10, 48, { width: contentWidth - 20 });
+            
+            doc.y = 85;
+            
+            // Table header
+            const qColWidths = [40, contentWidth * 0.50, 60, 80];
+            const qHeaderY = doc.y;
+            
+            rowY = drawTableRow(qHeaderY, [
+              { text: '', width: qColWidths[0] },
+              { text: 'Question', width: qColWidths[1], align: 'center' },
+              { text: 'Score', width: qColWidths[2], align: 'center' },
+              { text: 'Response', width: qColWidths[3], align: 'center' }
+            ], 25, true);
+            
+            // Items
+            let questionNum = 1;
+            for (const item of catItems) {
+              // Check if we need a new page
+              if (rowY > pageHeight - 150) {
+                drawFooter();
+                doc.addPage();
+                currentPage++;
+                
+                // Re-draw category header
+                doc.rect(margin, 40, contentWidth, 30).fill(LIGHT_BLUE);
+                doc.rect(margin, 40, contentWidth, 30).stroke(BORDER_COLOR);
+                doc.fontSize(14).fillColor(BLUE);
+                doc.text(`${cat.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (continued)`, margin + 10, 48, { width: contentWidth - 20 });
+                
+                // Re-draw table header
+                rowY = 85;
+                rowY = drawTableRow(rowY, [
+                  { text: '', width: qColWidths[0] },
+                  { text: 'Question', width: qColWidths[1], align: 'center' },
+                  { text: 'Score', width: qColWidths[2], align: 'center' },
+                  { text: 'Response', width: qColWidths[3], align: 'center' }
+                ], 25, true);
+              }
+              
+              const actualMark = parseFloat(item.mark) || 0;
+              const maxMark = item.maxScore || 3;
+              const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
+              const scoreText = `${actualMark}/${maxMark}`;
+              
+              // Check if item has photo - need more row height
+              const hasPhoto = item.photo_url ? true : false;
+              const rowHeight = hasPhoto ? 70 : 35;
+              
+              // Draw row background
+              let x = margin;
+              doc.rect(x, rowY, qColWidths[0], rowHeight).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0], rowY, qColWidths[1], rowHeight).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0] + qColWidths[1], rowY, qColWidths[2], rowHeight).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], rowY, qColWidths[3], rowHeight).stroke(BORDER_COLOR);
+              
+              // Question number
+              doc.fontSize(9).fillColor('#000');
+              doc.text(questionNum.toString(), x + 4, rowY + 5, { width: qColWidths[0] - 8, align: 'center' });
+              
+              // Question text with title
+              doc.text(item.title || '', x + qColWidths[0] + 4, rowY + 5, { width: qColWidths[1] - 8 });
+              
+              // Score
+              doc.text(scoreText, x + qColWidths[0] + qColWidths[1] + 4, rowY + 5, { width: qColWidths[2] - 8, align: 'center' });
+              
+              // Response
+              doc.text(response, x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 4, rowY + 5, { width: qColWidths[3] - 8, align: 'center' });
+              
+              // Add photo if exists
+              if (hasPhoto) {
+                try {
+                  const fs = require('fs');
+                  const path = require('path');
+                  const uploadsPath = path.join(__dirname, '..', 'uploads');
+                  let photoPath = item.photo_url;
+                  const localPath = path.join(uploadsPath, path.basename(photoPath));
+                  
+                  if (fs.existsSync(localPath)) {
+                    doc.image(localPath, x + qColWidths[0] + 4, rowY + 25, { width: 50, height: 40, fit: [50, 40] });
+                  }
+                } catch (imgErr) {
+                  // Skip image if error
+                }
+              }
+              
+              rowY += rowHeight;
+              questionNum++;
+            }
+            
+            doc.y = rowY + 10;
+            drawFooter();
+          }
+          
           doc.end();
           }).catch(err => {
             logger.error('Error generating PDF:', err);
