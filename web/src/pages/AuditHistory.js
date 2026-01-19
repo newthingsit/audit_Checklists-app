@@ -42,6 +42,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CancelIcon from '@mui/icons-material/Cancel';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import Pagination from '@mui/material/Pagination';
 import axios from 'axios';
 import Layout from '../components/Layout';
@@ -327,6 +328,54 @@ const AuditHistory = () => {
       setPrintPreviewOpen(true);
     } catch (error) {
       showError('Failed to load audit preview');
+    }
+  };
+
+  // Download PDF report for completed audit
+  const handleDownloadPdf = async (auditId, auditName) => {
+    try {
+      showSuccess('Generating PDF report...');
+      const response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `${auditName || 'Audit_Report'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      showSuccess('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      showError('Failed to download PDF report');
+    }
+  };
+
+  // Preview PDF in new tab
+  const handlePreviewPdf = async (auditId) => {
+    try {
+      showSuccess('Opening PDF preview...');
+      const response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const pdfUrl = window.URL.createObjectURL(blob);
+      window.open(pdfUrl, '_blank');
+    } catch (error) {
+      console.error('Error previewing PDF:', error);
+      showError('Failed to preview PDF report');
     }
   };
 
@@ -776,29 +825,68 @@ const AuditHistory = () => {
                         </Typography>
                       </Box>
                     </CardContent>
-                    <Box sx={{ display: 'flex', gap: 1, p: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityIcon />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleQuickPreview(audit.id);
-                        }}
-                        sx={{ flex: 1 }}
-                      >
-                        Preview
-                      </Button>
-                      <Button
-                        size="small"
-                        startIcon={<PrintIcon />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrintPreview(audit.id);
-                        }}
-                        sx={{ flex: 1 }}
-                      >
-                        Print
-                      </Button>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
+                      {/* Row 1: View and Quick Preview */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                          size="small"
+                          startIcon={<VisibilityIcon />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleQuickPreview(audit.id);
+                          }}
+                          sx={{ flex: 1 }}
+                        >
+                          Preview
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<PrintIcon />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintPreview(audit.id);
+                          }}
+                          sx={{ flex: 1 }}
+                        >
+                          Print
+                        </Button>
+                      </Box>
+                      {/* Row 2: PDF Download and Email - for completed audits */}
+                      {audit.status === 'completed' && (
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Tooltip title="Download PDF Report">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="primary"
+                              startIcon={<PictureAsPdfIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadPdf(audit.id, `${audit.template_name}_${audit.restaurant_name}`);
+                              }}
+                              sx={{ flex: 1 }}
+                            >
+                              Download PDF
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title="Preview PDF in new tab">
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                              startIcon={<VisibilityIcon />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePreviewPdf(audit.id);
+                              }}
+                              sx={{ flex: 1 }}
+                            >
+                              View PDF
+                            </Button>
+                          </Tooltip>
+                        </Box>
+                      )}
+                      {/* Email button */}
                       <Button
                         size="small"
                         startIcon={<EmailIcon />}
@@ -806,9 +894,9 @@ const AuditHistory = () => {
                           e.stopPropagation();
                           navigate(`/audit/${audit.id}`);
                         }}
-                        sx={{ flex: 1 }}
+                        fullWidth
                       >
-                        Email
+                        Email Report
                       </Button>
                     </Box>
                   </Card>
