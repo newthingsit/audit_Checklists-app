@@ -416,26 +416,46 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           // Column widths for category tables
           const qColWidths = [40, contentWidth * 0.50, 60, 80];
           
-          // Helper function to draw category header (compact: 22px)
+          // Helper function to draw category header (compact: 18px)
           const drawCategoryHeader = (catName, catPct, catActual, catPerfect, isContinued = false) => {
-            doc.rect(margin, doc.y, contentWidth, 22).fill(LIGHT_BLUE);
-            doc.rect(margin, doc.y, contentWidth, 22).stroke(BORDER_COLOR);
-            doc.fontSize(11).fillColor(BLUE);
+            const hdrY = doc.y;
+            doc.rect(margin, hdrY, contentWidth, 18).fill(LIGHT_BLUE);
+            doc.rect(margin, hdrY, contentWidth, 18).stroke(BORDER_COLOR);
+            doc.fontSize(9).fillColor(BLUE);
             const headerText = isContinued 
               ? `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (cont.)`
               : `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect})`;
-            doc.text(headerText, margin + 8, doc.y + 5, { width: contentWidth - 16 });
-            doc.y += 24;
+            doc.text(headerText, margin + 5, hdrY + 4, { width: contentWidth - 10, lineBreak: false });
+            doc.y = hdrY + 20;
           };
           
-          // Helper function to draw table header row (compact: 18px)
+          // Helper function to draw table header row (compact: 16px)
           const drawTableHeader = () => {
-            return drawTableRow(doc.y, [
-              { text: '#', width: qColWidths[0], align: 'center', fontSize: 8 },
-              { text: 'Question', width: qColWidths[1], align: 'center', fontSize: 8 },
-              { text: 'Score', width: qColWidths[2], align: 'center', fontSize: 8 },
-              { text: 'Response', width: qColWidths[3], align: 'center', fontSize: 8 }
-            ], 18, true);
+            const hdrY = doc.y;
+            let x = margin;
+            const hdrHeight = 16;
+            
+            // Draw header cells
+            doc.rect(x, hdrY, qColWidths[0], hdrHeight).fill(BLUE);
+            doc.rect(x + qColWidths[0], hdrY, qColWidths[1], hdrHeight).fill(BLUE);
+            doc.rect(x + qColWidths[0] + qColWidths[1], hdrY, qColWidths[2], hdrHeight).fill(BLUE);
+            doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], hdrY, qColWidths[3], hdrHeight).fill(BLUE);
+            
+            // Border all
+            doc.rect(x, hdrY, qColWidths[0], hdrHeight).stroke(BORDER_COLOR);
+            doc.rect(x + qColWidths[0], hdrY, qColWidths[1], hdrHeight).stroke(BORDER_COLOR);
+            doc.rect(x + qColWidths[0] + qColWidths[1], hdrY, qColWidths[2], hdrHeight).stroke(BORDER_COLOR);
+            doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], hdrY, qColWidths[3], hdrHeight).stroke(BORDER_COLOR);
+            
+            // Text
+            doc.fontSize(7).fillColor('#fff');
+            doc.text('#', x + 2, hdrY + 4, { width: qColWidths[0] - 4, align: 'center', lineBreak: false });
+            doc.text('Question', x + qColWidths[0] + 2, hdrY + 4, { width: qColWidths[1] - 4, align: 'center', lineBreak: false });
+            doc.text('Score', x + qColWidths[0] + qColWidths[1] + 2, hdrY + 4, { width: qColWidths[2] - 4, align: 'center', lineBreak: false });
+            doc.text('Response', x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 2, hdrY + 4, { width: qColWidths[3] - 4, align: 'center', lineBreak: false });
+            
+            doc.y = hdrY + hdrHeight;
+            return hdrY + hdrHeight;
           };
           
           // Start new page for category details (only once)
@@ -455,8 +475,8 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             const catActual = Math.round(categoryData[cat].actualScore);
             const catPct = catPerfect > 0 ? Math.round((catActual / catPerfect) * 100) : 0;
             
-            // Check if we need a new page for category header + at least one row (need ~80px)
-            if (doc.y > pageHeight - 100) {
+            // Check if we need a new page for category header + at least one row (need ~60px)
+            if (doc.y > pageHeight - 70) {
               drawFooter();
               doc.addPage();
               currentPage++;
@@ -469,15 +489,13 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             // Table header
             rowY = drawTableHeader();
             
-            // Items - use compact row height (20px) for better page efficiency
+            // Items - use compact row height (18px) for better page efficiency
             let questionNum = 1;
+            const ROW_HEIGHT = 18; // Fixed compact row height
+            
             for (const item of catItems) {
-              // Check if item has photo - need more row height
-              const hasPhoto = item.photo_url ? true : false;
-              const rowHeight = hasPhoto ? 55 : 20; // Compact: 20px without photo, 55px with photo
-              
               // Check if we need a new page (need space for row + footer)
-              if (rowY > pageHeight - rowHeight - 40) {
+              if (rowY > pageHeight - ROW_HEIGHT - 35) {
                 drawFooter();
                 doc.addPage();
                 currentPage++;
@@ -493,50 +511,36 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
               const scoreText = `${actualMark}/${maxMark}`;
               
-              // Draw row background
+              // Draw row cells with borders
               let x = margin;
-              doc.rect(x, rowY, qColWidths[0], rowHeight).stroke(BORDER_COLOR);
-              doc.rect(x + qColWidths[0], rowY, qColWidths[1], rowHeight).stroke(BORDER_COLOR);
-              doc.rect(x + qColWidths[0] + qColWidths[1], rowY, qColWidths[2], rowHeight).stroke(BORDER_COLOR);
-              doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], rowY, qColWidths[3], rowHeight).stroke(BORDER_COLOR);
+              doc.rect(x, rowY, qColWidths[0], ROW_HEIGHT).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0], rowY, qColWidths[1], ROW_HEIGHT).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0] + qColWidths[1], rowY, qColWidths[2], ROW_HEIGHT).stroke(BORDER_COLOR);
+              doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], rowY, qColWidths[3], ROW_HEIGHT).stroke(BORDER_COLOR);
               
-              // Question number - centered vertically
-              doc.fontSize(8).fillColor('#000');
-              const textYOffset = hasPhoto ? 3 : (rowHeight - 8) / 2;
-              doc.text(questionNum.toString(), x + 2, rowY + textYOffset, { width: qColWidths[0] - 4, align: 'center' });
+              // Set font once
+              doc.fontSize(7).fillColor('#000');
+              const textY = rowY + 5;
               
-              // Question text with title
-              doc.text(item.title || '', x + qColWidths[0] + 3, rowY + textYOffset, { width: qColWidths[1] - 6, lineBreak: !hasPhoto });
+              // Question number (fixed position, no lineBreak)
+              doc.text(questionNum.toString(), x + 2, textY, { width: qColWidths[0] - 4, align: 'center', lineBreak: false });
+              
+              // Question text - truncate if too long (no wrapping)
+              const title = (item.title || '').substring(0, 80);
+              doc.text(title, x + qColWidths[0] + 2, textY, { width: qColWidths[1] - 4, lineBreak: false });
               
               // Score
-              doc.text(scoreText, x + qColWidths[0] + qColWidths[1] + 2, rowY + textYOffset, { width: qColWidths[2] - 4, align: 'center' });
+              doc.text(scoreText, x + qColWidths[0] + qColWidths[1] + 2, textY, { width: qColWidths[2] - 4, align: 'center', lineBreak: false });
               
               // Response
-              doc.text(response, x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 2, rowY + textYOffset, { width: qColWidths[3] - 4, align: 'center' });
+              doc.text(response.substring(0, 15), x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 2, textY, { width: qColWidths[3] - 4, align: 'center', lineBreak: false });
               
-              // Add photo if exists
-              if (hasPhoto) {
-                try {
-                  const fs = require('fs');
-                  const path = require('path');
-                  const uploadsPath = path.join(__dirname, '..', 'uploads');
-                  let photoPath = item.photo_url;
-                  const localPath = path.join(uploadsPath, path.basename(photoPath));
-                  
-                  if (fs.existsSync(localPath)) {
-                    doc.image(localPath, x + qColWidths[0] + 3, rowY + 18, { width: 40, height: 32, fit: [40, 32] });
-                  }
-                } catch (imgErr) {
-                  // Skip image if error
-                }
-              }
-              
-              rowY += rowHeight;
+              rowY += ROW_HEIGHT;
               questionNum++;
             }
             
-            // Update doc.y and add some spacing before next category
-            doc.y = rowY + 15;
+            // Update doc.y for next category (minimal spacing)
+            doc.y = rowY + 8;
           }
           
           // Final footer
