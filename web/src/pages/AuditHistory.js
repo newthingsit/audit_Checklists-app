@@ -25,7 +25,9 @@ import {
   Toolbar,
   Paper,
   IconButton,
-  Tooltip
+  Tooltip,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
@@ -58,6 +60,8 @@ import { themeConfig } from '../config/theme';
 const AuditHistory = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [audits, setAudits] = useState([]);
   const [filteredAudits, setFilteredAudits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -381,25 +385,25 @@ const AuditHistory = () => {
 
   return (
     <Layout>
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+      <Container maxWidth="lg" sx={{ px: isMobile ? 2 : 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', mb: 4, gap: isMobile ? 2 : 1 }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: themeConfig.text.primary, mb: 0.5 }}>
+            <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700, color: themeConfig.text.primary, mb: 0.5 }}>
               Audit History
             </Typography>
-            <Typography variant="body2" sx={{ color: themeConfig.text.secondary }}>
+            <Typography variant={isMobile ? 'body2' : 'body2'} sx={{ color: themeConfig.text.secondary }}>
               View and manage all your completed and in-progress audits
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
             {/* View Mode Toggle */}
-            <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1, mr: 1 }}>
+            <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 2, mr: 1 }}>
               <Tooltip title="Grid View">
                 <IconButton
                   size="small"
                   onClick={() => setViewMode('grid')}
                   color={viewMode === 'grid' ? 'primary' : 'default'}
-                  sx={{ borderRadius: 0 }}
+                  sx={{ borderRadius: 0, width: 36, height: 36 }}
                 >
                   <ViewModuleIcon />
                 </IconButton>
@@ -409,7 +413,7 @@ const AuditHistory = () => {
                   size="small"
                   onClick={() => setViewMode('list')}
                   color={viewMode === 'list' ? 'primary' : 'default'}
-                  sx={{ borderRadius: 0 }}
+                  sx={{ borderRadius: 0, width: 36, height: 36 }}
                 >
                   <ViewListIcon />
                 </IconButton>
@@ -419,7 +423,7 @@ const AuditHistory = () => {
                   size="small"
                   onClick={() => setViewMode('compact')}
                   color={viewMode === 'compact' ? 'primary' : 'default'}
-                  sx={{ borderRadius: 0 }}
+                  sx={{ borderRadius: 0, width: 36, height: 36 }}
                 >
                   <ViewCompactIcon />
                 </IconButton>
@@ -432,6 +436,7 @@ const AuditHistory = () => {
                   variant="outlined"
                   onClick={handleBulkExport}
                   size="small"
+                  sx={{ borderRadius: 2, textTransform: 'none' }}
                 >
                   Export ({selectedAudits.size})
                 </Button>
@@ -444,6 +449,7 @@ const AuditHistory = () => {
                     color="error"
                     onClick={() => setDeleteDialogOpen(true)}
                     size="small"
+                    sx={{ borderRadius: 2, textTransform: 'none' }}
                   >
                     Delete ({selectedAudits.size})
                   </Button>
@@ -455,63 +461,63 @@ const AuditHistory = () => {
         </Box>
 
         {/* Statistics Summary */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid container spacing={isMobile ? 2 : 2} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+            <Card sx={{ bgcolor: 'primary.light', color: 'primary.contrastText', borderRadius: isMobile ? 3 : 2, boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                       {stats.total}
                     </Typography>
                     <Typography variant="body2">Total Audits</Typography>
                   </Box>
-                  <AssessmentIcon sx={{ fontSize: 40, opacity: 0.7 }} />
+                  <AssessmentIcon sx={{ fontSize: isMobile ? 36 : 40, opacity: 0.7 }} />
                 </Box>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: 'success.light', color: 'success.contrastText' }}>
+            <Card sx={{ bgcolor: 'success.light', color: 'success.contrastText', borderRadius: isMobile ? 3 : 2, boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                       {stats.completed}
                     </Typography>
                     <Typography variant="body2">Completed</Typography>
                   </Box>
-                  <CheckCircleIcon sx={{ fontSize: 40, opacity: 0.7 }} />
+                  <CheckCircleIcon sx={{ fontSize: isMobile ? 36 : 40, opacity: 0.7 }} />
                 </Box>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: 'info.light', color: 'info.contrastText' }}>
+            <Card sx={{ bgcolor: 'info.light', color: 'info.contrastText', borderRadius: isMobile ? 3 : 2, boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                       {stats.averageScore}%
                     </Typography>
                     <Typography variant="body2">Avg Score</Typography>
                   </Box>
-                  <TrendingUpIcon sx={{ fontSize: 40, opacity: 0.7 }} />
+                  <TrendingUpIcon sx={{ fontSize: isMobile ? 36 : 40, opacity: 0.7 }} />
                 </Box>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ bgcolor: 'warning.light', color: 'warning.contrastText' }}>
+            <Card sx={{ bgcolor: 'warning.light', color: 'warning.contrastText', borderRadius: isMobile ? 3 : 2, boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Box>
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                       {stats.completionRate}%
                     </Typography>
                     <Typography variant="body2">Completion Rate</Typography>
                   </Box>
-                  <ScheduleIcon sx={{ fontSize: 40, opacity: 0.7 }} />
+                  <ScheduleIcon sx={{ fontSize: isMobile ? 36 : 40, opacity: 0.7 }} />
                 </Box>
               </CardContent>
             </Card>
@@ -701,7 +707,7 @@ const AuditHistory = () => {
                 Select All ({filteredAudits.length} audits)
               </Typography>
             </Box>
-            <Grid container spacing={3}>
+            <Grid container spacing={isMobile ? 2 : 3}>
               {paginatedAudits.map((audit, index) => (
                 <Grid item xs={12} sm={6} md={4} key={audit.id}>
                   <Card
@@ -718,9 +724,11 @@ const AuditHistory = () => {
                       transition: 'all 0.3s ease',
                       position: 'relative',
                       overflow: 'visible',
+                      borderRadius: isMobile ? 3 : 2,
+                      boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined,
                       '&:hover': { 
-                        transform: 'translateY(-4px)',
-                        boxShadow: 6,
+                        transform: isMobile ? 'none' : 'translateY(-4px)',
+                        boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : 6,
                         borderColor: audit.status === 'completed' ? 'success.dark' : 'primary.main'
                       },
                       // Green tick badge in corner for completed audits
@@ -746,7 +754,7 @@ const AuditHistory = () => {
                       })
                     }}
                   >
-                    <CardContent sx={{ flexGrow: 1, position: 'relative' }}>
+                    <CardContent sx={{ flexGrow: 1, position: 'relative', p: isMobile ? 2.5 : 2 }}>
                       <Checkbox
                         checked={selectedAudits.has(audit.id)}
                         onChange={(e) => {
@@ -762,9 +770,9 @@ const AuditHistory = () => {
                       >
                         <Box sx={{ display: 'flex', alignItems: 'start', mb: 2 }}>
                           <Box sx={{ 
-                            width: 48, 
-                            height: 48, 
-                            borderRadius: 2,
+                            width: isMobile ? 44 : 48, 
+                            height: isMobile ? 44 : 48, 
+                            borderRadius: isMobile ? 3 : 2,
                             bgcolor: audit.status === 'completed' ? 'success.light' : 'warning.light',
                             display: 'flex',
                             alignItems: 'center',
@@ -778,7 +786,7 @@ const AuditHistory = () => {
                             )}
                           </Box>
                           <Box sx={{ flexGrow: 1, pr: 4 }}>
-                            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                            <Typography variant={isMobile ? 'subtitle1' : 'h6'} gutterBottom sx={{ fontWeight: 600 }}>
                               {audit.restaurant_name}
                             </Typography>
                             <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -796,7 +804,7 @@ const AuditHistory = () => {
                           label={audit.template_name}
                           size="small"
                           variant="outlined"
-                          sx={{ mb: 2 }}
+                          sx={{ mb: 2, borderRadius: 2 }}
                         />
                         
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -804,7 +812,7 @@ const AuditHistory = () => {
                             label={audit.status}
                             color={audit.status === 'completed' ? 'success' : 'warning'}
                             size="small"
-                            sx={{ fontWeight: 500 }}
+                            sx={{ fontWeight: 500, borderRadius: 2 }}
                           />
                           {audit.score !== null && (
                             <Box sx={{ 
@@ -825,7 +833,7 @@ const AuditHistory = () => {
                         </Typography>
                       </Box>
                     </CardContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: isMobile ? 2.5 : 2, pt: 0, borderTop: '1px solid', borderColor: 'divider' }}>
                       {/* Row 1: View and Quick Preview */}
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Button
@@ -835,7 +843,7 @@ const AuditHistory = () => {
                             e.stopPropagation();
                             handleQuickPreview(audit.id);
                           }}
-                          sx={{ flex: 1 }}
+                          sx={{ flex: 1, textTransform: 'none', borderRadius: 2 }}
                         >
                           Preview
                         </Button>
@@ -846,7 +854,7 @@ const AuditHistory = () => {
                             e.stopPropagation();
                             handlePrintPreview(audit.id);
                           }}
-                          sx={{ flex: 1 }}
+                          sx={{ flex: 1, textTransform: 'none', borderRadius: 2 }}
                         >
                           Print
                         </Button>
@@ -864,7 +872,7 @@ const AuditHistory = () => {
                                 e.stopPropagation();
                                 handleDownloadPdf(audit.id, `${audit.template_name}_${audit.restaurant_name}`);
                               }}
-                              sx={{ flex: 1 }}
+                              sx={{ flex: 1, textTransform: 'none', borderRadius: 2 }}
                             >
                               Download PDF
                             </Button>
@@ -879,7 +887,7 @@ const AuditHistory = () => {
                                 e.stopPropagation();
                                 handlePreviewPdf(audit.id);
                               }}
-                              sx={{ flex: 1 }}
+                              sx={{ flex: 1, textTransform: 'none', borderRadius: 2 }}
                             >
                               View PDF
                             </Button>
@@ -895,6 +903,7 @@ const AuditHistory = () => {
                           navigate(`/audit/${audit.id}`);
                         }}
                         fullWidth
+                        sx={{ textTransform: 'none', borderRadius: 2 }}
                       >
                         Email Report
                       </Button>
