@@ -400,7 +400,6 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           }
           
           doc.y = rowY + 20;
-          drawFooter();
           
           // ==================== CATEGORY DETAIL PAGES ====================
           // Group items by category
@@ -414,68 +413,85 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             return aIdx - bIdx;
           });
           
-          for (const cat of sortedCategories) {
-            const catItems = categoryData[cat].items;
-            const catPerfect = Math.round(categoryData[cat].perfectScore);
-            const catActual = Math.round(categoryData[cat].actualScore);
-            const catPct = catPerfect > 0 ? Math.round((catActual / catPerfect) * 100) : 0;
-            
-            // New page for each major category
-            doc.addPage();
-            currentPage++;
-            
-            // Category Header with blue background
-            doc.rect(margin, 40, contentWidth, 30).fill(LIGHT_BLUE);
-            doc.rect(margin, 40, contentWidth, 30).stroke(BORDER_COLOR);
+          // Column widths for category tables
+          const qColWidths = [40, contentWidth * 0.50, 60, 80];
+          
+          // Helper function to draw category header
+          const drawCategoryHeader = (catName, catPct, catActual, catPerfect, isContinued = false) => {
+            doc.rect(margin, doc.y, contentWidth, 30).fill(LIGHT_BLUE);
+            doc.rect(margin, doc.y, contentWidth, 30).stroke(BORDER_COLOR);
             doc.fontSize(14).fillColor(BLUE);
-            doc.text(`${cat.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect})`, margin + 10, 48, { width: contentWidth - 20 });
-            
-            doc.y = 85;
-            
-            // Table header
-            const qColWidths = [40, contentWidth * 0.50, 60, 80];
-            const qHeaderY = doc.y;
-            
-            rowY = drawTableRow(qHeaderY, [
+            const headerText = isContinued 
+              ? `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (continued)`
+              : `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect})`;
+            doc.text(headerText, margin + 10, doc.y + 8, { width: contentWidth - 20 });
+            doc.y += 35;
+          };
+          
+          // Helper function to draw table header row
+          const drawTableHeader = () => {
+            return drawTableRow(doc.y, [
               { text: '', width: qColWidths[0] },
               { text: 'Question', width: qColWidths[1], align: 'center' },
               { text: 'Score', width: qColWidths[2], align: 'center' },
               { text: 'Response', width: qColWidths[3], align: 'center' }
             ], 25, true);
+          };
+          
+          // Start new page for category details (only once)
+          drawFooter();
+          doc.addPage();
+          currentPage++;
+          doc.y = 50;
+          
+          for (let catIndex = 0; catIndex < sortedCategories.length; catIndex++) {
+            const cat = sortedCategories[catIndex];
+            const catItems = categoryData[cat].items;
+            
+            // Skip empty categories
+            if (!catItems || catItems.length === 0) continue;
+            
+            const catPerfect = Math.round(categoryData[cat].perfectScore);
+            const catActual = Math.round(categoryData[cat].actualScore);
+            const catPct = catPerfect > 0 ? Math.round((catActual / catPerfect) * 100) : 0;
+            
+            // Check if we need a new page for category header + at least one row (need ~120px)
+            if (doc.y > pageHeight - 150) {
+              drawFooter();
+              doc.addPage();
+              currentPage++;
+              doc.y = 50;
+            }
+            
+            // Category Header with blue background
+            drawCategoryHeader(cat, catPct, catActual, catPerfect);
+            
+            // Table header
+            rowY = drawTableHeader();
             
             // Items
             let questionNum = 1;
             for (const item of catItems) {
-              // Check if we need a new page
-              if (rowY > pageHeight - 150) {
+              // Check if item has photo - need more row height
+              const hasPhoto = item.photo_url ? true : false;
+              const rowHeight = hasPhoto ? 70 : 35;
+              
+              // Check if we need a new page (need space for row + footer)
+              if (rowY > pageHeight - rowHeight - 50) {
                 drawFooter();
                 doc.addPage();
                 currentPage++;
+                doc.y = 50;
                 
-                // Re-draw category header
-                doc.rect(margin, 40, contentWidth, 30).fill(LIGHT_BLUE);
-                doc.rect(margin, 40, contentWidth, 30).stroke(BORDER_COLOR);
-                doc.fontSize(14).fillColor(BLUE);
-                doc.text(`${cat.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (continued)`, margin + 10, 48, { width: contentWidth - 20 });
-                
-                // Re-draw table header
-                rowY = 85;
-                rowY = drawTableRow(rowY, [
-                  { text: '', width: qColWidths[0] },
-                  { text: 'Question', width: qColWidths[1], align: 'center' },
-                  { text: 'Score', width: qColWidths[2], align: 'center' },
-                  { text: 'Response', width: qColWidths[3], align: 'center' }
-                ], 25, true);
+                // Re-draw category header and table header
+                drawCategoryHeader(cat, catPct, catActual, catPerfect, true);
+                rowY = drawTableHeader();
               }
               
               const actualMark = parseFloat(item.mark) || 0;
               const maxMark = item.maxScore || 3;
               const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
               const scoreText = `${actualMark}/${maxMark}`;
-              
-              // Check if item has photo - need more row height
-              const hasPhoto = item.photo_url ? true : false;
-              const rowHeight = hasPhoto ? 70 : 35;
               
               // Draw row background
               let x = margin;
@@ -518,9 +534,12 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               questionNum++;
             }
             
-            doc.y = rowY + 10;
-            drawFooter();
+            // Update doc.y and add some spacing before next category
+            doc.y = rowY + 15;
           }
+          
+          // Final footer
+          drawFooter();
           
           doc.end();
           }).catch(err => {
