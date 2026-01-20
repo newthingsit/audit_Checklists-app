@@ -805,7 +805,7 @@ const Checklists = () => {
     }
 
     try {
-      const response = await axios.post('/api/checklists/import', {
+      const response = await axios.post('/api/checklists/import/csv', {
         templateName: importForm.templateName,
         category: '', // Category removed from template level
         description: importForm.description,

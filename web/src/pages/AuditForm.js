@@ -73,6 +73,7 @@ const AuditForm = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [template, setTemplate] = useState(null);
+  const isCvr = isCvrTemplate(template?.name);
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -254,6 +255,31 @@ const AuditForm = () => {
     return groupCategories(categories, items);
   }, [categories, items, groupCategories]);
 
+  const getNormalizedInputType = useCallback((item) => {
+    if (!item) return 'auto';
+    const raw = (item.input_type || item.inputType || 'auto').toLowerCase();
+    const title = (item.title || '').toLowerCase();
+    const category = (item.category || '').toLowerCase();
+    const hasOptions = Array.isArray(item.options) && item.options.length > 0;
+
+    // Fix legacy CVR acknowledgement items imported without input_type
+    if (category.includes('acknowledgement') || title.includes('manager on duty') || title.includes('signature')) {
+      if (title.includes('signature')) return 'signature';
+      if (title.includes('manager on duty')) return 'short_answer';
+    }
+
+    if (raw && raw !== 'auto') return raw;
+
+    // CVR timing fields use short answer "Type Here"
+    if (isCvr && (title.includes('(sec)') || title.includes('(time)'))) {
+      return 'short_answer';
+    }
+
+    if (hasOptions) return 'option_select';
+
+    return 'open_ended';
+  }, [isCvr]);
+
   useEffect(() => {
     fetchLocations();
     // Fetch scheduled audit data if coming from scheduled audits
@@ -261,7 +287,7 @@ const AuditForm = () => {
       fetchScheduledAudit();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scheduledId]);
 
   const fetchScheduledAudit = async () => {
     try {
@@ -688,7 +714,7 @@ const AuditForm = () => {
   // };
 
   const isItemComplete = (item) => {
-    const inputType = (item?.input_type || '').toLowerCase();
+    const inputType = getNormalizedInputType(item);
     if (inputType === 'signature') {
       return !!photos[item.id] || (inputValues[item.id] !== undefined && String(inputValues[item.id]).trim() !== '');
     }
@@ -717,7 +743,7 @@ const AuditForm = () => {
       if (missingRequired.length > 0) {
         // Check for missing photos specifically
         const missingPhotos = missingRequired.filter(item => {
-          const inputType = (item?.input_type || '').toLowerCase();
+          const inputType = getNormalizedInputType(item);
           return inputType === 'image_upload' && !photos[item.id];
         });
         
@@ -791,7 +817,7 @@ const AuditForm = () => {
 
     // Get the value of the referenced item
     let referencedValue = null;
-    const inputType = (referencedItem.input_type || '').toLowerCase();
+    const inputType = getNormalizedInputType(referencedItem);
     
     if (inputType === 'option_select' || inputType === 'select_from_data_source') {
       // For option select, get the selected option text
@@ -830,7 +856,7 @@ const AuditForm = () => {
       default:
         return refValueStr === condValueStr;
     }
-  }, []);
+  }, [getNormalizedInputType]);
 
   // Filter items based on conditional logic
   const filterItemsByCondition = useCallback((itemsToFilter, allItems, responses, selectedOptions, comments, inputValues) => {
@@ -1161,7 +1187,7 @@ const AuditForm = () => {
       return null;
     }
     
-    const inputType = (item.input_type || '').toLowerCase();
+    const inputType = getNormalizedInputType(item);
     
     return (
       <Box>
@@ -1218,7 +1244,7 @@ const AuditForm = () => {
   // Render a single audit item (extracted for reuse in section grouping)
   const renderAuditItem = (item, index) => {
     const isPreviousFailure = failedItemIds.has(item.id);
-    const inputType = (item.input_type || '').toLowerCase();
+    const inputType = getNormalizedInputType(item);
     const isMissingRequiredPhoto = item.required && inputType === 'image_upload' && !photos[item.id];
     const failureInfo = previousFailures.find(f => f.item_id === item.id);
     
@@ -1713,7 +1739,7 @@ const AuditForm = () => {
             }
             
             // Option select - show options if available
-            if (item.options && item.options.length > 0) {
+            if ((inputType === 'option_select' || inputType === 'auto') && item.options && item.options.length > 0) {
               return (
                 <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
                   <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
@@ -1927,7 +1953,6 @@ const AuditForm = () => {
     );
   }
 
-  const isCvr = isCvrTemplate(template?.name);
   const tabAccent = isCvr ? cvrTheme.accent.purple : theme.palette.primary.main;
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : theme.palette.text.primary;
   const tabTextSecondary = isCvr ? cvrTheme.text.secondary : theme.palette.text.secondary;
@@ -2483,7 +2508,7 @@ const AuditForm = () => {
                           const requiredItems = items.filter(item => item.required);
                           const missingRequired = requiredItems.filter(item => !isItemComplete(item));
                           const itemsNeedingPhotos = items.filter(item => {
-                            const inputType = (item.input_type || '').toLowerCase();
+                            const inputType = getNormalizedInputType(item);
                             return item.required && inputType === 'image_upload' && !photos[item.id];
                           });
                           
@@ -2541,7 +2566,7 @@ const AuditForm = () => {
                   const requiredItems = itemsToDisplay.filter(item => item.required);
                   const missingRequired = requiredItems.filter(item => !isItemComplete(item));
                   const itemsNeedingPhotos = itemsToDisplay.filter(item => {
-                    const inputType = (item.input_type || '').toLowerCase();
+                    const inputType = getNormalizedInputType(item);
                     return item.required && inputType === 'image_upload' && !photos[item.id];
                   });
                   

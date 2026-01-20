@@ -32,6 +32,7 @@ const AuditFormScreen = () => {
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isCvr = isCvrTemplate(template?.name);
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -62,6 +63,7 @@ const AuditFormScreen = () => {
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track which categories have items completed
   const [groupedCategories, setGroupedCategories] = useState([]); // Grouped categories with sub-categories/sections
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
+  const [expandedSections, setExpandedSections] = useState({}); // Track which sections are expanded (e.g., Trnx-1)
   
   // Time tracking state
   const [itemStartTimes, setItemStartTimes] = useState({}); // Track when each item was started
@@ -94,6 +96,7 @@ const AuditFormScreen = () => {
   // Helper function to check if an item is time-related
   const isTimeRelatedItem = useCallback((item) => {
     if (!item) return false;
+    if (isCvr) return false;
     const title = (item.title || '').toLowerCase();
     const category = (item.category || '').toLowerCase();
     
@@ -108,7 +111,7 @@ const AuditFormScreen = () => {
     const hasTimeCategory = timeCategories.some(keyword => category.includes(keyword));
     
     return hasTimeKeyword || hasTimeCategory;
-  }, []);
+  }, [isCvr]);
 
   // Fetch previous audit failures when location and template are available
   // This works for both regular audits and scheduled audits (same location + same checklist)
@@ -684,11 +687,27 @@ const AuditFormScreen = () => {
   }, [auditStatus]);
 
   const getEffectiveItemFieldType = useCallback((item) => {
-    const raw = item?.input_type || item?.inputType || 'auto';
+    const raw = (item?.input_type || item?.inputType || 'auto').toLowerCase();
+    const title = (item?.title || '').toLowerCase();
+    const category = (item?.category || '').toLowerCase();
+    const hasOptions = item?.options && Array.isArray(item.options) && item.options.length > 0;
+
+    // Fix legacy CVR acknowledgement items imported without input_type
+    if (category.includes('acknowledgement') || title.includes('manager on duty') || title.includes('signature')) {
+      if (title.includes('signature')) return 'signature';
+      if (title.includes('manager on duty')) return 'short_answer';
+    }
+
     if (raw && raw !== 'auto') return raw;
-    if (item?.options && Array.isArray(item.options) && item.options.length > 0) return 'option_select';
+
+    // CVR timing fields use short answer "Type Here"
+    if (isCvr && (title.includes('(sec)') || title.includes('(time)'))) {
+      return 'short_answer';
+    }
+
+    if (hasOptions) return 'option_select';
     return 'task';
-  }, []);
+  }, [isCvr]);
 
   const isOptionFieldType = useCallback((fieldType) => {
     return fieldType === 'option_select' || 
@@ -1208,6 +1227,77 @@ const AuditFormScreen = () => {
     const conditionallyFiltered = filterItemsByCondition(filtered, items, responses, selectedOptions, comments);
     setFilteredItems(conditionallyFiltered);
   };
+
+  // Group items by section for display (Trnx-1, Trnx-2, Avg, etc.)
+  const groupItemsBySection = useCallback((itemsList) => {
+    const sections = {};
+    const itemsWithoutSection = [];
+
+    itemsList.forEach(item => {
+      const section = item.section;
+      if (section && section.trim()) {
+        if (!sections[section]) {
+          sections[section] = [];
+        }
+        sections[section].push(item);
+      } else {
+        itemsWithoutSection.push(item);
+      }
+    });
+
+    const sortedSections = Object.keys(sections).sort((a, b) => {
+      if (a.startsWith('Trnx-') && b.startsWith('Trnx-')) {
+        return parseInt(a.replace('Trnx-', ''), 10) - parseInt(b.replace('Trnx-', ''), 10);
+      }
+      if (a.startsWith('Trnx-')) return -1;
+      if (b.startsWith('Trnx-')) return 1;
+      if (a === 'Avg') return -1;
+      if (b === 'Avg') return 1;
+      return a.localeCompare(b);
+    });
+
+    return {
+      sections: sortedSections.map(name => ({ name, items: sections[name] })),
+      itemsWithoutSection
+    };
+  }, []);
+
+  const groupedItems = useMemo(() => groupItemsBySection(filteredItems), [filteredItems, groupItemsBySection]);
+
+  const itemIndexMap = useMemo(() => {
+    const map = {};
+    filteredItems.forEach((item, index) => {
+      map[item.id] = index;
+    });
+    return map;
+  }, [filteredItems]);
+
+  useEffect(() => {
+    if (groupedItems.sections.length > 0) {
+      const initialExpanded = {};
+      groupedItems.sections.forEach(section => {
+        initialExpanded[section.name] = true;
+      });
+      setExpandedSections(prev => ({ ...initialExpanded, ...prev }));
+    }
+  }, [groupedItems.sections]);
+
+  const sectionedItems = useMemo(() => {
+    if (groupedItems.sections.length === 0) {
+      return filteredItems.map(item => ({ type: 'item', item }));
+    }
+
+    const list = [];
+    groupedItems.sections.forEach(section => {
+      list.push({ type: 'section', section });
+      if (expandedSections[section.name] !== false) {
+        section.items.forEach(item => list.push({ type: 'item', item }));
+      }
+    });
+
+    groupedItems.itemsWithoutSection.forEach(item => list.push({ type: 'item', item }));
+    return list;
+  }, [groupedItems, expandedSections, filteredItems]);
 
   const handleNext = async () => {
     if (currentStep === 0) {
@@ -1969,7 +2059,6 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
-  const isCvr = isCvrTemplate(template?.name);
   const tabAccent = isCvr ? cvrTheme.accent.purple : themeConfig.primary.main;
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : themeConfig.text.primary;
   const tabTextSecondary = isCvr ? cvrTheme.text.secondary : themeConfig.text.secondary;
@@ -2656,7 +2745,44 @@ const AuditFormScreen = () => {
               </View>
             )}
             
-            {filteredItems.map((item, index) => {
+            {sectionedItems.map((entry, index) => {
+              if (entry.type === 'section') {
+                const sectionData = entry.section;
+                const sectionItems = sectionData.items;
+                const sectionCompleted = sectionItems.filter(item => isItemComplete(item)).length;
+                const sectionTotal = sectionItems.length;
+                const isSectionExpanded = expandedSections[sectionData.name] !== false;
+
+                return (
+                  <View key={`section-${sectionData.name}`} style={styles.sectionContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.sectionHeader,
+                        isCvr && { backgroundColor: cvrTheme.background.card, borderColor: cvrTheme.input.border }
+                      ]}
+                      onPress={() => setExpandedSections(prev => ({ ...prev, [sectionData.name]: !isSectionExpanded }))}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.sectionTitle, isCvr && { color: cvrTheme.text.primary }]}>
+                        {sectionData.name}
+                      </Text>
+                      <View style={styles.sectionMeta}>
+                        <Text style={[styles.sectionCount, isCvr && { color: cvrTheme.text.secondary }]}>
+                          {sectionCompleted}/{sectionTotal}
+                        </Text>
+                        <Icon
+                          name={isSectionExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                          size={22}
+                          color={isCvr ? cvrTheme.text.secondary : themeConfig.text.secondary}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }
+
+              const item = entry.item || entry;
+              const itemIndex = itemIndexMap[item.id] ?? index;
               const isPreviousFailure = failedItemIds.has(item.id);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               const fieldType = getEffectiveItemFieldType(item);
@@ -2704,7 +2830,7 @@ const AuditFormScreen = () => {
                 <View style={styles.itemHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemTitle}>
-                      {index + 1}. {item.title}
+                      {itemIndex + 1}. {item.title}
                       {item.required && <Text style={styles.required}> *</Text>}
                     </Text>
                     {/* Timer display */}
@@ -3463,6 +3589,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: themeConfig.border.default,
     ...themeConfig.shadows.small,
+  },
+  sectionContainer: {
+    marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: themeConfig.borderRadius.medium,
+    backgroundColor: themeConfig.background.default,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: themeConfig.text.primary,
+  },
+  sectionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: themeConfig.text.secondary,
   },
   itemCardPreviousFailure: {
     borderColor: themeConfig.error.main,
