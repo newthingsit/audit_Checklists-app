@@ -31,6 +31,7 @@ const AuditDetailScreen = () => {
   const [items, setItems] = useState([]);
   const [timeStats, setTimeStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [actionPlan, setActionPlan] = useState(null);
 
   useEffect(() => {
     fetchAudit();
@@ -52,6 +53,16 @@ const AuditDetailScreen = () => {
       setAudit(response.data.audit);
       setItems(response.data.items || []);
       setTimeStats(response.data.timeStats || null);
+      
+      // Fetch action plan for completed audits
+      if (response.data.audit.status === 'completed') {
+        try {
+          const actionPlanResponse = await axios.get(`${API_BASE_URL}/audits/${id}/action-plan`);
+          setActionPlan(actionPlanResponse.data);
+        } catch (apError) {
+          console.log('Action plan not available:', apError.message);
+        }
+      }
     } catch (error) {
       console.error('Error fetching audit:', error);
     } finally {
@@ -324,6 +335,51 @@ const AuditDetailScreen = () => {
               <Text style={styles.viewPdfButtonText}>View PDF</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {/* Action Plan - Top 3 Deviations */}
+      {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
+        <View style={styles.actionPlanContainer}>
+          <Text style={styles.actionPlanTitle}>⚠️ Action Plan – Top 3 Deviations</Text>
+          {actionPlan.action_items.map((item, index) => (
+            <View key={item.id} style={styles.actionPlanItem}>
+              <View style={styles.actionPlanHeader}>
+                <Text style={styles.actionPlanNumber}>#{index + 1}</Text>
+                <View style={[
+                  styles.severityBadge, 
+                  { backgroundColor: item.severity === 'Critical' ? '#f44336' : item.severity === 'High' ? '#ff9800' : '#2196f3' }
+                ]}>
+                  <Text style={styles.severityText}>{item.severity}</Text>
+                </View>
+                <View style={[
+                  styles.statusBadgeSmall,
+                  { backgroundColor: item.status === 'CLOSED' ? '#4caf50' : item.status === 'IN_PROGRESS' ? '#2196f3' : '#ff9800' }
+                ]}>
+                  <Text style={styles.statusTextSmall}>{item.status}</Text>
+                </View>
+              </View>
+              
+              <Text style={styles.deviationTitle}>{item.deviation}</Text>
+              
+              <View style={styles.actionPlanDetails}>
+                <View style={styles.actionPlanRow}>
+                  <Text style={styles.actionPlanLabel}>Corrective Action:</Text>
+                  <Text style={styles.actionPlanValue}>{item.corrective_action || '—'}</Text>
+                </View>
+                <View style={styles.actionPlanRow}>
+                  <Text style={styles.actionPlanLabel}>Responsible:</Text>
+                  <Text style={styles.actionPlanValue}>{item.responsible_person || '—'}</Text>
+                </View>
+                <View style={styles.actionPlanRow}>
+                  <Text style={styles.actionPlanLabel}>Target Date:</Text>
+                  <Text style={styles.actionPlanValue}>
+                    {item.target_date ? new Date(item.target_date).toLocaleDateString() : '—'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
         </View>
       )}
 
@@ -930,6 +986,87 @@ const styles = StyleSheet.create({
     color: themeConfig.success.dark,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  // Action Plan styles
+  actionPlanContainer: {
+    backgroundColor: '#fff8e1',
+    borderRadius: themeConfig.borderRadius.large,
+    padding: 15,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: '#ff9800',
+  },
+  actionPlanTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#e65100',
+    marginBottom: 15,
+  },
+  actionPlanItem: {
+    backgroundColor: '#fff',
+    borderRadius: themeConfig.borderRadius.medium,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  actionPlanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  actionPlanNumber: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#666',
+  },
+  severityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  severityText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  statusBadgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginLeft: 'auto',
+  },
+  statusTextSmall: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  deviationTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  actionPlanDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 8,
+  },
+  actionPlanRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  actionPlanLabel: {
+    fontSize: 12,
+    color: '#666',
+    width: 110,
+    fontWeight: '500',
+  },
+  actionPlanValue: {
+    fontSize: 12,
+    color: '#333',
+    flex: 1,
   },
 });
 

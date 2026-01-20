@@ -196,6 +196,10 @@ const createTables = () => {
       db.run(`ALTER TABLE action_items ADD COLUMN escalated_to INTEGER`, () => {});
       db.run(`ALTER TABLE action_items ADD COLUMN escalated_at DATETIME`, () => {});
       
+      // Add severity and corrective_action columns for action plan feature
+      db.run(`ALTER TABLE action_items ADD COLUMN severity TEXT DEFAULT 'Medium'`, () => {});
+      db.run(`ALTER TABLE action_items ADD COLUMN corrective_action TEXT`, () => {});
+      
       // Action Comments table for escalation history tracking
       db.run(`CREATE TABLE IF NOT EXISTS action_comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

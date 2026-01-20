@@ -236,50 +236,156 @@ const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null)
 /**
  * Generate Action Plan with top-3 deviations for a completed audit
  */
-function generateActionPlanWithDeviations(dbInstance, auditId, callback) {
+function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCreate = true) {
   // Get failed items (items with mark = 0 or status = 'failed')
-  dbInstance.all(
-    `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
-            cio.option_text as selected_option_text, cio.mark as selected_mark,
-            ai.comment, ai.photo_url
-     FROM audit_items ai
-     JOIN checklist_items ci ON ai.item_id = ci.id
-     LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-     WHERE ai.audit_id = ?
-       AND (
-         ai.status = 'failed' 
-         OR ai.mark = '0' 
-         OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
-         OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
-       )
-     ORDER BY 
-       CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
-       CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC,
-       ci.category
-     LIMIT 3`,
-    [auditId],
-    (err, failedItems) => {
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // SQL Server doesn't support parseFloat in SQL, use CASE instead
+  const query = isSqlServer
+    ? `SELECT TOP 3 ai.*, ci.title, ci.description, ci.category, ci.is_critical,
+              cio.option_text as selected_option_text, cio.mark as selected_mark,
+              ai.comment, ai.photo_url
+       FROM audit_items ai
+       JOIN checklist_items ci ON ai.item_id = ci.id
+       LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+       WHERE ai.audit_id = ?
+         AND (
+           ai.status = 'failed' 
+           OR ai.mark = '0' 
+           OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
+           OR (ai.mark IS NOT NULL AND TRY_CAST(ai.mark AS FLOAT) = 0)
+         )
+       ORDER BY 
+         CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
+         ci.category`
+    : `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
+              cio.option_text as selected_option_text, cio.mark as selected_mark,
+              ai.comment, ai.photo_url
+       FROM audit_items ai
+       JOIN checklist_items ci ON ai.item_id = ci.id
+       LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+       WHERE ai.audit_id = ?
+         AND (
+           ai.status = 'failed' 
+           OR ai.mark = '0' 
+           OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
+           OR (ai.mark IS NOT NULL AND CAST(ai.mark AS REAL) = 0)
+         )
+       ORDER BY 
+         CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
+         ci.category
+       LIMIT 3`;
+  
+  dbInstance.all(query, [auditId], (err, failedItems) => {
       if (err) {
         return callback(err);
       }
 
-      const deviations = (failedItems || []).map(item => ({
-        item_id: item.item_id,
-        title: item.title,
-        description: item.description,
-        category: item.category,
-        is_critical: item.is_critical,
-        selected_option: item.selected_option_text,
-        mark: item.selected_mark || item.mark,
-        comment: item.comment,
-        photo_url: item.photo_url
-      }));
-
-      callback(null, {
-        audit_id: auditId,
-        deviations: deviations,
-        total_deviations: deviations.length
+      const deviations = (failedItems || []).map(item => {
+        // Determine severity based on is_critical flag
+        const severity = item.is_critical ? 'Critical' : 'Medium';
+        return {
+          item_id: item.item_id,
+          title: item.title,
+          description: item.description,
+          category: item.category,
+          is_critical: item.is_critical,
+          severity: severity,
+          selected_option: item.selected_option_text,
+          mark: item.selected_mark || item.mark,
+          comment: item.comment,
+          photo_url: item.photo_url
+        };
       });
+
+      // Auto-create action items for top 3 deviations if enabled
+      if (autoCreate && deviations.length > 0) {
+        // First check if action items already exist for this audit
+        dbInstance.get(
+          'SELECT COUNT(*) as count FROM action_items WHERE audit_id = ?',
+          [auditId],
+          (countErr, countResult) => {
+            if (countErr) {
+              logger.error('Error checking existing action items:', countErr);
+              // Still return deviations even if we couldn't create action items
+              return callback(null, {
+                audit_id: auditId,
+                deviations: deviations,
+                total_deviations: deviations.length
+              });
+            }
+
+            // Only create action items if none exist yet
+            if (countResult.count === 0) {
+              const insertPromises = deviations.map((deviation, index) => {
+                return new Promise((resolve, reject) => {
+                  // Calculate default due date (7 days from now)
+                  const dueDate = new Date();
+                  dueDate.setDate(dueDate.getDate() + 7);
+                  const dueDateStr = dueDate.toISOString().split('T')[0];
+
+                  dbInstance.run(
+                    `INSERT INTO action_items (audit_id, item_id, title, description, severity, priority, status, due_date)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                      auditId,
+                      deviation.item_id,
+                      deviation.title,
+                      deviation.description || `Deviation in ${deviation.category}`,
+                      deviation.severity,
+                      deviation.is_critical ? 'high' : 'medium',
+                      'OPEN',
+                      dueDateStr
+                    ],
+                    function(insertErr) {
+                      if (insertErr) {
+                        logger.error('Error creating action item:', insertErr);
+                        reject(insertErr);
+                      } else {
+                        logger.info(`[Action Plan] Created action item ${this.lastID} for deviation: ${deviation.title}`);
+                        resolve(this.lastID);
+                      }
+                    }
+                  );
+                });
+              });
+
+              Promise.all(insertPromises)
+                .then(() => {
+                  callback(null, {
+                    audit_id: auditId,
+                    deviations: deviations,
+                    total_deviations: deviations.length,
+                    action_items_created: deviations.length
+                  });
+                })
+                .catch(insertErr => {
+                  // Still return deviations even if insert failed
+                  callback(null, {
+                    audit_id: auditId,
+                    deviations: deviations,
+                    total_deviations: deviations.length
+                  });
+                });
+            } else {
+              // Action items already exist, just return deviations
+              callback(null, {
+                audit_id: auditId,
+                deviations: deviations,
+                total_deviations: deviations.length,
+                action_items_exist: true
+              });
+            }
+          }
+        );
+      } else {
+        callback(null, {
+          audit_id: auditId,
+          deviations: deviations,
+          total_deviations: deviations.length
+        });
+      }
     }
   );
 }
@@ -2625,22 +2731,122 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Audit must be completed to generate action plan' });
     }
 
-    generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
+    // Get action items for this audit (with assigned user info)
+    dbInstance.all(
+      `SELECT ai.*, u.name as assigned_to_name, u.email as assigned_to_email
+       FROM action_items ai
+       LEFT JOIN users u ON ai.assigned_to = u.id
+       WHERE ai.audit_id = ?
+       ORDER BY ai.id ASC`,
+      [auditId],
+      (itemsErr, actionItems) => {
+        if (itemsErr) {
+          logger.error('Error fetching action items:', itemsErr);
+        }
+
+        generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
+          if (err) {
+            logger.error('Error generating action plan:', err);
+            return res.status(500).json({ error: 'Error generating action plan', details: err.message });
+          }
+
+          res.json({
+            audit_id: auditId,
+            restaurant_name: audit.restaurant_name,
+            completed_at: audit.completed_at,
+            score: audit.score,
+            deviations: actionPlan.deviations,
+            total_deviations: actionPlan.total_deviations,
+            action_items: (actionItems || []).map(item => ({
+              id: item.id,
+              item_id: item.item_id,
+              deviation: item.title,
+              severity: item.severity || 'Medium',
+              corrective_action: item.corrective_action || '',
+              responsible_person: item.assigned_to_name || '',
+              responsible_person_id: item.assigned_to,
+              target_date: item.due_date,
+              status: item.status || 'OPEN',
+              priority: item.priority,
+              created_at: item.created_at
+            }))
+          });
+        }, false); // Don't auto-create again since we're just fetching
+      }
+    );
+  });
+});
+
+// Update action item (corrective action, responsible person, target date, status)
+router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
+  const auditId = parseInt(req.params.id, 10);
+  const actionId = parseInt(req.params.actionId, 10);
+  
+  if (isNaN(auditId) || isNaN(actionId)) {
+    return res.status(400).json({ error: 'Invalid ID' });
+  }
+
+  const { corrective_action, responsible_person_id, target_date, status } = req.body;
+  const dbInstance = db.getDb();
+
+  // Verify audit exists and action item belongs to it
+  dbInstance.get(
+    'SELECT ai.* FROM action_items ai WHERE ai.id = ? AND ai.audit_id = ?',
+    [actionId, auditId],
+    (err, actionItem) => {
       if (err) {
-        logger.error('Error generating action plan:', err);
-        return res.status(500).json({ error: 'Error generating action plan', details: err.message });
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (!actionItem) {
+        return res.status(404).json({ error: 'Action item not found' });
       }
 
-      res.json({
-        audit_id: auditId,
-        restaurant_name: audit.restaurant_name,
-        completed_at: audit.completed_at,
-        score: audit.score,
-        deviations: actionPlan.deviations,
-        total_deviations: actionPlan.total_deviations
-      });
-    });
-  });
+      // Build update query dynamically
+      const updates = [];
+      const params = [];
+
+      if (corrective_action !== undefined) {
+        updates.push('corrective_action = ?');
+        params.push(corrective_action);
+      }
+      if (responsible_person_id !== undefined) {
+        updates.push('assigned_to = ?');
+        params.push(responsible_person_id || null);
+      }
+      if (target_date !== undefined) {
+        updates.push('due_date = ?');
+        params.push(target_date || null);
+      }
+      if (status !== undefined) {
+        updates.push('status = ?');
+        params.push(status);
+        // If status is changing to completed/closed, set completed_at
+        if (status === 'CLOSED' || status === 'completed') {
+          updates.push('completed_at = CURRENT_TIMESTAMP');
+        }
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      params.push(actionId);
+
+      dbInstance.run(
+        `UPDATE action_items SET ${updates.join(', ')} WHERE id = ?`,
+        params,
+        function(updateErr) {
+          if (updateErr) {
+            logger.error('Error updating action item:', updateErr);
+            return res.status(500).json({ error: 'Error updating action item' });
+          }
+
+          logger.info(`[Action Item] Updated action item ${actionId} for audit ${auditId}`);
+          res.json({ success: true, message: 'Action item updated' });
+        }
+      );
+    }
+  );
 });
 
 // Delete single audit

@@ -74,10 +74,52 @@ const AuditDetail = () => {
   const [emailSuccess, setEmailSuccess] = useState('');
   const [emailError, setEmailError] = useState('');
   const [error, setError] = useState(null);
+  
+  // Action Plan state
+  const [actionPlan, setActionPlan] = useState(null);
+  const [actionPlanLoading, setActionPlanLoading] = useState(false);
+  const [editingActionId, setEditingActionId] = useState(null);
+  const [actionEditForm, setActionEditForm] = useState({});
+  const [users, setUsers] = useState([]);
 
   useEffect(() => {
     fetchAudit();
+    fetchUsers();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('/api/users');
+      setUsers(response.data.users || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
+  const fetchActionPlan = async (auditId) => {
+    try {
+      setActionPlanLoading(true);
+      const response = await axios.get(`/api/audits/${auditId}/action-plan`);
+      setActionPlan(response.data);
+    } catch (error) {
+      console.error('Error fetching action plan:', error);
+      // Action plan not available is not an error for in-progress audits
+    } finally {
+      setActionPlanLoading(false);
+    }
+  };
+
+  const handleUpdateActionItem = async (actionId) => {
+    try {
+      await axios.put(`/api/audits/${id}/action-items/${actionId}`, actionEditForm);
+      showSuccess('Action item updated successfully!');
+      setEditingActionId(null);
+      fetchActionPlan(id);
+    } catch (error) {
+      console.error('Error updating action item:', error);
+      showError('Error updating action item');
+    }
+  };
 
   const fetchAudit = async () => {
     try {
@@ -113,6 +155,11 @@ const AuditDetail = () => {
       setCategoryScores(auditResponse.data.categoryScores || {});
       setTimeStats(auditResponse.data.timeStats || null);
       setActions(actionsResponse.data.actions || []);
+      
+      // Fetch action plan for completed audits
+      if (auditResponse.data.audit.status === 'completed') {
+        fetchActionPlan(id);
+      }
     } catch (error) {
       console.error('Error fetching audit:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Failed to load audit';
@@ -546,6 +593,159 @@ const AuditDetail = () => {
                 </Grid>
               ))}
             </Grid>
+          </Paper>
+        )}
+
+        {/* Action Plan - Top 3 Deviations */}
+        {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '2px solid', borderColor: 'warning.main', bgcolor: 'warning.light' }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, mb: 3, color: 'warning.dark', display: 'flex', alignItems: 'center', gap: 1 }}>
+              ⚠️ Action Plan – Top 3 Deviations
+            </Typography>
+            
+            <Box sx={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#1a365d', color: 'white' }}>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Deviation</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Severity</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Corrective Action</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '150px' }}>Responsible Person</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '120px' }}>Target Date</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Status</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actionPlan.action_items.map((item, index) => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                      {editingActionId === item.id ? (
+                        <>
+                          <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                            <Chip 
+                              label={item.severity} 
+                              size="small" 
+                              color={item.severity === 'Critical' ? 'error' : item.severity === 'High' ? 'warning' : 'default'}
+                            />
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              multiline
+                              rows={2}
+                              value={actionEditForm.corrective_action || ''}
+                              onChange={(e) => setActionEditForm({ ...actionEditForm, corrective_action: e.target.value })}
+                              placeholder="Enter corrective action..."
+                            />
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <FormControl fullWidth size="small">
+                              <Select
+                                value={actionEditForm.responsible_person_id || ''}
+                                onChange={(e) => setActionEditForm({ ...actionEditForm, responsible_person_id: e.target.value })}
+                                displayEmpty
+                              >
+                                <MenuItem value="">Select Person</MenuItem>
+                                {users.map(user => (
+                                  <MenuItem key={user.id} value={user.id}>{user.name}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <TextField
+                              type="date"
+                              size="small"
+                              value={actionEditForm.target_date || ''}
+                              onChange={(e) => setActionEditForm({ ...actionEditForm, target_date: e.target.value })}
+                              InputLabelProps={{ shrink: true }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <FormControl size="small" sx={{ minWidth: 90 }}>
+                              <Select
+                                value={actionEditForm.status || 'OPEN'}
+                                onChange={(e) => setActionEditForm({ ...actionEditForm, status: e.target.value })}
+                              >
+                                <MenuItem value="OPEN">OPEN</MenuItem>
+                                <MenuItem value="IN_PROGRESS">IN PROGRESS</MenuItem>
+                                <MenuItem value="CLOSED">CLOSED</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <IconButton size="small" color="primary" onClick={() => handleUpdateActionItem(item.id)}>
+                                <CheckCircleIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton size="small" color="error" onClick={() => setEditingActionId(null)}>
+                                <CancelIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                            <Chip 
+                              label={item.severity} 
+                              size="small" 
+                              color={item.severity === 'Critical' ? 'error' : item.severity === 'High' ? 'warning' : 'default'}
+                            />
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'}>
+                              {item.corrective_action || '—'}
+                            </Typography>
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" color={item.responsible_person ? 'text.primary' : 'text.secondary'}>
+                              {item.responsible_person || '—'}
+                            </Typography>
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                            <Typography variant="body2" color={item.target_date ? 'text.primary' : 'text.secondary'}>
+                              {item.target_date ? new Date(item.target_date).toLocaleDateString() : '—'}
+                            </Typography>
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                            <Chip 
+                              label={item.status} 
+                              size="small" 
+                              color={item.status === 'CLOSED' ? 'success' : item.status === 'IN_PROGRESS' ? 'info' : 'warning'}
+                              variant="filled"
+                            />
+                          </td>
+                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                            <IconButton 
+                              size="small" 
+                              onClick={() => {
+                                setEditingActionId(item.id);
+                                setActionEditForm({
+                                  corrective_action: item.corrective_action || '',
+                                  responsible_person_id: item.responsible_person_id || '',
+                                  target_date: item.target_date ? item.target_date.split('T')[0] : '',
+                                  status: item.status || 'OPEN'
+                                });
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Box>
           </Paper>
         )}
 
