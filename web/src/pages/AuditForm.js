@@ -2623,66 +2623,87 @@ const AuditForm = () => {
                       onChange={() => setExpandedSections(prev => ({ ...prev, [sectionData.name]: !isSectionExpanded }))}
                       sx={{
                         mb: 2,
-                        border: 1,
+                        border: isCvr ? 'none' : 1,
+                        boxShadow: isCvr ? 'none' : undefined,
                         borderColor: sectionPercent === 100 ? 'success.main' : 'divider',
-                        '&.Mui-expanded': {
+                        '&.Mui-expanded': !isCvr ? {
                           borderColor: sectionPercent === 100 ? 'success.main' : 'primary.main',
                           boxShadow: 2
-                        }
+                        } : undefined
                       }}
                     >
                       <AccordionSummary
-                        expandIcon={<ExpandMoreIcon />}
+                        expandIcon={<ExpandMoreIcon sx={{ color: isCvr ? cvrTheme.text.secondary : undefined }} />}
                         sx={{
-                          bgcolor: sectionPercent === 100 ? 'success.light' : 'background.paper',
-                          '&.Mui-expanded': {
+                          bgcolor: isCvr ? cvrTheme.background.card : (sectionPercent === 100 ? 'success.light' : 'background.paper'),
+                          borderRadius: isCvr ? 3 : 1,
+                          border: isCvr ? `1px solid ${cvrTheme.input.border}` : 'none',
+                          minHeight: isCvr ? 56 : undefined,
+                          '& .MuiAccordionSummary-content': {
+                            alignItems: 'center',
+                            my: isCvr ? 0 : undefined
+                          },
+                          '&.Mui-expanded': !isCvr ? {
                             bgcolor: sectionPercent === 100 ? 'success.light' : 'primary.light',
-                          }
+                          } : undefined
                         }}
                       >
-                        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
-                            {sectionData.name}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {sectionPercent === 100 && (
-                              <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} />
-                            )}
-                            <Chip
-                              label={`${sectionCompleted}/${sectionTotal}`}
-                              size="small"
-                              color={sectionPercent === 100 ? 'success' : 'default'}
-                              sx={{ height: 24, fontSize: '0.8rem', fontWeight: 600 }}
-                            />
+                        {isCvr ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: cvrTheme.text.primary }}>
+                              {sectionData.name}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: cvrTheme.text.secondary }}>
+                              {sectionCompleted}/{sectionTotal}
+                            </Typography>
                           </Box>
-                        </Box>
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600, flexGrow: 1 }}>
+                              {sectionData.name}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {sectionPercent === 100 && (
+                                <CheckCircleIcon sx={{ fontSize: 20, color: 'success.main' }} />
+                              )}
+                              <Chip
+                                label={`${sectionCompleted}/${sectionTotal}`}
+                                size="small"
+                                color={sectionPercent === 100 ? 'success' : 'default'}
+                                sx={{ height: 24, fontSize: '0.8rem', fontWeight: 600 }}
+                              />
+                            </Box>
+                          </Box>
+                        )}
                       </AccordionSummary>
-                      <AccordionDetails sx={{ bgcolor: 'grey.50', borderTop: '1px solid', borderColor: 'divider', p: 0 }}>
-                        <Box sx={{ p: 2 }}>
+                      <AccordionDetails sx={{ bgcolor: isCvr ? 'transparent' : 'grey.50', borderTop: '1px solid', borderColor: 'divider', p: 0 }}>
+                        <Box sx={{ p: isCvr ? 1.5 : 2 }}>
                           {/* Section Header Controls */}
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<ExpandMoreIcon />}
-                              onClick={() => {
-                                setExpandedSections(prev => ({ ...prev, [sectionData.name]: false }));
-                              }}
-                            >
-                              Collapse Section
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              startIcon={<AddIcon />}
-                              onClick={() => {
-                                // TODO: Implement add new item to section
-                                console.log('Add new item to section:', sectionData.name);
-                              }}
-                            >
-                              Add New Item
-                            </Button>
-                          </Box>
+                          {!isCvr && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<ExpandMoreIcon />}
+                                onClick={() => {
+                                  setExpandedSections(prev => ({ ...prev, [sectionData.name]: false }));
+                                }}
+                              >
+                                Collapse Section
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={() => {
+                                  // TODO: Implement add new item to section
+                                  console.log('Add new item to section:', sectionData.name);
+                                }}
+                              >
+                                Add New Item
+                              </Button>
+                            </Box>
+                          )}
                           
                           {/* Group Time/Sec pairs together */}
                           {(() => {
@@ -2718,10 +2739,10 @@ const AuditForm = () => {
                                     sx={{ 
                                       mb: 2, 
                                       p: 2, 
-                                      bgcolor: 'white', 
-                                      borderRadius: 1, 
+                                      bgcolor: isCvr ? cvrTheme.background.card : 'white', 
+                                      borderRadius: 2, 
                                       border: '1px solid', 
-                                      borderColor: 'divider',
+                                      borderColor: isCvr ? cvrTheme.input.border : 'divider',
                                       boxShadow: 1
                                     }}
                                   >
