@@ -57,7 +57,6 @@ import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import EventIcon from '@mui/icons-material/Event';
 import NumbersIcon from '@mui/icons-material/Numbers';
-import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import DragHandleIcon from '@mui/icons-material/DragHandle';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -587,7 +586,7 @@ const AuditForm = () => {
     if (!allItems?.length) return null;
     const attemptIds = [];
     for (let i = 1; i <= 5; i++) {
-      const it = allItems.find(x => new RegExp('^Time\\s*[–\-]\\s*Attempt\\s*' + i + '$', 'i').test((x.title || '').trim()));
+      const it = allItems.find(x => new RegExp('^Time\\s*[–-]\\s*Attempt\\s*' + i + '$', 'i').test((x.title || '').trim()));
       if (it) attemptIds.push(it.id); else return null;
     }
     const avgIt = allItems.find(x => /^Average\s*\(Auto\)$/i.test((x.title || '').trim()));
@@ -661,11 +660,6 @@ const AuditForm = () => {
   const openSignatureModal = (itemId) => {
     setSignatureItemId(itemId);
     setSignatureModalOpen(true);
-  };
-
-  const closeSignatureModal = () => {
-    setSignatureModalOpen(false);
-    setSignatureItemId(null);
   };
 
   // Unused - kept for future signature functionality
@@ -1233,7 +1227,7 @@ const AuditForm = () => {
         key={item.id} 
         className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''} ${isMissingRequiredPhoto ? 'missing-photo' : ''}`}
         sx={{ 
-          mb: isMobile ? 2 : 2,
+          mb: isMobile ? 2.5 : 2,
           border: isPreviousFailure || isMissingRequiredPhoto ? '2px solid' : '1px solid',
           borderColor: isPreviousFailure 
             ? 'error.main' 
@@ -1244,9 +1238,10 @@ const AuditForm = () => {
           borderLeftColor: isMissingRequiredPhoto ? 'error.main' : 'transparent',
           backgroundColor: isCvr && !isPreviousFailure && !isMissingRequiredPhoto ? cvrTheme.background.card : (isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper'),
           transition: 'border-color 0.2s',
+          borderRadius: isMobile ? 3 : 2
         }}
       >
-        <CardContent sx={{ p: isMobile ? 2 : 3 }}>
+        <CardContent sx={{ p: isMobile ? 2.5 : 3 }}>
           {/* Missing required photo warning */}
           {isMissingRequiredPhoto && (
             <Alert 
@@ -1933,6 +1928,11 @@ const AuditForm = () => {
   }
 
   const isCvr = isCvrTemplate(template?.name);
+  const tabAccent = isCvr ? cvrTheme.accent.purple : theme.palette.primary.main;
+  const tabTextPrimary = isCvr ? cvrTheme.text.primary : theme.palette.text.primary;
+  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : theme.palette.text.secondary;
+  const tabSuccess = isCvr ? cvrTheme.accent.green : theme.palette.success.main;
+  const tabBorder = isCvr ? cvrTheme.input.border : theme.palette.divider;
 
   return (
     <Layout>
@@ -2366,108 +2366,85 @@ const AuditForm = () => {
               {/* Category Switcher (only show if multiple categories) */}
               {categories.length > 1 && (
                 <Box sx={{ mb: 2 }}>
-                  {/* CVR: Horizontal Tabs */}
-                  {isCvr ? (
-                    <Box sx={{ borderBottom: 1, borderColor: cvrTheme.input.border, mb: 2 }}>
-                      <Tabs
-                        value={categories.indexOf(selectedCategory)}
-                        onChange={(e, newValue) => handleCategorySelect(categories[newValue])}
-                        variant="scrollable"
-                        scrollButtons="auto"
-                        sx={{
-                          '& .MuiTabs-indicator': {
-                            backgroundColor: cvrTheme.accent.purple,
-                            height: 3
-                          },
-                          '& .MuiTab-root': {
-                            color: cvrTheme.text.secondary,
-                            textTransform: 'uppercase',
-                            fontSize: '0.75rem',
-                            fontWeight: 500,
-                            minHeight: 48,
-                            '&.Mui-selected': {
-                              color: cvrTheme.text.primary,
-                              fontWeight: 600
-                            }
-                          },
-                          '& .MuiTabs-scrollButtons': {
-                            color: cvrTheme.text.secondary
+                  <Box sx={{ borderBottom: 1, borderColor: tabBorder, mb: 2 }}>
+                    <Tabs
+                      value={selectedCategory ? categories.indexOf(selectedCategory) + 1 : 0}
+                      onChange={(e, newValue) => {
+                        if (newValue === 0) {
+                          setActiveStep(0);
+                          return;
+                        }
+                        handleCategorySelect(categories[newValue - 1]);
+                      }}
+                      variant="scrollable"
+                      scrollButtons="auto"
+                      sx={{
+                        minHeight: 40,
+                        '& .MuiTabs-flexContainer': {
+                          gap: 0.5
+                        },
+                        '& .MuiTabs-indicator': {
+                          backgroundColor: tabAccent,
+                          height: 3
+                        },
+                        '& .MuiTab-root': {
+                          color: tabTextSecondary,
+                          textTransform: 'uppercase',
+                          fontSize: isMobile ? '0.68rem' : '0.72rem',
+                          fontWeight: 500,
+                          minHeight: 40,
+                          minWidth: 'auto',
+                          px: 1.5,
+                          py: 1,
+                          '&.Mui-selected': {
+                            color: tabTextPrimary,
+                            fontWeight: 600
                           }
-                        }}
-                      >
-                        {/* Details Tab (completed) */}
-                        <Tab 
-                          label={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <CheckCircleIcon sx={{ fontSize: 16, color: cvrTheme.accent.green }} />
-                              <span>Details</span>
-                            </Box>
-                          }
-                          onClick={() => setActiveStep(0)}
-                        />
-                        {/* Category Tabs */}
-                        {categories.map((cat, idx) => {
-                          const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
-                          return (
-                            <Tab 
-                              key={cat || `no-category-${idx}`}
-                              label={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  {catStatus.isComplete && (
-                                    <CheckCircleIcon sx={{ fontSize: 14, color: cvrTheme.accent.green }} />
-                                  )}
-                                  <span>{cat.length > 18 ? cat.substring(0, 18) + '...' : cat}</span>
-                                </Box>
-                              }
-                            />
-                          );
-                        })}
-                      </Tabs>
-                    </Box>
-                  ) : (
-                    /* Non-CVR: Original Select dropdown */
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                        Category:
-                      </Typography>
-                      <Select
-                        value={selectedCategory || ''}
-                        onChange={(e) => handleCategorySelect(e.target.value)}
-                        size="small"
-                        sx={{
-                          minWidth: 200,
-                          bgcolor: 'background.paper',
-                          '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: 'primary.main'
-                          }
-                        }}
-                      >
-                        {categories.map((cat, idx) => {
-                          const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
-                          return (
-                            <MenuItem key={cat || `no-category-${idx}`} value={cat}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                <Typography variant="body2">
-                                  {cat || 'Uncategorized'}
-                                </Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
-                                  {catStatus.isComplete && (
-                                    <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} />
-                                  )}
-                                  <Chip 
-                                    label={`${catStatus.completed}/${catStatus.total}`}
-                                    size="small"
-                                    color={catStatus.isComplete ? 'success' : 'default'}
-                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                        },
+                        '& .MuiTabs-scrollButtons': {
+                          color: tabTextSecondary
+                        }
+                      }}
+                    >
+                      {/* Details Tab (completed) */}
+                      <Tab 
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                            <CheckCircleIcon sx={{ fontSize: 16, color: tabSuccess }} />
+                            <span>Details</span>
+                          </Box>
+                        }
+                      />
+                      {/* Category Tabs */}
+                      {categories.map((cat, idx) => {
+                        const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
+                        const isActive = selectedCategory === cat;
+                        return (
+                          <Tab 
+                            key={cat || `no-category-${idx}`}
+                            label={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                {catStatus.isComplete ? (
+                                  <CheckCircleIcon sx={{ fontSize: 14, color: tabSuccess }} />
+                                ) : (
+                                  <Box
+                                    sx={{
+                                      width: 10,
+                                      height: 10,
+                                      borderRadius: '50%',
+                                      border: `1px solid ${tabTextSecondary}`,
+                                      backgroundColor: isActive ? tabAccent : 'transparent'
+                                    }}
                                   />
-                                </Box>
+                                )}
+                                <span>{cat.length > 18 ? cat.substring(0, 18) + '...' : cat}</span>
                               </Box>
-                            </MenuItem>
-                          );
-                        })}
-                      </Select>
-                    </Box>
-                  )}
+                            }
+                          />
+                        );
+                      })}
+                    </Tabs>
+                  </Box>
                   
                   {/* Overall Audit Summary - Only for non-CVR (CVR shows tabs instead) */}
                   {!isCvr && (() => {

@@ -1970,6 +1970,10 @@ const AuditFormScreen = () => {
   }).length;
 
   const isCvr = isCvrTemplate(template?.name);
+  const tabAccent = isCvr ? cvrTheme.accent.purple : themeConfig.primary.main;
+  const tabTextPrimary = isCvr ? cvrTheme.text.primary : themeConfig.text.primary;
+  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : themeConfig.text.secondary;
+  const tabSuccess = isCvr ? cvrTheme.accent.green : themeConfig.success.main;
 
   return (
     <View style={[styles.container, isCvr && { backgroundColor: cvrTheme.background.primary }]}>
@@ -2516,8 +2520,8 @@ const AuditFormScreen = () => {
       {currentStep === 2 && (
         <View style={styles.container}>
           <View style={[styles.progressBar, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
-            {/* CVR Horizontal Category Tabs */}
-            {isCvr && categories.length > 1 ? (
+            {/* Horizontal Category Tabs (all templates) */}
+            {categories.length > 1 && (
               <View style={{ marginBottom: 12 }}>
                 <ScrollView 
                   horizontal 
@@ -2533,8 +2537,8 @@ const AuditFormScreen = () => {
                     onPress={() => setCurrentStep(0)}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Icon name="check-circle" size={16} color={cvrTheme.accent.green} style={{ marginRight: 4 }} />
-                      <Text style={[styles.cvrCategoryTabText, { color: cvrTheme.text.secondary }]}>Details</Text>
+                      <Icon name="check-circle" size={16} color={tabSuccess} style={{ marginRight: 4 }} />
+                      <Text style={[styles.cvrCategoryTabText, { color: tabTextSecondary }]}>Details</Text>
                     </View>
                   </TouchableOpacity>
                   
@@ -2549,83 +2553,41 @@ const AuditFormScreen = () => {
                           styles.cvrCategoryTab,
                           isActive && styles.cvrCategoryTabActive
                         ]}
-                        onPress={() => {
-                          setSelectedCategory(cat);
-                          // Filter items for this category
-                          const categoryItems = items.filter(item => {
-                            if (!item.category) return cat === 'Uncategorized';
-                            return item.category === cat || item.category.startsWith(cat + ' - ');
-                          });
-                          setFilteredItems(categoryItems);
-                        }}
+                        onPress={() => handleCategorySelect(cat)}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {catStatus.isComplete && (
-                            <Icon name="check-circle" size={14} color={cvrTheme.accent.green} style={{ marginRight: 4 }} />
+                          {catStatus.isComplete ? (
+                            <Icon name="check-circle" size={14} color={tabSuccess} style={{ marginRight: 4 }} />
+                          ) : (
+                            <View
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 5,
+                                borderWidth: 1,
+                                borderColor: tabTextSecondary,
+                                backgroundColor: isActive ? tabAccent : 'transparent',
+                                marginRight: 6
+                              }}
+                            />
                           )}
                           <Text 
                             style={[
                               styles.cvrCategoryTabText,
-                              isActive && styles.cvrCategoryTabTextActive
+                              { color: tabTextSecondary },
+                              isActive && { color: tabTextPrimary, fontWeight: '600' }
                             ]}
                             numberOfLines={1}
                           >
                             {cat.length > 15 ? cat.substring(0, 15) + '...' : cat}
                           </Text>
                         </View>
-                        {isActive && <View style={styles.cvrCategoryTabIndicator} />}
+                        {isActive && <View style={[styles.cvrCategoryTabIndicator, { backgroundColor: tabAccent }]} />}
                       </TouchableOpacity>
                     );
                   })}
                 </ScrollView>
               </View>
-            ) : (
-              /* Non-CVR: Original Category Switcher */
-              categories.length > 1 && (
-                <View style={styles.categorySwitcherContainer}>
-                  <Text style={styles.categorySwitcherLabel}>Category:</Text>
-                  <TouchableOpacity
-                    style={styles.categorySwitcherButton}
-                    onPress={() => {
-                      // Allow viewing different categories even in completed audits
-                      setCurrentStep(1);
-                    }}
-                  >
-                    <Text style={styles.categorySwitcherText}>
-                      {selectedCategory || 'Select Category'}
-                    </Text>
-                    <Icon name="arrow-drop-down" size={20} color={themeConfig.primary.main} />
-                  </TouchableOpacity>
-                  
-                  {/* Overall Audit Summary */}
-                  {(() => {
-                    const totalCompleted = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.completed, 0);
-                    const totalItems = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.total, 0);
-                    const completedCategories = Object.values(categoryCompletionStatus).filter(s => s.isComplete).length;
-                    const overallPercent = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0;
-                    
-                    return (
-                      <View style={styles.overallProgressContainer}>
-                        <View style={styles.overallProgressHeader}>
-                          <Text style={styles.overallProgressLabel}>Overall Progress</Text>
-                          <Text style={styles.overallProgressPercent}>{overallPercent}%</Text>
-                        </View>
-                        <View style={styles.overallProgressBar}>
-                          <View 
-                            style={[
-                              styles.overallProgressFill, 
-                              { width: `${overallPercent}%` }
-                            ]} 
-                          />
-                        </View>
-                        <Text style={styles.overallProgressText}>
-                          {totalCompleted} / {totalItems} items • {completedCategories} / {categories.length} categories
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                </View>
-              )
             )}
             
             {/* Current Category Progress */}
