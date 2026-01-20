@@ -43,7 +43,10 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 - **When** `isCvrTemplate(template?.name)`:
   - **Container:** `cvrTheme.background.primary`
   - **Details (Step 0):** "OUTLET (Required)", Search, dark input; **Save Draft** (purple text); **Next** (purple gradient)
-  - **Checklist (Step 2):** **Submit** / **Close** (purple gradient); **short_answer**: "Response", "Type Here"; **Photo** on all Yes/No/NA (option) items (purple icon/label); **Remarks** (purple label, dark input); **signature**: existing flow unchanged
+  - **Category Selection (Step 1):** Dark CVR-themed category cards; purple progress bars; purple gradient Next button; Save Draft button
+  - **Checklist (Step 2):**
+    - **Horizontal Category Tabs:** Scrollable tabs at top with "Details" (green checkmark) + category tabs (QUALITY, SERVICE, etc.); purple underline indicator on active tab; green checkmarks for completed categories
+    - **Submit** / **Close** (purple gradient); **short_answer**: "Response", "Type Here"; **Photo** on all Yes/No/NA (option) items (purple icon/label); **Remarks** (purple label, dark input); **signature**: existing flow unchanged
   - **Item cards:** Dark card background when CVR
 
 ### 2.3 ScheduledAuditsScreen
@@ -65,8 +68,10 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
   - **Container:** `cvrTheme.background.primary`
   - **Title, Stepper:** Light text
   - **Step 0 (Details):** Paper `cvrTheme.background.card`; "OUTLET (Required)" Autocomplete with dark input; **Save Draft** (purple, toast); **Next** (purple gradient)
-  - **Step 1 (Select Category):** Dark card paper
-  - **Step 2 (Checklist):** Progress Paper dark; item **Cards** `cvrTheme.background.card`; **Remarks** label and dark input; **Photo** on `image_upload` and on option (Yes/No/NA) items, purple styling; **short_answer** "Response", "Type Here", dark input
+  - **Step 1 (Select Category):** Dark CVR-themed category cards and accordions; purple progress bars and accents; purple gradient Next button; Save Draft button
+  - **Step 2 (Checklist):**
+    - **Horizontal Category Tabs (MUI Tabs):** Scrollable tabs with "Details" (green checkmark) + category tabs; purple underline indicator on active tab; green checkmarks for completed categories; replaces dropdown Select for CVR templates
+    - Progress Paper dark; item **Cards** `cvrTheme.background.card`; **Remarks** label and dark input; **Photo** on `image_upload` and on option (Yes/No/NA) items, purple styling; **short_answer** "Response", "Type Here", dark input
 
 ### 3.3 ScheduledAudits.js
 
@@ -124,8 +129,12 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 
 - [ ] Import `CVR_3_CDR_Plan.csv` as "CVR 3 – (CDR) Plan" (web)
 - [ ] Mobile: New audit with CVR 3 → dark screen, OUTLET, Save Draft, Next (gradient)
+- [ ] Mobile: Category Selection → dark CVR cards, purple progress bars, Save Draft, purple gradient Next
+- [ ] Mobile: Checklist → **Horizontal category tabs** (Details ✓, QUALITY, SERVICE, etc.); tap to switch categories
 - [ ] Mobile: Checklist → Photo & Remarks on Yes/No/NA items; short_answer "Type Here"; Manager on Duty, Signature
 - [ ] Mobile: Scheduled CVR with due today → "Due 11:59 PM" on card
+- [ ] Web: Category Selection → dark CVR cards/accordions, purple progress bars, Save Draft, purple gradient Next
+- [ ] Web: Checklist → **Horizontal category tabs** (Details ✓, QUALITY, SERVICE, etc.); click to switch categories
 - [ ] Web: Same flows for CVR 3 (dark form, OUTLET, Save Draft, Next, Remarks, Photo, short_answer, CVR cards, Due chip)
 
 ---
