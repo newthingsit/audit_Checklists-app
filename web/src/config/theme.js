@@ -296,28 +296,63 @@ export const getPriorityColor = (priority) => {
 
 export const cvrTheme = {
   background: {
-    primary: '#19193C',
-    card: '#27274E',
-    elevated: '#2D2D5A',
+    primary: '#1A1A2E',      // Deep navy background
+    secondary: '#16213E',    // Slightly lighter navy
+    card: '#1F1F3D',         // Card background - darker for better contrast
+    elevated: '#252550',     // Elevated elements
+    itemCard: '#252550',     // Individual item card background
   },
   text: {
     primary: '#FFFFFF',
-    secondary: '#B0B0C8',
-    placeholder: '#8A8AA8',
+    secondary: '#A0A0C0',
+    muted: '#7878A0',
+    placeholder: '#6060A0',
   },
   accent: {
-    purple: '#8A72F6',
+    purple: '#7C5DFA',       // Main accent purple
+    purpleLight: '#9D7FFF',
     purpleGradient: 'linear-gradient(135deg, #6B48FF 0%, #9D62FF 100%)',
-    green: '#4CAF50',
-    due: '#EAA000',
+    green: '#00D68F',        // Success/checkmark green
+    greenLight: '#00E09F',
+    orange: '#FF9500',       // Due/warning orange
+    red: '#FF5252',          // Error/required red
   },
   input: {
-    bg: '#27274E',
+    bg: '#2A2A4E',           // Input field background
+    bgFocused: '#303060',
     border: '#3D3D6B',
+    borderFocused: '#7C5DFA',
+    placeholder: '#6060A0',
   },
   button: {
     next: 'linear-gradient(135deg, #6B48FF 0%, #9D62FF 100%)',
-    saveDraft: '#8A72F6',
+    nextHover: 'linear-gradient(135deg, #5B38EF 0%, #8D52EF 100%)',
+    saveDraft: '#7C5DFA',
+    outline: '#7C5DFA',
+  },
+  progress: {
+    track: '#2A2A4E',
+    bar: '#7C5DFA',
+    barComplete: '#00D68F',
+    text: '#FFFFFF',
+    textSecondary: '#A0A0C0',
+  },
+  chip: {
+    required: '#FF5252',
+    requiredBg: 'rgba(255, 82, 82, 0.15)',
+    category: '#7C5DFA',
+    categoryBg: 'rgba(124, 93, 250, 0.15)',
+  },
+  section: {
+    headerBg: '#1F1F3D',
+    headerBorder: '#3D3D6B',
+    contentBg: 'transparent',
+  },
+  tab: {
+    active: '#7C5DFA',
+    inactive: '#6060A0',
+    indicator: '#7C5DFA',
+    completedIcon: '#00D68F',
   },
 };
 

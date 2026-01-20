@@ -1096,19 +1096,19 @@ const AuditForm = () => {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon sx={{ color: 'success.main' }} />;
+        return <CheckCircleIcon sx={{ color: isCvr ? cvrTheme.accent.green : 'success.main' }} />;
       case 'failed':
-        return <CancelIcon sx={{ color: 'error.main' }} />;
+        return <CancelIcon sx={{ color: isCvr ? cvrTheme.accent.red : 'error.main' }} />;
       case 'warning':
-        return <WarningIcon sx={{ color: 'warning.main' }} />;
+        return <WarningIcon sx={{ color: isCvr ? cvrTheme.accent.orange : 'warning.main' }} />;
       case 'pending':
         return <Box sx={{ 
           width: 24, 
           height: 24, 
           borderRadius: '50%', 
           border: '2px solid', 
-          borderColor: 'text.disabled',
-          bgcolor: 'grey.100'
+          borderColor: isCvr ? cvrTheme.input.border : 'text.disabled',
+          bgcolor: isCvr ? cvrTheme.input.bg : 'grey.100'
         }} />;
       default:
         return <Box sx={{ 
@@ -1116,8 +1116,8 @@ const AuditForm = () => {
           height: 24, 
           borderRadius: '50%', 
           border: '2px solid', 
-          borderColor: 'text.disabled',
-          bgcolor: 'grey.100'
+          borderColor: isCvr ? cvrTheme.input.border : 'text.disabled',
+          bgcolor: isCvr ? cvrTheme.input.bg : 'grey.100'
         }} />;
     }
   };
@@ -1247,6 +1247,7 @@ const AuditForm = () => {
     const inputType = getNormalizedInputType(item);
     const isMissingRequiredPhoto = item.required && inputType === 'image_upload' && !photos[item.id];
     const failureInfo = previousFailures.find(f => f.item_id === item.id);
+    const isItemAnswered = selectedOptions[item.id] || (inputValues[item.id] && inputValues[item.id].trim());
     
     return (
       <Card 
@@ -1254,17 +1255,26 @@ const AuditForm = () => {
         className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''} ${isMissingRequiredPhoto ? 'missing-photo' : ''}`}
         sx={{ 
           mb: isMobile ? 2.5 : 2,
-          border: isPreviousFailure || isMissingRequiredPhoto ? '2px solid' : '1px solid',
-          borderColor: isPreviousFailure 
-            ? 'error.main' 
-            : isMissingRequiredPhoto
-            ? 'error.main'
-            : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
-          borderLeft: isMissingRequiredPhoto ? '4px solid' : 'none',
-          borderLeftColor: isMissingRequiredPhoto ? 'error.main' : 'transparent',
-          backgroundColor: isCvr && !isPreviousFailure && !isMissingRequiredPhoto ? cvrTheme.background.card : (isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper'),
-          transition: 'border-color 0.2s',
-          borderRadius: isMobile ? 3 : 2
+          border: isCvr ? `1px solid ${cvrTheme.input.border}` : (isPreviousFailure || isMissingRequiredPhoto ? '2px solid' : '1px solid'),
+          borderColor: isCvr 
+            ? (isItemAnswered ? cvrTheme.accent.green : cvrTheme.input.border)
+            : (isPreviousFailure 
+                ? 'error.main' 
+                : isMissingRequiredPhoto
+                  ? 'error.main'
+                  : (isItemAnswered ? 'primary.main' : 'divider')),
+          borderLeft: isMissingRequiredPhoto && !isCvr ? '4px solid' : undefined,
+          borderLeftColor: isMissingRequiredPhoto && !isCvr ? 'error.main' : undefined,
+          backgroundColor: isCvr 
+            ? cvrTheme.background.itemCard 
+            : (isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper'),
+          transition: 'all 0.2s ease',
+          borderRadius: isCvr ? 3 : (isMobile ? 3 : 2),
+          boxShadow: isCvr ? 'none' : undefined,
+          '&:hover': isCvr ? {
+            borderColor: cvrTheme.accent.purple,
+            boxShadow: `0 0 0 1px ${cvrTheme.accent.purple}30`
+          } : undefined
         }}
       >
         <CardContent sx={{ p: isMobile ? 2.5 : 3 }}>
@@ -1348,16 +1358,17 @@ const AuditForm = () => {
               variant="h6" 
               sx={{ 
                 flexGrow: 1, 
-                fontSize: isMobile ? '1rem' : '1.25rem',
+                fontSize: isMobile ? '1rem' : '1.1rem',
                 display: 'flex',
                 flexWrap: 'wrap',
                 alignItems: 'center',
-                gap: 1
+                gap: 1,
+                color: isCvr ? cvrTheme.text.primary : 'text.primary'
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <Box>
-                  <span style={{ fontWeight: 600 }}>{index + 1}.</span> <span style={isCvr ? { color: cvrTheme.text.primary } : {}}>{item.title}</span>
+                  <span style={{ fontWeight: 700, color: isCvr ? cvrTheme.accent.purple : undefined }}>{index + 1}.</span> <span style={{ fontWeight: 600, color: isCvr ? cvrTheme.text.primary : undefined }}>{item.title}</span>
                   {/* Timer display */}
                   {itemStartTimes[item.id] && (
                     <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
@@ -1378,8 +1389,17 @@ const AuditForm = () => {
                 <Chip 
                   label="Required" 
                   size="small" 
-                  color="error" 
-                  sx={{ fontSize: '0.65rem', height: 20 }} 
+                  color={isCvr ? 'default' : 'error'}
+                  sx={{ 
+                    fontSize: '0.65rem', 
+                    height: 20,
+                    fontWeight: 600,
+                    ...(isCvr && {
+                      bgcolor: cvrTheme.chip.requiredBg,
+                      color: cvrTheme.chip.required,
+                      border: `1px solid ${cvrTheme.chip.required}40`
+                    })
+                  }} 
                 />
               )}
             </Typography>
@@ -1393,15 +1413,31 @@ const AuditForm = () => {
             </Box>
           </Box>
           {item.description && (
-            <Typography variant="body2" color="text.secondary" paragraph>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: isCvr ? cvrTheme.text.secondary : 'text.secondary',
+                mb: 1.5
+              }}
+            >
               {item.description}
             </Typography>
           )}
           <Chip
             label={item.category}
             size="small"
-            sx={{ mb: 2 }}
-            color="primary"
+            sx={{ 
+              mb: 2,
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              ...(isCvr && {
+                bgcolor: cvrTheme.chip.categoryBg,
+                color: cvrTheme.chip.category,
+                border: `1px solid ${cvrTheme.chip.category}40`,
+                '& .MuiChip-label': { px: 1.5 }
+              })
+            }}
+            color={isCvr ? 'default' : 'primary'}
             variant="outlined"
           />
           {/* Render input based on input_type */}
@@ -1592,7 +1628,27 @@ const AuditForm = () => {
                   value={inputValues[item.id] || ''}
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
-                  sx={{ mt: 2, mb: 1, ...(isCvr && { '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary } }) }}
+                  sx={{ 
+                    mt: 2, 
+                    mb: 1, 
+                    ...(isCvr && { 
+                      '& .MuiOutlinedInput-root': { 
+                        bgcolor: cvrTheme.input.bg, 
+                        color: cvrTheme.text.primary,
+                        '& fieldset': { borderColor: cvrTheme.input.border },
+                        '&:hover fieldset': { borderColor: cvrTheme.input.borderFocused },
+                        '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.purple }
+                      },
+                      '& .MuiInputLabel-root': { 
+                        color: cvrTheme.text.muted,
+                        '&.Mui-focused': { color: cvrTheme.accent.purple }
+                      },
+                      '& .MuiOutlinedInput-input::placeholder': { 
+                        color: cvrTheme.input.placeholder,
+                        opacity: 1
+                      }
+                    }) 
+                  }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1740,16 +1796,25 @@ const AuditForm = () => {
             
             // Option select - show options if available
             if ((inputType === 'option_select' || inputType === 'auto') && item.options && item.options.length > 0) {
+              const isSelected = (optionId) => selectedOptions[item.id] === optionId;
               return (
                 <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-                  <FormLabel component="legend" sx={{ mb: 1, fontWeight: 600, fontSize: isMobile ? '0.9rem' : '1rem' }}>
-                    Select Option:
+                  <FormLabel 
+                    component="legend" 
+                    sx={{ 
+                      mb: 1, 
+                      fontWeight: 600, 
+                      fontSize: isMobile ? '0.9rem' : '1rem',
+                      color: isCvr ? cvrTheme.text.secondary : undefined
+                    }}
+                  >
+                    {isCvr ? 'Response' : 'Select Option:'}
                   </FormLabel>
                   <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
                     {item.options.map((option) => (
                       <Button
                         key={option.id}
-                        variant={selectedOptions[item.id] === option.id ? 'contained' : 'outlined'}
+                        variant={isSelected(option.id) ? 'contained' : 'outlined'}
                         fullWidth
                         onClick={() => handleOptionChange(item.id, option.id)}
                         disabled={auditStatus === 'completed'}
@@ -1761,13 +1826,22 @@ const AuditForm = () => {
                           alignItems: 'center',
                           textTransform: 'none',
                           minHeight: isMobile ? 56 : 48,
-                          border: selectedOptions[item.id] === option.id ? '2px solid' : '1px solid',
-                          borderColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'divider',
-                          backgroundColor: selectedOptions[item.id] === option.id ? 'primary.main' : 'transparent',
-                          color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
+                          borderRadius: isCvr ? 2 : 1,
+                          border: isSelected(option.id) ? '2px solid' : '1px solid',
+                          borderColor: isCvr 
+                            ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.input.border)
+                            : (isSelected(option.id) ? 'primary.main' : 'divider'),
+                          backgroundColor: isCvr
+                            ? (isSelected(option.id) ? `${cvrTheme.accent.green}20` : cvrTheme.input.bg)
+                            : (isSelected(option.id) ? 'primary.main' : 'transparent'),
+                          color: isCvr
+                            ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.text.primary)
+                            : (isSelected(option.id) ? 'white' : 'text.primary'),
                           '&:hover': {
-                            borderColor: 'primary.main',
-                            backgroundColor: selectedOptions[item.id] === option.id ? 'primary.dark' : 'action.hover'
+                            borderColor: isCvr ? cvrTheme.accent.purple : 'primary.main',
+                            backgroundColor: isCvr
+                              ? (isSelected(option.id) ? `${cvrTheme.accent.green}30` : cvrTheme.input.bgFocused)
+                              : (isSelected(option.id) ? 'primary.dark' : 'action.hover')
                           },
                           '&:active': {
                             transform: 'scale(0.98)',
@@ -1777,8 +1851,9 @@ const AuditForm = () => {
                         <Typography 
                           variant="body1" 
                           sx={{ 
-                            fontWeight: selectedOptions[item.id] === option.id ? 600 : 400,
-                            fontSize: isMobile ? '1rem' : '1rem'
+                            fontWeight: isSelected(option.id) ? 600 : 400,
+                            fontSize: isMobile ? '1rem' : '1rem',
+                            color: 'inherit'
                           }}
                         >
                           {option.option_text}
@@ -1789,10 +1864,18 @@ const AuditForm = () => {
                           sx={{
                             ml: 1,
                             minWidth: 40,
-                            backgroundColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                            color: selectedOptions[item.id] === option.id ? 'white' : 'text.primary',
-                            border: selectedOptions[item.id] === option.id ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
-                            borderColor: selectedOptions[item.id] === option.id ? 'rgba(255,255,255,0.3)' : 'divider',
+                            backgroundColor: isCvr
+                              ? (isSelected(option.id) ? `${cvrTheme.accent.green}30` : 'transparent')
+                              : (isSelected(option.id) ? 'rgba(255,255,255,0.2)' : 'transparent'),
+                            color: isCvr
+                              ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.text.secondary)
+                              : (isSelected(option.id) ? 'white' : 'text.primary'),
+                            border: isCvr
+                              ? `1px solid ${isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.input.border}`
+                              : (isSelected(option.id) ? '1px solid rgba(255,255,255,0.3)' : '1px solid'),
+                            borderColor: isCvr
+                              ? undefined
+                              : (isSelected(option.id) ? 'rgba(255,255,255,0.3)' : 'divider'),
                             fontWeight: 600
                           }}
                         />
@@ -1856,7 +1939,27 @@ const AuditForm = () => {
             multiline
             rows={2}
             size="small"
-            sx={{ mb: 2, mt: 2, ...(isCvr && { '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary } }) }}
+            sx={{ 
+              mb: 2, 
+              mt: 2, 
+              ...(isCvr && { 
+                '& .MuiOutlinedInput-root': { 
+                  bgcolor: cvrTheme.input.bg, 
+                  color: cvrTheme.text.primary,
+                  '& fieldset': { borderColor: cvrTheme.input.border },
+                  '&:hover fieldset': { borderColor: cvrTheme.input.borderFocused },
+                  '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.purple }
+                },
+                '& .MuiInputLabel-root': { 
+                  color: cvrTheme.text.muted,
+                  '&.Mui-focused': { color: cvrTheme.accent.purple }
+                },
+                '& .MuiOutlinedInput-input::placeholder': { 
+                  color: cvrTheme.input.placeholder,
+                  opacity: 1
+                }
+              }) 
+            }}
             disabled={auditStatus === 'completed'}
           />
 
@@ -1953,24 +2056,36 @@ const AuditForm = () => {
     );
   }
 
-  const tabAccent = isCvr ? cvrTheme.accent.purple : theme.palette.primary.main;
+  const tabAccent = isCvr ? cvrTheme.tab.active : theme.palette.primary.main;
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : theme.palette.text.primary;
-  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : theme.palette.text.secondary;
-  const tabSuccess = isCvr ? cvrTheme.accent.green : theme.palette.success.main;
+  const tabTextSecondary = isCvr ? cvrTheme.tab.inactive : theme.palette.text.secondary;
+  const tabSuccess = isCvr ? cvrTheme.tab.completedIcon : theme.palette.success.main;
   const tabBorder = isCvr ? cvrTheme.input.border : theme.palette.divider;
 
   return (
     <Layout>
-      <Container maxWidth="md" sx={{ ...(isCvr && { bgcolor: cvrTheme.background.primary, color: cvrTheme.text.primary }) }}>
+      <Container 
+        maxWidth="md" 
+        sx={{ 
+          ...(isCvr && { 
+            bgcolor: cvrTheme.background.primary, 
+            color: cvrTheme.text.primary,
+            minHeight: '100vh',
+            py: 3,
+            px: { xs: 2, md: 3 }
+          }) 
+        }}
+      >
         <Typography 
           variant="h4" 
           gutterBottom 
           sx={{ 
-            fontWeight: 600, 
+            fontWeight: 700, 
             color: isCvr ? cvrTheme.text.primary : '#333', 
             mb: 3,
-            fontSize: isMobile ? '1.25rem' : '2rem',
-            lineHeight: 1.3
+            fontSize: isMobile ? '1.25rem' : '1.75rem',
+            lineHeight: 1.3,
+            letterSpacing: '-0.02em'
           }}
         >
           {isEditing ? 'Resume Audit' : 'New Audit'}: {template?.name}
@@ -1978,7 +2093,25 @@ const AuditForm = () => {
 
         <Stepper 
           activeStep={activeStep} 
-          sx={{ mt: 3, mb: 4, ...(isCvr && { '& .MuiStepLabel-label': { color: cvrTheme.text.secondary } }) }}
+          sx={{ 
+            mt: 3, 
+            mb: 4, 
+            ...(isCvr && { 
+              '& .MuiStepLabel-label': { 
+                color: cvrTheme.text.secondary,
+                '&.Mui-active': { color: cvrTheme.text.primary, fontWeight: 600 },
+                '&.Mui-completed': { color: cvrTheme.accent.green }
+              },
+              '& .MuiStepIcon-root': {
+                color: cvrTheme.input.border,
+                '&.Mui-active': { color: cvrTheme.accent.purple },
+                '&.Mui-completed': { color: cvrTheme.accent.green }
+              },
+              '& .MuiStepConnector-line': {
+                borderColor: cvrTheme.input.border
+              }
+            }) 
+          }}
           orientation={isMobile ? 'vertical' : 'horizontal'}
           alternativeLabel={!isMobile}
         >
@@ -1996,8 +2129,16 @@ const AuditForm = () => {
         )}
 
         {activeStep === 0 && (
-          <Paper sx={{ p: isMobile ? 2 : 3, ...(isCvr && { bgcolor: cvrTheme.background.card }) }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', ...(isCvr && { color: cvrTheme.text.primary }) }}>
+          <Paper sx={{ 
+            p: isMobile ? 2 : 3, 
+            ...(isCvr && { 
+              bgcolor: cvrTheme.background.card,
+              border: `1px solid ${cvrTheme.input.border}`,
+              borderRadius: 3,
+              boxShadow: 'none'
+            }) 
+          }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', fontWeight: 600, ...(isCvr && { color: cvrTheme.text.primary }) }}>
               {isCvr ? 'Details' : 'Store Information'}
             </Typography>
             
@@ -2101,8 +2242,16 @@ const AuditForm = () => {
         )}
 
         {activeStep === 1 && categories.length > 1 && (
-          <Paper sx={{ p: isMobile ? 2 : 3, ...(isCvr && { bgcolor: cvrTheme.background.card }) }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', ...(isCvr && { color: cvrTheme.text.primary }) }}>
+          <Paper sx={{ 
+            p: isMobile ? 2 : 3, 
+            ...(isCvr && { 
+              bgcolor: cvrTheme.background.card,
+              border: `1px solid ${cvrTheme.input.border}`,
+              borderRadius: 3,
+              boxShadow: 'none'
+            }) 
+          }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', fontWeight: 600, ...(isCvr && { color: cvrTheme.text.primary }) }}>
               Select Category
             </Typography>
             <Typography variant="body2" sx={{ mb: 3, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
@@ -2376,12 +2525,15 @@ const AuditForm = () => {
                 p: 2, 
                 mb: 2, 
                 bgcolor: isCvr ? cvrTheme.background.card : 'info.light',
+                border: isCvr ? `1px solid ${cvrTheme.input.border}` : 'none',
+                borderRadius: isCvr ? 3 : 1,
+                boxShadow: isCvr ? 'none' : undefined,
                 ...(isCvr && { color: cvrTheme.text.primary }),
                 ...(isMobile && {
                   position: 'sticky',
                   top: 64,
                   zIndex: 100,
-                  borderRadius: 0,
+                  borderRadius: isCvr ? 0 : 0,
                   mx: -2,
                   width: 'calc(100% + 32px)',
                 })
@@ -2539,7 +2691,14 @@ const AuditForm = () => {
               {/* Current Category Progress */}
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content', color: isCvr ? cvrTheme.text.primary : undefined }}>
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      fontWeight: 600, 
+                      minWidth: 'fit-content', 
+                      color: isCvr ? cvrTheme.progress.text : 'text.primary' 
+                    }}
+                  >
                     {completedItems} / {itemsToDisplay.length}
                     {selectedCategory && !isCvr && ` (${selectedCategory})`}
                   </Typography>
@@ -2550,14 +2709,23 @@ const AuditForm = () => {
                       flex: 1, 
                       height: 8, 
                       borderRadius: 4,
-                      bgcolor: isCvr ? cvrTheme.input.border : 'rgba(255,255,255,0.5)',
+                      bgcolor: isCvr ? cvrTheme.progress.track : 'rgba(255,255,255,0.5)',
                       '& .MuiLinearProgress-bar': {
                         borderRadius: 4,
-                        bgcolor: isCvr ? cvrTheme.accent.purple : undefined
+                        bgcolor: isCvr 
+                          ? ((completedItems / itemsToDisplay.length) === 1 ? cvrTheme.progress.barComplete : cvrTheme.progress.bar)
+                          : undefined
                       }
                     }}
                   />
-                  <Typography variant="body2" sx={{ color: 'info.dark', fontWeight: 500, minWidth: 'fit-content' }}>
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      color: isCvr ? cvrTheme.accent.green : 'info.dark', 
+                      fontWeight: 600, 
+                      minWidth: 'fit-content' 
+                    }}
+                  >
                     {Math.round((completedItems / itemsToDisplay.length) * 100)}%
                   </Typography>
                 </Box>
@@ -2574,12 +2742,26 @@ const AuditForm = () => {
                     return (
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
                         {missingRequired.length > 0 && (
-                          <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: isCvr ? cvrTheme.accent.orange : 'error.main', 
+                              fontSize: '0.75rem',
+                              fontWeight: 500
+                            }}
+                          >
                             ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
                           </Typography>
                         )}
                         {itemsNeedingPhotos.length > 0 && (
-                          <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.7rem' }}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: isCvr ? cvrTheme.accent.orange : 'error.main', 
+                              fontSize: '0.75rem',
+                              fontWeight: 500
+                            }}
+                          >
                             📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
                           </Typography>
                         )}
@@ -2625,7 +2807,18 @@ const AuditForm = () => {
                 return !responses[item.id] || responses[item.id] === 'pending';
               });
               return missingRequired.length > 0 ? (
-                <Alert severity="info" sx={{ mb: 2 }}>
+                <Alert 
+                  severity="info" 
+                  sx={{ 
+                    mb: 2,
+                    ...(isCvr && {
+                      bgcolor: `${cvrTheme.accent.purple}15`,
+                      color: cvrTheme.text.primary,
+                      border: `1px solid ${cvrTheme.accent.purple}40`,
+                      '& .MuiAlert-icon': { color: cvrTheme.accent.purple }
+                    })
+                  }}
+                >
                   ℹ️ You have {missingRequired.length} required item(s) remaining. You can save your progress and resume later.
                 </Alert>
               ) : null;
@@ -2648,9 +2841,12 @@ const AuditForm = () => {
                       onChange={() => setExpandedSections(prev => ({ ...prev, [sectionData.name]: !isSectionExpanded }))}
                       sx={{
                         mb: 2,
-                        border: isCvr ? 'none' : 1,
+                        border: isCvr ? `1px solid ${cvrTheme.section.headerBorder}` : 1,
+                        borderRadius: isCvr ? 3 : 1,
                         boxShadow: isCvr ? 'none' : undefined,
-                        borderColor: sectionPercent === 100 ? 'success.main' : 'divider',
+                        borderColor: isCvr ? cvrTheme.section.headerBorder : (sectionPercent === 100 ? 'success.main' : 'divider'),
+                        bgcolor: isCvr ? cvrTheme.section.headerBg : undefined,
+                        '&:before': { display: 'none' },
                         '&.Mui-expanded': !isCvr ? {
                           borderColor: sectionPercent === 100 ? 'success.main' : 'primary.main',
                           boxShadow: 2
@@ -2660,14 +2856,17 @@ const AuditForm = () => {
                       <AccordionSummary
                         expandIcon={<ExpandMoreIcon sx={{ color: isCvr ? cvrTheme.text.secondary : undefined }} />}
                         sx={{
-                          bgcolor: isCvr ? cvrTheme.background.card : (sectionPercent === 100 ? 'success.light' : 'background.paper'),
-                          borderRadius: isCvr ? 3 : 1,
-                          border: isCvr ? `1px solid ${cvrTheme.input.border}` : 'none',
+                          bgcolor: isCvr ? cvrTheme.section.headerBg : (sectionPercent === 100 ? 'success.light' : 'background.paper'),
+                          borderRadius: isCvr ? 2 : 1,
                           minHeight: isCvr ? 56 : undefined,
+                          px: isCvr ? 2 : undefined,
                           '& .MuiAccordionSummary-content': {
                             alignItems: 'center',
-                            my: isCvr ? 0 : undefined
+                            my: isCvr ? 1 : undefined
                           },
+                          '&:hover': isCvr ? {
+                            bgcolor: cvrTheme.background.elevated
+                          } : undefined,
                           '&.Mui-expanded': !isCvr ? {
                             bgcolor: sectionPercent === 100 ? 'success.light' : 'primary.light',
                           } : undefined
@@ -2701,8 +2900,13 @@ const AuditForm = () => {
                           </Box>
                         )}
                       </AccordionSummary>
-                      <AccordionDetails sx={{ bgcolor: isCvr ? 'transparent' : 'grey.50', borderTop: '1px solid', borderColor: 'divider', p: 0 }}>
-                        <Box sx={{ p: isCvr ? 1.5 : 2 }}>
+                      <AccordionDetails sx={{ 
+                        bgcolor: isCvr ? cvrTheme.section.contentBg : 'grey.50', 
+                        borderTop: isCvr ? 'none' : '1px solid', 
+                        borderColor: isCvr ? 'transparent' : 'divider', 
+                        p: 0 
+                      }}>
+                        <Box sx={{ p: isCvr ? 2 : 2, pt: isCvr ? 1 : 2 }}>
                           {/* Section Header Controls */}
                           {!isCvr && (
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>

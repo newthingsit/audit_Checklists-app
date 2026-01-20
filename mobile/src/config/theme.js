@@ -308,33 +308,74 @@ export const getPriorityColor = (priority) => {
 // Matches reference: dark navy background, purple accents, orange Due badge, green checkmarks
 
 export const cvrTheme = {
-  // Dark backgrounds
+  // Dark backgrounds - matching web theme
   background: {
-    primary: '#19193C',      // Main screen
-    card: '#27274E',         // Cards, input fields
-    elevated: '#2D2D5A',     // Slightly lighter for headers
+    primary: '#1A1A2E',      // Deep navy background
+    secondary: '#16213E',    // Slightly lighter navy
+    card: '#1F1F3D',         // Card background - darker for better contrast
+    elevated: '#252550',     // Elevated elements
+    itemCard: '#252550',     // Individual item card background
   },
   // Text
   text: {
     primary: '#FFFFFF',
-    secondary: '#B0B0C8',
-    placeholder: '#8A8AA8',
+    secondary: '#A0A0C0',
+    muted: '#7878A0',
+    placeholder: '#6060A0',
   },
   // Accents
   accent: {
-    purple: '#8A72F6',       // Active tab, Photo/Remarks, Next button
+    purple: '#7C5DFA',       // Main accent purple
+    purpleLight: '#9D7FFF',
     purpleGradient: ['#6B48FF', '#9D62FF'],
-    green: '#4CAF50',        // Completed checkmarks
-    due: '#EAA000',          // Due 11:59 PM pill (amber/orange)
+    green: '#00D68F',        // Success/checkmark green
+    greenLight: '#00E09F',
+    orange: '#FF9500',       // Due/warning orange
+    due: '#FF9500',          // Alias for orange (backward compat)
+    red: '#FF5252',          // Error/required red
   },
-  // Components
+  // Input components
   input: {
-    bg: '#27274E',
+    bg: '#2A2A4E',           // Input field background
+    bgFocused: '#303060',
     border: '#3D3D6B',
+    borderFocused: '#7C5DFA',
+    placeholder: '#6060A0',
   },
+  // Buttons
   button: {
     next: ['#6B48FF', '#9D62FF'],  // Gradient for Next/Submit
-    saveDraft: '#8A72F6',
+    nextHover: ['#5B38EF', '#8D52EF'],
+    saveDraft: '#7C5DFA',
+    outline: '#7C5DFA',
+  },
+  // Progress bar
+  progress: {
+    track: '#2A2A4E',
+    bar: '#7C5DFA',
+    barComplete: '#00D68F',
+    text: '#FFFFFF',
+    textSecondary: '#A0A0C0',
+  },
+  // Chips/badges
+  chip: {
+    required: '#FF5252',
+    requiredBg: 'rgba(255, 82, 82, 0.15)',
+    category: '#7C5DFA',
+    categoryBg: 'rgba(124, 93, 250, 0.15)',
+  },
+  // Section headers
+  section: {
+    headerBg: '#1F1F3D',
+    headerBorder: '#3D3D6B',
+    contentBg: 'transparent',
+  },
+  // Tabs
+  tab: {
+    active: '#7C5DFA',
+    inactive: '#6060A0',
+    indicator: '#7C5DFA',
+    completedIcon: '#00D68F',
   },
 };
 
