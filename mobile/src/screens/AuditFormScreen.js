@@ -2022,9 +2022,9 @@ const AuditFormScreen = () => {
             )}
           </View>
 
-          {/* Picture (Required) */}
+          {/* Picture (Optional) */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Picture (Required)</Text>
+            <Text style={styles.label}>Picture (Optional)</Text>
             <View style={styles.pictureContainer}>
               {infoPictures.map((picture, index) => (
                 <View key={index} style={styles.pictureThumbnail}>

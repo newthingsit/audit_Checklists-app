@@ -1173,6 +1173,7 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     
     const descIdx = headers.findIndex(h => h === 'description' || h === 'desc');
     const catIdx = headers.findIndex(h => h === 'category' || h === 'cat');
+    const subcatIdx = headers.findIndex(h => h === 'subcategory' || h === 'subcat' || h === 'sub_category');
     const secIdx = headers.findIndex(h => h === 'section' || h === 'sec');
     const typeIdx = headers.findIndex(h => h === 'input_type' || h === 'type' || h === 'field_type');
     const reqIdx = headers.findIndex(h => h === 'required' || h === 'req');
@@ -1206,10 +1207,26 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
       const reqVal = reqIdx !== -1 ? values[reqIdx]?.toLowerCase().trim() : 'yes';
       const critVal = critIdx !== -1 ? values[critIdx]?.toLowerCase().trim() : 'no';
       
+      // Get category and subcategory, combine if both exist
+      let itemCategory = catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || '' : '';
+      const subCategory = subcatIdx !== -1 ? values[subcatIdx]?.replace(/^"|"$/g, '').trim() || '' : '';
+      
+      // Combine category and subcategory: "CATEGORY (Subcategory)" format
+      if (itemCategory && subCategory) {
+        itemCategory = `${itemCategory} (${subCategory})`;
+      } else if (!itemCategory && subCategory) {
+        itemCategory = subCategory;
+      }
+      
+      // Use template category as fallback
+      if (!itemCategory) {
+        itemCategory = category || '';
+      }
+      
       items.push({
         title,
         description: descIdx !== -1 ? values[descIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
-        category: catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || category || '' : category || '',
+        category: itemCategory,
         section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
         input_type: typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
         required: reqVal === 'yes' || reqVal === 'true' || reqVal === '1',

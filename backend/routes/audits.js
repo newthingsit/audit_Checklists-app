@@ -70,7 +70,8 @@ const validateInfoStepNotes = (notes) => {
   const pointsDiscussed = String(parsed.pointsDiscussed || '').trim();
   const infoPictures = Array.isArray(parsed.infoPictures) ? parsed.infoPictures : [];
 
-  if (!attendees || !pointsDiscussed || infoPictures.length === 0) {
+  // Only require attendees and pointsDiscussed - pictures are optional
+  if (!attendees || !pointsDiscussed) {
     return {
       error: 'Info step data is incomplete',
       details: {
