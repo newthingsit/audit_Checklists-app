@@ -65,10 +65,6 @@ const AuditFormScreen = () => {
   const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
   const [expandedSections, setExpandedSections] = useState({}); // Track which sections are expanded (e.g., Trnx-1)
   
-  // Time tracking state
-  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when each item was started
-  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for each item in seconds
-  
   // GPS Location state
   const { getCurrentLocation, permissionGranted, settings: locationSettings, calculateDistance } = useLocation();
   const [capturedLocation, setCapturedLocation] = useState(null);
@@ -158,24 +154,6 @@ const AuditFormScreen = () => {
 
     return unsubscribe;
   }, [navigation, auditId, scheduledAuditId, templateId]);
-
-  // Timer effect: Update elapsed times every second for items being tracked
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setItemElapsedTimes(prev => {
-        const updated = { ...prev };
-        Object.keys(itemStartTimes).forEach(itemId => {
-          if (itemStartTimes[itemId]) {
-            const elapsed = Math.floor((Date.now() - itemStartTimes[itemId]) / 1000);
-            updated[itemId] = elapsed;
-          }
-        });
-        return updated;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [itemStartTimes]);
 
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
@@ -570,25 +548,12 @@ const AuditFormScreen = () => {
     }
   }, [responses, selectedOptions, comments, selectedCategory, selectedSection, items, filterItemsByCondition]);
 
-  // Start tracking time for an item when user first interacts with it
-  const startTrackingTime = useCallback((itemId) => {
-    if (auditStatus === 'completed') return;
-    setItemStartTimes(prev => {
-      // Only start tracking if not already tracking
-      if (!prev[itemId]) {
-        return { ...prev, [itemId]: Date.now() };
-      }
-      return prev;
-    });
-  }, [auditStatus]);
-
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    startTrackingTime(itemId);
     setResponses(prev => {
       const updated = { ...prev, [itemId]: status };
       // Recalculate category completion after state update
@@ -622,7 +587,6 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    startTrackingTime(itemId);
     setSelectedOptions(prev => ({ ...prev, [itemId]: optionId }));
     setResponses(prev => {
       const updated = { ...prev, [itemId]: 'completed' };
@@ -665,7 +629,6 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    startTrackingTime(itemId);
     setMultipleSelections(prev => {
       const currentSelections = prev[itemId] || [];
       let newSelections;
@@ -766,7 +729,6 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    startTrackingTime(itemId);
     setComments(prev => {
       const next = { ...prev, [itemId]: value };
       const sos = getSosAverageItems(items);
@@ -914,7 +876,6 @@ const AuditFormScreen = () => {
 
   // Optimized photo upload handler
   const handlePhotoUpload = useCallback(async (itemId) => {
-    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
@@ -1301,131 +1262,13 @@ const AuditFormScreen = () => {
 
   const handleNext = async () => {
     if (currentStep === 0) {
-      // Validate required fields
+      // Validate required fields - only outlet is required
       if (!locationId || !selectedLocation) {
         Alert.alert('Error', 'Please select an outlet');
         return;
       }
-      if (infoPictures.length === 0) {
-        Alert.alert('Error', 'Please add at least one picture');
-        return;
-      }
       
-      // Upload info pictures if they haven't been uploaded yet
-      let uploadedPictureUrls = [];
-      if (infoPictures.length > 0) {
-        try {
-          setSaving(true);
-          const authToken = axios.defaults.headers.common['Authorization'];
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:830',message:'Info pictures upload start',data:{pictureCount:infoPictures.length,hasAuthToken:!!authToken,authTokenLength:authToken?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'K'})}).catch(()=>{});
-          // #endregion
-          
-          for (let i = 0; i < infoPictures.length; i++) {
-            const picture = infoPictures[i];
-            // Handle both object format { uri: ... } and string format
-            const pictureUri = typeof picture === 'string' ? picture : (picture?.uri || '');
-            const uriString = String(pictureUri);
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:836',message:'Processing picture',data:{index:i+1,total:infoPictures.length,pictureUri:uriString,isFileUri:uriString.startsWith('file://'),isHttpUri:uriString.startsWith('http')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'L'})}).catch(()=>{});
-            // #endregion
-            
-            // Skip local file paths that haven't been uploaded yet - they need to be uploaded
-            if (uriString.startsWith('file://')) {
-              // Upload the local picture - use the original URI from picture object, not converted string
-              const formData = new FormData();
-              const fileName = `info_picture_${Date.now()}_${Math.random()}.jpg`;
-              // Use the original URI (not the stringified version) to ensure proper file access
-              const fileUri = typeof picture === 'string' ? picture : picture?.uri;
-              formData.append('photo', {
-                uri: fileUri,
-                type: 'image/jpeg',
-                name: fileName,
-              });
-              
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:842',message:'FormData created for upload',data:{fileName,fileUri,formDataParts:formData._parts?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'M'})}).catch(()=>{});
-              // #endregion
-              
-              const responseData = await uploadPhotoWithRetry(formData, authToken);
-              if (responseData?.photo_url) {
-                uploadedPictureUrls.push(responseData.photo_url);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:850',message:'Picture upload success',data:{index:i+1,photoUrl:responseData.photo_url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'N'})}).catch(()=>{});
-                // #endregion
-              } else {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:850',message:'Picture upload missing photo_url',data:{index:i+1,responseData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'N2'})}).catch(()=>{});
-                // #endregion
-              }
-            } else if (uriString.startsWith('http://') || uriString.startsWith('https://')) {
-              // Already a full URL - extract path from URL
-              try {
-                const urlObj = new URL(uriString);
-                uploadedPictureUrls.push(urlObj.pathname);
-              } catch (e) {
-                // If URL parsing fails, try to extract path manually
-                const pathMatch = uriString.match(/\/uploads\/[^?]+/);
-                uploadedPictureUrls.push(pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, ''));
-              }
-            } else {
-              // Already a server path - use as-is
-              uploadedPictureUrls.push(uriString.startsWith('/') ? uriString : `/${uriString}`);
-            }
-          }
-          setSaving(false);
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:867',message:'Info pictures upload complete',data:{uploadedCount:uploadedPictureUrls.length,totalCount:infoPictures.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'O'})}).catch(()=>{});
-          // #endregion
-        } catch (uploadError) {
-          setSaving(false);
-          console.error('Error uploading info pictures:', uploadError);
-          
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:868',message:'Info pictures upload error',data:{errorName:uploadError?.name,errorMessage:uploadError?.message,errorType:uploadError?.type,uploadedCount:uploadedPictureUrls.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'P'})}).catch(()=>{});
-          // #endregion
-          
-          Alert.alert('Error', 'Failed to upload pictures. Please try again.');
-          return;
-        }
-      }
-      
-      // Store info fields in notes (will be saved to backend when submitting)
-      const infoData = {
-        pictures: uploadedPictureUrls,
-      };
-      setNotes(JSON.stringify(infoData));
-      
-      // Update infoPictures with uploaded URLs for display
-      if (uploadedPictureUrls.length > 0) {
-        const baseUrl = API_BASE_URL.replace('/api', '');
-        const updatedPictures = uploadedPictureUrls.map(url => {
-          if (url.startsWith('http')) {
-            return { uri: url };
-          } else if (url.startsWith('/')) {
-            return { uri: `${baseUrl}${url}` };
-          } else {
-            return { uri: `${baseUrl}/${url}` };
-          }
-        });
-        setInfoPictures(updatedPictures);
-      }
-      
-      // If no categories or only one category, skip category selection
-      if (categories.length <= 1) {
-        setCurrentStep(2);
-      } else {
-        setCurrentStep(1);
-      }
-    } else if (currentStep === 1) {
-      // Category selection step - proceed to checklist
-      if (!selectedCategory) {
-        Alert.alert('Error', 'Please select a category');
-        return;
-      }
+      // Go directly to audit checklist (skip category selection)
       setCurrentStep(2);
     }
   };
@@ -1753,19 +1596,6 @@ const AuditFormScreen = () => {
           } else {
             // Path without /, add it
             updateData.photo_url = `/${photoUrl}`;
-          }
-        }
-
-        // Add time tracking data if available
-        if (itemStartTimes[item.id]) {
-          const startTime = itemStartTimes[item.id];
-          const elapsedSeconds = itemElapsedTimes[item.id] || Math.floor((Date.now() - startTime) / 1000);
-          const timeTakenMinutes = elapsedSeconds > 0 ? (elapsedSeconds / 60).toFixed(2) : null;
-          
-          if (timeTakenMinutes) {
-            updateData.time_taken_minutes = parseFloat(timeTakenMinutes);
-            // Convert start time to ISO string for backend
-            updateData.started_at = new Date(startTime).toISOString();
           }
         }
 
@@ -2118,62 +1948,7 @@ const AuditFormScreen = () => {
             )}
           </View>
 
-          {/* Picture (Optional) */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Picture (Optional)</Text>
-            <View style={styles.pictureContainer}>
-              {infoPictures.map((picture, index) => (
-                <View key={index} style={styles.pictureThumbnail}>
-                  <Image source={{ uri: picture.uri }} style={styles.thumbnailImage} />
-                  {auditStatus !== 'completed' && (
-                    <TouchableOpacity
-                      style={styles.removePictureButton}
-                      onPress={() => {
-                        const newPictures = infoPictures.filter((_, i) => i !== index);
-                        setInfoPictures(newPictures);
-                      }}
-                      disabled={auditStatus === 'completed'}
-                    >
-                      <Icon name="close" size={16} color="#fff" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-              {infoPictures.length < 10 && auditStatus !== 'completed' && (
-                <TouchableOpacity
-                  style={styles.addPictureButton}
-                  onPress={async () => {
-                    if (auditStatus === 'completed') return;
-                    try {
-                      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                      if (status !== 'granted') {
-                        Alert.alert('Permission needed', 'Please grant camera roll permissions');
-                        return;
-                      }
-                      const result = await ImagePicker.launchImageLibraryAsync({
-                        mediaTypes: ['images'],
-                        allowsEditing: false,
-                        quality: 0.3,
-                        exif: false,
-                        base64: false,
-                      });
-                      if (!result.canceled && result.assets[0]) {
-                        setInfoPictures([...infoPictures, { uri: result.assets[0].uri }]);
-                      }
-                    } catch (error) {
-                      console.error('Error picking image:', error);
-                      Alert.alert('Error', 'Failed to pick image');
-                    }
-                  }}
-                  disabled={auditStatus === 'completed'}
-                >
-                  <Icon name="add" size={32} color={themeConfig.primary.main} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* GPS Location Capture (Hidden but still functional) */}
+          {/* GPS Location Capture */}
           <View style={styles.inputGroup}>
             <LocationCaptureButton
               onCapture={(location) => {
@@ -2343,269 +2118,7 @@ const AuditFormScreen = () => {
         </View>
       </Modal>
 
-      {currentStep === 1 && (
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={{ marginBottom: 20 }}>
-            <Text style={[styles.title, isCvr && { color: cvrTheme.text.primary }]}>Select Category</Text>
-            <Text style={[styles.subtitle, isCvr && { color: cvrTheme.text.secondary }]}>{template?.name}</Text>
-            <Text style={{ fontSize: 14, color: isCvr ? cvrTheme.text.secondary : themeConfig.text.secondary, marginTop: 8 }}>
-              Choose a category to start auditing items
-            </Text>
-          </View>
-          
-          {groupedCategories.length > 0 ? (
-            groupedCategories.map((group, groupIndex) => {
-              const hasSubCategories = group.subCategories.length > 1 || (group.subCategories.length === 1 && group.subCategories[0].displayName !== group.name);
-              const groupStatus = {
-                completed: group.completedItems,
-                total: group.totalItems,
-                isComplete: group.completedItems === group.totalItems && group.totalItems > 0
-              };
-              const isExpanded = expandedGroups[group.name] || false;
-
-              // If only one sub-category and it's the same as the group, render as simple card
-              if (!hasSubCategories) {
-                const subCat = group.subCategories[0];
-                const status = categoryCompletionStatus[subCat.fullName] || { completed: subCat.completedCount, total: subCat.itemCount, isComplete: subCat.isComplete };
-                return (
-              <TouchableOpacity
-                    key={group.name}
-                    style={[
-                      styles.categoryCard,
-                      isCvr && { backgroundColor: cvrTheme.background.card, borderColor: cvrTheme.input.border },
-                      selectedCategory === subCat.fullName && styles.categoryCardSelected,
-                      selectedCategory === subCat.fullName && isCvr && { borderColor: cvrTheme.accent.purple },
-                      status.isComplete && styles.categoryCardCompleted
-                    ]}
-                    onPress={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.categoryCardContent}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                            <Text style={[styles.categoryName, isCvr && { color: cvrTheme.text.primary }]}>{group.name}</Text>
-                            {status.isComplete && (
-                              <Icon name="check-circle" size={20} color={isCvr ? cvrTheme.accent.green : "#4caf50"} style={{ marginLeft: 8 }} />
-                            )}
-                          </View>
-                          <Text style={[styles.categoryCount, isCvr && { color: cvrTheme.text.secondary }]}>
-                            {status.completed} / {status.total} items completed
-                          </Text>
-                          <View style={[styles.categoryCardProgressBar, isCvr && { backgroundColor: cvrTheme.input.border }]}>
-                            <View 
-                              style={[
-                                styles.categoryCardProgressFill, 
-                                { 
-                                  width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
-                                  backgroundColor: status.isComplete ? (isCvr ? cvrTheme.accent.green : themeConfig.success.main) : (isCvr ? cvrTheme.accent.purple : themeConfig.primary.main)
-                                }
-                              ]} 
-                            />
-            </View>
-                          <Text style={[styles.categoryProgressPercent, isCvr && { color: cvrTheme.text.secondary }]}>
-                            {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
-                          </Text>
-          </View>
-        </View>
-            </View>
-                    {selectedCategory === subCat.fullName && !status.isComplete && (
-                      <Icon name="check-circle" size={28} color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
-                    )}
-                    {!selectedCategory || selectedCategory !== subCat.fullName ? (
-                      <Icon name="chevron-right" size={24} color={isCvr ? cvrTheme.text.secondary : themeConfig.text.disabled} />
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              }
-
-              // Render as collapsible group for categories with multiple sub-categories
-              return (
-                <View key={group.name} style={[styles.categoryGroupContainer, isCvr && { borderColor: cvrTheme.input.border }]}>
-                <TouchableOpacity
-                    style={[
-                      styles.categoryGroupHeader,
-                      isCvr && { backgroundColor: cvrTheme.background.card },
-                      groupStatus.isComplete && styles.categoryCardCompleted
-                    ]}
-                    onPress={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !isExpanded }))}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                      <Icon 
-                        name={isExpanded ? "keyboard-arrow-down" : "keyboard-arrow-right"} 
-                        size={24} 
-                        color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} 
-                        style={{ marginRight: 8 }}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                          <Text style={[styles.categoryName, isCvr && { color: cvrTheme.text.primary }]}>{group.name}</Text>
-                          {groupStatus.isComplete && (
-                            <Icon name="check-circle" size={20} color={isCvr ? cvrTheme.accent.green : "#4caf50"} style={{ marginLeft: 8 }} />
-                    )}
-                  </View>
-                        <Text style={[styles.categoryCount, isCvr && { color: cvrTheme.text.secondary }]}>
-                          {groupStatus.completed} / {groupStatus.total} items completed
-                        </Text>
-          </View>
-        </View>
-                  </TouchableOpacity>
-                  
-                  {isExpanded && (
-                    <View style={[styles.categoryGroupContent, isCvr && { backgroundColor: cvrTheme.background.primary }]}>
-                      {group.subCategories.map((subCat, subIndex) => {
-                        const status = categoryCompletionStatus[subCat.fullName] || { completed: subCat.completedCount, total: subCat.itemCount, isComplete: subCat.isComplete };
-                        const isSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
-                        return (
-                          <TouchableOpacity
-                            key={subCat.fullName + (subCat.section || '')}
-                            style={[
-                              styles.categorySubCard,
-                              isCvr && { backgroundColor: cvrTheme.background.card, borderColor: cvrTheme.input.border },
-                              isSelected && styles.categoryCardSelected,
-                              isSelected && isCvr && { borderColor: cvrTheme.accent.purple },
-                              status.isComplete && styles.categoryCardCompleted
-                            ]}
-                            onPress={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
-                            activeOpacity={0.7}
-                          >
-                            <View style={styles.categoryCardContent}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                <View style={{ flex: 1 }}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                                    <Text style={[styles.categoryName, { fontSize: 15 }, isCvr && { color: cvrTheme.text.primary }]}>{subCat.displayName}</Text>
-                                    {status.isComplete && (
-                                      <Icon name="check-circle" size={18} color={isCvr ? cvrTheme.accent.green : "#4caf50"} style={{ marginLeft: 8 }} />
-                                    )}
-            </View>
-                                  <Text style={[styles.categoryCount, { fontSize: 13 }, isCvr && { color: cvrTheme.text.secondary }]}>
-                                    {status.completed} / {status.total} items
-                                  </Text>
-                                  <View style={[styles.categoryCardProgressBar, { height: 4 }, isCvr && { backgroundColor: cvrTheme.input.border }]}>
-                                    <View 
-                                      style={[
-                                        styles.categoryCardProgressFill, 
-                                        { 
-                                          width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
-                                          backgroundColor: status.isComplete ? (isCvr ? cvrTheme.accent.green : themeConfig.success.main) : (isCvr ? cvrTheme.accent.purple : themeConfig.primary.main)
-                                        }
-                                      ]} 
-            />
-          </View>
-        </View>
-          </View>
-                            </View>
-                            {isSelected && !status.isComplete && (
-                              <Icon name="check-circle" size={24} color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
-                            )}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          ) : (
-            // Fallback to flat list if no grouped categories
-            categories.map((category, index) => {
-            const categoryItems = items.filter(item => item.category === category);
-            const status = categoryCompletionStatus[category] || { completed: 0, total: categoryItems.length, isComplete: false };
-            return (
-              <TouchableOpacity
-                key={category || `no-category-${index}`}
-                style={[
-                  styles.categoryCard,
-                  isCvr && { backgroundColor: cvrTheme.background.card, borderColor: cvrTheme.input.border },
-                  selectedCategory === category && styles.categoryCardSelected,
-                  selectedCategory === category && isCvr && { borderColor: cvrTheme.accent.purple },
-                  status.isComplete && styles.categoryCardCompleted
-                ]}
-                onPress={() => handleCategorySelect(category)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.categoryCardContent}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                      <Text style={[styles.categoryName, isCvr && { color: cvrTheme.text.primary }]}>{category || 'Uncategorized'}</Text>
-                          {status.isComplete && (
-                            <Icon name="check-circle" size={20} color={isCvr ? cvrTheme.accent.green : "#4caf50"} style={{ marginLeft: 8 }} />
-                          )}
-                        </View>
-                      <Text style={[styles.categoryCount, isCvr && { color: cvrTheme.text.secondary }]}>
-                          {status.completed} / {status.total} items completed
-                      </Text>
-                        <View style={[styles.categoryCardProgressBar, isCvr && { backgroundColor: cvrTheme.input.border }]}>
-                          <View 
-                            style={[
-                              styles.categoryCardProgressFill, 
-                              { 
-                                width: `${status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}%`,
-                                backgroundColor: status.isComplete ? (isCvr ? cvrTheme.accent.green : themeConfig.success.main) : (isCvr ? cvrTheme.accent.purple : themeConfig.primary.main)
-                              }
-                            ]} 
-                          />
-                    </View>
-                        <Text style={[styles.categoryProgressPercent, isCvr && { color: cvrTheme.text.secondary }]}>
-                          {status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0}% complete
-                        </Text>
-                      </View>
-                  </View>
-                </View>
-                {selectedCategory === category && !status.isComplete && (
-                  <Icon name="check-circle" size={28} color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
-                )}
-                {!selectedCategory || selectedCategory !== category ? (
-                  <Icon name="chevron-right" size={24} color={isCvr ? cvrTheme.text.secondary : themeConfig.text.disabled} />
-                ) : null}
-              </TouchableOpacity>
-            );
-            })
-          )}
-          
-          <View style={[styles.buttonRow, isCvr && { justifyContent: 'space-between' }]}>
-            <TouchableOpacity
-              style={[styles.button, styles.buttonSecondary, isCvr && { borderColor: cvrTheme.accent.purple }]}
-              onPress={() => setCurrentStep(0)}
-            >
-              <Text style={[styles.buttonText, styles.buttonTextSecondary, isCvr && { color: cvrTheme.accent.purple }]}>Back</Text>
-            </TouchableOpacity>
-            {isCvr && auditStatus !== 'completed' && (
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary, { borderColor: cvrTheme.accent.purple }]}
-                onPress={() => {
-                  Alert.alert('Draft Saved', 'Your draft has been saved');
-                }}
-                disabled={saving}
-              >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary, { color: cvrTheme.accent.purple }]}>Save Draft</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.button, !selectedCategory && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
-              onPress={() => {
-                if (selectedCategory) {
-                  setCurrentStep(2);
-                }
-              }}
-              disabled={!selectedCategory}
-            >
-              {isCvr ? (
-                <LinearGradient colors={cvrTheme.button.next} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 }}>
-                  <Text style={[styles.buttonText, { color: '#fff' }]}>{auditStatus === 'completed' ? 'View Category' : 'Next'}</Text>
-                </LinearGradient>
-              ) : (
-                <Text style={styles.buttonText}>
-                  {auditStatus === 'completed' ? 'View Category' : 'Next: Start Audit'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      )}
-
+      {/* Step 2: Audit Checklist (directly after Store Information, no category selection) */}
       {currentStep === 2 && (
         <View style={styles.container}>
           <View style={[styles.progressBar, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
@@ -2833,20 +2346,6 @@ const AuditFormScreen = () => {
                       {itemIndex + 1}. {item.title}
                       {item.required && <Text style={styles.required}> *</Text>}
                     </Text>
-                    {/* Timer display */}
-                    {itemStartTimes[item.id] && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                        <Icon name="timer" size={14} color={themeConfig.text.secondary} />
-                        <Text style={{ fontSize: 12, color: themeConfig.text.secondary, marginLeft: 4 }}>
-                          {(() => {
-                            const elapsed = itemElapsedTimes[item.id] || 0;
-                            const minutes = Math.floor(elapsed / 60);
-                            const seconds = elapsed % 60;
-                            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                          })()}
-                        </Text>
-                      </View>
-                    )}
                   </View>
                   {getStatusIcon(responses[item.id])}
                 </View>

@@ -53,8 +53,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import FolderIcon from '@mui/icons-material/Folder';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+// FolderIcon and FolderOpenIcon removed - no longer used (category selection step removed)
 import EventIcon from '@mui/icons-material/Event';
 import NumbersIcon from '@mui/icons-material/Numbers';
 import AddIcon from '@mui/icons-material/Add';
@@ -111,149 +110,15 @@ const AuditForm = () => {
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const signatureRef = useRef(null);
   
-  // Category selection state
+  // Category selection state (categories still used for filtering/grouping in checklist view)
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [selectedSection, setSelectedSection] = useState(null); // Track selected section within a category
   const [categories, setCategories] = useState([]);
   
-  // Time tracking state
-  const [itemStartTimes, setItemStartTimes] = useState({}); // Track when each item was started
-  const [itemElapsedTimes, setItemElapsedTimes] = useState({}); // Track elapsed time for each item in seconds
   const [filteredItems, setFilteredItems] = useState([]);
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
-  const [expandedGroups, setExpandedGroups] = useState({}); // Track which category groups are expanded
   const [expandedSections, setExpandedSections] = useState({}); // Track which sections are expanded (e.g., Trnx-1, Trnx-2)
 
-  // Helper function to group categories by their parent (e.g., "SERVICE (Speed of Service)" -> parent: "SERVICE")
-  // Also handles sections within categories (e.g., items with section="Trnx-1" under "SPEED OF SERVICE - TRACKING")
-  const groupCategories = useCallback((categoryList, itemsList) => {
-    const groups = {};
-    
-    // Define known parent category patterns
-    const parentPatterns = [
-      { pattern: /^SERVICE\s*[-–]\s*/i, parent: 'SERVICE' },
-      { pattern: /^SERVICE\s*\(/i, parent: 'SERVICE' },
-      { pattern: /^HYGIENE\s*(AND|&)\s*CLEANLINESS/i, parent: 'HYGIENE & CLEANLINESS' },
-      { pattern: /^SPEED\s*OF\s*SERVICE/i, parent: 'SPEED OF SERVICE' },
-      { pattern: /^QUALITY/i, parent: 'QUALITY' },
-      { pattern: /^PROCESSES/i, parent: 'PROCESSES' },
-    ];
-    
-    categoryList.forEach(category => {
-      if (!category) return;
-      
-      let parentName = null;
-      let subCategoryName = category;
-      
-      // Try to match with known patterns
-      for (const { pattern, parent } of parentPatterns) {
-        if (pattern.test(category)) {
-          parentName = parent;
-          // Extract sub-category name
-          if (category.includes('(') && category.includes(')')) {
-            const match = category.match(/\(([^)]+)\)/);
-            if (match) {
-              subCategoryName = match[1].trim();
-            }
-          } else if (category.includes(' - ')) {
-            subCategoryName = category.split(' - ').slice(1).join(' - ').trim() || category;
-          } else if (category.includes(' – ')) {
-            subCategoryName = category.split(' – ').slice(1).join(' – ').trim() || category;
-          } else {
-            subCategoryName = category.replace(pattern, '').trim() || category;
-          }
-          break;
-        }
-      }
-      
-      // If no pattern matched, use the category as its own group
-      if (!parentName) {
-        parentName = category;
-        subCategoryName = null;
-      }
-      
-      if (!groups[parentName]) {
-        groups[parentName] = {
-          name: parentName,
-          subCategories: [],
-          totalItems: 0,
-          completedItems: 0
-        };
-      }
-      
-      // Get all items for this category
-      const categoryItems = itemsList.filter(item => item.category === category);
-      
-      // Check if items have sections (e.g., Trnx-1, Trnx-2, Avg)
-      const itemsBySection = {};
-      categoryItems.forEach(item => {
-        const section = item.section || 'General';
-        if (!itemsBySection[section]) {
-          itemsBySection[section] = [];
-        }
-        itemsBySection[section].push(item);
-      });
-      
-      const hasSections = Object.keys(itemsBySection).length > 1 || 
-        (Object.keys(itemsBySection).length === 1 && Object.keys(itemsBySection)[0] !== 'General');
-      
-      // For Speed of Service with sections, treat as single category (sections shown inside audit form, not as separate cards)
-      const isSpeedOfService = category && (
-        category.toLowerCase().includes('speed of service') || 
-        category.toLowerCase().includes('service (speed')
-      );
-      
-      if (hasSections && !isSpeedOfService) {
-        // Group by sections within the category (for non-SOS categories)
-        Object.keys(itemsBySection).sort().forEach(section => {
-          const sectionItems = itemsBySection[section];
-          const completedCount = sectionItems.filter(item => {
-            const status = responses[item.id]?.status;
-            return status && status !== 'pending';
-          }).length;
-          
-          const sectionDisplayName = section === 'General' ? (subCategoryName || category) : section;
-          
-          groups[parentName].subCategories.push({
-            fullName: category,
-            displayName: sectionDisplayName,
-            section: section,
-            itemCount: sectionItems.length,
-            completedCount: completedCount,
-            isComplete: completedCount === sectionItems.length && sectionItems.length > 0
-          });
-          
-          groups[parentName].totalItems += sectionItems.length;
-          groups[parentName].completedItems += completedCount;
-        });
-      } else {
-        // No sections, treat as single sub-category
-        const completedCount = categoryItems.filter(item => {
-          const status = responses[item.id]?.status;
-          return status && status !== 'pending';
-        }).length;
-        
-        groups[parentName].subCategories.push({
-          fullName: category,
-          displayName: subCategoryName || category,
-          itemCount: categoryItems.length,
-          completedCount: completedCount,
-          isComplete: completedCount === categoryItems.length && categoryItems.length > 0
-        });
-        
-        groups[parentName].totalItems += categoryItems.length;
-        groups[parentName].completedItems += completedCount;
-      }
-    });
-    
-    // Sort groups and sub-categories
-    return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
-  }, [responses]);
-
-  // Get grouped categories
-  const groupedCategories = React.useMemo(() => {
-    return groupCategories(categories, items);
-  }, [categories, items, groupCategories]);
+  // groupCategories and groupedCategories removed - category selection step removed
 
   const getNormalizedInputType = useCallback((item) => {
     if (!item) return 'auto';
@@ -341,36 +206,6 @@ const AuditForm = () => {
       }
     }
   }, [locationId, locations]);
-
-  // Timer effect: Update elapsed times every second for items being tracked
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setItemElapsedTimes(prev => {
-        const updated = { ...prev };
-        Object.keys(itemStartTimes).forEach(itemId => {
-          if (itemStartTimes[itemId]) {
-            const elapsed = Math.floor((Date.now() - itemStartTimes[itemId]) / 1000);
-            updated[itemId] = elapsed;
-          }
-        });
-        return updated;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [itemStartTimes]);
-
-  // Start tracking time for an item when user first interacts with it
-  const startTrackingTime = useCallback((itemId) => {
-    if (auditStatus === 'completed') return;
-    setItemStartTimes(prev => {
-      // Only start tracking if not already tracking
-      if (!prev[itemId]) {
-        return { ...prev, [itemId]: Date.now() };
-      }
-      return prev;
-    });
-  }, [auditStatus]);
 
   const fetchAuditData = useCallback(async () => {
     try {
@@ -544,7 +379,6 @@ const AuditForm = () => {
   }, [template?.id, templateId, locationId, isEditing, fetchPreviousFailures]);
 
   const handleResponseChange = (itemId, status) => {
-    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -554,7 +388,6 @@ const AuditForm = () => {
   };
 
   const handleOptionChange = (itemId, optionId) => {
-    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -567,7 +400,6 @@ const AuditForm = () => {
   };
 
   const handleMultipleSelectionChange = (itemId, optionId, checked) => {
-    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -599,7 +431,6 @@ const AuditForm = () => {
   };
 
   const handleCommentChange = (itemId, comment) => {
-    startTrackingTime(itemId);
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
       return;
@@ -626,7 +457,6 @@ const AuditForm = () => {
       showError('Cannot modify items in a completed audit');
       return;
     }
-    startTrackingTime(itemId);
     setInputValues(prev => {
       const next = { ...prev, [itemId]: value };
       const sos = getSosAverageItems(items);
@@ -652,7 +482,6 @@ const AuditForm = () => {
   };
 
   const handlePhotoUpload = async (itemId, file) => {
-    startTrackingTime(itemId);
     if (!file) return;
     if (auditStatus === 'completed') {
       showError('Cannot modify items in a completed audit');
@@ -768,19 +597,8 @@ const AuditForm = () => {
         setTouched({ ...touched, 0: true });
         return;
       }
-      // If multiple categories, go to category selection, otherwise go to checklist
-      if (categories.length > 1) {
-        setActiveStep(1);
-      } else {
-        setActiveStep(1); // For single category or no categories, go directly to checklist
-      }
-    } else if (activeStep === 1 && categories.length > 1) {
-      // Category selection step
-      if (!selectedCategory) {
-        setError('Please select a category');
-        return;
-      }
-      setActiveStep(2);
+      // Go directly to audit checklist (skip category selection)
+      setActiveStep(1);
     } else {
       // Regular step progression
       if (!validateStep(activeStep)) {
@@ -867,7 +685,6 @@ const AuditForm = () => {
 
   const handleCategorySelect = (category, section = null) => {
     setSelectedCategory(category);
-    setSelectedSection(section);
     // Filter items by category and optionally by section
     const filtered = items.filter(item => {
       if (item.category !== category) return false;
@@ -1014,19 +831,6 @@ const AuditForm = () => {
               : photoUrl;
           }
 
-          // Add time tracking data if available
-          if (itemStartTimes[item.id]) {
-            const startTime = itemStartTimes[item.id];
-            const elapsedSeconds = itemElapsedTimes[item.id] || Math.floor((Date.now() - startTime) / 1000);
-            const timeTakenMinutes = elapsedSeconds > 0 ? (elapsedSeconds / 60).toFixed(2) : null;
-            
-            if (timeTakenMinutes) {
-              itemData.time_taken_minutes = parseFloat(timeTakenMinutes);
-              // Convert start time to ISO string for backend
-              itemData.started_at = new Date(startTime).toISOString();
-            }
-          }
-
           return itemData;
         });
 
@@ -1156,14 +960,14 @@ const AuditForm = () => {
   }, []);
 
   // Calculate items to display - MUST be before early returns
-  const steps = categories.length > 1 ? ['Store Information', 'Select Category', 'Audit Checklist'] : ['Store Information', 'Audit Checklist'];
+  // Always 2 steps: Store Information -> Audit Checklist (no category selection step)
+  const steps = ['Store Information', 'Audit Checklist'];
   const completedItems = Object.values(responses).filter(r => r === 'completed').length;
-  // Apply conditional logic filtering to items
+  // Apply conditional logic filtering to items - show all items (no category filtering)
   const itemsToDisplay = React.useMemo(() => {
-    const baseItems = (activeStep === (categories.length > 1 ? 2 : 1) && selectedCategory) ? filteredItems : items;
     // Filter items based on conditional logic
-    return filterItemsByCondition(baseItems, items, responses, selectedOptions, comments, inputValues);
-  }, [activeStep, categories.length, selectedCategory, filteredItems, items, filterItemsByCondition, responses, selectedOptions, comments, inputValues]);
+    return filterItemsByCondition(items, items, responses, selectedOptions, comments, inputValues);
+  }, [items, filterItemsByCondition, responses, selectedOptions, comments, inputValues]);
 
   // Get grouped items for current display - MUST be before early returns
   const groupedItems = React.useMemo(() => {
@@ -1369,20 +1173,6 @@ const AuditForm = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <Box>
                   <span style={{ fontWeight: 700 }}>{index + 1}.</span> <span style={{ fontWeight: 600 }}>{item.title}</span>
-                  {/* Timer display */}
-                  {itemStartTimes[item.id] && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <span>⏱</span>
-                        {(() => {
-                          const elapsed = itemElapsedTimes[item.id] || 0;
-                          const minutes = Math.floor(elapsed / 60);
-                          const seconds = elapsed % 60;
-                          return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                        })()}
-                      </Typography>
-                    </Box>
-                  )}
                 </Box>
               </Box>
               {item.required && (
@@ -2264,283 +2054,8 @@ const AuditForm = () => {
           </Paper>
         )}
 
-        {activeStep === 1 && categories.length > 1 && (
-          <Paper sx={{ 
-            p: isMobile ? 2 : 3, 
-            ...(isCvr && { 
-              bgcolor: cvrTheme.background.card,
-              border: `1px solid ${cvrTheme.input.border}`,
-              borderRadius: 3,
-              boxShadow: 'none'
-            }) 
-          }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', fontWeight: 600, ...(isCvr && { color: cvrTheme.text.primary }) }}>
-              Select Category
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 3, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
-              {template?.name}
-            </Typography>
-            
-            {/* Grouped Categories with Accordions */}
-            <Box sx={{ mb: 3 }}>
-              {groupedCategories.map((group, groupIndex) => {
-                const groupCompletionPercent = group.totalItems > 0 
-                  ? Math.round((group.completedItems / group.totalItems) * 100) 
-                  : 0;
-                const isGroupComplete = group.completedItems === group.totalItems && group.totalItems > 0;
-                const isExpanded = expandedGroups[group.name] !== false; // Default to expanded
-                const hasSubCategories = group.subCategories.length > 1 || 
-                  (group.subCategories.length === 1 && group.subCategories[0].displayName !== group.name);
-                
-                // If only one sub-category and it's the same as the group, render as simple card
-                if (!hasSubCategories) {
-                  const subCat = group.subCategories[0];
-                  const status = categoryCompletionStatus[subCat.fullName] || { completed: 0, total: subCat.itemCount, isComplete: false };
-                  const completionPercent = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
-                  const isSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
-                  
-                  return (
-                    <Card
-                      key={group.name}
-                      sx={{
-                        mb: 2,
-                        cursor: 'pointer',
-                        border: 2,
-                        borderColor: status.isComplete 
-                          ? (isCvr ? cvrTheme.accent.green : 'success.main')
-                          : isSelected
-                            ? (isCvr ? cvrTheme.accent.purple : 'primary.main')
-                            : (isCvr ? cvrTheme.input.border : 'divider'),
-                        bgcolor: isCvr 
-                          ? cvrTheme.background.card
-                          : (status.isComplete
-                              ? 'success.light'
-                              : isSelected
-                                ? 'primary.light' 
-                                : 'background.paper'),
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          borderColor: status.isComplete 
-                            ? (isCvr ? cvrTheme.accent.green : 'success.dark') 
-                            : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
-                          bgcolor: isCvr ? cvrTheme.background.elevated : (status.isComplete ? 'success.light' : 'action.hover'),
-                          transform: 'translateY(-2px)',
-                          boxShadow: 4
-                        }
-                      }}
-                      onClick={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
-                    >
-                      <CardContent>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1, color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
-                            {group.name}
-                          </Typography>
-                          {status.isComplete && (
-                            <CheckCircleIcon sx={{ fontSize: 24, color: isCvr ? cvrTheme.accent.green : 'success.main' }} />
-                          )}
-                        </Box>
-                        <Box sx={{ mb: 1 }}>
-                          <Typography variant="body2" sx={{ mb: 0.5, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
-                            {status.completed} / {status.total} items completed
-                          </Typography>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={completionPercent}
-                            sx={{
-                              height: 6,
-                              borderRadius: 3,
-                              bgcolor: isCvr ? cvrTheme.input.border : 'grey.200',
-                              '& .MuiLinearProgress-bar': {
-                                bgcolor: status.isComplete 
-                                  ? (isCvr ? cvrTheme.accent.green : 'success.main') 
-                                  : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
-                                borderRadius: 3
-                              }
-                            }}
-                          />
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  );
-                }
-                
-                // Render as accordion for groups with multiple sub-categories
-                return (
-                  <Accordion 
-                    key={group.name}
-                    expanded={isExpanded}
-                    onChange={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !isExpanded }))}
-                    sx={{ 
-                      mb: 2,
-                      border: 2,
-                      borderColor: isGroupComplete 
-                        ? (isCvr ? cvrTheme.accent.green : 'success.main') 
-                        : (isCvr ? cvrTheme.input.border : 'divider'),
-                      borderRadius: '8px !important',
-                      '&:before': { display: 'none' },
-                      bgcolor: isCvr ? cvrTheme.background.card : (isGroupComplete ? 'success.light' : 'background.paper'),
-                      overflow: 'hidden'
-                    }}
-                  >
-                    <AccordionSummary
-                      expandIcon={<ExpandMoreIcon sx={{ color: isCvr ? cvrTheme.text.secondary : undefined }} />}
-                      sx={{ 
-                        bgcolor: isCvr ? cvrTheme.background.card : (isGroupComplete ? 'success.light' : 'grey.50'),
-                        '&:hover': { bgcolor: isCvr ? cvrTheme.background.elevated : (isGroupComplete ? 'success.light' : 'grey.100') }
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', pr: 2 }}>
-                        {isExpanded ? (
-                          <FolderOpenIcon sx={{ mr: 1.5, color: isGroupComplete ? (isCvr ? cvrTheme.accent.green : 'success.main') : (isCvr ? cvrTheme.accent.purple : 'primary.main') }} />
-                        ) : (
-                          <FolderIcon sx={{ mr: 1.5, color: isGroupComplete ? (isCvr ? cvrTheme.accent.green : 'success.main') : (isCvr ? cvrTheme.accent.purple : 'primary.main') }} />
-                        )}
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem', color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
-                            {group.name}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                            <Typography variant="caption" sx={{ color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
-                              {group.subCategories.length} sub-categories • {group.completedItems}/{group.totalItems} items
-                            </Typography>
-                            <Chip 
-                              label={`${groupCompletionPercent}%`}
-                              size="small"
-                              color={isGroupComplete ? 'success' : 'default'}
-                              sx={{ 
-                                height: 20, 
-                                fontSize: '0.7rem',
-                                ...(isCvr && !isGroupComplete && { bgcolor: cvrTheme.input.border, color: cvrTheme.text.secondary })
-                              }}
-                            />
-                          </Box>
-                        </Box>
-                        {isGroupComplete && (
-                          <CheckCircleIcon sx={{ fontSize: 24, color: isCvr ? cvrTheme.accent.green : 'success.main', ml: 1 }} />
-                        )}
-                      </Box>
-                    </AccordionSummary>
-                    <AccordionDetails sx={{ p: 2, bgcolor: isCvr ? cvrTheme.background.primary : 'background.paper' }}>
-                      <Box sx={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
-                        gap: 1.5 
-                      }}>
-                        {group.subCategories.map((subCat, subIndex) => {
-                          const status = categoryCompletionStatus[subCat.fullName] || { 
-                            completed: 0, 
-                            total: subCat.itemCount, 
-                            isComplete: false 
-                          };
-                          const completionPercent = status.total > 0 
-                            ? Math.round((status.completed / status.total) * 100) 
-                            : 0;
-                          const isSubSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
-                          
-                          return (
-                            <Card
-                              key={`${subCat.fullName}-${subCat.section || 'no-section'}-${subIndex}`}
-                              sx={{
-                                cursor: 'pointer',
-                                border: 2,
-                                borderColor: status.isComplete 
-                                  ? (isCvr ? cvrTheme.accent.green : 'success.main')
-                                  : isSubSelected
-                                    ? (isCvr ? cvrTheme.accent.purple : 'primary.main')
-                                    : (isCvr ? cvrTheme.input.border : 'grey.300'),
-                                bgcolor: isCvr
-                                  ? cvrTheme.background.card
-                                  : (status.isComplete
-                                      ? 'success.light'
-                                      : isSubSelected
-                                        ? 'primary.light' 
-                                        : 'background.paper'),
-                                transition: 'all 0.2s',
-                                '&:hover': {
-                                  borderColor: status.isComplete 
-                                    ? (isCvr ? cvrTheme.accent.green : 'success.dark') 
-                                    : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
-                                  bgcolor: isCvr ? cvrTheme.background.elevated : (status.isComplete ? 'success.light' : 'action.hover'),
-                                  transform: 'translateY(-2px)',
-                                  boxShadow: 3
-                                }
-                              }}
-                              onClick={() => handleCategorySelect(subCat.fullName, subCat.section || null)}
-                            >
-                              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-                                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.9rem', flex: 1, color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
-                                    {subCat.displayName}
-                                  </Typography>
-                                  {status.isComplete && (
-                                    <CheckCircleIcon sx={{ fontSize: 18, color: isCvr ? cvrTheme.accent.green : 'success.main', ml: 0.5 }} />
-                                  )}
-                                </Box>
-                                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
-                                  {status.completed} / {status.total} items
-                                </Typography>
-                                <LinearProgress 
-                                  variant="determinate" 
-                                  value={completionPercent}
-                                  sx={{
-                                    height: 4,
-                                    borderRadius: 2,
-                                    bgcolor: isCvr ? cvrTheme.input.border : 'grey.200',
-                                    '& .MuiLinearProgress-bar': {
-                                      bgcolor: status.isComplete 
-                                        ? (isCvr ? cvrTheme.accent.green : 'success.main') 
-                                        : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
-                                      borderRadius: 2
-                                    }
-                                  }}
-                                />
-                                {isSubSelected && !status.isComplete && (
-                                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', color: isCvr ? cvrTheme.accent.purple : 'primary.main' }}>
-                                    <CheckCircleIcon sx={{ fontSize: 14, mr: 0.5 }} />
-                                    <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>Selected</Typography>
-                                  </Box>
-                                )}
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </Box>
-                    </AccordionDetails>
-                  </Accordion>
-                );
-              })}
-            </Box>
-            
-            <Box sx={{ display: 'flex', justifyContent: isCvr ? 'space-between' : 'space-between', mt: 3 }}>
-              <Button 
-                onClick={() => setActiveStep(0)} 
-                variant="outlined"
-                sx={isCvr ? { borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple } : {}}
-              >
-                Back
-              </Button>
-              {isCvr && (
-                <Button 
-                  variant="outlined"
-                  onClick={() => showSuccess('Draft saved')}
-                  sx={{ borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple }}
-                >
-                  Save Draft
-                </Button>
-              )}
-              <Button 
-                onClick={handleNext} 
-                variant="contained"
-                disabled={!selectedCategory}
-                sx={isCvr ? { background: cvrTheme.button.next, color: '#fff', '&:hover': { background: cvrTheme.button.next, opacity: 0.9 } } : {}}
-              >
-                {isCvr ? 'Next' : 'Next: Start Audit'}
-              </Button>
-            </Box>
-          </Paper>
-        )}
-
-        {activeStep === (categories.length > 1 ? 2 : 1) && (
+        {/* Step 2: Audit Checklist (directly after Store Information, no category selection) */}
+        {activeStep === 1 && (
           <Box className={isMobile ? 'has-bottom-actions' : ''}>
             {/* Enhanced Progress Bar with Category Switcher */}
             <Paper 
