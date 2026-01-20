@@ -416,26 +416,26 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           // Column widths for category tables
           const qColWidths = [40, contentWidth * 0.50, 60, 80];
           
-          // Helper function to draw category header
+          // Helper function to draw category header (compact: 22px)
           const drawCategoryHeader = (catName, catPct, catActual, catPerfect, isContinued = false) => {
-            doc.rect(margin, doc.y, contentWidth, 30).fill(LIGHT_BLUE);
-            doc.rect(margin, doc.y, contentWidth, 30).stroke(BORDER_COLOR);
-            doc.fontSize(14).fillColor(BLUE);
+            doc.rect(margin, doc.y, contentWidth, 22).fill(LIGHT_BLUE);
+            doc.rect(margin, doc.y, contentWidth, 22).stroke(BORDER_COLOR);
+            doc.fontSize(11).fillColor(BLUE);
             const headerText = isContinued 
-              ? `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (continued)`
+              ? `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect}) (cont.)`
               : `${catName.toUpperCase()} - ${catPct}% (${catActual}/${catPerfect})`;
-            doc.text(headerText, margin + 10, doc.y + 8, { width: contentWidth - 20 });
-            doc.y += 35;
+            doc.text(headerText, margin + 8, doc.y + 5, { width: contentWidth - 16 });
+            doc.y += 24;
           };
           
-          // Helper function to draw table header row
+          // Helper function to draw table header row (compact: 18px)
           const drawTableHeader = () => {
             return drawTableRow(doc.y, [
-              { text: '', width: qColWidths[0] },
-              { text: 'Question', width: qColWidths[1], align: 'center' },
-              { text: 'Score', width: qColWidths[2], align: 'center' },
-              { text: 'Response', width: qColWidths[3], align: 'center' }
-            ], 25, true);
+              { text: '#', width: qColWidths[0], align: 'center', fontSize: 8 },
+              { text: 'Question', width: qColWidths[1], align: 'center', fontSize: 8 },
+              { text: 'Score', width: qColWidths[2], align: 'center', fontSize: 8 },
+              { text: 'Response', width: qColWidths[3], align: 'center', fontSize: 8 }
+            ], 18, true);
           };
           
           // Start new page for category details (only once)
@@ -455,8 +455,8 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             const catActual = Math.round(categoryData[cat].actualScore);
             const catPct = catPerfect > 0 ? Math.round((catActual / catPerfect) * 100) : 0;
             
-            // Check if we need a new page for category header + at least one row (need ~120px)
-            if (doc.y > pageHeight - 150) {
+            // Check if we need a new page for category header + at least one row (need ~80px)
+            if (doc.y > pageHeight - 100) {
               drawFooter();
               doc.addPage();
               currentPage++;
@@ -469,15 +469,15 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             // Table header
             rowY = drawTableHeader();
             
-            // Items
+            // Items - use compact row height (20px) for better page efficiency
             let questionNum = 1;
             for (const item of catItems) {
               // Check if item has photo - need more row height
               const hasPhoto = item.photo_url ? true : false;
-              const rowHeight = hasPhoto ? 70 : 35;
+              const rowHeight = hasPhoto ? 55 : 20; // Compact: 20px without photo, 55px with photo
               
               // Check if we need a new page (need space for row + footer)
-              if (rowY > pageHeight - rowHeight - 50) {
+              if (rowY > pageHeight - rowHeight - 40) {
                 drawFooter();
                 doc.addPage();
                 currentPage++;
@@ -500,18 +500,19 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               doc.rect(x + qColWidths[0] + qColWidths[1], rowY, qColWidths[2], rowHeight).stroke(BORDER_COLOR);
               doc.rect(x + qColWidths[0] + qColWidths[1] + qColWidths[2], rowY, qColWidths[3], rowHeight).stroke(BORDER_COLOR);
               
-              // Question number
-              doc.fontSize(9).fillColor('#000');
-              doc.text(questionNum.toString(), x + 4, rowY + 5, { width: qColWidths[0] - 8, align: 'center' });
+              // Question number - centered vertically
+              doc.fontSize(8).fillColor('#000');
+              const textYOffset = hasPhoto ? 3 : (rowHeight - 8) / 2;
+              doc.text(questionNum.toString(), x + 2, rowY + textYOffset, { width: qColWidths[0] - 4, align: 'center' });
               
               // Question text with title
-              doc.text(item.title || '', x + qColWidths[0] + 4, rowY + 5, { width: qColWidths[1] - 8 });
+              doc.text(item.title || '', x + qColWidths[0] + 3, rowY + textYOffset, { width: qColWidths[1] - 6, lineBreak: !hasPhoto });
               
               // Score
-              doc.text(scoreText, x + qColWidths[0] + qColWidths[1] + 4, rowY + 5, { width: qColWidths[2] - 8, align: 'center' });
+              doc.text(scoreText, x + qColWidths[0] + qColWidths[1] + 2, rowY + textYOffset, { width: qColWidths[2] - 4, align: 'center' });
               
               // Response
-              doc.text(response, x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 4, rowY + 5, { width: qColWidths[3] - 8, align: 'center' });
+              doc.text(response, x + qColWidths[0] + qColWidths[1] + qColWidths[2] + 2, rowY + textYOffset, { width: qColWidths[3] - 4, align: 'center' });
               
               // Add photo if exists
               if (hasPhoto) {
@@ -523,7 +524,7 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
                   const localPath = path.join(uploadsPath, path.basename(photoPath));
                   
                   if (fs.existsSync(localPath)) {
-                    doc.image(localPath, x + qColWidths[0] + 4, rowY + 25, { width: 50, height: 40, fit: [50, 40] });
+                    doc.image(localPath, x + qColWidths[0] + 3, rowY + 18, { width: 40, height: 32, fit: [40, 32] });
                   }
                 } catch (imgErr) {
                   // Skip image if error
