@@ -1096,28 +1096,28 @@ const AuditForm = () => {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon sx={{ color: isCvr ? cvrTheme.accent.green : 'success.main' }} />;
+        return <CheckCircleIcon sx={{ color: isCvr ? cvrTheme.accent.green : 'success.main', fontSize: 28 }} />;
       case 'failed':
-        return <CancelIcon sx={{ color: isCvr ? cvrTheme.accent.red : 'error.main' }} />;
+        return <CancelIcon sx={{ color: isCvr ? cvrTheme.accent.red : 'error.main', fontSize: 28 }} />;
       case 'warning':
-        return <WarningIcon sx={{ color: isCvr ? cvrTheme.accent.orange : 'warning.main' }} />;
+        return <WarningIcon sx={{ color: isCvr ? cvrTheme.accent.orange : 'warning.main', fontSize: 28 }} />;
       case 'pending':
         return <Box sx={{ 
-          width: 24, 
-          height: 24, 
+          width: 26, 
+          height: 26, 
           borderRadius: '50%', 
           border: '2px solid', 
-          borderColor: isCvr ? cvrTheme.input.border : 'text.disabled',
-          bgcolor: isCvr ? cvrTheme.input.bg : 'grey.100'
+          borderColor: isCvr ? cvrTheme.input.border : 'grey.400',
+          bgcolor: isCvr ? cvrTheme.background.card : 'grey.100'
         }} />;
       default:
         return <Box sx={{ 
-          width: 24, 
-          height: 24, 
+          width: 26, 
+          height: 26, 
           borderRadius: '50%', 
           border: '2px solid', 
-          borderColor: isCvr ? cvrTheme.input.border : 'text.disabled',
-          bgcolor: isCvr ? cvrTheme.input.bg : 'grey.100'
+          borderColor: isCvr ? cvrTheme.input.border : 'grey.400',
+          bgcolor: isCvr ? cvrTheme.background.card : 'grey.100'
         }} />;
     }
   };
@@ -1262,18 +1262,18 @@ const AuditForm = () => {
                 ? 'error.main' 
                 : isMissingRequiredPhoto
                   ? 'error.main'
-                  : (isItemAnswered ? 'primary.main' : 'divider')),
+                  : (isItemAnswered ? 'success.main' : 'divider')),
           borderLeft: isMissingRequiredPhoto && !isCvr ? '4px solid' : undefined,
           borderLeftColor: isMissingRequiredPhoto && !isCvr ? 'error.main' : undefined,
           backgroundColor: isCvr 
-            ? cvrTheme.background.itemCard 
+            ? cvrTheme.background.card 
             : (isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper'),
           transition: 'all 0.2s ease',
-          borderRadius: isCvr ? 3 : (isMobile ? 3 : 2),
-          boxShadow: isCvr ? 'none' : undefined,
+          borderRadius: 2,
+          boxShadow: isCvr ? '0 1px 3px rgba(0,0,0,0.08)' : undefined,
           '&:hover': isCvr ? {
-            borderColor: cvrTheme.accent.purple,
-            boxShadow: `0 0 0 1px ${cvrTheme.accent.purple}30`
+            borderColor: cvrTheme.accent.primary,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)'
           } : undefined
         }}
       >
@@ -1368,7 +1368,7 @@ const AuditForm = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <Box>
-                  <span style={{ fontWeight: 700, color: isCvr ? cvrTheme.accent.purple : undefined }}>{index + 1}.</span> <span style={{ fontWeight: 600, color: isCvr ? cvrTheme.text.primary : undefined }}>{item.title}</span>
+                  <span style={{ fontWeight: 700 }}>{index + 1}.</span> <span style={{ fontWeight: 600 }}>{item.title}</span>
                   {/* Timer display */}
                   {itemStartTimes[item.id] && (
                     <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
@@ -1623,7 +1623,7 @@ const AuditForm = () => {
               return (
                 <TextField
                   fullWidth
-                  label={isCvr ? 'Response' : 'Enter Answer'}
+                  label={isCvr ? '' : 'Enter Answer'}
                   placeholder={isCvr ? 'Type Here' : 'Enter your answer...'}
                   value={inputValues[item.id] || ''}
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
@@ -1635,16 +1635,17 @@ const AuditForm = () => {
                       '& .MuiOutlinedInput-root': { 
                         bgcolor: cvrTheme.input.bg, 
                         color: cvrTheme.text.primary,
+                        borderRadius: 2,
                         '& fieldset': { borderColor: cvrTheme.input.border },
-                        '&:hover fieldset': { borderColor: cvrTheme.input.borderFocused },
-                        '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.purple }
+                        '&:hover fieldset': { borderColor: cvrTheme.accent.primary },
+                        '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.primary }
                       },
                       '& .MuiInputLabel-root': { 
                         color: cvrTheme.text.muted,
-                        '&.Mui-focused': { color: cvrTheme.accent.purple }
+                        '&.Mui-focused': { color: cvrTheme.accent.primary }
                       },
                       '& .MuiOutlinedInput-input::placeholder': { 
-                        color: cvrTheme.input.placeholder,
+                        color: cvrTheme.text.placeholder,
                         opacity: 1
                       }
                     }) 
@@ -1797,90 +1798,110 @@ const AuditForm = () => {
             // Option select - show options if available
             if ((inputType === 'option_select' || inputType === 'auto') && item.options && item.options.length > 0) {
               const isSelected = (optionId) => selectedOptions[item.id] === optionId;
+              // Detect if option is "No" type (for red styling when selected)
+              const isNoOption = (optionText) => {
+                const text = (optionText || '').toLowerCase();
+                return text === 'no' || text === 'fail' || text === 'failed';
+              };
               return (
                 <FormControl component="fieldset" fullWidth sx={{ mt: 2 }}>
-                  <FormLabel 
-                    component="legend" 
+                  {!isCvr && (
+                    <FormLabel 
+                      component="legend" 
+                      sx={{ 
+                        mb: 1, 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '0.9rem' : '1rem'
+                      }}
+                    >
+                      Select Option:
+                    </FormLabel>
+                  )}
+                  <Box 
+                    className="audit-item-options" 
                     sx={{ 
-                      mb: 1, 
-                      fontWeight: 600, 
-                      fontSize: isMobile ? '0.9rem' : '1rem',
-                      color: isCvr ? cvrTheme.text.secondary : undefined
+                      display: 'flex', 
+                      flexDirection: isCvr ? 'row' : 'column', 
+                      gap: isCvr ? 1.5 : (isMobile ? 1 : 1.5),
+                      flexWrap: isCvr ? 'wrap' : 'nowrap'
                     }}
                   >
-                    {isCvr ? 'Response' : 'Select Option:'}
-                  </FormLabel>
-                  <Box className="audit-item-options" sx={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 1.5 }}>
-                    {item.options.map((option) => (
-                      <Button
-                        key={option.id}
-                        variant={isSelected(option.id) ? 'contained' : 'outlined'}
-                        fullWidth
-                        onClick={() => handleOptionChange(item.id, option.id)}
-                        disabled={auditStatus === 'completed'}
-                        sx={{
-                          py: isMobile ? 2 : 1.5,
-                          px: isMobile ? 2 : 2,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          textTransform: 'none',
-                          minHeight: isMobile ? 56 : 48,
-                          borderRadius: isCvr ? 2 : 1,
-                          border: isSelected(option.id) ? '2px solid' : '1px solid',
-                          borderColor: isCvr 
-                            ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.input.border)
-                            : (isSelected(option.id) ? 'primary.main' : 'divider'),
-                          backgroundColor: isCvr
-                            ? (isSelected(option.id) ? `${cvrTheme.accent.green}20` : cvrTheme.input.bg)
-                            : (isSelected(option.id) ? 'primary.main' : 'transparent'),
-                          color: isCvr
-                            ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.text.primary)
-                            : (isSelected(option.id) ? 'white' : 'text.primary'),
-                          '&:hover': {
-                            borderColor: isCvr ? cvrTheme.accent.purple : 'primary.main',
+                    {item.options.map((option) => {
+                      const selected = isSelected(option.id);
+                      const isNo = isNoOption(option.option_text);
+                      return (
+                        <Button
+                          key={option.id}
+                          variant={selected ? 'contained' : 'outlined'}
+                          onClick={() => handleOptionChange(item.id, option.id)}
+                          disabled={auditStatus === 'completed'}
+                          sx={{
+                            py: isCvr ? 1 : (isMobile ? 2 : 1.5),
+                            px: isCvr ? 3 : (isMobile ? 2 : 2),
+                            display: 'flex',
+                            justifyContent: isCvr ? 'center' : 'space-between',
+                            alignItems: 'center',
+                            textTransform: 'none',
+                            minHeight: isCvr ? 40 : (isMobile ? 56 : 48),
+                            minWidth: isCvr ? 70 : undefined,
+                            flex: isCvr ? 'none' : undefined,
+                            borderRadius: isCvr ? 6 : 1,
+                            border: '1px solid',
+                            borderColor: isCvr 
+                              ? (selected 
+                                  ? (isNo ? cvrTheme.accent.red : cvrTheme.input.border)
+                                  : cvrTheme.input.border)
+                              : (selected ? 'primary.main' : 'divider'),
                             backgroundColor: isCvr
-                              ? (isSelected(option.id) ? `${cvrTheme.accent.green}30` : cvrTheme.input.bgFocused)
-                              : (isSelected(option.id) ? 'primary.dark' : 'action.hover')
-                          },
-                          '&:active': {
-                            transform: 'scale(0.98)',
-                          }
-                        }}
-                      >
-                        <Typography 
-                          variant="body1" 
-                          sx={{ 
-                            fontWeight: isSelected(option.id) ? 600 : 400,
-                            fontSize: isMobile ? '1rem' : '1rem',
-                            color: 'inherit'
+                              ? (selected 
+                                  ? (isNo ? cvrTheme.accent.red : cvrTheme.background.card)
+                                  : cvrTheme.background.card)
+                              : (selected ? 'primary.main' : 'transparent'),
+                            color: isCvr
+                              ? (selected && isNo ? '#FFFFFF' : cvrTheme.text.primary)
+                              : (selected ? 'white' : 'text.primary'),
+                            fontWeight: selected ? 600 : 400,
+                            '&:hover': {
+                              borderColor: isCvr 
+                                ? (isNo ? cvrTheme.accent.red : cvrTheme.accent.primary)
+                                : 'primary.main',
+                              backgroundColor: isCvr
+                                ? (selected && isNo ? cvrTheme.accent.red : '#F5F5F5')
+                                : (selected ? 'primary.dark' : 'action.hover')
+                            },
+                            '&:active': {
+                              transform: 'scale(0.98)',
+                            }
                           }}
                         >
-                          {option.option_text}
-                        </Typography>
-                        <Chip
-                          label={`${option.mark}`}
-                          size="small"
-                          sx={{
-                            ml: 1,
-                            minWidth: 40,
-                            backgroundColor: isCvr
-                              ? (isSelected(option.id) ? `${cvrTheme.accent.green}30` : 'transparent')
-                              : (isSelected(option.id) ? 'rgba(255,255,255,0.2)' : 'transparent'),
-                            color: isCvr
-                              ? (isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.text.secondary)
-                              : (isSelected(option.id) ? 'white' : 'text.primary'),
-                            border: isCvr
-                              ? `1px solid ${isSelected(option.id) ? cvrTheme.accent.green : cvrTheme.input.border}`
-                              : (isSelected(option.id) ? '1px solid rgba(255,255,255,0.3)' : '1px solid'),
-                            borderColor: isCvr
-                              ? undefined
-                              : (isSelected(option.id) ? 'rgba(255,255,255,0.3)' : 'divider'),
-                            fontWeight: 600
-                          }}
-                        />
-                      </Button>
-                    ))}
+                          <Typography 
+                            variant="body1" 
+                            sx={{ 
+                              fontWeight: selected ? 600 : 500,
+                              fontSize: isCvr ? '0.9rem' : (isMobile ? '1rem' : '1rem'),
+                              color: 'inherit'
+                            }}
+                          >
+                            {option.option_text}
+                          </Typography>
+                          {!isCvr && (
+                            <Chip
+                              label={`${option.mark}`}
+                              size="small"
+                              sx={{
+                                ml: 1,
+                                minWidth: 40,
+                                backgroundColor: selected ? 'rgba(255,255,255,0.2)' : 'transparent',
+                                color: selected ? 'white' : 'text.primary',
+                                border: selected ? '1px solid rgba(255,255,255,0.3)' : '1px solid',
+                                borderColor: selected ? 'rgba(255,255,255,0.3)' : 'divider',
+                                fontWeight: 600
+                              }}
+                            />
+                          )}
+                        </Button>
+                      );
+                    })}
                   </Box>
                 </FormControl>
               );
@@ -1932,8 +1953,8 @@ const AuditForm = () => {
 
           <TextField
             fullWidth
-            label={isCvr ? 'Remarks' : 'Add Comment'}
-            placeholder={isCvr ? 'Add remarks...' : 'Add any notes or comments...'}
+            label={isCvr ? 'Comment (optional)' : 'Add Comment'}
+            placeholder={isCvr ? 'Add a comment...' : 'Add any notes or comments...'}
             value={comments[item.id] || ''}
             onChange={(e) => handleCommentChange(item.id, e.target.value)}
             multiline
@@ -1946,16 +1967,18 @@ const AuditForm = () => {
                 '& .MuiOutlinedInput-root': { 
                   bgcolor: cvrTheme.input.bg, 
                   color: cvrTheme.text.primary,
+                  borderRadius: 2,
                   '& fieldset': { borderColor: cvrTheme.input.border },
-                  '&:hover fieldset': { borderColor: cvrTheme.input.borderFocused },
-                  '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.purple }
+                  '&:hover fieldset': { borderColor: cvrTheme.accent.primary },
+                  '&.Mui-focused fieldset': { borderColor: cvrTheme.accent.primary }
                 },
                 '& .MuiInputLabel-root': { 
-                  color: cvrTheme.text.muted,
-                  '&.Mui-focused': { color: cvrTheme.accent.purple }
+                  color: cvrTheme.text.secondary,
+                  fontWeight: 600,
+                  '&.Mui-focused': { color: cvrTheme.accent.primary }
                 },
                 '& .MuiOutlinedInput-input::placeholder': { 
-                  color: cvrTheme.input.placeholder,
+                  color: cvrTheme.text.placeholder,
                   opacity: 1
                 }
               }) 
@@ -2056,10 +2079,10 @@ const AuditForm = () => {
     );
   }
 
-  const tabAccent = isCvr ? cvrTheme.tab.active : theme.palette.primary.main;
+  const tabAccent = isCvr ? cvrTheme.accent.primary : theme.palette.primary.main;
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : theme.palette.text.primary;
-  const tabTextSecondary = isCvr ? cvrTheme.tab.inactive : theme.palette.text.secondary;
-  const tabSuccess = isCvr ? cvrTheme.tab.completedIcon : theme.palette.success.main;
+  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : theme.palette.text.secondary;
+  const tabSuccess = isCvr ? cvrTheme.accent.green : theme.palette.success.main;
   const tabBorder = isCvr ? cvrTheme.input.border : theme.palette.divider;
 
   return (
@@ -2071,8 +2094,8 @@ const AuditForm = () => {
             bgcolor: cvrTheme.background.primary, 
             color: cvrTheme.text.primary,
             minHeight: '100vh',
-            py: 3,
-            px: { xs: 2, md: 3 }
+            py: 2,
+            px: { xs: 1.5, md: 3 }
           }) 
         }}
       >
@@ -2104,7 +2127,7 @@ const AuditForm = () => {
               },
               '& .MuiStepIcon-root': {
                 color: cvrTheme.input.border,
-                '&.Mui-active': { color: cvrTheme.accent.purple },
+                '&.Mui-active': { color: cvrTheme.accent.primary },
                 '&.Mui-completed': { color: cvrTheme.accent.green }
               },
               '& .MuiStepConnector-line': {
@@ -2524,16 +2547,15 @@ const AuditForm = () => {
               sx={{ 
                 p: 2, 
                 mb: 2, 
-                bgcolor: isCvr ? cvrTheme.background.card : 'info.light',
-                border: isCvr ? `1px solid ${cvrTheme.input.border}` : 'none',
-                borderRadius: isCvr ? 3 : 1,
-                boxShadow: isCvr ? 'none' : undefined,
+                bgcolor: isCvr ? cvrTheme.tab.bg : 'info.light',
+                border: 'none',
+                borderRadius: 0,
+                boxShadow: 'none',
                 ...(isCvr && { color: cvrTheme.text.primary }),
                 ...(isMobile && {
                   position: 'sticky',
                   top: 64,
                   zIndex: 100,
-                  borderRadius: isCvr ? 0 : 0,
                   mx: -2,
                   width: 'calc(100% + 32px)',
                 })
@@ -2696,39 +2718,26 @@ const AuditForm = () => {
                     sx={{ 
                       fontWeight: 600, 
                       minWidth: 'fit-content', 
-                      color: isCvr ? cvrTheme.progress.text : 'text.primary' 
+                      color: isCvr ? cvrTheme.accent.primary : 'text.primary' 
                     }}
                   >
-                    {completedItems} / {itemsToDisplay.length}
-                    {selectedCategory && !isCvr && ` (${selectedCategory})`}
-                  </Typography>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={(completedItems / itemsToDisplay.length) * 100} 
-                    sx={{ 
-                      flex: 1, 
-                      height: 8, 
-                      borderRadius: 4,
-                      bgcolor: isCvr ? cvrTheme.progress.track : 'rgba(255,255,255,0.5)',
-                      '& .MuiLinearProgress-bar': {
-                        borderRadius: 4,
-                        bgcolor: isCvr 
-                          ? ((completedItems / itemsToDisplay.length) === 1 ? cvrTheme.progress.barComplete : cvrTheme.progress.bar)
-                          : undefined
-                      }
-                    }}
-                  />
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      color: isCvr ? cvrTheme.accent.green : 'info.dark', 
-                      fontWeight: 600, 
-                      minWidth: 'fit-content' 
-                    }}
-                  >
-                    {Math.round((completedItems / itemsToDisplay.length) * 100)}%
+                    Progress: {completedItems} / {itemsToDisplay.length} items
+                    {selectedCategory && isCvr && ` (${selectedCategory.length > 20 ? selectedCategory.substring(0, 20) + '...' : selectedCategory})`}
                   </Typography>
                 </Box>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(completedItems / itemsToDisplay.length) * 100} 
+                  sx={{ 
+                    height: 6, 
+                    borderRadius: 3,
+                    bgcolor: isCvr ? cvrTheme.progress.track : 'rgba(255,255,255,0.5)',
+                    '& .MuiLinearProgress-bar': {
+                      borderRadius: 3,
+                      bgcolor: isCvr ? cvrTheme.accent.green : 'success.main'
+                    }
+                  }}
+                />
                 {(() => {
                   // Calculate detailed breakdown for current category
                   const requiredItems = itemsToDisplay.filter(item => item.required);

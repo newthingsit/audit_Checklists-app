@@ -304,78 +304,98 @@ export const getPriorityColor = (priority) => {
   }
 };
 
-// ==================== CVR / CDR Plan Dark Theme ====================
-// Matches reference: dark navy background, purple accents, orange Due badge, green checkmarks
+// ==================== CVR / CDR Plan Light Theme ====================
+// Clean, professional light blue theme matching reference screenshot
 
 export const cvrTheme = {
-  // Dark backgrounds - matching web theme
+  // Light backgrounds
   background: {
-    primary: '#1A1A2E',      // Deep navy background
-    secondary: '#16213E',    // Slightly lighter navy
-    card: '#1F1F3D',         // Card background - darker for better contrast
-    elevated: '#252550',     // Elevated elements
-    itemCard: '#252550',     // Individual item card background
+    primary: '#F5F9FC',      // Very light gray-blue page background
+    secondary: '#E8F4FC',    // Light blue header/tab background
+    card: '#FFFFFF',         // White cards
+    elevated: '#FFFFFF',     // Elevated elements - white
+    itemCard: '#FFFFFF',     // Individual item card - white
+    header: '#E3F2FD',       // Light blue header area
   },
   // Text
   text: {
-    primary: '#FFFFFF',
-    secondary: '#A0A0C0',
-    muted: '#7878A0',
-    placeholder: '#6060A0',
+    primary: '#1A1A1A',      // Near black for main text
+    secondary: '#666666',    // Medium gray for secondary
+    muted: '#999999',        // Light gray for hints
+    placeholder: '#AAAAAA',  // Placeholder text
   },
   // Accents
   accent: {
-    purple: '#7C5DFA',       // Main accent purple
-    purpleLight: '#9D7FFF',
-    purpleGradient: ['#6B48FF', '#9D62FF'],
-    green: '#00D68F',        // Success/checkmark green
-    greenLight: '#00E09F',
-    orange: '#FF9500',       // Due/warning orange
-    due: '#FF9500',          // Alias for orange (backward compat)
-    red: '#FF5252',          // Error/required red
+    primary: '#2196F3',      // Primary blue
+    primaryDark: '#1976D2',  // Darker blue for hover
+    purple: '#2196F3',       // Alias for backward compat
+    purpleGradient: ['#2196F3', '#1976D2'],
+    green: '#4CAF50',        // Success/checkmark green
+    greenLight: '#81C784',
+    orange: '#FF9800',       // Warning orange
+    due: '#FF9800',          // Alias for backward compat
+    red: '#D32F2F',          // Error/required red
+    redLight: '#EF5350',
   },
   // Input components
   input: {
-    bg: '#2A2A4E',           // Input field background
-    bgFocused: '#303060',
-    border: '#3D3D6B',
-    borderFocused: '#7C5DFA',
-    placeholder: '#6060A0',
+    bg: '#FFFFFF',           // White input background
+    bgFocused: '#FFFFFF',
+    border: '#E0E0E0',       // Light gray border
+    borderFocused: '#2196F3', // Blue focus border
+    placeholder: '#AAAAAA',
   },
   // Buttons
   button: {
-    next: ['#6B48FF', '#9D62FF'],  // Gradient for Next/Submit
-    nextHover: ['#5B38EF', '#8D52EF'],
-    saveDraft: '#7C5DFA',
-    outline: '#7C5DFA',
+    primary: '#2196F3',      // Blue primary button
+    primaryHover: '#1976D2',
+    next: ['#2196F3', '#1976D2'],  // Blue gradient
+    outline: '#2196F3',      // Blue outline button
+    outlineHover: '#E3F2FD',
+    saveDraft: '#2196F3',
+    danger: '#D32F2F',       // Red danger button
   },
   // Progress bar
   progress: {
-    track: '#2A2A4E',
-    bar: '#7C5DFA',
-    barComplete: '#00D68F',
-    text: '#FFFFFF',
-    textSecondary: '#A0A0C0',
+    track: '#E0E0E0',        // Light gray track
+    bar: '#4CAF50',          // Green progress bar
+    barComplete: '#4CAF50',
+    text: '#1A1A1A',
+    textSecondary: '#666666',
   },
   // Chips/badges
   chip: {
-    required: '#FF5252',
-    requiredBg: 'rgba(255, 82, 82, 0.15)',
-    category: '#7C5DFA',
-    categoryBg: 'rgba(124, 93, 250, 0.15)',
+    required: '#D32F2F',     // Red required
+    requiredBg: '#FFEBEE',   // Light red background
+    category: '#2196F3',     // Blue category
+    categoryBg: '#E3F2FD',   // Light blue background
   },
   // Section headers
   section: {
-    headerBg: '#1F1F3D',
-    headerBorder: '#3D3D6B',
-    contentBg: 'transparent',
+    headerBg: '#E8F4FC',     // Light blue section header
+    headerBorder: '#E0E0E0',
+    contentBg: '#FFFFFF',
   },
   // Tabs
   tab: {
-    active: '#7C5DFA',
-    inactive: '#6060A0',
-    indicator: '#7C5DFA',
-    completedIcon: '#00D68F',
+    bg: '#E3F2FD',           // Light blue tab background
+    active: '#1A1A1A',       // Dark text for active tab
+    inactive: '#666666',     // Gray for inactive
+    indicator: '#4CAF50',    // Green indicator/checkmark
+    completedIcon: '#4CAF50',
+  },
+  // Option buttons (Yes/No/NA)
+  option: {
+    default: '#FFFFFF',      // White default option
+    defaultBorder: '#E0E0E0',
+    selected: '#D32F2F',     // Red when selected (like No button)
+    selectedText: '#FFFFFF',
+    yes: '#FFFFFF',
+    yesBorder: '#E0E0E0',
+    no: '#D32F2F',           // Red No button when selected
+    noBorder: '#D32F2F',
+    na: '#FFFFFF',
+    naBorder: '#E0E0E0',
   },
 };
 
