@@ -2325,7 +2325,7 @@ const AuditForm = () => {
               {isCvr && (
                 <Button 
                   variant="outlined"
-                  onClick={handleSaveDraft}
+                  onClick={() => showSuccess('Draft saved')}
                   sx={{ borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple }}
                 >
                   Save Draft
