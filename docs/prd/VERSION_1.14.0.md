@@ -5,7 +5,7 @@
 
 ## Overview
 
-This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import support for `short_answer` and `signature` input types, and a dedicated **CVR/CDR UI** (dark theme, purple accents, Due pill, Photo/Remarks on option items) on both **mobile** and **web** when the template name contains "CVR" or "CDR Plan".
+This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import support for `short_answer` and `signature` input types, and a dedicated **CVR/CDR UI** (dark theme, purple accents, Due pill, Photo/Remarks on option items) on both **mobile** and **web** when the template name contains "CVR" or "CDR Plan". It also fixes CVR 3 ACKNOWLEDGEMENT fields and ensures **Speed of Service** sections (Trnx-1..4, Avg) render correctly on mobile and web.
 
 ---
 
@@ -27,6 +27,7 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 - **Doc:** `docs/CVR_3_IMPORT.md`
 - **Web:** Checklists/Templates → **Import CSV** → Template name: `CVR 3 – (CDR) Plan`, upload `CVR_3_CDR_Plan.csv`
 - **API:** `POST /api/checklists/import/csv` with `templateName`, `file`
+- **Web UI endpoint:** Import now uses `/api/checklists/import/csv` to preserve `input_type` and prevent auto Yes/No/NA options on text/signature fields
 - **Backend:** CSV import already supports `short_answer`, `number`, `signature`; `subcategory` stored for reports.
 
 ---
@@ -47,6 +48,7 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
   - **Checklist (Step 2):**
     - **Horizontal Category Tabs:** Scrollable tabs at top with "Details" (green checkmark) + category tabs (QUALITY, SERVICE, etc.); purple underline indicator on active tab; green checkmarks for completed categories
     - **Submit** / **Close** (purple gradient); **short_answer**: "Response", "Type Here"; **Photo** on all Yes/No/NA (option) items (purple icon/label); **Remarks** (purple label, dark input); **signature**: existing flow unchanged
+  - **Speed of Service sections:** Trnx-1..4 and Avg show as collapsible section headers with counts (matches CVR 2 UI)
   - **Item cards:** Dark card background when CVR
 
 ### 2.3 ScheduledAuditsScreen
@@ -72,6 +74,7 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
   - **Step 2 (Checklist):**
     - **Horizontal Category Tabs (MUI Tabs):** Scrollable tabs with "Details" (green checkmark) + category tabs; purple underline indicator on active tab; green checkmarks for completed categories; replaces dropdown Select for CVR templates
     - Progress Paper dark; item **Cards** `cvrTheme.background.card`; **Remarks** label and dark input; **Photo** on `image_upload` and on option (Yes/No/NA) items, purple styling; **short_answer** "Response", "Type Here", dark input
+  - **ACKNOWLEDGEMENT fixes:** Manager on Duty renders as `short_answer`, Signature renders as `signature` (no Yes/No/NA options)
 
 ### 3.3 ScheduledAudits.js
 
@@ -86,6 +89,7 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 
 - `CVR_3_CDR_Plan.csv` – CVR 3 checklist
 - `docs/CVR_3_IMPORT.md` – Import instructions
+- `docs/CHECKLIST_MANAGEMENT_GUIDE.md` – How to add/edit checklists via CSV
 - `docs/prd/VERSION_1.14.0.md` – This PRD
 
 ### Modified
@@ -103,8 +107,9 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 **Web**
 
 - `web/src/config/theme.js` – `cvrTheme`, `isCvrTemplate`
-- `web/src/pages/AuditForm.js` – CVR layout, OUTLET, Save Draft, Next, Remarks, Photo, short_answer, cards
+- `web/src/pages/AuditForm.js` – CVR layout, OUTLET, Save Draft, Next, Remarks, Photo, short_answer, cards, ACKNOWLEDGEMENT fixes
 - `web/src/pages/ScheduledAudits.js` – CVR cards, Due 11:59 PM
+- `web/src/pages/Checklists.js` – Import uses `/api/checklists/import/csv` to preserve input types
 
 ---
 
@@ -132,6 +137,7 @@ This version adds the **CVR 3 – (CDR) Plan** checklist (CSV-based), CSV import
 - [ ] Mobile: Category Selection → dark CVR cards, purple progress bars, Save Draft, purple gradient Next
 - [ ] Mobile: Checklist → **Horizontal category tabs** (Details ✓, QUALITY, SERVICE, etc.); tap to switch categories
 - [ ] Mobile: Checklist → Photo & Remarks on Yes/No/NA items; short_answer "Type Here"; Manager on Duty, Signature
+- [ ] Mobile: Speed of Service → Trnx-1..4/Avg collapsible sections appear and expand/collapse
 - [ ] Mobile: Scheduled CVR with due today → "Due 11:59 PM" on card
 - [ ] Web: Category Selection → dark CVR cards/accordions, purple progress bars, Save Draft, purple gradient Next
 - [ ] Web: Checklist → **Horizontal category tabs** (Details ✓, QUALITY, SERVICE, etc.); click to switch categories
