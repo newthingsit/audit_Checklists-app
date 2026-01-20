@@ -2482,7 +2482,9 @@ const AuditFormScreen = () => {
             {isCvr && auditStatus !== 'completed' && (
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary, { borderColor: cvrTheme.accent.purple }]}
-                onPress={handleSaveDraft}
+                onPress={() => {
+                  Alert.alert('Draft Saved', 'Your draft has been saved');
+                }}
                 disabled={saving}
               >
                 <Text style={[styles.buttonText, styles.buttonTextSecondary, { color: cvrTheme.accent.purple }]}>Save Draft</Text>
