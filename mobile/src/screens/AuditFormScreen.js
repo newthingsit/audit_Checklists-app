@@ -19,7 +19,8 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
-import { themeConfig } from '../config/theme';
+import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocation } from '../context/LocationContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 import { SignatureModal, SignatureDisplay } from '../components';
@@ -1968,8 +1969,10 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
+  const isCvr = isCvrTemplate(template?.name);
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isCvr && { backgroundColor: cvrTheme.background.primary }]}>
       {/* Read-only banner for completed audits */}
       {auditStatus === 'completed' && (
         <View style={styles.completedBanner}>
@@ -1982,12 +1985,12 @@ const AuditFormScreen = () => {
       
       {currentStep === 0 && (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {/* Outlet (Required) */}
+          {/* Outlet (Required) - CVR: dark input, Search placeholder */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Outlet (Required)</Text>
+            <Text style={[styles.label, isCvr && { color: cvrTheme.text.primary }]}>OUTLET (Required)</Text>
             {selectedLocation ? (
-              <View style={styles.selectedOutletTag}>
-                <Text style={styles.selectedOutletText}>
+              <View style={[styles.selectedOutletTag, isCvr && { backgroundColor: cvrTheme.background.card }]}>
+                <Text style={[styles.selectedOutletText, isCvr && { color: cvrTheme.text.primary }]}>
                   {selectedLocation.store_number
                     ? `${selectedLocation.name} (${selectedLocation.store_number})`
                     : selectedLocation.name}
@@ -2007,12 +2010,12 @@ const AuditFormScreen = () => {
               </View>
             ) : (
               <TouchableOpacity
-                style={[styles.searchInputContainer, auditStatus === 'completed' && styles.disabledInput]}
+                style={[styles.searchInputContainer, auditStatus === 'completed' && styles.disabledInput, isCvr && { backgroundColor: cvrTheme.input.bg, borderColor: cvrTheme.input.border }]}
                 onPress={() => auditStatus !== 'completed' && setShowStorePicker(true)}
                 disabled={auditStatus === 'completed'}
               >
-                <Icon name="search" size={20} color={themeConfig.text.disabled} style={styles.searchIcon} />
-                <Text style={styles.searchPlaceholder}>Search</Text>
+                <Icon name="search" size={20} color={isCvr ? cvrTheme.text.placeholder : themeConfig.text.disabled} style={styles.searchIcon} />
+                <Text style={[styles.searchPlaceholder, isCvr && { color: cvrTheme.text.placeholder }]}>Search</Text>
               </TouchableOpacity>
             )}
             {scheduledAuditId && initialLocationId && selectedLocation && (
@@ -2144,41 +2147,47 @@ const AuditFormScreen = () => {
           <View style={styles.buttonRow}>
             {auditStatus !== 'completed' && (
               <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
+                style={[styles.button, styles.buttonSecondary, isCvr && { borderColor: cvrTheme.accent.purple }]}
                 onPress={async () => {
-                  // Save draft functionality
                   if (!selectedLocation) {
                     Alert.alert('Error', 'Please select an outlet');
                     return;
                   }
-                  // Save as draft - can be implemented later
                   Alert.alert('Draft Saved', 'Your draft has been saved');
                 }}
               >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Save Draft</Text>
-          </TouchableOpacity>
+                <Text style={[styles.buttonText, styles.buttonTextSecondary, isCvr && { color: cvrTheme.accent.purple }]}>Save Draft</Text>
+              </TouchableOpacity>
             )}
             {auditStatus === 'completed' ? (
               <TouchableOpacity
-                style={styles.button}
+                style={[styles.button, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={() => {
-                  // For completed audits, allow viewing the checklist
-                  if (categories.length <= 1) {
-                    setCurrentStep(2);
-                  } else {
-                    setCurrentStep(1);
-                  }
+                  if (categories.length <= 1) setCurrentStep(2);
+                  else setCurrentStep(1);
                 }}
               >
-                <Text style={styles.buttonText}>View Checklist</Text>
+                {isCvr ? (
+                  <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
+                    <Text style={styles.buttonText}>View Checklist</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={styles.buttonText}>View Checklist</Text>
+                )}
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, (!selectedLocation || infoPictures.length === 0) && styles.buttonDisabled]}
+                style={[styles.button, (!selectedLocation || infoPictures.length === 0) && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={handleNext}
                 disabled={!selectedLocation || infoPictures.length === 0}
               >
-                <Text style={styles.buttonText}>Submit</Text>
+                {isCvr ? (
+                  <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
+                    <Text style={styles.buttonText}>Next</Text>
+                  </LinearGradient>
+                ) : (
+                  <Text style={styles.buttonText}>Submit</Text>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -2939,6 +2948,18 @@ const AuditFormScreen = () => {
                       editable={auditStatus !== 'completed'}
                     />
                   </View>
+                ) : fieldType === 'short_answer' ? (
+                  <View style={styles.commentContainer}>
+                    <Text style={styles.commentLabel}>Response</Text>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={comments[item.id] || ''}
+                      onChangeText={(text) => handleAnswerChange(item.id, text)}
+                      placeholder="Type Here"
+                      placeholderTextColor={isCvr ? cvrTheme.text.placeholder : themeConfig.text.disabled}
+                      editable={auditStatus !== 'completed'}
+                    />
+                  </View>
                 ) : answerType ? (
                   <View style={styles.commentContainer}>
                     <Text style={styles.commentLabel}>{fieldType === 'description' ? 'Description' : 'Answer'}</Text>
@@ -2979,8 +3000,8 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                {/* Only show photo button for items that require photos (input_type === 'image_upload') */}
-                {fieldType === 'image_upload' && (
+                {/* Photo: for image_upload always; for CVR also on Yes/No/NA (option) items */}
+                {(fieldType === 'image_upload' || (isCvr && isOptionFieldType(fieldType))) && (
                 <View style={styles.actionsContainer}>
                   <TouchableOpacity
                       style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
@@ -2988,18 +3009,18 @@ const AuditFormScreen = () => {
                       disabled={uploading[item.id] || auditStatus === 'completed'}
                   >
                     {uploading[item.id] ? (
-                      <ActivityIndicator size="small" color={themeConfig.primary.main} />
+                      <ActivityIndicator size="small" color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
                     ) : (
-                      <Icon name="photo-camera" size={20} color={themeConfig.primary.main} />
+                      <Icon name="photo-camera" size={20} color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
                     )}
-                    <Text style={styles.photoButtonText}>
-                      {photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                    <Text style={[styles.photoButtonText, isCvr && { color: cvrTheme.accent.purple }]}>
+                      {photos[item.id] ? 'Change Photo' : 'Photo'}
                     </Text>
                   </TouchableOpacity>
                 </View>
                 )}
 
-                {photos[item.id] && fieldType === 'image_upload' && (
+                {photos[item.id] && (fieldType === 'image_upload' || (isCvr && isOptionFieldType(fieldType))) && (
                   <View style={styles.photoContainer}>
                     <Image source={{ uri: photos[item.id] }} style={styles.photo} />
                     {auditStatus !== 'completed' && (
@@ -3020,13 +3041,13 @@ const AuditFormScreen = () => {
 
                 {!answerType && fieldType !== 'date' && fieldType !== 'signature' && fieldType !== 'number' && fieldType !== 'scan_code' && (
                   <View style={styles.commentContainer}>
-                    <Text style={styles.commentLabel}>Comment (optional)</Text>
+                    <Text style={[styles.commentLabel, isCvr && { color: cvrTheme.accent.purple }]}>{isCvr ? 'Remarks' : 'Comment (optional)'}</Text>
                     <TextInput
-                      style={[styles.commentInput, auditStatus === 'completed' && styles.disabledInput]}
+                      style={[styles.commentInput, auditStatus === 'completed' && styles.disabledInput, isCvr && { backgroundColor: cvrTheme.input.bg, borderColor: cvrTheme.input.border }]}
                       value={comments[item.id] || ''}
                       onChangeText={(text) => handleCommentChange(item.id, text)}
-                      placeholder="Add a comment..."
-                      placeholderTextColor={themeConfig.text.disabled}
+                      placeholder={isCvr ? 'Add remarks...' : 'Add a comment...'}
+                      placeholderTextColor={isCvr ? cvrTheme.text.placeholder : themeConfig.text.disabled}
                       multiline
                       numberOfLines={2}
                       editable={auditStatus !== 'completed'}
@@ -3116,19 +3137,29 @@ const AuditFormScreen = () => {
               </TouchableOpacity>
               {auditStatus === 'completed' ? (
               <TouchableOpacity
-                  style={styles.button}
+                  style={[styles.button, isCvr && { padding: 0, overflow: 'hidden' }]}
                   onPress={() => navigation.goBack()}
                 >
-                  <Text style={styles.buttonText}>Close</Text>
+                  {isCvr ? (
+                    <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
+                      <Text style={styles.buttonText}>Close</Text>
+                    </LinearGradient>
+                  ) : (
+                    <Text style={styles.buttonText}>Close</Text>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  style={[styles.button, saving && styles.buttonDisabled]}
+                  style={[styles.button, saving && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={handleSubmit}
                   disabled={saving}
               >
                 {saving ? (
                   <ActivityIndicator color="#fff" />
+                ) : isCvr ? (
+                  <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
+                    <Text style={styles.buttonText}>Submit</Text>
+                  </LinearGradient>
                 ) : (
                   <Text style={styles.buttonText}>Save Audit</Text>
                 )}

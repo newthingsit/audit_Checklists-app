@@ -120,6 +120,9 @@ const createTables = () => {
       // Add section column for grouping items within a category (e.g., Trnx-1, Trnx-2)
       db.run(`ALTER TABLE checklist_items ADD COLUMN section TEXT`, () => {});
       
+      // Add subcategory column for grouping items within a category (e.g., "entrance", "Restaurant")
+      db.run(`ALTER TABLE checklist_items ADD COLUMN subcategory TEXT`, () => {});
+      
       // Add conditional logic columns for show/hide functionality
       db.run(`ALTER TABLE checklist_items ADD COLUMN conditional_item_id INTEGER`, () => {});
       db.run(`ALTER TABLE checklist_items ADD COLUMN conditional_value TEXT`, () => {});

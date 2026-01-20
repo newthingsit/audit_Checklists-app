@@ -1227,6 +1227,7 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
         title,
         description: descIdx !== -1 ? values[descIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
         category: itemCategory,
+        subcategory: subCategory, // Store subcategory separately for PDF grouping
         section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
         input_type: typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
         required: reqVal === 'yes' || reqVal === 'true' || reqVal === '1',
@@ -1252,13 +1253,14 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     for (const item of items) {
       const { lastID: itemId } = await runDb(
         dbInstance,
-        `INSERT INTO checklist_items (template_id, title, description, category, section, required, order_index, input_type, weight, is_critical)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO checklist_items (template_id, title, description, category, subcategory, section, required, order_index, input_type, weight, is_critical)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           templateId,
           item.title,
           item.description,
           item.category,
+          item.subcategory || null, // Store subcategory for PDF grouping
           item.section || null,
           item.required ? 1 : 0,
           item.order_index,

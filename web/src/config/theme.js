@@ -290,3 +290,39 @@ export const getPriorityColor = (priority) => {
       return themeConfig.text.muted;
   }
 };
+
+// ==================== CVR / CDR Plan Dark Theme ====================
+// Matches mobile CVR: dark navy, purple accents, orange Due badge, green checkmarks
+
+export const cvrTheme = {
+  background: {
+    primary: '#19193C',
+    card: '#27274E',
+    elevated: '#2D2D5A',
+  },
+  text: {
+    primary: '#FFFFFF',
+    secondary: '#B0B0C8',
+    placeholder: '#8A8AA8',
+  },
+  accent: {
+    purple: '#8A72F6',
+    purpleGradient: 'linear-gradient(135deg, #6B48FF 0%, #9D62FF 100%)',
+    green: '#4CAF50',
+    due: '#EAA000',
+  },
+  input: {
+    bg: '#27274E',
+    border: '#3D3D6B',
+  },
+  button: {
+    next: 'linear-gradient(135deg, #6B48FF 0%, #9D62FF 100%)',
+    saveDraft: '#8A72F6',
+  },
+};
+
+export const isCvrTemplate = (name) => {
+  if (!name || typeof name !== 'string') return false;
+  const n = name.toUpperCase();
+  return n.includes('CVR') || n.includes('CDR PLAN');
+};

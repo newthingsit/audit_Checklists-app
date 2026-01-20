@@ -21,7 +21,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
-import { themeConfig } from '../config/theme';
+import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
 
 // Auto-refresh interval in milliseconds (60 seconds to prevent rate limiting)
@@ -538,26 +538,35 @@ const ScheduledAuditsScreen = () => {
   };
 
   const renderSchedule = ({ item }) => {
-    console.log('[Mobile] Rendering schedule:', item.id, item.template_name);
+    const isCvr = isCvrTemplate(item.template_name);
+    const scheduledDate = item.scheduled_date ? new Date(item.scheduled_date) : null;
+    const today = new Date();
+    const isDueToday = scheduledDate && scheduledDate.getFullYear() === today.getFullYear() &&
+      scheduledDate.getMonth() === today.getMonth() && scheduledDate.getDate() === today.getDate();
     return (
-    <TouchableOpacity style={styles.scheduleCard}>
+    <TouchableOpacity style={[styles.scheduleCard, isCvr && { backgroundColor: cvrTheme.background.card }]}>
       <View style={styles.scheduleHeader}>
-        <View style={styles.scheduleIconContainer}>
-          <Icon name="event" size={24} color="#1976d2" />
+        <View style={[styles.scheduleIconContainer, isCvr && { backgroundColor: cvrTheme.accent.purple + '30' }]}>
+          <Icon name="event" size={24} color={isCvr ? cvrTheme.accent.purple : '#1976d2'} />
         </View>
         <View style={styles.scheduleInfo}>
-          <Text style={styles.scheduleTitle}>{item.template_name || 'Untitled Audit'}</Text>
+          <Text style={[styles.scheduleTitle, isCvr && { color: cvrTheme.text.primary }]}>{item.template_name || 'Untitled Audit'}</Text>
           {item.location_name && (
             <View style={styles.locationRow}>
-              <Icon name="location-on" size={16} color="#666" />
-              <Text style={styles.locationText}>{item.location_name}</Text>
+              <Icon name="location-on" size={16} color={isCvr ? cvrTheme.text.secondary : '#666'} />
+              <Text style={[styles.locationText, isCvr && { color: cvrTheme.text.secondary }]}>{item.location_name}</Text>
               {item.store_number && (
-                <Text style={styles.storeNumber}> (#{item.store_number})</Text>
+                <Text style={[styles.storeNumber, isCvr && { color: cvrTheme.text.secondary }]}> (#{item.store_number})</Text>
               )}
             </View>
           )}
         </View>
-        {(item.status || item.status === null) && (
+        {isCvr && isDueToday && (canStartSchedule(item) || canContinueSchedule(item)) && (
+          <View style={[styles.statusBadge, { backgroundColor: cvrTheme.accent.due }]}>
+            <Text style={styles.statusText}>Due 11:59 PM</Text>
+          </View>
+        )}
+        {(!isCvr || !isDueToday) && (item.status || item.status === null) && (
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(getStatusValue(item.status)) }]}>
             <Text style={styles.statusText}>{formatStatusLabel(item.status)}</Text>
           </View>
@@ -566,19 +575,19 @@ const ScheduledAuditsScreen = () => {
 
       <View style={styles.scheduleDetails}>
         <View style={styles.detailRow}>
-          <Icon name="person" size={16} color="#666" />
-          <Text style={styles.detailText}>
+          <Icon name="person" size={16} color={isCvr ? cvrTheme.text.secondary : '#666'} />
+          <Text style={[styles.detailText, isCvr && { color: cvrTheme.text.secondary }]}>
             {item.assigned_to_name || item.assigned_to_email || 'Unassigned'}
           </Text>
         </View>
         <View style={styles.detailRow}>
-          <Icon name="schedule" size={16} color="#666" />
-          <Text style={styles.detailText}>{formatDate(item.scheduled_date)}</Text>
+          <Icon name="schedule" size={16} color={isCvr ? cvrTheme.text.secondary : '#666'} />
+          <Text style={[styles.detailText, isCvr && { color: cvrTheme.text.secondary }]}>{formatDate(item.scheduled_date)}</Text>
         </View>
         {item.frequency && item.frequency !== 'once' && (
           <View style={styles.detailRow}>
-            <Icon name="repeat" size={16} color="#666" />
-            <Text style={styles.detailText}>{item.frequency}</Text>
+            <Icon name="repeat" size={16} color={isCvr ? cvrTheme.text.secondary : '#666'} />
+            <Text style={[styles.detailText, isCvr && { color: cvrTheme.text.secondary }]}>{item.frequency}</Text>
           </View>
         )}
       </View>

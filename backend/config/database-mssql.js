@@ -1309,6 +1309,20 @@ const addMissingColumns = async () => {
       }
     }
     
+    // Add subcategory column for grouping items within a category (e.g., "entrance", "Restaurant")
+    if (!itemsColumns.includes('subcategory')) {
+      console.log('Adding subcategory column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [subcategory] NVARCHAR(255) NULL;
+        `);
+        console.log('subcategory column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding subcategory to checklist_items:', err.message);
+      }
+    }
+    
     // Add critical failure tracking to audits table
     if (!auditsColumns.includes('has_critical_failure')) {
       console.log('Adding has_critical_failure column to audits table...');

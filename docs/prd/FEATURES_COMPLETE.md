@@ -191,8 +191,28 @@ All major features are complete! The app now has:
 - ✅ Password change from mobile app (v1.13.0)
 - ✅ In Progress filter in Audit History (v1.13.0)
 - ✅ Improved navigation flow (v1.13.0)
+- ✅ CVR 3 (CDR) Plan checklist, CSV import, CVR/CDR UI on mobile & web (v1.14.0)
 
 The application is now feature-rich and production-ready!
+
+---
+
+## Version 1.14.0 Updates (January 2025)
+
+### ✅ CVR 3 – (CDR) Plan & CSV Import
+- **CVR_3_CDR_Plan.csv**: Full checklist (QUALITY, SERVICE, HYGIENE, PROCESSES, Speed of Service, ACKNOWLEDGEMENT with Manager on Duty and Signature)
+- **Import**: Web or `POST /api/checklists/import/csv`; template name e.g. "CVR 3 – (CDR) Plan"
+- **Input types**: `short_answer`, `signature` supported in import and forms
+- **Docs**: `docs/CVR_3_IMPORT.md`, `docs/prd/VERSION_1.14.0.md`
+
+### ✅ CVR/CDR UI (Mobile & Web)
+- **Trigger**: Template name contains "CVR" or "CDR Plan"
+- **Theme**: `cvrTheme`, `isCvrTemplate` in `theme.js` (mobile and web)
+- **Audit form**: Dark background, OUTLET (Required), Save Draft, Next/Submit (purple gradient), Photo + Remarks on Yes/No/NA items, short_answer "Type Here", dark item cards
+- **Scheduled audits**: CVR cards (dark, purple accent), **"Due 11:59 PM"** chip when due today and Start/Continue allowed
+- **Acknowledgement**: Manager on Duty (short_answer), Signature (signature) in checklist
+
+**See:** `docs/prd/VERSION_1.14.0.md` for complete details
 
 ---
 

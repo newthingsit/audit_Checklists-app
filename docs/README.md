@@ -6,7 +6,8 @@ This directory contains all project documentation organized by category.
 
 ### [PRD (Product Requirements Document)](./prd/)
 Product requirements, feature specifications, and planning documents:
-- `VERSION_1.13.0.md` - **Latest** - Mobile Profile & Navigation Enhancements
+- `VERSION_1.14.0.md` - **Latest** - CVR 3 (CDR) Plan, CSV Import & CVR/CDR UI (Mobile & Web)
+- `VERSION_1.13.0.md` - Mobile Profile & Navigation Enhancements
 - `VERSION_1.12.0.md` - Role & Permission Sync Fix
 - `FEATURES_COMPLETE.md` - Completed features documentation
 - `FEATURE_COMPARISON.md` - Feature comparison with GoAudits platform
@@ -74,7 +75,8 @@ Mobile-specific documentation remains in the `mobile/` directory:
 
 | Version | Date | Description |
 |---------|------|-------------|
-| **1.13.0** | Dec 3, 2025 | Mobile Profile Settings, Password Change, In Progress Filter, Navigation Fix |
+| **1.14.0** | Jan 2025 | CVR 3 (CDR) Plan, CSV Import, CVR/CDR UI (Mobile & Web), Due 11:59 PM |
+| 1.13.0 | Dec 3, 2025 | Mobile Profile Settings, Password Change, In Progress Filter, Navigation Fix |
 | 1.12.0 | Dec 1, 2025 | Role & Permission Sync, Settings API Fix, Notification Fix |
 | 1.11.0 | Nov 26, 2025 | Location Verification Report, GPS Fixes |
 | 1.10.0 | Nov 25, 2025 | Biometric Authentication |

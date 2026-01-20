@@ -48,6 +48,7 @@ import Layout from '../components/Layout';
 import { showSuccess, showError, showInfo } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { cvrTheme, isCvrTemplate } from '../config/theme';
 
 const ScheduledAudits = () => {
   const { user } = useAuth();
@@ -816,17 +817,23 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
           </TableContainer>
         ) : (
           <Grid container spacing={3}>
-            {schedules.map((schedule) => (
+            {schedules.map((schedule) => {
+              const isCvr = isCvrTemplate(schedule.template_name);
+              const sd = schedule.scheduled_date ? new Date(schedule.scheduled_date) : null;
+              const today = new Date();
+              const isDueToday = sd && sd.getFullYear() === today.getFullYear() && sd.getMonth() === today.getMonth() && sd.getDate() === today.getDate();
+              return (
               <Grid item xs={12} sm={6} md={4} key={schedule.id}>
                 <Card sx={{ 
                   height: '100%',
                   border: '1px solid',
-                  borderColor: 'divider',
+                  borderColor: isCvr ? cvrTheme.input.border : 'divider',
+                  bgcolor: isCvr ? cvrTheme.background.card : undefined,
                   transition: 'all 0.3s ease',
                   '&:hover': { 
                     transform: 'translateY(-4px)',
                     boxShadow: 6,
-                    borderColor: 'primary.main'
+                    borderColor: isCvr ? cvrTheme.accent.purple : 'primary.main'
                   }
                 }}>
                   <CardContent>
@@ -836,23 +843,28 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           width: 48, 
                           height: 48, 
                           borderRadius: 2,
-                          bgcolor: 'primary.light',
+                          bgcolor: isCvr ? cvrTheme.accent.purple + '30' : 'primary.light',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           mr: 2
                         }}>
-                          <CalendarTodayIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+                          <CalendarTodayIcon sx={{ fontSize: 28, color: isCvr ? cvrTheme.accent.purple : 'primary.main' }} />
                         </Box>
                         <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                            {schedule.template_name || 'Template'}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, ...(isCvr && { color: cvrTheme.text.primary }) }}>
+                              {schedule.template_name || 'Template'}
+                            </Typography>
+                            {isCvr && isDueToday && (canStartSchedule(schedule) || canContinueSchedule(schedule)) && (
+                              <Chip label="Due 11:59 PM" size="small" sx={{ bgcolor: cvrTheme.accent.due, color: '#000', fontWeight: 600 }} />
+                            )}
+                          </Box>
+                          <Typography variant="body2" sx={{ color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                             {schedule.location_name || 'All Stores'}
                           </Typography>
                           {schedule.assigned_to_name && (
-                            <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
+                            <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                               <PersonIcon sx={{ fontSize: 14, mr: 0.5 }} />
                               {schedule.assigned_to_name}
                             </Typography>
@@ -864,7 +876,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           <IconButton
                             size="small"
                             onClick={() => handleOpenDialog(schedule)}
-                            sx={{ color: 'primary.main' }}
+                            sx={{ color: isCvr ? cvrTheme.accent.purple : 'primary.main' }}
                           >
                             <EditIcon />
                           </IconButton>
@@ -881,8 +893,8 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
 
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <ScheduleIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 1 }} />
-                        <Typography variant="body2" color="text.secondary">
+                        <ScheduleIcon sx={{ fontSize: 16, color: isCvr ? cvrTheme.text.secondary : 'text.secondary', mr: 1 }} />
+                        <Typography variant="body2" sx={{ color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                           {new Date(schedule.scheduled_date).toLocaleDateString()}
                         </Typography>
                       </Box>
@@ -890,7 +902,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                         label={schedule.frequency}
                         size="small"
                         variant="outlined"
-                        sx={{ alignSelf: 'flex-start' }}
+                        sx={{ alignSelf: 'flex-start', ...(isCvr && { borderColor: cvrTheme.input.border, color: cvrTheme.text.secondary }) }}
                       />
                       {(() => {
                         const statusValue = getStatusValue(schedule.status);
@@ -981,7 +993,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                   </CardContent>
                 </Card>
               </Grid>
-            ))}
+            );})}
           </Grid>
         )}
 

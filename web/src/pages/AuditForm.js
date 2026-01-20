@@ -62,6 +62,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
+import { cvrTheme, isCvrTemplate } from '../config/theme';
 import SignatureCanvas from 'react-signature-canvas';
 
 const AuditForm = () => {
@@ -1239,7 +1240,7 @@ const AuditForm = () => {
             : (selectedOptions[item.id] ? 'primary.main' : 'divider'),
           borderLeft: isMissingRequiredPhoto ? '4px solid' : 'none',
           borderLeftColor: isMissingRequiredPhoto ? 'error.main' : 'transparent',
-          backgroundColor: isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper',
+          backgroundColor: isCvr && !isPreviousFailure && !isMissingRequiredPhoto ? cvrTheme.background.card : (isPreviousFailure ? '#FFF5F5' : isMissingRequiredPhoto ? '#FFF5F5' : 'background.paper'),
           transition: 'border-color 0.2s',
         }}
       >
@@ -1333,7 +1334,7 @@ const AuditForm = () => {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <Box>
-                  <span style={{ fontWeight: 600 }}>{index + 1}.</span> {item.title}
+                  <span style={{ fontWeight: 600 }}>{index + 1}.</span> <span style={isCvr ? { color: cvrTheme.text.primary } : {}}>{item.title}</span>
                   {/* Timer display */}
                   {itemStartTimes[item.id] && (
                     <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5 }}>
@@ -1558,17 +1559,17 @@ const AuditForm = () => {
               );
             }
 
-            // Short Answer - Single line text input
+            // Short Answer - Single line text input (CVR: "Type Here" placeholder)
             if (inputType === 'short_answer') {
               return (
                 <TextField
                   fullWidth
-                  label="Enter Answer"
-                  placeholder="Enter your answer..."
+                  label={isCvr ? 'Response' : 'Enter Answer'}
+                  placeholder={isCvr ? 'Type Here' : 'Enter your answer...'}
                   value={inputValues[item.id] || ''}
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
-                  sx={{ mt: 2, mb: 1 }}
+                  sx={{ mt: 2, mb: 1, ...(isCvr && { '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary } }) }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1825,19 +1826,19 @@ const AuditForm = () => {
 
           <TextField
             fullWidth
-            label="Add Comment"
-            placeholder="Add any notes or comments..."
+            label={isCvr ? 'Remarks' : 'Add Comment'}
+            placeholder={isCvr ? 'Add remarks...' : 'Add any notes or comments...'}
             value={comments[item.id] || ''}
             onChange={(e) => handleCommentChange(item.id, e.target.value)}
             multiline
             rows={2}
             size="small"
-            sx={{ mb: 2, mt: 2 }}
+            sx={{ mb: 2, mt: 2, ...(isCvr && { '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary } }) }}
             disabled={auditStatus === 'completed'}
           />
 
-          {/* Only show photo button for items that require photos (input_type === 'image_upload') */}
-          {inputType === 'image_upload' && (
+          {/* Photo: for image_upload always; for CVR also on Yes/No/NA (option) items */}
+          {(inputType === 'image_upload' || (isCvr && item.options && item.options.length > 0)) && (
             <Box sx={{
               display: 'flex',
               alignItems: 'center',
@@ -1862,16 +1863,17 @@ const AuditForm = () => {
                   <Button
                     variant="outlined"
                     component="span"
-                    startIcon={<PhotoCameraIcon />}
+                    startIcon={<PhotoCameraIcon sx={isCvr ? { color: cvrTheme.accent.purple } : {}} />}
                     size={isMobile ? "medium" : "small"}
                     disabled={uploading[item.id] || auditStatus === 'completed'}
                     className="photo-upload-btn"
                     sx={{
                       width: isMobile ? '100%' : 'auto',
                       minHeight: isMobile ? 48 : 36,
+                      ...(isCvr && { borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple, '&:hover': { borderColor: cvrTheme.accent.purple, bgcolor: cvrTheme.accent.purple + '20' } }),
                     }}
                   >
-                    {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : 'Take Photo'}
+                    {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : (isCvr ? 'Photo' : 'Take Photo')}
                   </Button>
                 </Tooltip>
               </label>
@@ -1928,15 +1930,17 @@ const AuditForm = () => {
     );
   }
 
+  const isCvr = isCvrTemplate(template?.name);
+
   return (
     <Layout>
-      <Container maxWidth="md">
+      <Container maxWidth="md" sx={{ ...(isCvr && { bgcolor: cvrTheme.background.primary, color: cvrTheme.text.primary }) }}>
         <Typography 
           variant="h4" 
           gutterBottom 
           sx={{ 
             fontWeight: 600, 
-            color: '#333', 
+            color: isCvr ? cvrTheme.text.primary : '#333', 
             mb: 3,
             fontSize: isMobile ? '1.25rem' : '2rem',
             lineHeight: 1.3
@@ -1947,7 +1951,7 @@ const AuditForm = () => {
 
         <Stepper 
           activeStep={activeStep} 
-          sx={{ mt: 3, mb: 4 }}
+          sx={{ mt: 3, mb: 4, ...(isCvr && { '& .MuiStepLabel-label': { color: cvrTheme.text.secondary } }) }}
           orientation={isMobile ? 'vertical' : 'horizontal'}
           alternativeLabel={!isMobile}
         >
@@ -1965,9 +1969,9 @@ const AuditForm = () => {
         )}
 
         {activeStep === 0 && (
-          <Paper sx={{ p: isMobile ? 2 : 3 }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
-              Store Information
+          <Paper sx={{ p: isMobile ? 2 : 3, ...(isCvr && { bgcolor: cvrTheme.background.card }) }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', ...(isCvr && { color: cvrTheme.text.primary }) }}>
+              {isCvr ? 'Details' : 'Store Information'}
             </Typography>
             
             {/* Warning for scheduled date restriction */}
@@ -2007,16 +2011,21 @@ const AuditForm = () => {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Store *"
+                  label={isCvr ? 'OUTLET (Required)' : 'Store *'}
                   required
                   margin="normal"
                   error={touched[0] && !!errors.locationId}
                   helperText={touched[0] ? errors.locationId : (isLocationLocked ? 'Store is locked for this scheduled audit' : '')}
-                  placeholder="Search and select a store..."
+                  placeholder={isCvr ? 'Search' : 'Search and select a store...'}
                   InputProps={{
                     ...params.InputProps,
                     readOnly: isLocationLocked
                   }}
+                  sx={isCvr ? {
+                    '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary, '& fieldset': { borderColor: cvrTheme.input.border } },
+                    '& .MuiInputLabel-root': { color: cvrTheme.text.secondary },
+                    '& .MuiFormHelperText-root': { color: cvrTheme.text.secondary }
+                  } : {}}
                 />
               )}
               isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -2030,31 +2039,43 @@ const AuditForm = () => {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               margin="normal"
+              sx={isCvr ? { '& .MuiOutlinedInput-root': { bgcolor: cvrTheme.input.bg, color: cvrTheme.text.primary } } : {}}
             />
             <Box sx={{ 
               display: 'flex', 
-              justifyContent: isMobile ? 'stretch' : 'flex-end', 
-              mt: 3 
+              justifyContent: isCvr ? 'space-between' : (isMobile ? 'stretch' : 'flex-end'), 
+              mt: 3,
+              gap: 2
             }}>
+              {isCvr && (
+                <Button 
+                  onClick={() => showSuccess('Draft saved')} 
+                  variant="text"
+                  sx={{ color: cvrTheme.accent.purple }}
+                >
+                  Save Draft
+                </Button>
+              )}
               <Button 
                 onClick={handleNext} 
                 variant="contained"
                 disabled={isBeforeScheduledDate}
-                fullWidth={isMobile}
+                fullWidth={isMobile && !isCvr}
                 sx={{ 
                   minHeight: isMobile ? 48 : 36,
-                  fontSize: isMobile ? '1rem' : '0.875rem'
+                  fontSize: isMobile ? '1rem' : '0.875rem',
+                  ...(isCvr && { background: cvrTheme.button.next, color: '#fff', '&:hover': { background: 'linear-gradient(135deg, #5a3ee6 0%, #8b52e6 100%)' } })
                 }}
               >
-                {categories.length > 1 ? 'Next: Select Category' : 'Next: Start Audit'}
+                Next
               </Button>
             </Box>
           </Paper>
         )}
 
         {activeStep === 1 && categories.length > 1 && (
-          <Paper sx={{ p: isMobile ? 2 : 3 }}>
-            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem' }}>
+          <Paper sx={{ p: isMobile ? 2 : 3, ...(isCvr && { bgcolor: cvrTheme.background.card }) }}>
+            <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', ...(isCvr && { color: cvrTheme.text.primary }) }}>
               Select Category
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -2299,7 +2320,8 @@ const AuditForm = () => {
               sx={{ 
                 p: 2, 
                 mb: 2, 
-                bgcolor: 'info.light',
+                bgcolor: isCvr ? cvrTheme.background.card : 'info.light',
+                ...(isCvr && { color: cvrTheme.text.primary }),
                 ...(isMobile && {
                   position: 'sticky',
                   top: 64,
