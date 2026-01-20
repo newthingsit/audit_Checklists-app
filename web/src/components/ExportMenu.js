@@ -5,7 +5,8 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Tooltip
+  Tooltip,
+  Divider
 } from '@mui/material';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -13,6 +14,7 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import EmailIcon from '@mui/icons-material/Email';
 import ShareIcon from '@mui/icons-material/Share';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import axios from 'axios';
 import { showSuccess, showError } from '../utils/toast';
 
@@ -40,6 +42,23 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
           url = `/api/reports/audit/${auditId}/pdf`;
           filename = `${auditName || 'audit'}.pdf`;
           // Use axios to fetch PDF with authentication
+          response = await axios.get(url, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'application/pdf'
+            }
+          });
+          const blob = new Blob([response.data], { type: 'application/pdf' });
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          link.click();
+          window.URL.revokeObjectURL(downloadUrl);
+        } else if (format === 'enhanced-pdf') {
+          // Enhanced QA Report with Executive Summary, Deviations & Action Plan
+          url = `/api/reports/audit/${auditId}/enhanced-pdf`;
+          filename = `${auditName || 'QA Audit'} - Enhanced Report.pdf`;
           response = await axios.get(url, {
             responseType: 'blob',
             headers: {
@@ -254,6 +273,18 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
           horizontal: 'right',
         }}
       >
+        {auditId && (
+          <MenuItem onClick={() => handleExport('enhanced-pdf')}>
+            <ListItemIcon>
+              <AssessmentIcon fontSize="small" color="primary" />
+            </ListItemIcon>
+            <ListItemText 
+              primary="QA Report (Enhanced)" 
+              secondary="With Executive Summary & Action Plan"
+              secondaryTypographyProps={{ variant: 'caption' }}
+            />
+          </MenuItem>
+        )}
         <MenuItem onClick={() => handleExport('pdf')}>
           <ListItemIcon>
             <PictureAsPdfIcon fontSize="small" />

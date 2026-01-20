@@ -36,6 +36,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import EmailIcon from '@mui/icons-material/Email';
 import SendIcon from '@mui/icons-material/Send';
 import StoreIcon from '@mui/icons-material/Store';
+import DescriptionIcon from '@mui/icons-material/Description';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -282,6 +283,31 @@ const AuditDetail = () => {
     setShowEmailDialog(true);
   };
 
+  // Download Enhanced QA Report with Executive Summary, Top-3 Deviations & Action Plan
+  const handleDownloadEnhancedReport = async () => {
+    try {
+      const response = await axios.get(`/api/reports/audit/${id}/enhanced-pdf`, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `${audit.restaurant_name || 'QA Audit'} - Report.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      showSuccess('QA Report downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading enhanced report:', error);
+      showError('Failed to download QA report. Please try again.');
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!emailForm.recipientEmail) {
       setEmailError('Please enter a recipient email');
@@ -378,6 +404,17 @@ const AuditDetail = () => {
             Back to Audits
           </Button>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Tooltip title="Download Full QA Report with Executive Summary, Deviations & Action Plan">
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<DescriptionIcon />}
+                onClick={handleDownloadEnhancedReport}
+                sx={{ fontWeight: 600 }}
+              >
+                Download QA Report
+              </Button>
+            </Tooltip>
             <Tooltip title="Email Report">
               <Button
                 variant="outlined"

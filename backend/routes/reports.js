@@ -3604,5 +3604,166 @@ router.get('/email/status', authenticate, (req, res) => {
   });
 });
 
+// ==================== ENHANCED PDF REPORT ====================
+// Generates Store-wise QA Audit Report matching reference format
+// Includes: Header, Executive Summary, Category Details, Top-3 Deviations, Action Plan
+
+const { generateEnhancedAuditPdf } = require('../utils/enhancedPdfReport');
+
+/**
+ * Generate Enhanced QA Audit PDF Report
+ * 
+ * This endpoint generates a professional PDF report that matches the reference format:
+ * - Section 1: Report Header (Outlet, Audit Name, Date, Auditor, Overall Score)
+ * - Section 2: Executive Summary (Category Scorecard)
+ * - Section 3: Category-wise Question Details with failure highlighting
+ * - Section 4: Top-3 Deviations (Auto-generated)
+ * - Section 5: Action Plan (Auto-generated from deviations)
+ * - Page numbering and footer branding
+ */
+router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
+  const auditId = req.params.id;
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const dbInstance = db.getDb();
+
+  try {
+    // Verify user has access to this audit
+    const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+    const params = isAdmin ? [auditId] : [auditId, userId];
+
+    const audit = await new Promise((resolve, reject) => {
+      dbInstance.get(
+        `SELECT a.id, a.restaurant_name, ct.name as template_name
+         FROM audits a
+         JOIN checklist_templates ct ON a.template_id = ct.id
+         ${whereClause}`,
+        params,
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found or access denied' });
+    }
+
+    // Generate enhanced PDF
+    const pdfBuffer = await generateEnhancedAuditPdf(auditId, {
+      includePhotos: req.query.photos === 'true',
+      includeComments: req.query.comments !== 'false'
+    });
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    const storeName = audit.restaurant_name || 'Store';
+    const templateName = audit.template_name || 'Audit';
+    const fileName = `${templateName} Report - ${storeName}.pdf`;
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    
+    // Send PDF
+    res.send(pdfBuffer);
+    
+    logger.info(`Enhanced PDF report generated for audit ${auditId} by user ${userId}`);
+    
+  } catch (error) {
+    logger.error('Error generating enhanced PDF report:', error);
+    res.status(500).json({ 
+      error: 'Error generating PDF report', 
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Get Top-3 Deviations for an Audit (JSON endpoint)
+ * Useful for displaying deviations in the UI or for API consumers
+ */
+router.get('/audit/:id/deviations', authenticate, async (req, res) => {
+  const auditId = req.params.id;
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const dbInstance = db.getDb();
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+
+  try {
+    // Verify user has access
+    const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+    const params = isAdmin ? [auditId] : [auditId, userId];
+
+    const audit = await new Promise((resolve, reject) => {
+      dbInstance.get(
+        `SELECT a.id FROM audits a ${whereClause}`,
+        params,
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found or access denied' });
+    }
+
+    // Fetch items with deviation analysis
+    const items = await new Promise((resolve, reject) => {
+      dbInstance.all(
+        `SELECT 
+          ai.id as audit_item_id,
+          ai.item_id,
+          ai.status,
+          ai.mark,
+          ai.comment,
+          ci.title,
+          ci.category,
+          ci.is_critical,
+          ci.required,
+          ci.weight,
+          cio.option_text as selected_option_text,
+          cio.mark as selected_mark,
+          (SELECT MAX(${isSqlServer ? 'TRY_CAST(mark AS FLOAT)' : 'CAST(mark AS REAL)'}) 
+           FROM checklist_item_options 
+           WHERE item_id = ci.id AND mark NOT IN ('NA', 'N/A', '')) as max_mark
+        FROM audit_items ai
+        JOIN checklist_items ci ON ai.item_id = ci.id
+        LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+        WHERE ai.audit_id = ?`,
+        [auditId],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+
+    // Import deviation identification function
+    const { identifyDeviations } = require('../utils/enhancedPdfReport');
+    
+    // Get items with max scores
+    const itemsWithMaxScores = items.map(item => ({
+      ...item,
+      maxScore: parseFloat(item.max_mark) || 3
+    }));
+    
+    const allDeviations = identifyDeviations(itemsWithMaxScores);
+    const top3 = allDeviations.slice(0, 3);
+
+    res.json({
+      audit_id: auditId,
+      total_deviations: allDeviations.length,
+      top_3_deviations: top3,
+      all_deviations: req.query.all === 'true' ? allDeviations : undefined
+    });
+
+  } catch (error) {
+    logger.error('Error fetching deviations:', error);
+    res.status(500).json({ error: 'Error fetching deviations', details: error.message });
+  }
+});
+
 module.exports = router;
 
