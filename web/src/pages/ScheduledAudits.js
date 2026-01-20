@@ -27,7 +27,9 @@ import {
   TableRow,
   Paper,
   Alert,
-  Tooltip
+  Tooltip,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -54,6 +56,8 @@ const ScheduledAudits = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Permission checks
   const canManageScheduled = hasPermission(userPermissions, 'manage_scheduled_audits') || 
@@ -615,18 +619,28 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
 
   return (
     <Layout>
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Container maxWidth="lg" sx={{ px: isMobile ? 2 : 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', mb: 3, gap: isMobile ? 2 : 1 }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 600, color: '#333' }}>
+            <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 600, color: '#333' }}>
               Scheduled Audits
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : 'auto', gap: isMobile ? 1 : 1, width: isMobile ? '100%' : 'auto' }}>
             <Button
               variant="outlined"
               startIcon={viewMode === 'cards' ? <TableChartIcon /> : <ScheduleIcon />}
               onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
+              sx={{
+                ...(isMobile && {
+                  flexDirection: 'column',
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  py: 1.25,
+                  borderRadius: 2,
+                  borderColor: 'divider'
+                })
+              }}
             >
               {viewMode === 'cards' ? 'Table View' : 'Card View'}
             </Button>
@@ -635,6 +649,16 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                 variant="outlined"
                 startIcon={<UploadFileIcon />}
                 onClick={handleOpenImportDialog}
+                sx={{
+                  ...(isMobile && {
+                    flexDirection: 'column',
+                    textTransform: 'none',
+                    fontSize: '0.75rem',
+                    py: 1.25,
+                    borderRadius: 2,
+                    borderColor: 'divider'
+                  })
+                }}
               >
                 Import CSV
               </Button>
@@ -644,11 +668,21 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                 variant="outlined"
                 startIcon={<AssessmentIcon />}
                 onClick={() => window.location.href = '/scheduled-report'}
+                sx={{
+                  ...(isMobile && {
+                    flexDirection: 'column',
+                    textTransform: 'none',
+                    fontSize: '0.75rem',
+                    py: 1.25,
+                    borderRadius: 2,
+                    borderColor: 'divider'
+                  })
+                }}
               >
                 View Report
               </Button>
             )}
-            {canCreateScheduled && (
+            {canCreateScheduled && !isMobile && (
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
@@ -658,6 +692,16 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
               </Button>
             )}
           </Box>
+          {canCreateScheduled && isMobile && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+              sx={{ width: '100%', textTransform: 'none', borderRadius: 2 }}
+            >
+              New Schedule
+            </Button>
+          )}
         </Box>
 
         {schedules.length === 0 ? (
@@ -816,7 +860,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
             </Table>
           </TableContainer>
         ) : (
-          <Grid container spacing={3}>
+          <Grid container spacing={isMobile ? 2 : 3}>
             {schedules.map((schedule) => {
               const isCvr = isCvrTemplate(schedule.template_name);
               const sd = schedule.scheduled_date ? new Date(schedule.scheduled_date) : null;
@@ -830,9 +874,11 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                   borderColor: isCvr ? cvrTheme.input.border : 'divider',
                   bgcolor: isCvr ? cvrTheme.background.card : undefined,
                   transition: 'all 0.3s ease',
+                  borderRadius: isMobile ? 3 : 2,
+                  boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined,
                   '&:hover': { 
-                    transform: 'translateY(-4px)',
-                    boxShadow: 6,
+                    transform: isMobile ? 'none' : 'translateY(-4px)',
+                    boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : 6,
                     borderColor: isCvr ? cvrTheme.accent.purple : 'primary.main'
                   }
                 }}>
@@ -840,16 +886,16 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
                       <Box sx={{ display: 'flex', alignItems: 'start', flex: 1 }}>
                         <Box sx={{ 
-                          width: 48, 
-                          height: 48, 
-                          borderRadius: 2,
+                          width: isMobile ? 44 : 48, 
+                          height: isMobile ? 44 : 48, 
+                          borderRadius: isMobile ? 3 : 2,
                           bgcolor: isCvr ? cvrTheme.accent.purple + '30' : 'primary.light',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           mr: 2
                         }}>
-                          <CalendarTodayIcon sx={{ fontSize: 28, color: isCvr ? cvrTheme.accent.purple : 'primary.main' }} />
+                          <CalendarTodayIcon sx={{ fontSize: isMobile ? 26 : 28, color: isCvr ? cvrTheme.accent.purple : 'primary.main' }} />
                         </Box>
                         <Box sx={{ flex: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -857,7 +903,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                               {schedule.template_name || 'Template'}
                             </Typography>
                             {isCvr && isDueToday && (canStartSchedule(schedule) || canContinueSchedule(schedule)) && (
-                              <Chip label="Due 11:59 PM" size="small" sx={{ bgcolor: cvrTheme.accent.due, color: '#000', fontWeight: 600 }} />
+                              <Chip label="Due 11:59 PM" size="small" sx={{ bgcolor: cvrTheme.accent.due, color: '#000', fontWeight: 600, borderRadius: 2 }} />
                             )}
                           </Box>
                           <Typography variant="body2" sx={{ color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
@@ -952,7 +998,9 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           sx={{
                             mt: 1,
                             textTransform: 'none',
-                            borderRadius: 1
+                            borderRadius: 2,
+                            borderColor: isMobile ? '#c62828' : undefined,
+                            color: isMobile ? '#c62828' : undefined
                           }}
                         >
                           Reschedule
@@ -969,7 +1017,9 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                           sx={{
                             mt: 1,
                             textTransform: 'none',
-                            borderRadius: 1
+                            borderRadius: 2,
+                            background: isMobile ? '#c62828' : undefined,
+                            '&:hover': { background: isMobile ? '#b71c1c' : undefined }
                           }}
                         >
                           Start Audit

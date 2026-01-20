@@ -25,7 +25,9 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import ChecklistIcon from '@mui/icons-material/Checklist';
@@ -65,6 +67,8 @@ import { hasPermission, isAdmin } from '../utils/permissions';
 const Dashboard = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [stats, setStats] = useState({ templates: 0, audits: 0, completed: 0, pendingActions: 0 });
   const [analytics, setAnalytics] = useState(null);
   const [trends, setTrends] = useState(null);
@@ -248,18 +252,18 @@ const Dashboard = () => {
 
   return (
     <Layout>
-      <Container maxWidth="xl">
+      <Container maxWidth="xl" sx={{ px: isMobile ? 2 : 3 }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
+          <Typography variant={isMobile ? 'h5' : 'h4'} gutterBottom sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
             Dashboard
           </Typography>
-          <Typography variant="body1" sx={{ color: '#666' }}>
+          <Typography variant={isMobile ? 'body2' : 'body1'} sx={{ color: '#666' }}>
             Welcome back! Here's an overview of your audit activities and performance trends.
           </Typography>
         </Box>
 
         {/* Summary Cards */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid container spacing={isMobile ? 2 : 3} sx={{ mb: 4 }}>
           {(hasPermission(userPermissions, 'display_templates') || 
              hasPermission(userPermissions, 'view_templates') || 
              hasPermission(userPermissions, 'manage_templates') || 
@@ -270,21 +274,23 @@ const Dashboard = () => {
                   background: themeConfig.dashboardCards.card1,
                   color: 'white',
                   position: 'relative',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  borderRadius: isMobile ? 3 : 2,
+                  boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined
                 }}>
                   <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
                     <ChecklistIcon sx={{ fontSize: 120 }} />
                   </Box>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                      <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2, width: isMobile ? 44 : 40, height: isMobile ? 44 : 40 }}>
                         <ChecklistIcon />
                       </Avatar>
                       <Box>
-                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                        <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                           {stats.templates}
                         </Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        <Typography variant={isMobile ? 'body2' : 'body2'} sx={{ opacity: 0.9 }}>
                           Templates
                         </Typography>
                       </Box>
@@ -303,18 +309,20 @@ const Dashboard = () => {
                     background: themeConfig.dashboardCards.card2,
                     color: 'white',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    borderRadius: isMobile ? 3 : 2,
+                    boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined
                   }}>
                     <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
                       <HistoryIcon sx={{ fontSize: 120 }} />
                     </Box>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2, width: isMobile ? 44 : 40, height: isMobile ? 44 : 40 }}>
                           <HistoryIcon />
                         </Avatar>
                         <Box>
-                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                          <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                             {stats.audits}
                           </Typography>
                           <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -333,18 +341,20 @@ const Dashboard = () => {
                     background: themeConfig.dashboardCards.card3,
                     color: 'white',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    borderRadius: isMobile ? 3 : 2,
+                    boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined
                   }}>
                     <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
                       <CheckCircleIcon sx={{ fontSize: 120 }} />
                     </Box>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2, width: isMobile ? 44 : 40, height: isMobile ? 44 : 40 }}>
                           <CheckCircleIcon />
                         </Avatar>
                         <Box>
-                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                          <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                             {stats.completed}
                           </Typography>
                           <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -363,18 +373,20 @@ const Dashboard = () => {
                     background: themeConfig.dashboardCards.card4,
                     color: 'white',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    borderRadius: isMobile ? 3 : 2,
+                    boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined
                   }}>
                     <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
                       <TrendingUpIcon sx={{ fontSize: 120 }} />
                     </Box>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2, width: isMobile ? 44 : 40, height: isMobile ? 44 : 40 }}>
                           <TrendingUpIcon />
                         </Avatar>
                         <Box>
-                          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                          <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                             {completionRate}%
                           </Typography>
                           <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -408,18 +420,20 @@ const Dashboard = () => {
                       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                       color: 'white',
                       position: 'relative',
-                      overflow: 'hidden'
+                      overflow: 'hidden',
+                      borderRadius: isMobile ? 3 : 2,
+                      boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined
                     }}>
                       <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
                         <ScheduleIcon sx={{ fontSize: 120 }} />
                       </Box>
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                          <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2, width: isMobile ? 44 : 40, height: isMobile ? 44 : 40 }}>
                             <ScheduleIcon />
                           </Avatar>
                           <Box>
-                            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                            <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700 }}>
                               {analytics.scheduleAdherence.adherence || 0}%
                             </Typography>
                             <Typography variant="body2" sx={{ opacity: 0.9 }}>
