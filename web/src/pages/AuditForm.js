@@ -43,7 +43,9 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Grid
+  Grid,
+  Tabs,
+  Tab
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -2078,7 +2080,7 @@ const AuditForm = () => {
             <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1.1rem' : '1.25rem', ...(isCvr && { color: cvrTheme.text.primary }) }}>
               Select Category
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            <Typography variant="body2" sx={{ mb: 3, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
               {template?.name}
             </Typography>
             
@@ -2098,6 +2100,7 @@ const AuditForm = () => {
                   const subCat = group.subCategories[0];
                   const status = categoryCompletionStatus[subCat.fullName] || { completed: 0, total: subCat.itemCount, isComplete: false };
                   const completionPercent = status.total > 0 ? Math.round((status.completed / status.total) * 100) : 0;
+                  const isSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
                   
                   return (
                     <Card
@@ -2107,21 +2110,23 @@ const AuditForm = () => {
                         cursor: 'pointer',
                         border: 2,
                         borderColor: status.isComplete 
-                          ? 'success.main' 
-                          : (selectedCategory === subCat.fullName && 
-                              (subCat.section ? selectedSection === subCat.section : !selectedSection))
-                            ? 'primary.main' 
-                            : 'divider',
-                        bgcolor: status.isComplete
-                          ? 'success.light'
-                          : (selectedCategory === subCat.fullName && 
-                              (subCat.section ? selectedSection === subCat.section : !selectedSection))
-                            ? 'primary.light' 
-                            : 'background.paper',
+                          ? (isCvr ? cvrTheme.accent.green : 'success.main')
+                          : isSelected
+                            ? (isCvr ? cvrTheme.accent.purple : 'primary.main')
+                            : (isCvr ? cvrTheme.input.border : 'divider'),
+                        bgcolor: isCvr 
+                          ? cvrTheme.background.card
+                          : (status.isComplete
+                              ? 'success.light'
+                              : isSelected
+                                ? 'primary.light' 
+                                : 'background.paper'),
                         transition: 'all 0.2s',
                         '&:hover': {
-                          borderColor: status.isComplete ? 'success.dark' : 'primary.main',
-                          bgcolor: status.isComplete ? 'success.light' : 'action.hover',
+                          borderColor: status.isComplete 
+                            ? (isCvr ? cvrTheme.accent.green : 'success.dark') 
+                            : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
+                          bgcolor: isCvr ? cvrTheme.background.elevated : (status.isComplete ? 'success.light' : 'action.hover'),
                           transform: 'translateY(-2px)',
                           boxShadow: 4
                         }
@@ -2130,15 +2135,15 @@ const AuditForm = () => {
                     >
                       <CardContent>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 600, flex: 1, color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
                             {group.name}
                           </Typography>
                           {status.isComplete && (
-                            <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main' }} />
+                            <CheckCircleIcon sx={{ fontSize: 24, color: isCvr ? cvrTheme.accent.green : 'success.main' }} />
                           )}
                         </Box>
                         <Box sx={{ mb: 1 }}>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          <Typography variant="body2" sx={{ mb: 0.5, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                             {status.completed} / {status.total} items completed
                           </Typography>
                           <LinearProgress 
@@ -2147,9 +2152,11 @@ const AuditForm = () => {
                             sx={{
                               height: 6,
                               borderRadius: 3,
-                              bgcolor: 'grey.200',
+                              bgcolor: isCvr ? cvrTheme.input.border : 'grey.200',
                               '& .MuiLinearProgress-bar': {
-                                bgcolor: status.isComplete ? 'success.main' : 'primary.main',
+                                bgcolor: status.isComplete 
+                                  ? (isCvr ? cvrTheme.accent.green : 'success.main') 
+                                  : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
                                 borderRadius: 3
                               }
                             }}
@@ -2169,48 +2176,54 @@ const AuditForm = () => {
                     sx={{ 
                       mb: 2,
                       border: 2,
-                      borderColor: isGroupComplete ? 'success.main' : 'divider',
+                      borderColor: isGroupComplete 
+                        ? (isCvr ? cvrTheme.accent.green : 'success.main') 
+                        : (isCvr ? cvrTheme.input.border : 'divider'),
                       borderRadius: '8px !important',
                       '&:before': { display: 'none' },
-                      bgcolor: isGroupComplete ? 'success.light' : 'background.paper',
+                      bgcolor: isCvr ? cvrTheme.background.card : (isGroupComplete ? 'success.light' : 'background.paper'),
                       overflow: 'hidden'
                     }}
                   >
                     <AccordionSummary
-                      expandIcon={<ExpandMoreIcon />}
+                      expandIcon={<ExpandMoreIcon sx={{ color: isCvr ? cvrTheme.text.secondary : undefined }} />}
                       sx={{ 
-                        bgcolor: isGroupComplete ? 'success.light' : 'grey.50',
-                        '&:hover': { bgcolor: isGroupComplete ? 'success.light' : 'grey.100' }
+                        bgcolor: isCvr ? cvrTheme.background.card : (isGroupComplete ? 'success.light' : 'grey.50'),
+                        '&:hover': { bgcolor: isCvr ? cvrTheme.background.elevated : (isGroupComplete ? 'success.light' : 'grey.100') }
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', pr: 2 }}>
                         {isExpanded ? (
-                          <FolderOpenIcon sx={{ mr: 1.5, color: isGroupComplete ? 'success.main' : 'primary.main' }} />
+                          <FolderOpenIcon sx={{ mr: 1.5, color: isGroupComplete ? (isCvr ? cvrTheme.accent.green : 'success.main') : (isCvr ? cvrTheme.accent.purple : 'primary.main') }} />
                         ) : (
-                          <FolderIcon sx={{ mr: 1.5, color: isGroupComplete ? 'success.main' : 'primary.main' }} />
+                          <FolderIcon sx={{ mr: 1.5, color: isGroupComplete ? (isCvr ? cvrTheme.accent.green : 'success.main') : (isCvr ? cvrTheme.accent.purple : 'primary.main') }} />
                         )}
                         <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
+                          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem', color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
                             {group.name}
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{ color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                               {group.subCategories.length} sub-categories • {group.completedItems}/{group.totalItems} items
                             </Typography>
                             <Chip 
                               label={`${groupCompletionPercent}%`}
                               size="small"
                               color={isGroupComplete ? 'success' : 'default'}
-                              sx={{ height: 20, fontSize: '0.7rem' }}
+                              sx={{ 
+                                height: 20, 
+                                fontSize: '0.7rem',
+                                ...(isCvr && !isGroupComplete && { bgcolor: cvrTheme.input.border, color: cvrTheme.text.secondary })
+                              }}
                             />
                           </Box>
                         </Box>
                         {isGroupComplete && (
-                          <CheckCircleIcon sx={{ fontSize: 24, color: 'success.main', ml: 1 }} />
+                          <CheckCircleIcon sx={{ fontSize: 24, color: isCvr ? cvrTheme.accent.green : 'success.main', ml: 1 }} />
                         )}
                       </Box>
                     </AccordionSummary>
-                    <AccordionDetails sx={{ p: 2, bgcolor: 'background.paper' }}>
+                    <AccordionDetails sx={{ p: 2, bgcolor: isCvr ? cvrTheme.background.primary : 'background.paper' }}>
                       <Box sx={{ 
                         display: 'grid', 
                         gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, 
@@ -2225,6 +2238,7 @@ const AuditForm = () => {
                           const completionPercent = status.total > 0 
                             ? Math.round((status.completed / status.total) * 100) 
                             : 0;
+                          const isSubSelected = selectedCategory === subCat.fullName && (subCat.section ? selectedSection === subCat.section : !selectedSection);
                           
                           return (
                             <Card
@@ -2233,21 +2247,23 @@ const AuditForm = () => {
                                 cursor: 'pointer',
                                 border: 2,
                                 borderColor: status.isComplete 
-                                  ? 'success.main' 
-                                  : (selectedCategory === subCat.fullName && 
-                                      (subCat.section ? selectedSection === subCat.section : !selectedSection))
-                                    ? 'primary.main' 
-                                    : 'grey.300',
-                                bgcolor: status.isComplete
-                                  ? 'success.light'
-                                  : (selectedCategory === subCat.fullName && 
-                                      (subCat.section ? selectedSection === subCat.section : !selectedSection))
-                                    ? 'primary.light' 
-                                    : 'background.paper',
+                                  ? (isCvr ? cvrTheme.accent.green : 'success.main')
+                                  : isSubSelected
+                                    ? (isCvr ? cvrTheme.accent.purple : 'primary.main')
+                                    : (isCvr ? cvrTheme.input.border : 'grey.300'),
+                                bgcolor: isCvr
+                                  ? cvrTheme.background.card
+                                  : (status.isComplete
+                                      ? 'success.light'
+                                      : isSubSelected
+                                        ? 'primary.light' 
+                                        : 'background.paper'),
                                 transition: 'all 0.2s',
                                 '&:hover': {
-                                  borderColor: status.isComplete ? 'success.dark' : 'primary.main',
-                                  bgcolor: status.isComplete ? 'success.light' : 'action.hover',
+                                  borderColor: status.isComplete 
+                                    ? (isCvr ? cvrTheme.accent.green : 'success.dark') 
+                                    : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
+                                  bgcolor: isCvr ? cvrTheme.background.elevated : (status.isComplete ? 'success.light' : 'action.hover'),
                                   transform: 'translateY(-2px)',
                                   boxShadow: 3
                                 }
@@ -2256,14 +2272,14 @@ const AuditForm = () => {
                             >
                               <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-                                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.9rem', flex: 1 }}>
+                                  <Typography variant="body1" sx={{ fontWeight: 600, fontSize: '0.9rem', flex: 1, color: isCvr ? cvrTheme.text.primary : 'text.primary' }}>
                                     {subCat.displayName}
                                   </Typography>
                                   {status.isComplete && (
-                                    <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main', ml: 0.5 }} />
+                                    <CheckCircleIcon sx={{ fontSize: 18, color: isCvr ? cvrTheme.accent.green : 'success.main', ml: 0.5 }} />
                                   )}
                                 </Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: isCvr ? cvrTheme.text.secondary : 'text.secondary' }}>
                                   {status.completed} / {status.total} items
                                 </Typography>
                                 <LinearProgress 
@@ -2272,17 +2288,17 @@ const AuditForm = () => {
                                   sx={{
                                     height: 4,
                                     borderRadius: 2,
-                                    bgcolor: 'grey.200',
+                                    bgcolor: isCvr ? cvrTheme.input.border : 'grey.200',
                                     '& .MuiLinearProgress-bar': {
-                                      bgcolor: status.isComplete ? 'success.main' : 'primary.main',
+                                      bgcolor: status.isComplete 
+                                        ? (isCvr ? cvrTheme.accent.green : 'success.main') 
+                                        : (isCvr ? cvrTheme.accent.purple : 'primary.main'),
                                       borderRadius: 2
                                     }
                                   }}
                                 />
-                                {selectedCategory === subCat.fullName && 
-                                 (subCat.section ? selectedSection === subCat.section : !selectedSection) && 
-                                 !status.isComplete && (
-                                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', color: 'primary.main' }}>
+                                {isSubSelected && !status.isComplete && (
+                                  <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', color: isCvr ? cvrTheme.accent.purple : 'primary.main' }}>
                                     <CheckCircleIcon sx={{ fontSize: 14, mr: 0.5 }} />
                                     <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>Selected</Typography>
                                   </Box>
@@ -2298,16 +2314,30 @@ const AuditForm = () => {
               })}
             </Box>
             
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-              <Button onClick={() => setActiveStep(0)} variant="outlined">
+            <Box sx={{ display: 'flex', justifyContent: isCvr ? 'space-between' : 'space-between', mt: 3 }}>
+              <Button 
+                onClick={() => setActiveStep(0)} 
+                variant="outlined"
+                sx={isCvr ? { borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple } : {}}
+              >
                 Back
               </Button>
+              {isCvr && (
+                <Button 
+                  variant="outlined"
+                  onClick={handleSaveDraft}
+                  sx={{ borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple }}
+                >
+                  Save Draft
+                </Button>
+              )}
               <Button 
                 onClick={handleNext} 
                 variant="contained"
                 disabled={!selectedCategory}
+                sx={isCvr ? { background: cvrTheme.button.next, color: '#fff', '&:hover': { background: cvrTheme.button.next, opacity: 0.9 } } : {}}
               >
-                Next: Start Audit
+                {isCvr ? 'Next' : 'Next: Start Audit'}
               </Button>
             </Box>
           </Paper>
@@ -2335,49 +2365,112 @@ const AuditForm = () => {
             >
               {/* Category Switcher (only show if multiple categories) */}
               {categories.length > 1 && (
-                <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                    Category:
-                  </Typography>
-                  <Select
-                    value={selectedCategory || ''}
-                    onChange={(e) => handleCategorySelect(e.target.value)}
-                    size="small"
-                    sx={{
-                      minWidth: 200,
-                      bgcolor: 'background.paper',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'primary.main'
-                      }
-                    }}
-                  >
-                    {categories.map((cat, idx) => {
-                      const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
-                      return (
-                        <MenuItem key={cat || `no-category-${idx}`} value={cat}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                            <Typography variant="body2">
-                              {cat || 'Uncategorized'}
-                            </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
-                              {catStatus.isComplete && (
-                                <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} />
-                              )}
-                              <Chip 
-                                label={`${catStatus.completed}/${catStatus.total}`}
-                                size="small"
-                                color={catStatus.isComplete ? 'success' : 'default'}
-                                sx={{ height: 20, fontSize: '0.7rem' }}
-                              />
+                <Box sx={{ mb: 2 }}>
+                  {/* CVR: Horizontal Tabs */}
+                  {isCvr ? (
+                    <Box sx={{ borderBottom: 1, borderColor: cvrTheme.input.border, mb: 2 }}>
+                      <Tabs
+                        value={categories.indexOf(selectedCategory)}
+                        onChange={(e, newValue) => handleCategorySelect(categories[newValue])}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        sx={{
+                          '& .MuiTabs-indicator': {
+                            backgroundColor: cvrTheme.accent.purple,
+                            height: 3
+                          },
+                          '& .MuiTab-root': {
+                            color: cvrTheme.text.secondary,
+                            textTransform: 'uppercase',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            minHeight: 48,
+                            '&.Mui-selected': {
+                              color: cvrTheme.text.primary,
+                              fontWeight: 600
+                            }
+                          },
+                          '& .MuiTabs-scrollButtons': {
+                            color: cvrTheme.text.secondary
+                          }
+                        }}
+                      >
+                        {/* Details Tab (completed) */}
+                        <Tab 
+                          label={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <CheckCircleIcon sx={{ fontSize: 16, color: cvrTheme.accent.green }} />
+                              <span>Details</span>
                             </Box>
-                          </Box>
-                        </MenuItem>
-                      );
-                    })}
-                  </Select>
+                          }
+                          onClick={() => setActiveStep(0)}
+                        />
+                        {/* Category Tabs */}
+                        {categories.map((cat, idx) => {
+                          const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
+                          return (
+                            <Tab 
+                              key={cat || `no-category-${idx}`}
+                              label={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  {catStatus.isComplete && (
+                                    <CheckCircleIcon sx={{ fontSize: 14, color: cvrTheme.accent.green }} />
+                                  )}
+                                  <span>{cat.length > 18 ? cat.substring(0, 18) + '...' : cat}</span>
+                                </Box>
+                              }
+                            />
+                          );
+                        })}
+                      </Tabs>
+                    </Box>
+                  ) : (
+                    /* Non-CVR: Original Select dropdown */
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                        Category:
+                      </Typography>
+                      <Select
+                        value={selectedCategory || ''}
+                        onChange={(e) => handleCategorySelect(e.target.value)}
+                        size="small"
+                        sx={{
+                          minWidth: 200,
+                          bgcolor: 'background.paper',
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: 'primary.main'
+                          }
+                        }}
+                      >
+                        {categories.map((cat, idx) => {
+                          const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
+                          return (
+                            <MenuItem key={cat || `no-category-${idx}`} value={cat}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <Typography variant="body2">
+                                  {cat || 'Uncategorized'}
+                                </Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
+                                  {catStatus.isComplete && (
+                                    <CheckCircleIcon sx={{ fontSize: 18, color: 'success.main' }} />
+                                  )}
+                                  <Chip 
+                                    label={`${catStatus.completed}/${catStatus.total}`}
+                                    size="small"
+                                    color={catStatus.isComplete ? 'success' : 'default'}
+                                    sx={{ height: 20, fontSize: '0.7rem' }}
+                                  />
+                                </Box>
+                              </Box>
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </Box>
+                  )}
                   
-                  {/* Overall Audit Summary */}
-                  {(() => {
+                  {/* Overall Audit Summary - Only for non-CVR (CVR shows tabs instead) */}
+                  {!isCvr && (() => {
                     const totalCompleted = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.completed, 0);
                     const totalItems = Object.values(categoryCompletionStatus).reduce((sum, status) => sum + status.total, 0);
                     const completedCategories = Object.values(categoryCompletionStatus).filter(s => s.isComplete).length;
@@ -2444,9 +2537,9 @@ const AuditForm = () => {
               {/* Current Category Progress */}
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 'fit-content', color: isCvr ? cvrTheme.text.primary : undefined }}>
                     {completedItems} / {itemsToDisplay.length}
-                    {selectedCategory && ` (${selectedCategory})`}
+                    {selectedCategory && !isCvr && ` (${selectedCategory})`}
                   </Typography>
                   <LinearProgress 
                     variant="determinate" 
@@ -2455,9 +2548,10 @@ const AuditForm = () => {
                       flex: 1, 
                       height: 8, 
                       borderRadius: 4,
-                      bgcolor: 'rgba(255,255,255,0.5)',
+                      bgcolor: isCvr ? cvrTheme.input.border : 'rgba(255,255,255,0.5)',
                       '& .MuiLinearProgress-bar': {
                         borderRadius: 4,
+                        bgcolor: isCvr ? cvrTheme.accent.purple : undefined
                       }
                     }}
                   />
