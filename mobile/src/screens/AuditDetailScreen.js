@@ -348,7 +348,7 @@ const AuditDetailScreen = () => {
                 <Text style={styles.actionPlanNumber}>#{index + 1}</Text>
                 <View style={[
                   styles.severityBadge, 
-                  { backgroundColor: item.severity === 'Critical' ? '#f44336' : item.severity === 'High' ? '#ff9800' : '#2196f3' }
+                  { backgroundColor: item.severity === 'CRITICAL' ? '#f44336' : item.severity === 'MAJOR' ? '#ff9800' : '#2196f3' }
                 ]}>
                   <Text style={styles.severityText}>{item.severity}</Text>
                 </View>
@@ -359,6 +359,11 @@ const AuditDetailScreen = () => {
                   <Text style={styles.statusTextSmall}>{item.status}</Text>
                 </View>
               </View>
+              
+              {/* Category */}
+              {item.category && (
+                <Text style={styles.categoryLabel}>{item.category}</Text>
+              )}
               
               <Text style={styles.deviationTitle}>{item.deviation}</Text>
               

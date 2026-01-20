@@ -607,13 +607,14 @@ const AuditDetail = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#1a365d', color: 'white' }}>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Deviation</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Severity</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '100px' }}>Category</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Checklist Title</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Severity</th>
                     <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Corrective Action</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '150px' }}>Responsible Person</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '120px' }}>Target Date</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Status</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Actions</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Responsible Person</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Target Date</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Status</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '60px' }}>Edit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -622,13 +623,16 @@ const AuditDetail = () => {
                       {editingActionId === item.id ? (
                         <>
                           <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666' }}>{item.category || '—'}</Typography>
+                          </td>
+                          <td style={{ padding: '12px' }}>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
                           </td>
                           <td style={{ padding: '12px', textAlign: 'center' }}>
                             <Chip 
                               label={item.severity} 
                               size="small" 
-                              color={item.severity === 'Critical' ? 'error' : item.severity === 'High' ? 'warning' : 'default'}
+                              color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
                             />
                           </td>
                           <td style={{ padding: '8px' }}>
@@ -666,7 +670,7 @@ const AuditDetail = () => {
                             />
                           </td>
                           <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <FormControl size="small" sx={{ minWidth: 90 }}>
+                            <FormControl size="small" sx={{ minWidth: 80 }}>
                               <Select
                                 value={actionEditForm.status || 'OPEN'}
                                 onChange={(e) => setActionEditForm({ ...actionEditForm, status: e.target.value })}
@@ -691,13 +695,16 @@ const AuditDetail = () => {
                       ) : (
                         <>
                           <td style={{ padding: '12px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666' }}>{item.category || '—'}</Typography>
+                          </td>
+                          <td style={{ padding: '12px' }}>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
                           </td>
                           <td style={{ padding: '12px', textAlign: 'center' }}>
                             <Chip 
                               label={item.severity} 
                               size="small" 
-                              color={item.severity === 'Critical' ? 'error' : item.severity === 'High' ? 'warning' : 'default'}
+                              color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
                             />
                           </td>
                           <td style={{ padding: '12px' }}>

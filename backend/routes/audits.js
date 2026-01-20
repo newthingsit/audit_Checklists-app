@@ -236,158 +236,304 @@ const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null)
 /**
  * Generate Action Plan with top-3 deviations for a completed audit
  */
+/**
+ * SEVERITY CONFIGURATION - Configurable, not hardcoded in UI
+ * Severity determines deviation_score for ranking Top-3 deviations
+ */
+const SEVERITY_CONFIG = {
+  CRITICAL: { level: 3, label: 'CRITICAL', priority: 'high' },
+  MAJOR: { level: 2, label: 'MAJOR', priority: 'medium' },
+  MINOR: { level: 1, label: 'MINOR', priority: 'low' }
+};
+
+// Categories that warrant MAJOR severity (configurable)
+const MAJOR_SEVERITY_CATEGORIES = ['QUALITY', 'PROCESS', 'PROCESSES', 'SPEED OF SERVICE', 'SERVICE'];
+
+/**
+ * Determine severity based on is_critical flag and category
+ * Rules:
+ * - is_critical = true => CRITICAL (3)
+ * - category IN (QUALITY, PROCESS, SPEED OF SERVICE) => MAJOR (2)
+ * - else => MINOR (1)
+ */
+function determineSeverity(isCritical, category) {
+  if (isCritical) {
+    return SEVERITY_CONFIG.CRITICAL;
+  }
+  
+  const upperCategory = (category || '').toUpperCase();
+  for (const majorCat of MAJOR_SEVERITY_CATEGORIES) {
+    if (upperCategory.includes(majorCat)) {
+      return SEVERITY_CONFIG.MAJOR;
+    }
+  }
+  
+  return SEVERITY_CONFIG.MINOR;
+}
+
+/**
+ * Determine deviation reason based on the response data
+ */
+function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark) {
+  const reasons = [];
+  
+  // Check if selected option score = 0
+  const numericMark = parseFloat(selectedMark) || 0;
+  if (selectedMark === '0' || numericMark === 0) {
+    reasons.push('Selected option score = 0');
+  }
+  
+  // Check if critical AND score < max
+  if (isCritical && numericMark < maxMark) {
+    reasons.push('Critical item with score below maximum');
+  }
+  
+  // Check if required AND answer is missing
+  if (isRequired && (!item.selected_option_id && !item.mark && !item.comment)) {
+    reasons.push('Required item with missing answer');
+  }
+  
+  // Check for failed status
+  if (item.status === 'failed') {
+    reasons.push('Item marked as failed');
+  }
+  
+  return reasons.length > 0 ? reasons.join('; ') : 'Score below passing threshold';
+}
+
+/**
+ * Generate Action Plan with Top-3 Deviations
+ * 
+ * DEVIATION IDENTIFICATION CRITERIA:
+ * - Selected option score = 0
+ * - is_critical = "yes" AND score < max
+ * - Required = "yes" AND answer is missing
+ * - Status = 'failed'
+ * 
+ * RANKING (deviation_score):
+ * - Sort by deviation_score DESC (severity level)
+ * - Then by is_critical DESC
+ * - Select TOP 3 only
+ */
 function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCreate = true) {
-  // Get failed items (items with mark = 0 or status = 'failed')
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
   
-  // SQL Server doesn't support parseFloat in SQL, use CASE instead
-  const query = isSqlServer
-    ? `SELECT TOP 3 ai.*, ci.title, ci.description, ci.category, ci.is_critical,
-              cio.option_text as selected_option_text, cio.mark as selected_mark,
-              ai.comment, ai.photo_url
-       FROM audit_items ai
-       JOIN checklist_items ci ON ai.item_id = ci.id
-       LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-       WHERE ai.audit_id = ?
-         AND (
-           ai.status = 'failed' 
-           OR ai.mark = '0' 
-           OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
-           OR (ai.mark IS NOT NULL AND TRY_CAST(ai.mark AS FLOAT) = 0)
-         )
-       ORDER BY 
-         CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
-         ci.category`
-    : `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
-              cio.option_text as selected_option_text, cio.mark as selected_mark,
-              ai.comment, ai.photo_url
-       FROM audit_items ai
-       JOIN checklist_items ci ON ai.item_id = ci.id
-       LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-       WHERE ai.audit_id = ?
-         AND (
-           ai.status = 'failed' 
-           OR ai.mark = '0' 
-           OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'NA', 'N/A', 'Fail', 'F', '0'))
-           OR (ai.mark IS NOT NULL AND CAST(ai.mark AS REAL) = 0)
-         )
-       ORDER BY 
-         CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
-         ci.category
-       LIMIT 3`;
+  // Fetch ALL audit items with their checklist metadata to apply deviation logic
+  const query = `
+    SELECT 
+      ai.id as audit_item_id,
+      ai.item_id,
+      ai.audit_id,
+      ai.status,
+      ai.selected_option_id,
+      ai.mark,
+      ai.comment,
+      ai.photo_url,
+      ci.title,
+      ci.description,
+      ci.category,
+      ci.is_critical,
+      ci.required,
+      ci.weight,
+      cio.option_text as selected_option_text,
+      cio.mark as selected_mark,
+      (SELECT MAX(${isSqlServer ? 'TRY_CAST(mark AS FLOAT)' : 'CAST(mark AS REAL)'}) 
+       FROM checklist_item_options 
+       WHERE item_id = ci.id AND mark NOT IN ('NA', 'N/A', '')) as max_mark
+    FROM audit_items ai
+    JOIN checklist_items ci ON ai.item_id = ci.id
+    LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+    WHERE ai.audit_id = ?
+  `;
   
-  dbInstance.all(query, [auditId], (err, failedItems) => {
-      if (err) {
-        return callback(err);
-      }
-
-      const deviations = (failedItems || []).map(item => {
-        // Determine severity based on is_critical flag
-        const severity = item.is_critical ? 'Critical' : 'Medium';
-        return {
-          item_id: item.item_id,
-          title: item.title,
-          description: item.description,
-          category: item.category,
-          is_critical: item.is_critical,
-          severity: severity,
-          selected_option: item.selected_option_text,
-          mark: item.selected_mark || item.mark,
-          comment: item.comment,
-          photo_url: item.photo_url
-        };
-      });
-
-      // Auto-create action items for top 3 deviations if enabled
-      if (autoCreate && deviations.length > 0) {
-        // First check if action items already exist for this audit
-        dbInstance.get(
-          'SELECT COUNT(*) as count FROM action_items WHERE audit_id = ?',
-          [auditId],
-          (countErr, countResult) => {
-            if (countErr) {
-              logger.error('Error checking existing action items:', countErr);
-              // Still return deviations even if we couldn't create action items
-              return callback(null, {
-                audit_id: auditId,
-                deviations: deviations,
-                total_deviations: deviations.length
-              });
-            }
-
-            // Only create action items if none exist yet
-            if (countResult.count === 0) {
-              const insertPromises = deviations.map((deviation, index) => {
-                return new Promise((resolve, reject) => {
-                  // Calculate default due date (7 days from now)
-                  const dueDate = new Date();
-                  dueDate.setDate(dueDate.getDate() + 7);
-                  const dueDateStr = dueDate.toISOString().split('T')[0];
-
-                  dbInstance.run(
-                    `INSERT INTO action_items (audit_id, item_id, title, description, severity, priority, status, due_date)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                      auditId,
-                      deviation.item_id,
-                      deviation.title,
-                      deviation.description || `Deviation in ${deviation.category}`,
-                      deviation.severity,
-                      deviation.is_critical ? 'high' : 'medium',
-                      'OPEN',
-                      dueDateStr
-                    ],
-                    function(insertErr) {
-                      if (insertErr) {
-                        logger.error('Error creating action item:', insertErr);
-                        reject(insertErr);
-                      } else {
-                        logger.info(`[Action Plan] Created action item ${this.lastID} for deviation: ${deviation.title}`);
-                        resolve(this.lastID);
-                      }
-                    }
-                  );
-                });
-              });
-
-              Promise.all(insertPromises)
-                .then(() => {
-                  callback(null, {
-                    audit_id: auditId,
-                    deviations: deviations,
-                    total_deviations: deviations.length,
-                    action_items_created: deviations.length
-                  });
-                })
-                .catch(insertErr => {
-                  // Still return deviations even if insert failed
-                  callback(null, {
-                    audit_id: auditId,
-                    deviations: deviations,
-                    total_deviations: deviations.length
-                  });
-                });
-            } else {
-              // Action items already exist, just return deviations
-              callback(null, {
-                audit_id: auditId,
-                deviations: deviations,
-                total_deviations: deviations.length,
-                action_items_exist: true
-              });
-            }
-          }
-        );
-      } else {
-        callback(null, {
-          audit_id: auditId,
-          deviations: deviations,
-          total_deviations: deviations.length
-        });
-      }
+  dbInstance.all(query, [auditId], (err, allItems) => {
+    if (err) {
+      logger.error('[Action Plan] Error fetching audit items:', err);
+      return callback(err);
     }
-  );
+
+    // Apply deviation identification logic
+    const deviationsWithScore = (allItems || []).map(item => {
+      const selectedMark = item.selected_mark || item.mark || '';
+      const numericMark = parseFloat(selectedMark) || 0;
+      const maxMark = parseFloat(item.max_mark) || 3;
+      const isCritical = item.is_critical === 1 || item.is_critical === true;
+      const isRequired = item.required === 1 || item.required === true;
+      
+      // DEVIATION FLAG CRITERIA:
+      let deviationFlag = false;
+      
+      // 1. Selected option score = 0
+      if (selectedMark === '0' || numericMark === 0) {
+        deviationFlag = true;
+      }
+      
+      // 2. is_critical AND score < max
+      if (isCritical && numericMark < maxMark) {
+        deviationFlag = true;
+      }
+      
+      // 3. Required AND answer missing
+      if (isRequired && !item.selected_option_id && !item.mark && item.status !== 'completed') {
+        deviationFlag = true;
+      }
+      
+      // 4. Status = 'failed'
+      if (item.status === 'failed') {
+        deviationFlag = true;
+      }
+      
+      // 5. Option text indicates failure (No, Fail, etc.)
+      if (item.selected_option_text && ['No', 'N', 'Fail', 'F'].includes(item.selected_option_text)) {
+        deviationFlag = true;
+      }
+      
+      if (!deviationFlag) {
+        return null; // Not a deviation
+      }
+      
+      // Determine severity and deviation_score
+      const severity = determineSeverity(isCritical, item.category);
+      const deviationReason = getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark);
+      
+      return {
+        item_id: item.item_id,
+        audit_item_id: item.audit_item_id,
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        is_critical: isCritical,
+        required: isRequired,
+        severity: severity.label,
+        severity_level: severity.level,
+        priority: severity.priority,
+        deviation_score: severity.level, // Used for ranking
+        deviation_reason: deviationReason,
+        selected_option: item.selected_option_text,
+        mark: selectedMark,
+        max_mark: maxMark,
+        comment: item.comment,
+        photo_url: item.photo_url,
+        weight: item.weight || 1
+      };
+    }).filter(item => item !== null); // Remove non-deviations
+    
+    // RANKING: Sort by deviation_score DESC, then is_critical DESC
+    deviationsWithScore.sort((a, b) => {
+      // Primary: deviation_score (severity level) DESC
+      if (b.deviation_score !== a.deviation_score) {
+        return b.deviation_score - a.deviation_score;
+      }
+      // Secondary: is_critical DESC
+      if (b.is_critical !== a.is_critical) {
+        return b.is_critical ? 1 : -1;
+      }
+      // Tertiary: weight DESC (higher weight = more important)
+      return (b.weight || 1) - (a.weight || 1);
+    });
+    
+    // SELECT TOP 3 ONLY
+    const top3Deviations = deviationsWithScore.slice(0, 3);
+    
+    logger.info(`[Action Plan] Audit ${auditId}: Found ${deviationsWithScore.length} total deviations, selected Top ${top3Deviations.length}`);
+    
+    // Auto-create action items for top 3 deviations if enabled
+    if (autoCreate && top3Deviations.length > 0) {
+      // First check if action items already exist for this audit
+      dbInstance.get(
+        'SELECT COUNT(*) as count FROM action_items WHERE audit_id = ?',
+        [auditId],
+        (countErr, countResult) => {
+          if (countErr) {
+            logger.error('[Action Plan] Error checking existing action items:', countErr);
+            return callback(null, {
+              audit_id: auditId,
+              deviations: top3Deviations,
+              total_deviations: deviationsWithScore.length,
+              top3_count: top3Deviations.length
+            });
+          }
+
+          // Only create action items if none exist yet (backward compatibility)
+          if (countResult.count === 0) {
+            const insertPromises = top3Deviations.map((deviation) => {
+              return new Promise((resolve, reject) => {
+                // Calculate default due date (7 days from now)
+                const dueDate = new Date();
+                dueDate.setDate(dueDate.getDate() + 7);
+                const dueDateStr = dueDate.toISOString().split('T')[0];
+
+                dbInstance.run(
+                  `INSERT INTO action_items (audit_id, item_id, title, description, severity, priority, status, due_date, corrective_action, category)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    auditId,
+                    deviation.item_id,
+                    deviation.title,
+                    deviation.deviation_reason, // Use deviation_reason as description
+                    deviation.severity,
+                    deviation.priority,
+                    'OPEN', // Status defaults to OPEN
+                    dueDateStr,
+                    '', // corrective_action to be filled by user
+                    deviation.category || '' // Category from checklist item
+                  ],
+                  function(insertErr) {
+                    if (insertErr) {
+                      logger.error('[Action Plan] Error creating action item:', insertErr);
+                      reject(insertErr);
+                    } else {
+                      logger.info(`[Action Plan] Created action item ${this.lastID} for deviation: ${deviation.title} (Severity: ${deviation.severity})`);
+                      resolve(this.lastID);
+                    }
+                  }
+                );
+              });
+            });
+
+            Promise.all(insertPromises)
+              .then((createdIds) => {
+                logger.info(`[Action Plan] Successfully created ${createdIds.length} action items for audit ${auditId}`);
+                callback(null, {
+                  audit_id: auditId,
+                  deviations: top3Deviations,
+                  total_deviations: deviationsWithScore.length,
+                  top3_count: top3Deviations.length,
+                  action_items_created: createdIds.length
+                });
+              })
+              .catch(insertErr => {
+                logger.error('[Action Plan] Error in batch insert:', insertErr);
+                callback(null, {
+                  audit_id: auditId,
+                  deviations: top3Deviations,
+                  total_deviations: deviationsWithScore.length,
+                  top3_count: top3Deviations.length
+                });
+              });
+          } else {
+            // Action items already exist, just return deviations
+            logger.info(`[Action Plan] Action items already exist for audit ${auditId}, skipping creation`);
+            callback(null, {
+              audit_id: auditId,
+              deviations: top3Deviations,
+              total_deviations: deviationsWithScore.length,
+              top3_count: top3Deviations.length,
+              action_items_exist: true
+            });
+          }
+        }
+      );
+    } else {
+      callback(null, {
+        audit_id: auditId,
+        deviations: top3Deviations,
+        total_deviations: deviationsWithScore.length,
+        top3_count: top3Deviations.length
+      });
+    }
+  });
 }
 
 const router = express.Router();
@@ -2755,21 +2901,41 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
             restaurant_name: audit.restaurant_name,
             completed_at: audit.completed_at,
             score: audit.score,
-            deviations: actionPlan.deviations,
+            // Enhanced deviation data with category, severity, deviation_reason
+            deviations: (actionPlan.deviations || []).map(d => ({
+              item_id: d.item_id,
+              category: d.category,
+              title: d.title,
+              severity: d.severity,
+              severity_level: d.severity_level,
+              deviation_reason: d.deviation_reason,
+              selected_option: d.selected_option,
+              mark: d.mark,
+              max_mark: d.max_mark,
+              is_critical: d.is_critical
+            })),
             total_deviations: actionPlan.total_deviations,
-            action_items: (actionItems || []).map(item => ({
-              id: item.id,
-              item_id: item.item_id,
-              deviation: item.title,
-              severity: item.severity || 'Medium',
-              corrective_action: item.corrective_action || '',
-              responsible_person: item.assigned_to_name || '',
-              responsible_person_id: item.assigned_to,
-              target_date: item.due_date,
-              status: item.status || 'OPEN',
-              priority: item.priority,
-              created_at: item.created_at
-            }))
+            top3_count: actionPlan.top3_count,
+            // Action items with full details (Category, Title, Severity, Corrective Action, Responsible, Target Date, Status)
+            action_items: (actionItems || []).map(item => {
+              // Find matching deviation for additional info (fallback for legacy records)
+              const matchingDeviation = (actionPlan.deviations || []).find(d => d.item_id === item.item_id);
+              return {
+                id: item.id,
+                item_id: item.item_id,
+                category: item.category || matchingDeviation?.category || '', // Use stored category first
+                deviation: item.title, // Checklist Title
+                deviation_reason: item.description || matchingDeviation?.deviation_reason || '',
+                severity: item.severity || 'MINOR', // CRITICAL / MAJOR / MINOR
+                corrective_action: item.corrective_action || '', // User fills this
+                responsible_person: item.assigned_to_name || '', // User fills this
+                responsible_person_id: item.assigned_to,
+                target_date: item.due_date, // User fills this
+                status: item.status || 'OPEN', // OPEN / IN_PROGRESS / CLOSED
+                priority: item.priority,
+                created_at: item.created_at
+              };
+            })
           });
         }, false); // Don't auto-create again since we're just fetching
       }
