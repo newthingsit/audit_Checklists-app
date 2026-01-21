@@ -137,7 +137,7 @@ async function main() {
     .split(',')
     .map(n => n.trim().toLowerCase())
     .filter(Boolean);
-  const applyPhotoFix = photoFixNames.includes(String(templateName || '').trim().toLowerCase());
+  const applyPhotoFix = photoFixNames.includes(String(TEMPLATE_NAME || '').trim().toLowerCase());
 
   const items = [];
   for (let i = 1; i < lines.length; i += 1) {
