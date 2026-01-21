@@ -43,6 +43,48 @@ import ExportMenu from '../components/ExportMenu';
 import PrintButton from '../components/PrintButton';
 import { showSuccess, showError } from '../utils/toast';
 
+// Helper: normalize category name for display and grouping
+const normalizeCategoryName = (name) => {
+  if (!name) return '';
+  let normalized = String(name).trim().replace(/\s+/g, ' ');
+  normalized = normalized.replace(/\s*&\s*/g, ' & ');
+  normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+  normalized = normalized.replace(/\s*–\s*/g, ' - ');
+  normalized = normalized.replace(/\s*-\s*/g, ' - ');
+  normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+  return normalized;
+};
+
+// Helper: group category scores by normalized name (merge duplicates)
+const normalizeAndMergeCategoryScores = (rawScores) => {
+  const merged = {};
+  Object.entries(rawScores || {}).forEach(([rawCat, data]) => {
+    const normalizedCat = normalizeCategoryName(rawCat);
+    if (!normalizedCat) return;
+    if (merged[normalizedCat]) {
+      // Merge with existing - combine totals
+      merged[normalizedCat] = {
+        completedItems: (merged[normalizedCat].completedItems || 0) + (data.completedItems || 0),
+        totalItems: (merged[normalizedCat].totalItems || 0) + (data.totalItems || 0),
+        actualScore: (merged[normalizedCat].actualScore || 0) + (data.actualScore || 0),
+        totalPossibleScore: (merged[normalizedCat].totalPossibleScore || 0) + (data.totalPossibleScore || 0),
+        hasCriticalFailure: merged[normalizedCat].hasCriticalFailure || data.hasCriticalFailure,
+        rawCategories: [...(merged[normalizedCat].rawCategories || []), rawCat]
+      };
+      // Recalculate score
+      merged[normalizedCat].score = merged[normalizedCat].totalPossibleScore > 0
+        ? Math.round((merged[normalizedCat].actualScore / merged[normalizedCat].totalPossibleScore) * 100)
+        : (merged[normalizedCat].totalItems > 0 ? Math.round((merged[normalizedCat].completedItems / merged[normalizedCat].totalItems) * 100) : 0);
+    } else {
+      merged[normalizedCat] = {
+        ...data,
+        rawCategories: [rawCat]
+      };
+    }
+  });
+  return merged;
+};
+
 const AuditDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -50,8 +92,10 @@ const AuditDetail = () => {
   const [items, setItems] = useState([]);
   const [actions, setActions] = useState([]);
   const [categoryScores, setCategoryScores] = useState({});
+  const [rawCategoryScores, setRawCategoryScores] = useState({}); // For debug
   const [timeStats, setTimeStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showDebug, setShowDebug] = useState(false); // Debug toggle for dev mode
   const [showActionDialog, setShowActionDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -153,7 +197,12 @@ const AuditDetail = () => {
       });
       
       setItems(itemsWithPhotos);
-      setCategoryScores(auditResponse.data.categoryScores || {});
+      
+      // Store raw scores for debugging, then normalize and merge duplicates
+      const raw = auditResponse.data.categoryScores || {};
+      setRawCategoryScores(raw);
+      setCategoryScores(normalizeAndMergeCategoryScores(raw));
+      
       setTimeStats(auditResponse.data.timeStats || null);
       setActions(actionsResponse.data.actions || []);
       
@@ -583,53 +632,103 @@ const AuditDetail = () => {
         {/* Category-wise Scores */}
         {Object.keys(categoryScores).length > 0 && (
           <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
-              📊 Category Scores
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                📊 Category Scores
+              </Typography>
+              {process.env.NODE_ENV === 'development' && (
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={() => setShowDebug(prev => !prev)}
+                  sx={{ fontSize: '0.7rem', textTransform: 'none' }}
+                >
+                  {showDebug ? 'Hide Debug' : 'Show Debug'}
+                </Button>
+              )}
+            </Box>
             <Grid container spacing={2}>
-              {Object.entries(categoryScores).map(([category, data]) => (
-                <Grid item xs={12} sm={6} md={4} key={category}>
-                  <Box sx={{ 
-                    p: 2, 
-                    borderRadius: 2, 
-                    bgcolor: data.score >= 80 ? 'success.light' : data.score >= 60 ? 'warning.light' : 'error.light',
-                    border: data.hasCriticalFailure ? '2px solid' : '1px solid',
-                    borderColor: data.hasCriticalFailure ? 'error.main' : 'transparent'
-                  }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {category}
+              {Object.entries(categoryScores).map(([category, data]) => {
+                // Calculate effective display score:
+                // If score is 0 but items are completed, show completion % instead
+                const effectiveScore = data.score > 0 
+                  ? data.score 
+                  : (data.totalItems > 0 ? Math.round((data.completedItems / data.totalItems) * 100) : 0);
+                const isNonScoredCategory = (data.totalPossibleScore === 0 || data.totalPossibleScore === undefined) && data.totalItems > 0;
+                
+                return (
+                  <Grid item xs={12} sm={6} md={4} key={category}>
+                    <Box sx={{ 
+                      p: 2, 
+                      borderRadius: 2, 
+                      bgcolor: effectiveScore >= 80 ? 'success.light' : effectiveScore >= 60 ? 'warning.light' : 'error.light',
+                      border: data.hasCriticalFailure ? '2px solid' : '1px solid',
+                      borderColor: data.hasCriticalFailure ? 'error.main' : 'transparent'
+                    }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {category}
+                        </Typography>
+                        {data.hasCriticalFailure && (
+                          <Chip label="Critical Failure" size="small" color="error" sx={{ fontSize: '0.7rem' }} />
+                        )}
+                        {isNonScoredCategory && (
+                          <Chip label="Completion" size="small" color="info" sx={{ fontSize: '0.65rem', height: 18 }} />
+                        )}
+                      </Box>
+                      <Typography variant="h4" sx={{ 
+                        fontWeight: 700,
+                        color: effectiveScore >= 80 ? 'success.dark' : effectiveScore >= 60 ? 'warning.dark' : 'error.dark'
+                      }}>
+                        {effectiveScore}%
                       </Typography>
-                      {data.hasCriticalFailure && (
-                        <Chip label="Critical Failure" size="small" color="error" sx={{ fontSize: '0.7rem' }} />
+                      <Typography variant="caption" color="text.secondary">
+                        {data.completedItems} / {data.totalItems} items completed
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={effectiveScore} 
+                        sx={{ 
+                          mt: 1, 
+                          height: 6, 
+                          borderRadius: 1,
+                          bgcolor: 'rgba(255,255,255,0.5)',
+                          '& .MuiLinearProgress-bar': {
+                            bgcolor: effectiveScore >= 80 ? 'success.main' : effectiveScore >= 60 ? 'warning.main' : 'error.main'
+                          }
+                        }} 
+                      />
+                      {/* Debug info - only shown in dev mode with toggle */}
+                      {showDebug && (
+                        <Box sx={{ mt: 1, p: 1, bgcolor: 'grey.100', borderRadius: 1, fontSize: '0.65rem' }}>
+                          <Typography variant="caption" sx={{ display: 'block', fontFamily: 'monospace', fontSize: '0.65rem' }}>
+                            Raw Score: {data.score}% | Actual: {data.actualScore}/{data.totalPossibleScore}
+                          </Typography>
+                          {data.rawCategories && data.rawCategories.length > 1 && (
+                            <Typography variant="caption" sx={{ display: 'block', fontFamily: 'monospace', fontSize: '0.65rem', color: 'warning.main' }}>
+                              Merged from: {data.rawCategories.join(', ')}
+                            </Typography>
+                          )}
+                        </Box>
                       )}
                     </Box>
-                    <Typography variant="h4" sx={{ 
-                      fontWeight: 700,
-                      color: data.score >= 80 ? 'success.dark' : data.score >= 60 ? 'warning.dark' : 'error.dark'
-                    }}>
-                      {data.score}%
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {data.completedItems} / {data.totalItems} items completed
-                    </Typography>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={data.score} 
-                      sx={{ 
-                        mt: 1, 
-                        height: 6, 
-                        borderRadius: 1,
-                        bgcolor: 'rgba(255,255,255,0.5)',
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: data.score >= 80 ? 'success.main' : data.score >= 60 ? 'warning.main' : 'error.main'
-                        }
-                      }} 
-                    />
-                  </Box>
-                </Grid>
-              ))}
+                  </Grid>
+                );
+              })}
             </Grid>
+            {/* Raw categories debug panel */}
+            {showDebug && Object.keys(rawCategoryScores).length > 0 && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1, border: '1px dashed grey' }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                  🔍 Raw Backend Categories (before normalization):
+                </Typography>
+                {Object.entries(rawCategoryScores).map(([rawCat, rawData]) => (
+                  <Typography key={rawCat} variant="caption" sx={{ display: 'block', fontFamily: 'monospace', fontSize: '0.65rem' }}>
+                    "{rawCat}" → {rawData.completedItems}/{rawData.totalItems} items, score={rawData.score}%
+                  </Typography>
+                ))}
+              </Box>
+            )}
           </Paper>
         )}
 

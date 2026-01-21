@@ -65,6 +65,18 @@ import { showSuccess, showError } from '../utils/toast';
 import { cvrTheme, isCvrTemplate } from '../config/theme';
 import SignatureCanvas from 'react-signature-canvas';
 
+// Helper: normalize category name for consistent grouping and matching
+const normalizeCategoryName = (name) => {
+  if (!name) return '';
+  let normalized = String(name).trim().replace(/\s+/g, ' ');
+  normalized = normalized.replace(/\s*&\s*/g, ' & ');
+  normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+  normalized = normalized.replace(/\s*–\s*/g, ' - ');
+  normalized = normalized.replace(/\s*-\s*/g, ' - ');
+  normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+  return normalized;
+};
+
 const AuditForm = () => {
   const { templateId } = useParams();
   const [searchParams] = useSearchParams();
@@ -234,8 +246,8 @@ const AuditForm = () => {
       const allItems = templateResponse.data.items || [];
       setItems(allItems);
 
-      // Extract unique categories from items
-      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      // Extract unique categories from items (normalize names for consistent grouping)
+      const uniqueCategories = [...new Set(allItems.map(item => normalizeCategoryName(item.category)).filter(cat => cat))];
       setCategories(uniqueCategories);
 
       // For resume audit: ALWAYS show category selection if multiple categories exist
@@ -244,15 +256,16 @@ const AuditForm = () => {
         // Multiple categories - start at category selection step to allow user to choose/switch
         // Pre-select the audit's category if it has one, but allow changing
         if (audit.audit_category) {
-          setSelectedCategory(audit.audit_category);
-          setFilteredItems(allItems.filter(item => item.category === audit.audit_category));
+          const normalizedAuditCategory = normalizeCategoryName(audit.audit_category);
+          setSelectedCategory(normalizedAuditCategory);
+          setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === normalizedAuditCategory));
         }
         // Go to category selection step (step 1) so user can choose which category to work on
         setActiveStep(1);
       } else if (uniqueCategories.length === 1) {
         // Single category - auto-select and go directly to checklist
         setSelectedCategory(uniqueCategories[0]);
-        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === uniqueCategories[0]));
         setActiveStep(1);
       } else {
         // No categories - show all items directly
@@ -314,14 +327,14 @@ const AuditForm = () => {
       const allItems = response.data.items || [];
       setItems(allItems);
       
-      // Extract unique categories from items
-      const uniqueCategories = [...new Set(allItems.map(item => item.category).filter(cat => cat && cat.trim()))];
+      // Extract unique categories from items (normalize names for consistent grouping)
+      const uniqueCategories = [...new Set(allItems.map(item => normalizeCategoryName(item.category)).filter(cat => cat))];
       setCategories(uniqueCategories);
       
       // If only one category, auto-select it
       if (uniqueCategories.length === 1) {
         setSelectedCategory(uniqueCategories[0]);
-        setFilteredItems(allItems.filter(item => item.category === uniqueCategories[0]));
+        setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === uniqueCategories[0]));
       } else if (uniqueCategories.length === 0) {
         // No categories, show all items
         setFilteredItems(allItems);
@@ -685,9 +698,9 @@ const AuditForm = () => {
 
   const handleCategorySelect = (category, section = null) => {
     setSelectedCategory(category);
-    // Filter items by category and optionally by section
+    // Filter items by category (using normalized names) and optionally by section
     const filtered = items.filter(item => {
-      if (item.category !== category) return false;
+      if (normalizeCategoryName(item.category) !== category) return false;
       if (section && item.section !== section) return false;
       return true;
     });
@@ -700,7 +713,8 @@ const AuditForm = () => {
     
     const status = {};
     categories.forEach(cat => {
-      const categoryItems = items.filter(item => item.category === cat);
+      // Use normalized category name for matching
+      const categoryItems = items.filter(item => normalizeCategoryName(item.category) === cat);
       const completedInCategory = categoryItems.filter(item => {
         const inputType = getNormalizedInputType(item);
         const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
