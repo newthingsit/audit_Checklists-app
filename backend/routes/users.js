@@ -2,38 +2,67 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
-const { requireAdmin, requirePermission } = require('../middleware/permissions');
+const { requireAdmin, requirePermission, getUserPermissions, hasPermission, isAdminUser } = require('../middleware/permissions');
 const { body, validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// Get all users (admin or users with view_users, manage_users, or create_users permission)
-router.get('/', authenticate, requirePermission('view_users', 'manage_users', 'create_users'), (req, res) => {
+// Get users (admins or users with permissions can see all; others can request self only)
+router.get('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const { search, role } = req.query;
+  const scope = String(req.query.scope || '').toLowerCase();
 
-  let query = 'SELECT id, email, name, role, created_at FROM users WHERE 1=1';
-  const params = [];
+  const listAllUsers = () => {
+    let query = 'SELECT id, email, name, role, created_at FROM users WHERE 1=1';
+    const params = [];
 
-  if (search) {
-    query += ' AND (name LIKE ? OR email LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`);
-  }
-
-  if (role) {
-    query += ' AND role = ?';
-    params.push(role);
-  }
-
-  query += ' ORDER BY created_at DESC';
-
-  dbInstance.all(query, params, (err, users) => {
-    if (err) {
-      logger.error('Error fetching users:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+    if (search) {
+      query += ' AND (name LIKE ? OR email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
     }
-    res.json({ users: users || [] });
+
+    if (role) {
+      query += ' AND role = ?';
+      params.push(role);
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    dbInstance.all(query, params, (err, users) => {
+      if (err) {
+        logger.error('Error fetching users:', err);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+      }
+      res.json({ users: users || [] });
+    });
+  };
+
+  if (isAdminUser(req.user)) {
+    return listAllUsers();
+  }
+
+  getUserPermissions(req.user.id, req.user.role, (permErr, userPermissions) => {
+    if (permErr) {
+      logger.error('Error fetching user permissions:', permErr);
+      return res.status(500).json({ error: 'Error checking permissions' });
+    }
+
+    const canViewAll = ['view_users', 'manage_users', 'create_users'].some(p =>
+      hasPermission(userPermissions, p)
+    );
+
+    if (canViewAll) {
+      return listAllUsers();
+    }
+
+    // Allow self-only list for assignment dropdowns
+    if (scope === 'assignable') {
+      return res.json({ users: [{ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role }] });
+    }
+
+    return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
   });
 });
 

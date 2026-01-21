@@ -2243,12 +2243,15 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         })
         .filter(Boolean);
 
-      if (missingRequired.length > 0) {
-        logger.warn('[Batch Update] Required items missing', { auditId, count: missingRequired.length });
+      const enforceRequired = req.body?.enforce_required === true || req.body?.enforce_required === 'true';
+      if (missingRequired.length > 0 && enforceRequired) {
+        logger.warn('[Batch Update] Required items missing (enforced)', { auditId, count: missingRequired.length });
         return res.status(400).json({
           error: 'Required checklist items are incomplete',
           missingRequired
         });
+      } else if (missingRequired.length > 0) {
+        logger.info('[Batch Update] Required items missing (allowed partial save)', { auditId, count: missingRequired.length });
       }
 
       // Process all items in parallel using Promise.all

@@ -318,6 +318,16 @@ const createTables = async () => {
       FOREIGN KEY ([item_id]) REFERENCES [checklist_items]([id]),
       FOREIGN KEY ([selected_option_id]) REFERENCES [checklist_item_options]([id])
     )`,
+
+    // Add time tracking columns to audit_items if missing
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'time_taken_minutes')
+     ALTER TABLE [dbo].[audit_items] ADD [time_taken_minutes] FLOAT NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'started_at')
+     ALTER TABLE [dbo].[audit_items] ADD [started_at] DATETIME NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'time_entries')
+     ALTER TABLE [dbo].[audit_items] ADD [time_entries] NVARCHAR(MAX) NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'average_time_minutes')
+     ALTER TABLE [dbo].[audit_items] ADD [average_time_minutes] FLOAT NULL`,
     
     // Action Items table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[action_items]') AND type in (N'U'))

@@ -40,6 +40,7 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
       if (!audit) {
         return res.status(404).json({ error: 'Audit not found' });
       }
+      logger.info('[PDF] Starting basic report generation', { auditId });
 
       // First, get all items with their selected options
       dbInstance.all(
@@ -57,30 +58,43 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             logger.error('Error fetching audit items for PDF:', err);
             return res.status(500).json({ error: 'Database error', details: err.message });
           }
+          logger.info('[PDF] Loaded audit items', { auditId, itemCount: items.length });
 
-          // Get all options for each item to calculate max scores
-          Promise.all(items.map((item) => {
-            return new Promise((resolve, reject) => {
-              dbInstance.all(
-                `SELECT mark FROM checklist_item_options WHERE item_id = ?`,
-                [item.item_id],
-                (err, options) => {
-                  if (err) {
-                    logger.error('Error fetching options:', err);
-                    return resolve({ ...item, maxScore: parseFloat(item.selected_mark) || 3 });
-                  }
-                  
-                  // Find max numeric score (exclude 'NA')
-                  const numericMarks = options
-                    .map(o => parseFloat(o.mark))
-                    .filter(m => !isNaN(m));
-                  const maxScore = numericMarks.length > 0 ? Math.max(...numericMarks) : (parseFloat(item.selected_mark) || 3);
-                  
-                  resolve({ ...item, maxScore });
-                }
-              );
+          // Get all options in a single query to calculate max scores (performance)
+          const itemIds = [...new Set((items || []).map(i => i.item_id).filter(Boolean))];
+          const loadOptions = (cb) => {
+            if (itemIds.length === 0) return cb(null, []);
+            const placeholders = itemIds.map(() => '?').join(',');
+            dbInstance.all(
+              `SELECT item_id, mark FROM checklist_item_options WHERE item_id IN (${placeholders})`,
+              itemIds,
+              cb
+            );
+          };
+
+          loadOptions((optErr, optionRows) => {
+            if (optErr) {
+              logger.error('Error fetching options for PDF:', optErr);
+            }
+            logger.info('[PDF] Loaded checklist options', { auditId, optionCount: (optionRows || []).length });
+
+            const maxScoreByItem = {};
+            (optionRows || []).forEach(row => {
+              const val = parseFloat(row.mark);
+              if (!Number.isFinite(val)) return;
+              const current = maxScoreByItem[row.item_id];
+              if (current === undefined || val > current) {
+                maxScoreByItem[row.item_id] = val;
+              }
             });
-          })).then(itemsWithMaxScores => {
+
+            const itemsWithMaxScores = (items || []).map(item => {
+              const maxScore = Number.isFinite(maxScoreByItem[item.item_id])
+                ? maxScoreByItem[item.item_id]
+                : (parseFloat(item.selected_mark) || 3);
+              return { ...item, maxScore };
+            });
+
             dbInstance.all(
               `SELECT * FROM action_plan WHERE audit_id = ? ORDER BY id ASC`,
               [auditId],
@@ -119,6 +133,12 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
 
           // Create PDF with professional table-based format matching CVR 2 CDR Plan Report
           const doc = new PDFDocument({ margin: 40, size: 'A4' });
+          doc.on('error', (pdfErr) => {
+            logger.error('[PDF] PDFKit error', { auditId, error: pdfErr.message });
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Error generating PDF', details: pdfErr.message });
+            }
+          });
           res.setHeader('Content-Type', 'application/pdf');
           const storeName = audit.restaurant_name || audit.location || 'Restaurant';
           const fileName = `${audit.template_name || 'Report'} - ${storeName}.pdf`;
@@ -602,14 +622,108 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           // Final footer
           drawFooter();
                 
-                doc.end();
+          doc.end();
+          res.on('finish', () => {
+            logger.info('[PDF] Finished basic report generation', { auditId });
+          });
               }
             );
-          }).catch(err => {
-            logger.error('Error generating PDF:', err);
-            if (!res.headersSent) {
-              res.status(500).json({ error: 'Error generating PDF', details: err.message });
+          });
+        }
+      );
+    }
+  );
+});
+
+// Export single audit to CSV
+router.get('/audit/:id/csv', authenticate, (req, res) => {
+  const auditId = req.params.id;
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const dbInstance = db.getDb();
+
+  const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+  const params = isAdmin ? [auditId] : [auditId, userId];
+
+  dbInstance.get(
+    `SELECT a.*, ct.name as template_name, ct.category, u.name as user_name
+     FROM audits a
+     JOIN checklist_templates ct ON a.template_id = ct.id
+     LEFT JOIN users u ON a.user_id = u.id
+     ${whereClause}`,
+    params,
+    (err, audit) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (!audit) {
+        return res.status(404).json({ error: 'Audit not found' });
+      }
+
+      dbInstance.all(
+        `SELECT ai.*, ci.title, ci.category, ci.order_index,
+                cio.option_text as selected_option_text, cio.mark as selected_mark
+         FROM audit_items ai
+         JOIN checklist_items ci ON ai.item_id = ci.id
+         LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+         WHERE ai.audit_id = ?
+         ORDER BY ci.order_index, ci.id`,
+        [auditId],
+        (itemsErr, items) => {
+          if (itemsErr) {
+            logger.error('Error fetching audit items for CSV:', itemsErr);
+            return res.status(500).json({ error: 'Database error', details: itemsErr.message });
+          }
+
+          const itemIds = [...new Set((items || []).map(i => i.item_id).filter(Boolean))];
+          const loadOptions = (cb) => {
+            if (itemIds.length === 0) return cb(null, []);
+            const placeholders = itemIds.map(() => '?').join(',');
+            dbInstance.all(
+              `SELECT item_id, mark FROM checklist_item_options WHERE item_id IN (${placeholders})`,
+              itemIds,
+              cb
+            );
+          };
+
+          loadOptions((optErr, optionRows) => {
+            if (optErr) {
+              logger.error('Error fetching options for CSV:', optErr);
             }
+
+            const maxScoreByItem = {};
+            (optionRows || []).forEach(row => {
+              const val = parseFloat(row.mark);
+              if (!Number.isFinite(val)) return;
+              const current = maxScoreByItem[row.item_id];
+              if (current === undefined || val > current) {
+                maxScoreByItem[row.item_id] = val;
+              }
+            });
+
+            const headers = ['Category', 'Question', 'Score', 'Response', 'Comment'];
+            const rows = (items || []).map(item => {
+              const maxScore = Number.isFinite(maxScoreByItem[item.item_id])
+                ? maxScoreByItem[item.item_id]
+                : (parseFloat(item.selected_mark) || 3);
+              const actualMark = parseFloat(item.mark) || 0;
+              const response = item.selected_option_text || (item.mark === 'NA' ? 'N/A' : (actualMark > 0 ? 'Yes' : 'No'));
+              const scoreText = `${actualMark}/${maxScore}`;
+              const safe = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+              return [
+                safe(item.category || ''),
+                safe(item.title || ''),
+                safe(scoreText),
+                safe(response),
+                safe(item.comment || '')
+              ].join(',');
+            });
+
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const filename = `${audit.template_name || 'audit'}-${auditId}.csv`;
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+            res.send(csvContent);
           });
         }
       );

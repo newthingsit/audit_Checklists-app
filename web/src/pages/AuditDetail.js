@@ -90,7 +90,7 @@ const AuditDetail = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('/api/users');
+      const response = await axios.get('/api/users', { params: { scope: 'assignable' } });
       setUsers(response.data.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
