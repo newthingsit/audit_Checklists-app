@@ -38,6 +38,7 @@ import SendIcon from '@mui/icons-material/Send';
 import StoreIcon from '@mui/icons-material/Store';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -463,6 +464,16 @@ const AuditDetail = () => {
                 sx={{ fontWeight: 600 }}
               >
                 Download QA Report
+              </Button>
+            </Tooltip>
+            <Tooltip title="View Storewise Report">
+              <Button
+                variant="outlined"
+                startIcon={<AssessmentIcon />}
+                onClick={() => navigate(`/audit/${audit.id}/report`)}
+                disabled={audit.status !== 'completed'}
+              >
+                View Report
               </Button>
             </Tooltip>
             <Tooltip title="Email Report">

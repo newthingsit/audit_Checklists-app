@@ -18,6 +18,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Checklists = lazy(() => import('./pages/Checklists'));
 const AuditForm = lazy(() => import('./pages/AuditForm'));
 const AuditDetail = lazy(() => import('./pages/AuditDetail'));
+const AuditReport = lazy(() => import('./pages/AuditReport'));
 const AuditHistory = lazy(() => import('./pages/AuditHistory'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Stores = lazy(() => import('./pages/Stores'));
@@ -348,6 +349,14 @@ function ThemeWrapper() {
                 element={
                   <PrivateRoute>
                     <AuditDetail />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/audit/:id/report"
+                element={
+                  <PrivateRoute>
+                    <AuditReport />
                   </PrivateRoute>
                 }
               />

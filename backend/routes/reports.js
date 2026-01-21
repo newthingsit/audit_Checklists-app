@@ -3781,6 +3781,7 @@ router.get('/email/status', authenticate, (req, res) => {
 // Includes: Header, Executive Summary, Category Details, Top-3 Deviations, Action Plan
 
 const { generateEnhancedAuditPdf } = require('../utils/enhancedPdfReport');
+const { getAuditReportData } = require('../utils/auditReportService');
 
 /**
  * Generate Enhanced QA Audit PDF Report
@@ -3845,6 +3846,54 @@ router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
     res.status(500).json({ 
       error: 'Error generating PDF report', 
       details: error.message 
+    });
+  }
+});
+
+/**
+ * Get Storewise Audit Report data for Web view (JSON)
+ */
+router.get('/audit/:id/report', authenticate, async (req, res) => {
+  const auditId = req.params.id;
+  const userId = req.user.id;
+  const isAdmin = isAdminUser(req.user);
+  const dbInstance = db.getDb();
+
+  try {
+    const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
+    const params = isAdmin ? [auditId] : [auditId, userId];
+
+    const audit = await new Promise((resolve, reject) => {
+      dbInstance.get(
+        `SELECT a.id, a.status
+         FROM audits a
+         ${whereClause}`,
+        params,
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!audit) {
+      return res.status(404).json({ error: 'Audit not found or access denied' });
+    }
+
+    if (audit.status !== 'completed') {
+      return res.status(409).json({ error: 'Audit is not completed' });
+    }
+
+    const reportData = await getAuditReportData(auditId, {
+      includePhotos: req.query.photos === 'true'
+    });
+
+    res.json(reportData);
+  } catch (error) {
+    logger.error('Error generating report data:', error);
+    res.status(500).json({
+      error: 'Error generating report data',
+      details: error.message
     });
   }
 });

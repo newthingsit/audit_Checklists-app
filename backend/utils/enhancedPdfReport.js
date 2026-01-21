@@ -16,8 +16,8 @@
  */
 
 const PDFDocument = require('pdfkit');
-const db = require('../config/database-loader');
 const logger = require('./logger');
+const { getAuditReportData } = require('./auditReportService');
 const https = require('https');
 const http = require('http');
 const path = require('path');
@@ -76,6 +76,25 @@ function getScoreColor(percentage) {
   if (percentage >= 90) return COLORS.SUCCESS_GREEN;
   if (percentage >= 70) return COLORS.WARNING_YELLOW;
   return COLORS.DANGER_RED;
+}
+
+function formatSeconds(seconds) {
+  if (!Number.isFinite(seconds)) return '';
+  const total = Math.round(seconds);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function decodeSignatureData(signatureData) {
+  if (!signatureData) return null;
+  const raw = String(signatureData);
+  const base64 = raw.includes('base64,') ? raw.split('base64,')[1] : raw;
+  try {
+    return Buffer.from(base64, 'base64');
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
@@ -220,11 +239,16 @@ function drawScoreBySection(doc, categoryData) {
   
   // Category rows
   let rowY = tableY + rowHeight;
-  const categories = Object.keys(categoryData).sort();
+  const rows = Array.isArray(categoryData)
+    ? categoryData
+    : Object.keys(categoryData).sort().map(key => ({
+        name: key,
+        perfectScore: categoryData[key].perfectScore,
+        actualScore: categoryData[key].actualScore
+      }));
   
-  categories.forEach((category, idx) => {
-    const data = categoryData[category];
-    const percentage = data.perfectScore > 0 ? Math.round((data.actualScore / data.perfectScore) * 100) : 0;
+  rows.forEach((row, idx) => {
+    const percentage = row.perfectScore > 0 ? Math.round((row.actualScore / row.perfectScore) * 100) : 0;
     const bgColor = idx % 2 === 0 ? COLORS.LIGHT_BG : COLORS.WHITE;
     
     x = PAGE.MARGIN;
@@ -232,17 +256,17 @@ function drawScoreBySection(doc, categoryData) {
     // Category name
     doc.rect(x, rowY, colWidths[0], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
     doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(category.toUpperCase(), x + 5, rowY + 7, { width: colWidths[0] - 10 });
+    doc.text(String(row.name || '').toUpperCase(), x + 5, rowY + 7, { width: colWidths[0] - 10 });
     x += colWidths[0];
     
     // Perfect Score
     doc.rect(x, rowY, colWidths[1], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
-    doc.text(Math.round(data.perfectScore).toString(), x + 5, rowY + 7, { width: colWidths[1] - 10, align: 'center' });
+    doc.text(Math.round(row.perfectScore).toString(), x + 5, rowY + 7, { width: colWidths[1] - 10, align: 'center' });
     x += colWidths[1];
     
     // Actual Score
     doc.rect(x, rowY, colWidths[2], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
-    doc.text(Math.round(data.actualScore).toString(), x + 5, rowY + 7, { width: colWidths[2] - 10, align: 'center' });
+    doc.text(Math.round(row.actualScore).toString(), x + 5, rowY + 7, { width: colWidths[2] - 10, align: 'center' });
     x += colWidths[2];
     
     // Percentage
@@ -399,16 +423,8 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
 /**
  * Draw Speed of Service Tracking section
  */
-function drawSpeedOfServiceSection(doc, items) {
-  // Filter speed of service items
-  const sosItems = items.filter(i => 
-    i.category && (
-      i.category.toUpperCase().includes('SPEED OF SERVICE') ||
-      i.category.toUpperCase().includes('TRACKING')
-    )
-  );
-  
-  if (sosItems.length === 0) return;
+function drawSpeedOfServiceSection(doc, speedOfService = []) {
+  if (!speedOfService || speedOfService.length === 0) return;
   
   // Check for new page
   if (doc.y > PAGE.HEIGHT - 200) {
@@ -422,16 +438,7 @@ function drawSpeedOfServiceSection(doc, items) {
   doc.text('SPEED OF SERVICE – TRACKING', PAGE.MARGIN + 10, doc.y + 7, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
   doc.y += 30;
   
-  // Group by subcategory (Trnx-1, Trnx-2, etc.)
-  const groups = {};
-  sosItems.forEach(item => {
-    const group = item.subcategory || 'General';
-    if (!groups[group]) groups[group] = [];
-    groups[group].push(item);
-  });
-  
-  // Draw each transaction group
-  Object.keys(groups).forEach(groupName => {
+  speedOfService.forEach(group => {
     if (doc.y > PAGE.HEIGHT - 100) {
       doc.addPage();
       doc.y = PAGE.MARGIN;
@@ -440,23 +447,22 @@ function drawSpeedOfServiceSection(doc, items) {
     // Group header
     doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 20).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
     doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.SECTION_HEADER);
-    doc.text(groupName, PAGE.MARGIN + 10, doc.y + 5, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
+    doc.text(group.name, PAGE.MARGIN + 10, doc.y + 5, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
     doc.y += 22;
     
     // Table header
-    const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120, 120];
+    const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
     let x = PAGE.MARGIN;
     
     doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 18).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
-    ['', 'Question', 'Response'].forEach((header, idx) => {
+    ['', 'Checkpoint', 'Time', 'Seconds'].forEach((header, idx) => {
       doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
       doc.text(header, x + 3, doc.y + 5, { width: colWidths[idx] - 6, align: idx === 1 ? 'left' : 'center' });
       x += colWidths[idx];
     });
     doc.y += 18;
     
-    // Items
-    groups[groupName].forEach((item, idx) => {
+    group.entries.forEach((entry, idx) => {
       if (doc.y > PAGE.HEIGHT - 40) {
         doc.addPage();
         doc.y = PAGE.MARGIN;
@@ -467,21 +473,112 @@ function drawSpeedOfServiceSection(doc, items) {
       
       doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
       
-      // Index
       doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
       doc.text((idx + 1).toString(), x + 3, doc.y + 6, { width: colWidths[0] - 6, align: 'center' });
       x += colWidths[0];
       
-      // Question
-      doc.text(item.title || '', x + 3, doc.y + 6, { width: colWidths[1] - 6 });
+      doc.text(entry.checkpoint || '', x + 3, doc.y + 6, { width: colWidths[1] - 6 });
       x += colWidths[1];
       
-      // Response
-      const response = item.comment || item.selected_option_text || '';
-      doc.text(response, x + 3, doc.y + 6, { width: colWidths[2] - 6, align: 'center' });
+      const timeValue = entry.time_value || formatSeconds(entry.seconds);
+      doc.text(String(timeValue || ''), x + 3, doc.y + 6, { width: colWidths[2] - 6, align: 'center' });
+      x += colWidths[2];
+      
+      doc.text(entry.seconds !== null && entry.seconds !== undefined ? String(entry.seconds) : '', x + 3, doc.y + 6, { width: colWidths[3] - 6, align: 'center' });
       
       doc.y += rowHeight;
     });
+    
+    if (Number.isFinite(group.averageSeconds)) {
+      x = PAGE.MARGIN;
+      const rowHeight = 20;
+      doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.LIGHT_BG).stroke(COLORS.TABLE_BORDER);
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+      doc.text('AVG', x + 3, doc.y + 6, { width: colWidths[0] - 6, align: 'center' });
+      x += colWidths[0];
+      doc.text('Average', x + 3, doc.y + 6, { width: colWidths[1] - 6 });
+      x += colWidths[1];
+      doc.text(formatSeconds(group.averageSeconds), x + 3, doc.y + 6, { width: colWidths[2] - 6, align: 'center' });
+      x += colWidths[2];
+      doc.text(String(group.averageSeconds), x + 3, doc.y + 6, { width: colWidths[3] - 6, align: 'center' });
+      doc.y += rowHeight;
+    }
+    
+    doc.y += 10;
+  });
+}
+
+/**
+ * Draw Temperature Tracking section
+ */
+function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
+  if (!temperatureTracking || temperatureTracking.length === 0) return;
+  
+  if (doc.y > PAGE.HEIGHT - 200) {
+    doc.addPage();
+    doc.y = PAGE.MARGIN;
+  }
+  
+  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.SECTION_HEADER);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.WHITE);
+  doc.text('TEMPERATURE TRACKING', PAGE.MARGIN + 10, doc.y + 7, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
+  doc.y += 30;
+  
+  temperatureTracking.forEach(group => {
+    if (doc.y > PAGE.HEIGHT - 100) {
+      doc.addPage();
+      doc.y = PAGE.MARGIN;
+    }
+    
+    doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 20).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.SECTION_HEADER);
+    doc.text(group.name, PAGE.MARGIN + 10, doc.y + 5, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
+    doc.y += 22;
+    
+    const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
+    let x = PAGE.MARGIN;
+    
+    doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 18).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+    ['', 'Item', 'Type', 'Temperature'].forEach((header, idx) => {
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+      doc.text(header, x + 3, doc.y + 5, { width: colWidths[idx] - 6, align: idx === 1 ? 'left' : 'center' });
+      x += colWidths[idx];
+    });
+    doc.y += 18;
+    
+    group.entries.forEach((entry, idx) => {
+      if (doc.y > PAGE.HEIGHT - 40) {
+        doc.addPage();
+        doc.y = PAGE.MARGIN;
+      }
+      x = PAGE.MARGIN;
+      const rowHeight = 20;
+      doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
+      doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+      doc.text((idx + 1).toString(), x + 3, doc.y + 6, { width: colWidths[0] - 6, align: 'center' });
+      x += colWidths[0];
+      doc.text(entry.label || '', x + 3, doc.y + 6, { width: colWidths[1] - 6 });
+      x += colWidths[1];
+      doc.text(entry.type || '', x + 3, doc.y + 6, { width: colWidths[2] - 6, align: 'center' });
+      x += colWidths[2];
+      doc.text(entry.temperature !== null && entry.temperature !== undefined ? String(entry.temperature) : String(entry.raw || ''), x + 3, doc.y + 6, { width: colWidths[3] - 6, align: 'center' });
+      doc.y += rowHeight;
+    });
+    
+    if (Number.isFinite(group.averageTemp)) {
+      x = PAGE.MARGIN;
+      const rowHeight = 20;
+      doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.LIGHT_BG).stroke(COLORS.TABLE_BORDER);
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+      doc.text('AVG', x + 3, doc.y + 6, { width: colWidths[0] - 6, align: 'center' });
+      x += colWidths[0];
+      doc.text('Average', x + 3, doc.y + 6, { width: colWidths[1] - 6 });
+      x += colWidths[1];
+      doc.text('', x + 3, doc.y + 6, { width: colWidths[2] - 6, align: 'center' });
+      x += colWidths[2];
+      doc.text(String(group.averageTemp), x + 3, doc.y + 6, { width: colWidths[3] - 6, align: 'center' });
+      doc.y += rowHeight;
+    }
     
     doc.y += 10;
   });
@@ -558,23 +655,23 @@ async function drawActionPlanSection(doc, actionPlanItems) {
     
     // Question
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(action.checklist_question || action.title || '', x + 2, rowY + 8, { width: colWidths[1] - 4 });
+    doc.text(action.question || action.checklist_question || action.title || '', x + 2, rowY + 8, { width: colWidths[1] - 4 });
     x += colWidths[1];
     
     // Remarks / Deviation
-    doc.text(action.deviation_reason || '—', x + 2, rowY + 8, { width: colWidths[2] - 4 });
+    doc.text(action.remarks || action.deviation_reason || '—', x + 2, rowY + 8, { width: colWidths[2] - 4 });
     x += colWidths[2];
     
     // To-Do (Corrective Action)
-    doc.text(action.corrective_action || 'Action required', x + 2, rowY + 8, { width: colWidths[3] - 4 });
+    doc.text(action.todo || action.corrective_action || 'Action required', x + 2, rowY + 8, { width: colWidths[3] - 4 });
     x += colWidths[3];
     
     // Assigned To
-    doc.text(action.responsible_person || action.responsible_person_name || 'Auditor', x + 2, rowY + 8, { width: colWidths[4] - 4, align: 'center' });
+    doc.text(action.assignedTo || action.responsible_person || action.responsible_person_name || 'Auditor', x + 2, rowY + 8, { width: colWidths[4] - 4, align: 'center' });
     x += colWidths[4];
     
     // Complete By
-    const dueDate = action.target_date ? formatDate(action.target_date, false) : 'N/A';
+    const dueDate = action.dueDate || action.target_date ? formatDate(action.dueDate || action.target_date, false) : 'N/A';
     doc.text(dueDate, x + 2, rowY + 8, { width: colWidths[5] - 4, align: 'center' });
     x += colWidths[5];
     
@@ -588,13 +685,13 @@ async function drawActionPlanSection(doc, actionPlanItems) {
 /**
  * Draw Acknowledgement section
  */
-function drawAcknowledgementSection(doc, audit, items) {
-  // Find acknowledgement items
+function drawAcknowledgementSection(doc, acknowledgement, items = []) {
   const ackItems = items.filter(i => 
     i.category && i.category.toUpperCase().includes('ACKNOWLEDGEMENT')
   );
+  const hasSignature = acknowledgement && acknowledgement.signatureData;
   
-  if (ackItems.length === 0) return;
+  if (!hasSignature && ackItems.length === 0) return;
   
   if (doc.y > PAGE.HEIGHT - 150) {
     doc.addPage();
@@ -619,25 +716,47 @@ function drawAcknowledgementSection(doc, audit, items) {
   });
   doc.y += 18;
   
-  // Acknowledgement items
-  ackItems.forEach((item, idx) => {
+  const signatureBuffer = hasSignature ? decodeSignatureData(acknowledgement.signatureData) : null;
+  const managerName = acknowledgement && acknowledgement.managerName ? acknowledgement.managerName : '';
+  
+  const renderedItems = [];
+  if (managerName) {
+    renderedItems.push({ title: 'Manager on Duty', response: managerName });
+  }
+  if (signatureBuffer) {
+    renderedItems.push({ title: 'Signature', response: 'Attached', signature: signatureBuffer });
+  }
+  renderedItems.push(...ackItems.map(item => ({
+    title: item.title || '',
+    response: item.comment || item.selected_option_text || '',
+    photo_url: item.photo_url
+  })));
+  
+  renderedItems.forEach((item, idx) => {
     x = PAGE.MARGIN;
-    const rowHeight = item.title && item.title.toLowerCase().includes('signature') ? 60 : 25;
+    const rowHeight = item.signature ? 60 : 25;
     
     doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
     
-    // Index
     doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
     doc.text((idx + 1).toString(), x + 3, doc.y + 8, { width: colWidths[0] - 6, align: 'center' });
     x += colWidths[0];
     
-    // Question
     doc.text(item.title || '', x + 3, doc.y + 8, { width: colWidths[1] - 6 });
     x += colWidths[1];
     
-    // Response
-    const response = item.comment || item.selected_option_text || '';
-    doc.text(response, x + 3, doc.y + 8, { width: colWidths[2] - 6, align: 'center' });
+    if (item.signature) {
+      doc.text('Attached', x + 3, doc.y + 8, { width: colWidths[2] - 6, align: 'center' });
+      try {
+        doc.image(item.signature, x + 10, doc.y + 22, { width: 80, height: 30 });
+      } catch (err) {
+        // Ignore signature draw errors
+      }
+    } else if (item.photo_url) {
+      doc.text('Attached', x + 3, doc.y + 8, { width: colWidths[2] - 6, align: 'center' });
+    } else {
+      doc.text(item.response || '', x + 3, doc.y + 8, { width: colWidths[2] - 6, align: 'center' });
+    }
     
     doc.y += rowHeight;
   });
@@ -646,7 +765,7 @@ function drawAcknowledgementSection(doc, audit, items) {
 /**
  * Add page numbers and footer
  */
-function addPageNumbers(doc) {
+function addPageNumbers(doc, appName = 'LBF Audit App') {
   const range = doc.bufferedPageRange();
   const totalPages = range.count;
   
@@ -658,7 +777,7 @@ function addPageNumbers(doc) {
     doc.text(`Page ${i + 1} of ${totalPages}`, PAGE.MARGIN, PAGE.HEIGHT - 25);
     
     // Powered by (right)
-    doc.text('Powered By Accrue', PAGE.WIDTH - PAGE.MARGIN - 100, PAGE.HEIGHT - 25, { width: 100, align: 'right' });
+    doc.text(`Powered By ${appName}`, PAGE.WIDTH - PAGE.MARGIN - 120, PAGE.HEIGHT - 25, { width: 120, align: 'right' });
   }
 }
 
@@ -668,79 +787,21 @@ function addPageNumbers(doc) {
  * Generate Enhanced Audit PDF Report
  */
 async function generateEnhancedAuditPdf(auditId, options = {}) {
-  const dbInstance = db.getDb();
-  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
-  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
-  
   return new Promise(async (resolve, reject) => {
     try {
-      // Fetch audit data
-      const audit = await new Promise((res, rej) => {
-        dbInstance.get(
-          `SELECT a.*, ct.name as template_name, ct.category as template_category,
-                  u.name as auditor_name, u.email as auditor_email,
-                  l.name as location_name, l.store_number, l.city, l.state
-           FROM audits a
-           JOIN checklist_templates ct ON a.template_id = ct.id
-           LEFT JOIN users u ON a.user_id = u.id
-           LEFT JOIN locations l ON a.location_id = l.id
-           WHERE a.id = ?`,
-          [auditId],
-          (err, row) => err ? rej(err) : res(row)
-        );
-      });
-      
-      if (!audit) {
-        return reject(new Error('Audit not found'));
-      }
-      
-      // Fetch audit items
-      const items = await new Promise((res, rej) => {
-        dbInstance.all(
-          `SELECT 
-            ai.id as audit_item_id,
-            ai.item_id,
-            ai.status,
-            ai.selected_option_id,
-            ai.mark,
-            ai.comment,
-            ai.photo_url,
-            ci.title,
-            ci.description,
-            ci.category,
-            ci.subcategory,
-            ci.section,
-            ci.is_critical,
-            ci.required,
-            ci.weight,
-            ci.order_index,
-            cio.option_text as selected_option_text,
-            cio.mark as selected_mark,
-            (SELECT MAX(${isSqlServer ? 'TRY_CAST(mark AS FLOAT)' : 'CAST(mark AS REAL)'}) 
-             FROM checklist_item_options 
-             WHERE item_id = ci.id AND mark NOT IN ('NA', 'N/A', '')) as max_mark
-          FROM audit_items ai
-          JOIN checklist_items ci ON ai.item_id = ci.id
-          LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-          WHERE ai.audit_id = ?
-          ORDER BY ci.category, ci.subcategory, ci.order_index`,
-          [auditId],
-          (err, rows) => err ? rej(err) : res((rows || []).map(r => ({ ...r, maxScore: parseFloat(r.max_mark) || 3 })))
-        );
-      });
-      
-      // Fetch action plan items
-      const actionPlanItems = await new Promise((res, rej) => {
-        dbInstance.all(
-          `SELECT ap.*, u.name as responsible_person_name
-           FROM action_plan ap
-           LEFT JOIN users u ON ap.responsible_person_id = u.id
-           WHERE ap.audit_id = ?
-           ORDER BY ap.id`,
-          [auditId],
-          (err, rows) => err ? rej(err) : res(rows || [])
-        );
-      });
+      const reportData = await getAuditReportData(auditId, options);
+      const audit = {
+        template_name: reportData.audit.templateName,
+        restaurant_name: reportData.audit.outletName,
+        location_name: reportData.audit.outletName,
+        store_number: reportData.audit.outletCode,
+        city: reportData.audit.city,
+        created_at: reportData.audit.startDate,
+        completed_at: reportData.audit.endDate,
+        auditor_name: reportData.audit.submittedBy
+      };
+      const items = reportData.items || [];
+      const actionPlanItems = reportData.actionPlan || [];
       
       // Pre-fetch all photos
       const photos = {};
@@ -751,38 +812,11 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
         }
       }
       
-      // Calculate category scores
-      const categoryData = {};
-      let totalPerfectScore = 0;
-      let totalActualScore = 0;
-      
-      items.forEach(item => {
-        const cat = item.category || 'Uncategorized';
-        if (!categoryData[cat]) {
-          categoryData[cat] = { perfectScore: 0, actualScore: 0, items: [], subcategories: {} };
-        }
-        
-        const maxScore = item.maxScore || 3;
-        const actualMark = parseFloat(item.mark) || 0;
-        
-        categoryData[cat].items.push(item);
-        categoryData[cat].perfectScore += maxScore;
-        categoryData[cat].actualScore += actualMark;
-        
-        // Track subcategories
-        const subcat = item.subcategory || item.section || 'General';
-        if (!categoryData[cat].subcategories[subcat]) {
-          categoryData[cat].subcategories[subcat] = { perfectScore: 0, actualScore: 0, items: [] };
-        }
-        categoryData[cat].subcategories[subcat].items.push(item);
-        categoryData[cat].subcategories[subcat].perfectScore += maxScore;
-        categoryData[cat].subcategories[subcat].actualScore += actualMark;
-        
-        totalPerfectScore += maxScore;
-        totalActualScore += actualMark;
-      });
-      
-      const overallScore = totalPerfectScore > 0 ? (totalActualScore / totalPerfectScore) * 100 : 0;
+      const totalPerfectScore = reportData.summary.totalPerfect;
+      const totalActualScore = reportData.summary.totalActual;
+      const overallScore = reportData.summary.overallPercentage;
+      const scoreByCategory = reportData.scoreByCategory || [];
+      const detailedCategories = reportData.detailedCategories || [];
       
       // Create PDF
       const doc = new PDFDocument({ 
@@ -805,23 +839,16 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
       drawDetailsSection(doc, audit);
       
       // Score By section
-      drawScoreBySection(doc, categoryData);
+      drawScoreBySection(doc, scoreByCategory);
       
       // ==================== CATEGORY DETAILS PAGES ====================
       
-      const categories = Object.keys(categoryData).sort();
-      
-      // Filter out special categories for later
-      const regularCategories = categories.filter(cat => 
-        !cat.toUpperCase().includes('SPEED OF SERVICE') &&
-        !cat.toUpperCase().includes('TRACKING') &&
-        !cat.toUpperCase().includes('ACKNOWLEDGEMENT') &&
-        !cat.toUpperCase().includes('TEMPERATURE')
-      );
+      const categories = detailedCategories;
+      let questionIndex = 1;
       
       // Draw regular categories
-      for (const category of regularCategories) {
-        const catData = categoryData[category];
+      for (const category of categories) {
+        const catData = category;
         
         // New page for each category (or check space)
         if (doc.y > PAGE.HEIGHT - 200) {
@@ -830,13 +857,13 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
         }
         
         // Category header
-        drawCategoryHeader(doc, category, catData.actualScore, catData.perfectScore);
+        drawCategoryHeader(doc, catData.name, catData.actualScore, catData.perfectScore);
         
         // Draw by subcategory
-        const subcategories = Object.keys(catData.subcategories);
+        const subcategories = catData.subsections || [];
         
-        for (const subcat of subcategories) {
-          const subcatData = catData.subcategories[subcat];
+        for (const subcatData of subcategories) {
+          const subcat = subcatData.name;
           
           if (doc.y > PAGE.HEIGHT - 150) {
             doc.addPage();
@@ -852,11 +879,10 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
           const colWidths = drawQuestionTableHeader(doc);
           
           // Questions
-          let globalIndex = items.indexOf(subcatData.items[0]) + 1;
-          
           for (let i = 0; i < subcatData.items.length; i++) {
             const item = subcatData.items[i];
-            const success = await drawQuestionRow(doc, item, globalIndex + i, colWidths, photos);
+            const success = await drawQuestionRow(doc, item, questionIndex, colWidths, photos);
+            questionIndex += 1;
             
             if (!success) {
               // Need new page
@@ -864,14 +890,14 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
               doc.y = PAGE.MARGIN;
               
               // Redraw headers
-              drawCategoryHeader(doc, category, catData.actualScore, catData.perfectScore);
+              drawCategoryHeader(doc, catData.name, catData.actualScore, catData.perfectScore);
               if (subcat !== 'General') {
                 drawSubcategoryHeader(doc, `${subcat} (continued)`, subcatData.actualScore, subcatData.perfectScore);
               }
               drawQuestionTableHeader(doc);
               
               // Retry drawing the row
-              await drawQuestionRow(doc, item, globalIndex + i, colWidths, photos);
+              await drawQuestionRow(doc, item, questionIndex - 1, colWidths, photos);
             }
           }
         }
@@ -888,14 +914,17 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
       // ==================== SPECIAL SECTIONS ====================
       
       // Speed of Service Tracking
-      drawSpeedOfServiceSection(doc, items);
+      drawSpeedOfServiceSection(doc, reportData.speedOfService || []);
+      
+      // Temperature Tracking section
+      drawTemperatureTrackingSection(doc, reportData.temperatureTracking || []);
       
       // Acknowledgement section
-      drawAcknowledgementSection(doc, audit, items);
+      drawAcknowledgementSection(doc, reportData.acknowledgement, items);
       
       // ==================== PAGE NUMBERS ====================
       
-      addPageNumbers(doc);
+      addPageNumbers(doc, reportData.appName || 'LBF Audit App');
       
       doc.end();
       
