@@ -37,6 +37,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import SendIcon from '@mui/icons-material/Send';
 import StoreIcon from '@mui/icons-material/Store';
 import DescriptionIcon from '@mui/icons-material/Description';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import ExportMenu from '../components/ExportMenu';
@@ -732,43 +733,153 @@ const AuditDetail = () => {
           </Paper>
         )}
 
-        {/* Action Plan - Top 3 Deviations */}
+        {/* Top 3 Deviations Summary - Quick glance cards */}
         {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '2px solid', borderColor: 'warning.main', bgcolor: 'warning.light' }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, mb: 3, color: 'warning.dark', display: 'flex', alignItems: 'center', gap: 1 }}>
-              ⚠️ Action Plan – Top 3 Deviations
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              🚨 Top {actionPlan.action_items.length} Deviation{actionPlan.action_items.length > 1 ? 's' : ''} Identified
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              These items require immediate attention based on audit findings.
             </Typography>
             
-            <Box sx={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px' }}>
+            <Grid container spacing={2}>
+              {actionPlan.action_items.map((item, index) => {
+                // Find matching audit item to check for photo evidence
+                const matchingItem = items.find(i => 
+                  i.title === item.deviation || 
+                  (i.item_id && item.item_id && i.item_id === item.item_id)
+                );
+                const hasPhoto = matchingItem?.photo_url;
+                
+                return (
+                  <Grid item xs={12} md={4} key={item.id}>
+                    <Box sx={{ 
+                      p: 2, 
+                      borderRadius: 2, 
+                      border: '2px solid',
+                      borderColor: item.severity === 'CRITICAL' ? 'error.main' : item.severity === 'MAJOR' ? 'warning.main' : 'grey.400',
+                      bgcolor: item.severity === 'CRITICAL' ? 'error.light' : item.severity === 'MAJOR' ? 'warning.light' : 'grey.50',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}>
+                      {/* Header with severity and rank */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                        <Chip 
+                          label={item.severity} 
+                          size="small" 
+                          color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
+                          sx={{ fontWeight: 600 }}
+                        />
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 0.5,
+                          bgcolor: 'rgba(0,0,0,0.08)', 
+                          borderRadius: 1, 
+                          px: 1, 
+                          py: 0.25 
+                        }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                            #{index + 1}
+                          </Typography>
+                          {hasPhoto && (
+                            <Tooltip title="Photo evidence available">
+                              <PhotoCameraIcon sx={{ fontSize: 14, color: 'info.main' }} />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </Box>
+                      
+                      {/* Category */}
+                      <Chip 
+                        label={item.category || 'General'} 
+                        size="small" 
+                        variant="outlined"
+                        sx={{ alignSelf: 'flex-start', mb: 1, fontSize: '0.7rem', height: 20 }}
+                      />
+                      
+                      {/* Deviation text */}
+                      <Typography variant="body2" sx={{ 
+                        fontWeight: 600, 
+                        mb: 1,
+                        flex: 1,
+                        lineHeight: 1.4,
+                        color: item.severity === 'CRITICAL' ? 'error.dark' : item.severity === 'MAJOR' ? 'warning.dark' : 'text.primary'
+                      }}>
+                        {item.deviation}
+                      </Typography>
+                      
+                      {/* Reason */}
+                      {item.reason && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontStyle: 'italic' }}>
+                          Reason: {item.reason}
+                        </Typography>
+                      )}
+                      
+                      {/* Status indicator */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 'auto', pt: 1, borderTop: '1px dashed rgba(0,0,0,0.1)' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Status:
+                        </Typography>
+                        <Chip 
+                          label={item.status || 'OPEN'} 
+                          size="small" 
+                          color={item.status === 'CLOSED' ? 'success' : item.status === 'IN_PROGRESS' ? 'info' : 'warning'}
+                          sx={{ fontSize: '0.65rem', height: 18 }}
+                        />
+                      </Box>
+                    </Box>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Paper>
+        )}
+
+        {/* Action Plan Table - Detailed view with corrective actions */}
+        {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              📋 Action Plan
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Corrective actions assigned to address the identified deviations.
+            </Typography>
+            
+            {/* Desktop Table View */}
+            <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#1a365d', color: 'white' }}>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '100px' }}>Category</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Checklist Title</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Severity</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Corrective Action</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Responsible Person</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '100px' }}>Target Date</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Status</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '60px' }}>Edit</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '90px' }}>Category</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Deviation</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Severity</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '200px' }}>Corrective Action</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '110px' }}>Owner</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Target Date</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Status</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '50px' }}>Edit</th>
                   </tr>
                 </thead>
                 <tbody>
                   {actionPlan.action_items.map((item, index) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                    <tr key={item.id} style={{ borderBottom: '1px solid #e0e0e0', backgroundColor: index % 2 === 0 ? '#fafafa' : 'white' }}>
                       {editingActionId === item.id ? (
                         <>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666' }}>{item.category || '—'}</Typography>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666', fontSize: '0.8rem' }}>{item.category || '—'}</Typography>
                           </td>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem' }}>{item.deviation}</Typography>
                           </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
                             <Chip 
                               label={item.severity} 
                               size="small" 
                               color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
+                              sx={{ fontSize: '0.7rem' }}
                             />
                           </td>
                           <td style={{ padding: '8px' }}>
@@ -788,8 +899,9 @@ const AuditDetail = () => {
                                 value={actionEditForm.responsible_person_id || ''}
                                 onChange={(e) => setActionEditForm({ ...actionEditForm, responsible_person_id: e.target.value })}
                                 displayEmpty
+                                sx={{ fontSize: '0.8rem' }}
                               >
-                                <MenuItem value="">Select Person</MenuItem>
+                                <MenuItem value="">Select</MenuItem>
                                 {users.map(user => (
                                   <MenuItem key={user.id} value={user.id}>{user.name}</MenuItem>
                                 ))}
@@ -803,22 +915,24 @@ const AuditDetail = () => {
                               value={actionEditForm.target_date || ''}
                               onChange={(e) => setActionEditForm({ ...actionEditForm, target_date: e.target.value })}
                               InputLabelProps={{ shrink: true }}
+                              sx={{ width: '100%' }}
                             />
                           </td>
                           <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <FormControl size="small" sx={{ minWidth: 80 }}>
+                            <FormControl size="small" sx={{ minWidth: 70 }}>
                               <Select
                                 value={actionEditForm.status || 'OPEN'}
                                 onChange={(e) => setActionEditForm({ ...actionEditForm, status: e.target.value })}
+                                sx={{ fontSize: '0.75rem' }}
                               >
                                 <MenuItem value="OPEN">OPEN</MenuItem>
-                                <MenuItem value="IN_PROGRESS">IN PROGRESS</MenuItem>
+                                <MenuItem value="IN_PROGRESS">IN PROG</MenuItem>
                                 <MenuItem value="CLOSED">CLOSED</MenuItem>
                               </Select>
                             </FormControl>
                           </td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <IconButton size="small" color="primary" onClick={() => handleUpdateActionItem(item.id)}>
                                 <CheckCircleIcon fontSize="small" />
                               </IconButton>
@@ -830,43 +944,45 @@ const AuditDetail = () => {
                         </>
                       ) : (
                         <>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666' }}>{item.category || '—'}</Typography>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#666', fontSize: '0.8rem' }}>{item.category || '—'}</Typography>
                           </td>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.deviation}</Typography>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem' }}>{item.deviation}</Typography>
                           </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
                             <Chip 
                               label={item.severity} 
                               size="small" 
                               color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
+                              sx={{ fontSize: '0.7rem' }}
                             />
                           </td>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'}>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '0.85rem' }}>
                               {item.corrective_action || '—'}
                             </Typography>
                           </td>
-                          <td style={{ padding: '12px' }}>
-                            <Typography variant="body2" color={item.responsible_person ? 'text.primary' : 'text.secondary'}>
+                          <td style={{ padding: '10px' }}>
+                            <Typography variant="body2" color={item.responsible_person ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '0.85rem' }}>
                               {item.responsible_person || '—'}
                             </Typography>
                           </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <Typography variant="body2" color={item.target_date ? 'text.primary' : 'text.secondary'}>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            <Typography variant="body2" color={item.target_date ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '0.8rem' }}>
                               {item.target_date ? new Date(item.target_date).toLocaleDateString() : '—'}
                             </Typography>
                           </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
                             <Chip 
                               label={item.status} 
                               size="small" 
                               color={item.status === 'CLOSED' ? 'success' : item.status === 'IN_PROGRESS' ? 'info' : 'warning'}
                               variant="filled"
+                              sx={{ fontSize: '0.7rem' }}
                             />
                           </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
                             <IconButton 
                               size="small" 
                               onClick={() => {
@@ -888,6 +1004,83 @@ const AuditDetail = () => {
                   ))}
                 </tbody>
               </table>
+            </Box>
+
+            {/* Mobile Card View */}
+            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+              {actionPlan.action_items.map((item, index) => (
+                <Card key={item.id} sx={{ mb: 2, border: '1px solid', borderColor: 'divider' }}>
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    {/* Header */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                      <Box>
+                        <Chip 
+                          label={item.severity} 
+                          size="small" 
+                          color={item.severity === 'CRITICAL' ? 'error' : item.severity === 'MAJOR' ? 'warning' : 'default'}
+                          sx={{ mb: 0.5 }}
+                        />
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {item.category || 'General'}
+                        </Typography>
+                      </Box>
+                      <Chip 
+                        label={item.status || 'OPEN'} 
+                        size="small" 
+                        color={item.status === 'CLOSED' ? 'success' : item.status === 'IN_PROGRESS' ? 'info' : 'warning'}
+                      />
+                    </Box>
+                    
+                    {/* Deviation */}
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5 }}>
+                      {item.deviation}
+                    </Typography>
+                    
+                    {/* Details Grid */}
+                    <Grid container spacing={1} sx={{ mb: 1.5 }}>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" display="block">Owner</Typography>
+                        <Typography variant="body2">{item.responsible_person || '—'}</Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" display="block">Target Date</Typography>
+                        <Typography variant="body2">
+                          {item.target_date ? new Date(item.target_date).toLocaleDateString() : '—'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                    
+                    {/* Corrective Action */}
+                    <Box sx={{ bgcolor: 'grey.50', p: 1.5, borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                        Corrective Action
+                      </Typography>
+                      <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'}>
+                        {item.corrective_action || 'Not yet defined'}
+                      </Typography>
+                    </Box>
+                    
+                    {/* Edit Button */}
+                    <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        size="small"
+                        startIcon={<EditIcon />}
+                        onClick={() => {
+                          setEditingActionId(item.id);
+                          setActionEditForm({
+                            corrective_action: item.corrective_action || '',
+                            responsible_person_id: item.responsible_person_id || '',
+                            target_date: item.target_date ? item.target_date.split('T')[0] : '',
+                            status: item.status || 'OPEN'
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
             </Box>
           </Paper>
         )}
