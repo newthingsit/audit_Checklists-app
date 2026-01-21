@@ -1057,10 +1057,7 @@ const AuditFormScreen = () => {
           return a.localeCompare(b);
         }).forEach(section => {
           const sectionItems = itemsBySection[section];
-          const completedCount = sectionItems.filter(item => {
-            const status = responses[item.id];
-            return status && status !== 'pending';
-          }).length;
+          const completedCount = sectionItems.filter(item => isItemComplete(item)).length;
           
           const sectionDisplayName = section === 'General' ? (subCategoryName || category) : section;
           
@@ -1078,10 +1075,7 @@ const AuditFormScreen = () => {
         });
       } else {
         // No sections, treat as single sub-category
-        const completedCount = categoryItems.filter(item => {
-          const status = responses[item.id];
-          return status && status !== 'pending';
-        }).length;
+        const completedCount = categoryItems.filter(item => isItemComplete(item)).length;
         
         groups[parentName].subCategories.push({
           fullName: category,
@@ -1098,7 +1092,7 @@ const AuditFormScreen = () => {
     
     // Sort groups and sub-categories
     return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
-  }, [responses]);
+  }, [isItemComplete]);
 
   // Update grouped categories when items or categories change
   useEffect(() => {

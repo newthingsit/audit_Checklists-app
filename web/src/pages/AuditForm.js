@@ -702,11 +702,19 @@ const AuditForm = () => {
     categories.forEach(cat => {
       const categoryItems = items.filter(item => item.category === cat);
       const completedInCategory = categoryItems.filter(item => {
-        // Check if item has a response or selected option
+        const inputType = getNormalizedInputType(item);
         const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
         const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
-        // Also check if item has a mark from loaded audit data
         const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
+        const hasPhoto = !!photos[item.id];
+        const inputValue = inputValues[item.id];
+        const hasInputValue = inputValue !== undefined && inputValue !== null && String(inputValue).trim() !== '';
+
+        if (inputType === 'image_upload') return hasPhoto || hasMark;
+        if (['number', 'date', 'open_ended', 'description', 'scan_code', 'signature', 'short_answer', 'long_answer', 'time'].includes(inputType)) {
+          return hasInputValue || (inputType === 'signature' && hasPhoto) || hasMark;
+        }
+
         return hasResponse || hasOption || hasMark;
       }).length;
       
@@ -717,7 +725,7 @@ const AuditForm = () => {
       };
     });
     return status;
-  }, [categories, items, responses, selectedOptions]);
+  }, [categories, items, responses, selectedOptions, inputValues, photos, getNormalizedInputType]);
 
   // Update category completion status when responses or options change
   useEffect(() => {

@@ -101,6 +101,20 @@ async function main() {
     throw new Error('CSV must have a "title" column');
   }
 
+  const normalizeCategoryName = (value) => {
+    if (!value) return '';
+    let normalized = String(value).trim().replace(/\s+/g, ' ');
+    normalized = normalized.replace(/\s*&\s*/g, ' & ');
+    normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+    normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+    return normalized;
+  };
+
+  const normalizeSectionName = (value) => {
+    if (!value) return '';
+    return String(value).trim().replace(/\s+/g, ' ');
+  };
+
   const normalizeInputType = (rawType, title, applyPhotoFix) => {
     if (applyPhotoFix) {
       return 'image_upload';
@@ -151,9 +165,9 @@ async function main() {
     items.push({
       title,
       description: descIdx !== -1 ? (values[descIdx]?.replace(/^"|"$/g, '').trim() || '') : '',
-      category: catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
-      subcategory: subIdx !== -1 ? values[subIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
-      section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
+      category: catIdx !== -1 ? normalizeCategoryName(values[catIdx]?.replace(/^"|"$/g, '').trim() || '') : '',
+      subcategory: subIdx !== -1 ? normalizeCategoryName(values[subIdx]?.replace(/^"|"$/g, '').trim() || '') : '',
+      section: secIdx !== -1 ? normalizeSectionName(values[secIdx]?.replace(/^"|"$/g, '').trim() || '') : '',
         input_type: normalizeInputType(
           typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
           title,

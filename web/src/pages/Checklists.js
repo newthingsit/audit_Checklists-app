@@ -721,9 +721,22 @@ const Checklists = () => {
           // Extract values from columns
           const getValue = (index) => index !== -1 && values[index] ? values[index].replace(/^"|"$/g, '').trim() : '';
           
-          const mainCategory = getValue(catIndex);
-          const subCategory = getValue(subCatIndex);
-          const itemSection = getValue(secIndex);
+          const normalizeCategoryName = (value) => {
+            if (!value) return '';
+            let normalized = String(value).trim().replace(/\s+/g, ' ');
+            normalized = normalized.replace(/\s*&\s*/g, ' & ');
+            normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+            normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+            return normalized;
+          };
+          const normalizeSectionName = (value) => {
+            if (!value) return '';
+            return String(value).trim().replace(/\s+/g, ' ');
+          };
+
+          const mainCategory = normalizeCategoryName(getValue(catIndex));
+          const subCategory = normalizeCategoryName(getValue(subCatIndex));
+          const itemSection = normalizeSectionName(getValue(secIndex));
           const normalizeInputType = (rawType, title) => {
             const normalized = String(rawType || '').trim().toLowerCase();
             if (!normalized || normalized === 'auto') {

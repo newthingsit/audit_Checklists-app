@@ -1182,6 +1182,20 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     const optIdx = headers.findIndex(h => h === 'options' || h === 'choices');
     
     // Parse items
+    const normalizeCategoryName = (value) => {
+      if (!value) return '';
+      let normalized = String(value).trim().replace(/\s+/g, ' ');
+      normalized = normalized.replace(/\s*&\s*/g, ' & ');
+      normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+      normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+      return normalized;
+    };
+
+    const normalizeSectionName = (value) => {
+      if (!value) return '';
+      return String(value).trim().replace(/\s+/g, ' ');
+    };
+
     const normalizeInputType = (rawType, title, applyPhotoFix) => {
       if (applyPhotoFix) {
         return 'image_upload';
@@ -1232,8 +1246,8 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
       const critVal = critIdx !== -1 ? values[critIdx]?.toLowerCase().trim() : 'no';
       
       // Get category and subcategory, combine if both exist
-      let itemCategory = catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || '' : '';
-      const subCategory = subcatIdx !== -1 ? values[subcatIdx]?.replace(/^"|"$/g, '').trim() || '' : '';
+      let itemCategory = catIdx !== -1 ? normalizeCategoryName(values[catIdx]?.replace(/^"|"$/g, '').trim() || '') : '';
+      const subCategory = subcatIdx !== -1 ? normalizeCategoryName(values[subcatIdx]?.replace(/^"|"$/g, '').trim() || '') : '';
       
       // Combine category and subcategory: "CATEGORY (Subcategory)" format
       if (itemCategory && subCategory) {
@@ -1244,7 +1258,7 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
       
       // Use template category as fallback
       if (!itemCategory) {
-        itemCategory = category || '';
+        itemCategory = normalizeCategoryName(category || '');
       }
       
       const rawInputType = typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto';
@@ -1255,7 +1269,7 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
         description: descIdx !== -1 ? values[descIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
         category: itemCategory,
         subcategory: subCategory, // Store subcategory separately for PDF grouping
-        section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
+        section: secIdx !== -1 ? normalizeSectionName(values[secIdx]?.replace(/^"|"$/g, '').trim() || '') : '',
         input_type: normalizedInputType,
         required: reqVal === 'yes' || reqVal === 'true' || reqVal === '1',
         weight: weightIdx !== -1 ? parseInt(values[weightIdx]) || 1 : 1,

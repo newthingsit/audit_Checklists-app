@@ -59,6 +59,17 @@ const parseInfoNotes = (notes) => {
   }
 };
 
+const normalizeCategoryValue = (value) => {
+  if (!value) return null;
+  let normalized = String(value).trim().replace(/\s+/g, ' ');
+  normalized = normalized.replace(/\s*&\s*/g, ' & ');
+  normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+  normalized = normalized.replace(/\s*–\s*/g, ' - ');
+  normalized = normalized.replace(/\s*-\s*/g, ' - ');
+  normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+  return normalized || null;
+};
+
 const validateInfoStepNotes = (notes) => {
   const parsed = parseInfoNotes(notes);
   if (!parsed) return null;
@@ -953,8 +964,18 @@ router.get('/:id', authenticate, (req, res) => {
                 catData.weightedPossible += maxScore * weight;
                 
                 // Check if item is completed and calculate actual score
-                if (item.mark !== null && item.mark !== undefined && item.mark !== '') {
+                const hasMark = item.mark !== null && item.mark !== undefined && item.mark !== '';
+                const hasStatus = item.status && item.status !== 'pending' && item.status !== '';
+                const hasSelectedOption = item.selected_option_id !== null && item.selected_option_id !== undefined;
+                const hasComment = item.comment && String(item.comment).trim() !== '';
+                const hasPhoto = item.photo_url && String(item.photo_url).trim() !== '';
+                const isCompleted = hasMark || hasStatus || hasSelectedOption || hasComment || hasPhoto;
+
+                if (isCompleted) {
                   catData.completedItems++;
+                }
+
+                if (hasMark) {
                   if (item.mark !== 'NA') {
                     const mark = parseFloat(item.mark) || 0;
                     catData.actualScore += mark;
@@ -970,31 +991,65 @@ router.get('/:id', authenticate, (req, res) => {
               
               // Map categories to required categories (Quality, Speed, Cleanliness & Hygiene, Processes, HK)
               // Handle variations like "SERVICE (Speed of Service)", "SERVICE - Speed of Service", etc.
+              const normalizeCategoryName = (value) => {
+                if (!value) return '';
+                let normalized = String(value).trim().replace(/\s+/g, ' ');
+                normalized = normalized.replace(/\s*&\s*/g, ' & ');
+                normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+                normalized = normalized.replace(/\s*–\s*/g, ' - ');
+                normalized = normalized.replace(/\s*-\s*/g, ' - ');
+                normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+                return normalized;
+              };
+
               const categoryMapping = {
-                'Quality': 'Quality',
-                'Speed': 'Speed',
-                'Speed of Service': 'Speed',
-                'SERVICE (Speed of Service)': 'Speed',
-                'SERVICE - Speed of Service': 'Speed',
-                'SERVICE – Speed of Service': 'Speed',
-                'Cleanliness & Hygiene': 'Cleanliness & Hygiene',
-                'Cleanliness': 'Cleanliness & Hygiene',
-                'Hygiene': 'Cleanliness & Hygiene',
-                'Processes': 'Processes',
-                'HK': 'HK',
-                'Housekeeping': 'HK'
+                'quality': 'Quality',
+                'service': 'Service',
+                'speed': 'Speed',
+                'speed of service': 'Speed',
+                'cleanliness': 'Cleanliness & Hygiene',
+                'hygiene': 'Cleanliness & Hygiene',
+                'hygiene & cleanliness': 'Cleanliness & Hygiene',
+                'hygiene and cleanliness': 'Cleanliness & Hygiene',
+                'cleanliness & hygiene': 'Cleanliness & Hygiene',
+                'processes': 'Processes',
+                'hk': 'HK',
+                'housekeeping': 'HK',
+                'house keeping': 'HK',
+                'acknowledgement': 'Acknowledgement',
+                'accuracy': 'Accuracy',
+                'technology': 'Technology',
+                'delivery service': 'Delivery Service'
               };
               
               // Also handle dynamic mapping for categories containing "Speed of Service" or "Speed"
               const normalizeCategory = (cat) => {
                 if (!cat) return cat;
-                const catLower = cat.toLowerCase();
+                const normalized = normalizeCategoryName(cat);
+                const catLower = normalized.toLowerCase();
                 // Check if category contains speed-related keywords
                 if (catLower.includes('speed of service') || (catLower.includes('speed') && !catLower.includes('speed of service - tracking'))) {
                   return 'Speed';
                 }
-                // Check for other mappings
-                return categoryMapping[cat] || cat;
+                if (catLower.includes('acknowledg')) {
+                  return 'Acknowledgement';
+                }
+                if (catLower.includes('quality')) {
+                  return 'Quality';
+                }
+                if (catLower.includes('hygiene') || catLower.includes('cleanliness')) {
+                  return 'Cleanliness & Hygiene';
+                }
+                if (catLower.includes('process')) {
+                  return 'Processes';
+                }
+                if (catLower === 'service') {
+                  return 'Service';
+                }
+                if (categoryMapping[catLower]) {
+                  return categoryMapping[catLower];
+                }
+                return normalized;
               };
               
               // Group categories by required categories
@@ -1030,10 +1085,10 @@ router.get('/:id', authenticate, (req, res) => {
                 const cat = groupedCategoryScores[category];
                 cat.score = cat.totalPossibleScore > 0 
                   ? Math.round((cat.actualScore / cat.totalPossibleScore) * 100) 
-                  : 0;
+                  : (cat.totalItems > 0 ? Math.round((cat.completedItems / cat.totalItems) * 100) : 0);
                 cat.weightedScore = cat.weightedPossible > 0 
                   ? Math.round((cat.weightedActual / cat.weightedPossible) * 100) 
-                  : 0;
+                  : (cat.totalItems > 0 ? Math.round((cat.completedItems / cat.totalItems) * 100) : 0);
               });
               
               // Attach options to items
@@ -1256,7 +1311,7 @@ router.post('/', authenticate, (req, res) => {
         }
 
       const normalizedAuditCategory = (typeof audit_category === 'string' && audit_category.trim())
-        ? audit_category.trim()
+        ? normalizeCategoryValue(audit_category)
         : null;
 
       // If audit_category is provided, scope the audit to that category only.
@@ -2514,7 +2569,7 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       // If explicitly set to null, clear the category to allow multiple categories in same audit
       const requestedAuditCategory = req.body.hasOwnProperty('audit_category') 
         ? (typeof req.body.audit_category === 'string' && req.body.audit_category.trim()
-            ? req.body.audit_category.trim()
+            ? normalizeCategoryValue(req.body.audit_category)
             : null)
         : undefined; // Not provided, don't change
       
