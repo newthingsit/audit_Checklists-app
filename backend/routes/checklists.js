@@ -1183,6 +1183,9 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     
     // Parse items
     const normalizeInputType = (rawType, title, applyPhotoFix) => {
+      if (applyPhotoFix) {
+        return 'image_upload';
+      }
       const normalized = String(rawType || '').trim().toLowerCase();
       if (!normalized || normalized === 'auto') {
         if (applyPhotoFix && /photo/i.test(String(title || ''))) {
