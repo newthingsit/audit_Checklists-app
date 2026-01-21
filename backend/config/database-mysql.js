@@ -183,7 +183,10 @@ const createTables = async () => {
       checklist_question VARCHAR(500),
       deviation_reason TEXT,
       severity VARCHAR(50) DEFAULT 'MINOR',
+      root_cause TEXT,
       corrective_action TEXT,
+      preventive_action TEXT,
+      owner_role VARCHAR(100),
       responsible_person VARCHAR(255),
       responsible_person_id INT,
       target_date DATE,
@@ -197,6 +200,11 @@ const createTables = async () => {
 
     `CREATE INDEX IF NOT EXISTS idx_action_plan_audit ON action_plan(audit_id)`,
     `CREATE INDEX IF NOT EXISTS idx_action_plan_status ON action_plan(status)`,
+    
+    // Add action_plan columns if they don't exist (for existing databases)
+    `ALTER TABLE action_plan ADD COLUMN IF NOT EXISTS root_cause TEXT`,
+    `ALTER TABLE action_plan ADD COLUMN IF NOT EXISTS preventive_action TEXT`,
+    `ALTER TABLE action_plan ADD COLUMN IF NOT EXISTS owner_role VARCHAR(100)`,
     
     // Add escalation columns if they don't exist (for existing databases)
     `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated TINYINT(1) DEFAULT 0`,

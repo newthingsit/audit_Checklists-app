@@ -259,6 +259,59 @@ const SEVERITY_CONFIG = {
 
 // Categories that warrant MAJOR severity (configurable)
 const MAJOR_SEVERITY_CATEGORIES = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
+const BUSINESS_PRIORITY_ORDER = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
+
+const normalizeCategoryForPriority = (value) => {
+  if (!value) return '';
+  const normalized = String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+  if (normalized.includes('speed of service')) return 'SPEED OF SERVICE';
+  if (normalized.includes('quality')) return 'QUALITY';
+  if (normalized.includes('service')) return 'SERVICE';
+  if (normalized.includes('hygiene') || normalized.includes('cleanliness')) return 'HYGIENE';
+  if (normalized.includes('acknowledg')) return 'ACKNOWLEDGEMENT';
+  return normalized.toUpperCase();
+};
+
+const getBusinessPriorityWeight = (category) => {
+  const normalized = normalizeCategoryForPriority(category);
+  const index = BUSINESS_PRIORITY_ORDER.findIndex(name => normalized.includes(name));
+  return index === -1 ? 0 : (BUSINESS_PRIORITY_ORDER.length - index);
+};
+
+const isAcknowledgementCategory = (category) => {
+  const normalized = normalizeCategoryForPriority(category);
+  return normalized.includes('ACKNOWLEDG');
+};
+
+const determineOwnerRole = (category) => {
+  const normalized = normalizeCategoryForPriority(category);
+  if (normalized.includes('SERVICE') || normalized.includes('SPEED OF SERVICE')) return 'FOH';
+  if (normalized.includes('QUALITY') || normalized.includes('HYGIENE') || normalized.includes('CLEANLINESS')) return 'Chef';
+  if (normalized.includes('PROCESS') || normalized.includes('ACKNOWLEDG')) return 'Store Manager';
+  return 'Store Manager';
+};
+
+const getTargetDaysForSeverity = (severityLabel) => {
+  const criticalDays = Number(process.env.ACTION_PLAN_SLA_DAYS_CRITICAL || 3);
+  const majorDays = Number(process.env.ACTION_PLAN_SLA_DAYS_MAJOR || 7);
+  const minorDays = Number(process.env.ACTION_PLAN_SLA_DAYS_MINOR || 14);
+  if (severityLabel === 'CRITICAL') return Number.isFinite(criticalDays) ? criticalDays : 3;
+  if (severityLabel === 'MAJOR') return Number.isFinite(majorDays) ? majorDays : 7;
+  return Number.isFinite(minorDays) ? minorDays : 14;
+};
+
+const computeScoreLoss = (numericMark, maxMark, isMissingAnswer, avgMinutes, targetMinutes) => {
+  if (Number.isFinite(numericMark)) {
+    return Math.max(0, (Number(maxMark) || 0) - numericMark);
+  }
+  if (isMissingAnswer) {
+    return Number(maxMark) || 0;
+  }
+  if (Number.isFinite(avgMinutes) && Number.isFinite(targetMinutes)) {
+    return Math.max(0, avgMinutes - targetMinutes);
+  }
+  return 0;
+};
 
 /**
  * Determine severity based on is_critical flag and category
@@ -285,7 +338,7 @@ function determineSeverity(isCritical, category) {
 /**
  * Determine deviation reason based on the response data
  */
-function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark, speedOfServiceBreach) {
+function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark, speedOfServiceBreach, acknowledgementMissing, selectedOptionText) {
   const reasons = [];
   
   // Check if selected option score = 0
@@ -294,6 +347,12 @@ function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark,
   if (selectedMark === '0' || numericMark === 0) {
     reasons.push('Selected option score = 0');
   }
+
+  // Check if answer explicitly "No"
+  const normalizedOption = String(selectedOptionText || '').trim().toLowerCase();
+  if (normalizedOption === 'no') {
+    reasons.push('Answer marked as No');
+  }
   
   // Check if critical AND score < max
   if (isCritical && numericMark !== null && numericMark < maxMark) {
@@ -301,8 +360,12 @@ function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark,
   }
   
   // Check if required AND answer is missing
-  if (isRequired && (!item.selected_option_id && !item.mark && !item.comment)) {
+  if (isRequired && (!item.selected_option_id && !item.mark && !item.comment && !item.photo_url)) {
     reasons.push('Required item with missing answer');
+  }
+
+  if (acknowledgementMissing) {
+    reasons.push('Acknowledgement missing');
   }
   
   // Speed of Service Avg SLA breach
@@ -374,6 +437,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
     // Apply deviation identification logic
     const deviationsWithScore = (allItems || []).map(item => {
       const selectedMark = item.selected_mark || item.mark || '';
+      const selectedOptionText = item.selected_option_text || '';
       const parsedMark = parseFloat(selectedMark);
       const numericMark = Number.isFinite(parsedMark) ? parsedMark : null;
       const maxMark = parseFloat(item.max_mark) || 3;
@@ -387,13 +451,17 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
         : computeAverageMinutes(item.time_entries);
       const defaultSlaMinutes = Number(process.env.SPEED_OF_SERVICE_SLA_MINUTES || process.env.SOS_SLA_MINUTES || 2);
       const targetMinutes = Number(item.target_time_minutes) || defaultSlaMinutes;
+      const acknowledgementCategory = isAcknowledgementCategory(item.category);
       
       // DEVIATION FLAG CRITERIA:
       let deviationFlag = false;
       let speedOfServiceBreach = false;
+      const isAnswerNo = String(selectedOptionText || '').trim().toLowerCase() === 'no';
+      const isMissingAnswer = !item.selected_option_id && !item.mark && !item.comment && !item.photo_url;
+      const acknowledgementMissing = acknowledgementCategory && isMissingAnswer;
       
-      // 1. Selected option score = 0
-      if (selectedMark === '0' || numericMark === 0) {
+      // 1. Selected option score = 0 OR answer = "No"
+      if (selectedMark === '0' || numericMark === 0 || isAnswerNo) {
         deviationFlag = true;
       }
       
@@ -403,7 +471,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       }
       
       // 3. Required AND answer missing
-      if (isRequired && !item.selected_option_id && !item.mark && !item.comment && item.status !== 'completed') {
+      if (isRequired && isMissingAnswer) {
         deviationFlag = true;
       }
       
@@ -413,13 +481,32 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
         speedOfServiceBreach = true;
       }
       
+      // 5. Acknowledgement missing
+      if (acknowledgementMissing) {
+        deviationFlag = true;
+      }
+      
       if (!deviationFlag) {
         return null; // Not a deviation
       }
       
       // Determine severity and deviation_score
       const severity = determineSeverity(isCritical, item.category);
-      const deviationReason = getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark, speedOfServiceBreach);
+      const deviationReason = getDeviationReason(
+        item,
+        selectedMark,
+        isCritical,
+        isRequired,
+        maxMark,
+        speedOfServiceBreach,
+        acknowledgementMissing,
+        selectedOptionText
+      );
+      const scoreLoss = computeScoreLoss(numericMark, maxMark, isMissingAnswer, avgMinutes, targetMinutes);
+      const businessPriority = getBusinessPriorityWeight(item.category);
+      const ownerRole = determineOwnerRole(item.category);
+      const rootCause = deviationReason || `Process gap detected in ${item.category || 'General'}`;
+      const preventiveAction = `Implement daily checks and training for ${item.category || 'this category'}`;
       
       return {
         item_id: item.item_id,
@@ -435,26 +522,38 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
         priority: severity.priority,
         deviation_score: severity.level, // Used for ranking
         deviation_reason: deviationReason,
-        selected_option: item.selected_option_text,
+        selected_option: selectedOptionText,
         mark: selectedMark,
         max_mark: maxMark,
+        score_loss: scoreLoss,
+        business_priority: businessPriority,
+        owner_role: ownerRole,
+        root_cause: rootCause,
+        preventive_action: preventiveAction,
         comment: item.comment,
         photo_url: item.photo_url,
         weight: item.weight || 1
       };
     }).filter(item => item !== null); // Remove non-deviations
     
-    // RANKING: Sort by deviation_score DESC, then is_critical DESC, then score ASC
+    // RANKING: Sort by severity_weight DESC, then score_loss DESC, then business_priority
     deviationsWithScore.sort((a, b) => {
       // Primary: deviation_score (severity level) DESC
       if (b.deviation_score !== a.deviation_score) {
         return b.deviation_score - a.deviation_score;
       }
-      // Secondary: is_critical DESC
+      // Secondary: score_loss DESC
+      if ((b.score_loss || 0) !== (a.score_loss || 0)) {
+        return (b.score_loss || 0) - (a.score_loss || 0);
+      }
+      // Tertiary: business_priority DESC (Quality, Service, Hygiene, SOS)
+      if ((b.business_priority || 0) !== (a.business_priority || 0)) {
+        return (b.business_priority || 0) - (a.business_priority || 0);
+      }
+      // Fallbacks for stability
       if (b.is_critical !== a.is_critical) {
         return b.is_critical ? 1 : -1;
       }
-      // Tertiary: score ASC (lower scores are higher priority)
       const aScore = Number.isFinite(parseFloat(a.mark)) ? parseFloat(a.mark) : 0;
       const bScore = Number.isFinite(parseFloat(b.mark)) ? parseFloat(b.mark) : 0;
       return aScore - bScore;
@@ -509,16 +608,18 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
                 });
               }
 
-              const slaDays = Number(process.env.ACTION_PLAN_SLA_DAYS || 7);
               const baseDate = auditRow?.completed_at ? new Date(auditRow.completed_at) : new Date();
-              const targetDate = new Date(baseDate);
-              targetDate.setDate(targetDate.getDate() + (Number.isFinite(slaDays) ? slaDays : 7));
-              const targetDateStr = targetDate.toISOString().split('T')[0];
               const auditorName = auditRow?.auditor_name || 'Auditor';
 
               const insertPromises = top3Deviations.map((deviation) => {
                 return new Promise((resolve, reject) => {
                   const correctiveAction = deviation.comment || deviation.deviation_reason || `Corrective action required for: ${deviation.title}`;
+                  const preventiveAction = deviation.preventive_action || `Prevent recurrence in ${deviation.category || 'this category'}`;
+                  const rootCause = deviation.root_cause || deviation.deviation_reason || `Process gap detected in ${deviation.category || 'General'}`;
+                  const ownerRole = deviation.owner_role || 'Store Manager';
+                  const targetDate = new Date(baseDate);
+                  targetDate.setDate(targetDate.getDate() + getTargetDaysForSeverity(deviation.severity));
+                  const targetDateStr = targetDate.toISOString().split('T')[0];
                   dbInstance.run(
                     `INSERT INTO action_plan (
                       audit_id,
@@ -527,12 +628,15 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
                       checklist_question,
                       deviation_reason,
                       severity,
+                      root_cause,
                       corrective_action,
+                      preventive_action,
+                      owner_role,
                       responsible_person,
                       responsible_person_id,
                       target_date,
                       status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                       auditId,
                       deviation.item_id,
@@ -540,7 +644,10 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
                       deviation.title,
                       deviation.deviation_reason,
                       deviation.severity,
+                      rootCause,
                       correctiveAction,
+                      preventiveAction,
+                      ownerRole,
                       auditorName,
                       null,
                       targetDateStr,
@@ -3007,7 +3114,10 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
           deviation: item.checklist_question,
           deviation_reason: item.deviation_reason || '',
           severity: item.severity || 'MINOR',
+          root_cause: item.root_cause || '',
           corrective_action: item.corrective_action || '',
+          preventive_action: item.preventive_action || '',
+          owner_role: item.owner_role || '',
           responsible_person: item.responsible_person || item.responsible_person_name || '',
           responsible_person_id: item.responsible_person_id || null,
           target_date: item.target_date,
@@ -3039,7 +3149,7 @@ router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Invalid ID' });
   }
 
-  const { corrective_action, responsible_person_id, target_date, status } = req.body;
+  const { corrective_action, responsible_person_id, target_date, status, root_cause, preventive_action, owner_role } = req.body;
   const dbInstance = db.getDb();
 
   // Verify audit exists and action plan item belongs to it
@@ -3061,6 +3171,18 @@ router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
       if (corrective_action !== undefined) {
         updates.push('corrective_action = ?');
         params.push(corrective_action);
+      }
+      if (root_cause !== undefined) {
+        updates.push('root_cause = ?');
+        params.push(root_cause);
+      }
+      if (preventive_action !== undefined) {
+        updates.push('preventive_action = ?');
+        params.push(preventive_action);
+      }
+      if (owner_role !== undefined) {
+        updates.push('owner_role = ?');
+        params.push(owner_role);
       }
       const finalizeUpdate = (responsibleName = null) => {
         if (responsible_person_id !== undefined) {

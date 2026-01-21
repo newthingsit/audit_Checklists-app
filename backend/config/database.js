@@ -203,7 +203,10 @@ const createTables = () => {
         checklist_question TEXT,
         deviation_reason TEXT,
         severity TEXT DEFAULT 'MINOR',
+        root_cause TEXT,
         corrective_action TEXT,
+        preventive_action TEXT,
+        owner_role TEXT,
         responsible_person TEXT,
         responsible_person_id INTEGER,
         target_date DATE,
@@ -224,6 +227,11 @@ const createTables = () => {
       db.run(`ALTER TABLE action_items ADD COLUMN severity TEXT DEFAULT 'MINOR'`, () => {});
       db.run(`ALTER TABLE action_items ADD COLUMN corrective_action TEXT`, () => {});
       db.run(`ALTER TABLE action_items ADD COLUMN category TEXT`, () => {});
+
+      // Add action_plan columns if they don't exist (for existing databases)
+      db.run(`ALTER TABLE action_plan ADD COLUMN root_cause TEXT`, () => {});
+      db.run(`ALTER TABLE action_plan ADD COLUMN preventive_action TEXT`, () => {});
+      db.run(`ALTER TABLE action_plan ADD COLUMN owner_role TEXT`, () => {});
       
       // Action Comments table for escalation history tracking
       db.run(`CREATE TABLE IF NOT EXISTS action_comments (

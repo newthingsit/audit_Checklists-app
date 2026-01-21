@@ -362,7 +362,10 @@ const createTables = async () => {
       [checklist_question] NVARCHAR(500),
       [deviation_reason] NTEXT,
       [severity] NVARCHAR(50) DEFAULT 'MINOR',
+      [root_cause] NTEXT,
       [corrective_action] NTEXT,
+      [preventive_action] NTEXT,
+      [owner_role] NVARCHAR(100),
       [responsible_person] NVARCHAR(255),
       [responsible_person_id] INT,
       [target_date] DATE,
@@ -378,6 +381,14 @@ const createTables = async () => {
      CREATE INDEX idx_action_plan_audit ON action_plan(audit_id)`,
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_plan_status')
      CREATE INDEX idx_action_plan_status ON action_plan(status)`,
+    
+    // Add action_plan columns if they don't exist (for existing databases)
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND name = 'root_cause')
+     ALTER TABLE [dbo].[action_plan] ADD [root_cause] NTEXT`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND name = 'preventive_action')
+     ALTER TABLE [dbo].[action_plan] ADD [preventive_action] NTEXT`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND name = 'owner_role')
+     ALTER TABLE [dbo].[action_plan] ADD [owner_role] NVARCHAR(100)`,
     
     // Add escalation columns if they don't exist (for existing databases)
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated')

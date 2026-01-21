@@ -1187,7 +1187,22 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
       let normalized = String(value).trim().replace(/\s+/g, ' ');
       normalized = normalized.replace(/\s*&\s*/g, ' & ');
       normalized = normalized.replace(/\s+and\s+/gi, ' & ');
+      normalized = normalized.replace(/\s*–\s*/g, ' - ');
+      normalized = normalized.replace(/\s*-\s*/g, ' - ');
       normalized = normalized.replace(/\bAcknowledgment\b/gi, 'Acknowledgement');
+      const lower = normalized.toLowerCase();
+      
+      // Canonical mappings for common categories
+      if (lower.includes('speed of service - tracking')) return 'Speed of Service - Tracking';
+      if (lower.includes('speed of service')) return 'Speed of Service';
+      if (lower === 'speed') return 'Speed';
+      if (lower.includes('acknowledg')) return 'Acknowledgement';
+      if (lower.includes('quality')) return 'Quality';
+      if (lower.includes('service')) return 'Service';
+      if (lower.includes('hygiene') || lower.includes('cleanliness')) return 'Hygiene & Cleanliness';
+      if (lower.includes('process')) return 'Processes';
+      if (lower === 'hk' || lower.includes('housekeeping') || lower.includes('house keeping')) return 'HK';
+      
       return normalized;
     };
 

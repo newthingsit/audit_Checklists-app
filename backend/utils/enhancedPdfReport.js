@@ -912,11 +912,37 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
  * Identify deviations from audit items
  */
 function identifyDeviations(items) {
-  return items.filter(item => {
-    const actualMark = parseFloat(item.mark) || 0;
+  const normalizeCategory = (value) => {
+    if (!value) return '';
+    const normalized = String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+    if (normalized.includes('speed of service')) return 'SPEED OF SERVICE';
+    if (normalized.includes('quality')) return 'QUALITY';
+    if (normalized.includes('service')) return 'SERVICE';
+    if (normalized.includes('hygiene') || normalized.includes('cleanliness')) return 'HYGIENE';
+    if (normalized.includes('acknowledg')) return 'ACKNOWLEDGEMENT';
+    return normalized.toUpperCase();
+  };
+  const businessPriorityOrder = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
+  const getBusinessPriority = (category) => {
+    const normalized = normalizeCategory(category);
+    const index = businessPriorityOrder.findIndex(name => normalized.includes(name));
+    return index === -1 ? 0 : (businessPriorityOrder.length - index);
+  };
+  const determineSeverity = (isCritical, category) => {
+    if (isCritical) return { label: 'CRITICAL', level: 3 };
+    const normalized = normalizeCategory(category);
+    if (['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'].some(cat => normalized.includes(cat))) {
+      return { label: 'MAJOR', level: 2 };
+    }
+    return { label: 'MINOR', level: 1 };
+  };
+
+  const deviations = items.map(item => {
     const maxMark = item.maxScore || 3;
+    const parsedMark = parseFloat(item.mark);
+    const numericMark = Number.isFinite(parsedMark) ? parsedMark : null;
+    const actualMark = Number.isFinite(numericMark) ? numericMark : 0;
     const isCritical = item.is_critical === 1 || item.is_critical === true;
-    const response = item.selected_option_text || '';
     const isRequired = item.required === 1 || item.required === true;
     const categoryText = String(item.category || '').toUpperCase();
     const isSpeedOfService = categoryText.includes('SPEED OF SERVICE');
@@ -926,22 +952,53 @@ function identifyDeviations(items) {
       : null;
     const defaultSlaMinutes = Number(process.env.SPEED_OF_SERVICE_SLA_MINUTES || process.env.SOS_SLA_MINUTES || 2);
     const targetMinutes = Number(item.target_time_minutes) || defaultSlaMinutes;
-    
-    // Deviation criteria
-    if (actualMark === 0) return true;
-    if (isCritical && actualMark < maxMark) return true;
-    if (isRequired && !item.selected_option_id && !item.mark && item.status !== 'completed') return true;
-    if (isSpeedOfService && isAvgSection && Number.isFinite(avgMinutes) && avgMinutes > targetMinutes) return true;
-    
-    return false;
-  }).map(item => {
-    const isCritical = item.is_critical === 1 || item.is_critical === true;
+    const isAcknowledgement = normalizeCategory(item.category).includes('ACKNOWLEDGEMENT');
+    const selectedOptionText = String(item.selected_option_text || '').trim().toLowerCase();
+    const isAnswerNo = selectedOptionText === 'no';
+    const isMissingAnswer = !item.selected_option_id && !item.mark && !item.comment && !item.photo_url;
+    const acknowledgementMissing = isAcknowledgement && isMissingAnswer;
+
+    let deviationFlag = false;
+    let speedOfServiceBreach = false;
+    if (actualMark === 0 || isAnswerNo) deviationFlag = true;
+    if (isCritical && actualMark < maxMark) deviationFlag = true;
+    if (isRequired && isMissingAnswer) deviationFlag = true;
+    if (isSpeedOfService && isAvgSection && Number.isFinite(avgMinutes) && avgMinutes > targetMinutes) {
+      deviationFlag = true;
+      speedOfServiceBreach = true;
+    }
+    if (acknowledgementMissing) deviationFlag = true;
+
+    if (!deviationFlag) return null;
+
+    const severity = determineSeverity(isCritical, item.category);
+    const scoreLoss = Number.isFinite(numericMark)
+      ? Math.max(0, (Number(maxMark) || 0) - numericMark)
+      : (isMissingAnswer ? (Number(maxMark) || 0) : (Number.isFinite(avgMinutes) ? Math.max(0, avgMinutes - targetMinutes) : 0));
+
     return {
       ...item,
-      severity: isCritical ? 'CRITICAL' : 'MAJOR',
-      severity_level: isCritical ? 3 : 2
+      severity: severity.label,
+      severity_level: severity.level,
+      score_loss: scoreLoss,
+      business_priority: getBusinessPriority(item.category),
+      deviation_reason: [
+        actualMark === 0 ? 'Selected option score = 0' : null,
+        isAnswerNo ? 'Answer marked as No' : null,
+        isCritical && actualMark < maxMark ? 'Critical item with score below maximum' : null,
+        isRequired && isMissingAnswer ? 'Required item with missing answer' : null,
+        speedOfServiceBreach ? 'Speed of Service Avg exceeds SLA' : null,
+        acknowledgementMissing ? 'Acknowledgement missing' : null
+      ].filter(Boolean).join('; ') || 'Deviation detected'
     };
-  }).sort((a, b) => b.severity_level - a.severity_level).slice(0, 3);
+  }).filter(Boolean);
+
+  return deviations.sort((a, b) => {
+    if (b.severity_level !== a.severity_level) return b.severity_level - a.severity_level;
+    if ((b.score_loss || 0) !== (a.score_loss || 0)) return (b.score_loss || 0) - (a.score_loss || 0);
+    if ((b.business_priority || 0) !== (a.business_priority || 0)) return (b.business_priority || 0) - (a.business_priority || 0);
+    return 0;
+  }).slice(0, 3);
 }
 
 module.exports = {
