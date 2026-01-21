@@ -172,6 +172,30 @@ const createTables = () => {
         FOREIGN KEY (assigned_to) REFERENCES users(id),
         FOREIGN KEY (escalated_to) REFERENCES users(id)
       )`,
+
+      // Action Plan table (auto-generated Top-3 deviations)
+      `CREATE TABLE IF NOT EXISTS action_plan (
+        id SERIAL PRIMARY KEY,
+        audit_id INTEGER NOT NULL,
+        item_id INTEGER,
+        checklist_category VARCHAR(255),
+        checklist_question VARCHAR(500),
+        deviation_reason TEXT,
+        severity VARCHAR(50) DEFAULT 'MINOR',
+        corrective_action TEXT,
+        responsible_person VARCHAR(255),
+        responsible_person_id INTEGER,
+        target_date DATE,
+        status VARCHAR(50) DEFAULT 'OPEN',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES checklist_items(id),
+        FOREIGN KEY (responsible_person_id) REFERENCES users(id)
+      )`,
+
+      `CREATE INDEX IF NOT EXISTS idx_action_plan_audit ON action_plan(audit_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_action_plan_status ON action_plan(status)`,
       
       // Add escalation columns if they don't exist (for existing databases)
       `DO $$ BEGIN

@@ -81,11 +81,19 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               );
             });
           })).then(itemsWithMaxScores => {
+            dbInstance.all(
+              `SELECT * FROM action_plan WHERE audit_id = ? ORDER BY id ASC`,
+              [auditId],
+              (planErr, actionPlanItems) => {
+                if (planErr) {
+                  logger.error('Error fetching action plan for PDF:', planErr);
+                }
+                const actionPlanRows = actionPlanItems || [];
 
-          // Calculate category-wise scores
-          const categoryData = {};
-          let totalPerfectScore = 0;
-          let totalActualScore = 0;
+                // Calculate category-wise scores
+                const categoryData = {};
+                let totalPerfectScore = 0;
+                let totalActualScore = 0;
           
           itemsWithMaxScores.forEach(item => {
             const cat = item.category || 'Uncategorized';
@@ -543,10 +551,60 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
             doc.y = rowY + 8;
           }
           
+          // ==================== ACTION PLAN ====================
+          if (actionPlanRows.length > 0) {
+            drawFooter();
+            doc.addPage();
+            currentPage++;
+            doc.y = 50;
+
+            // Section header
+            doc.rect(0, 0, pageWidth, 40).fill(BLUE);
+            doc.fontSize(14).fillColor('#fff');
+            doc.text('Action Plan', margin, 12, { width: contentWidth });
+
+            doc.y = 60;
+            const apCols = [
+              { text: 'Question', width: contentWidth * 0.28, align: 'left' },
+              { text: 'Remarks / Deviation', width: contentWidth * 0.22, align: 'left' },
+              { text: 'To-Do', width: contentWidth * 0.22, align: 'left' },
+              { text: 'Assigned To', width: contentWidth * 0.12, align: 'center' },
+              { text: 'Complete By', width: contentWidth * 0.10, align: 'center' },
+              { text: 'Status', width: contentWidth * 0.06, align: 'center' }
+            ];
+
+            // Header row
+            rowY = drawTableRow(doc.y, apCols.map(c => ({ text: c.text, width: c.width, align: c.align, fontSize: 8 })), 20, true);
+
+            // Rows
+            actionPlanRows.forEach((row, idx) => {
+              if (rowY > pageHeight - 60) {
+                drawFooter();
+                doc.addPage();
+                currentPage++;
+                doc.y = 50;
+                rowY = drawTableRow(doc.y, apCols.map(c => ({ text: c.text, width: c.width, align: c.align, fontSize: 8 })), 20, true);
+              }
+
+              const rowData = [
+                { text: (row.checklist_question || '').substring(0, 120), width: apCols[0].width, align: 'left' },
+                { text: (row.deviation_reason || '').substring(0, 120), width: apCols[1].width, align: 'left' },
+                { text: (row.corrective_action || '').substring(0, 120), width: apCols[2].width, align: 'left' },
+                { text: row.responsible_person || '', width: apCols[3].width, align: 'center' },
+                { text: row.target_date ? String(row.target_date).substring(0, 10) : '', width: apCols[4].width, align: 'center' },
+                { text: row.status || 'OPEN', width: apCols[5].width, align: 'center' }
+              ];
+
+              rowY = drawTableRow(rowY, rowData, 22, false, idx % 2 === 0 ? GRAY : null);
+            });
+          }
+
           // Final footer
           drawFooter();
-          
-          doc.end();
+                
+                doc.end();
+              }
+            );
           }).catch(err => {
             logger.error('Error generating PDF:', err);
             if (!res.headersSent) {

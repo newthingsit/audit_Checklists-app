@@ -193,6 +193,27 @@ const createTables = () => {
         FOREIGN KEY (assigned_to) REFERENCES users(id),
         FOREIGN KEY (escalated_to) REFERENCES users(id)
       )`);
+
+      // Action Plan table (auto-generated Top-3 deviations)
+      db.run(`CREATE TABLE IF NOT EXISTS action_plan (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        audit_id INTEGER NOT NULL,
+        item_id INTEGER,
+        checklist_category TEXT,
+        checklist_question TEXT,
+        deviation_reason TEXT,
+        severity TEXT DEFAULT 'MINOR',
+        corrective_action TEXT,
+        responsible_person TEXT,
+        responsible_person_id INTEGER,
+        target_date DATE,
+        status TEXT DEFAULT 'OPEN',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES checklist_items(id),
+        FOREIGN KEY (responsible_person_id) REFERENCES users(id)
+      )`);
       
       // Add escalation columns if they don't exist (for existing databases)
       db.run(`ALTER TABLE action_items ADD COLUMN escalated INTEGER DEFAULT 0`, () => {});
@@ -461,6 +482,8 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_assigned ON action_items(assigned_to)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_due_date ON action_items(due_date)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_plan_audit ON action_plan(audit_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_action_plan_status ON action_plan(status)`);
       
       // Task indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to)`);

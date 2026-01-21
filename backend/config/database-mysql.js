@@ -173,6 +173,30 @@ const createTables = async () => {
       FOREIGN KEY (assigned_to) REFERENCES users(id),
       FOREIGN KEY (escalated_to) REFERENCES users(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    // Action Plan table (auto-generated Top-3 deviations)
+    `CREATE TABLE IF NOT EXISTS action_plan (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      audit_id INT NOT NULL,
+      item_id INT,
+      checklist_category VARCHAR(255),
+      checklist_question VARCHAR(500),
+      deviation_reason TEXT,
+      severity VARCHAR(50) DEFAULT 'MINOR',
+      corrective_action TEXT,
+      responsible_person VARCHAR(255),
+      responsible_person_id INT,
+      target_date DATE,
+      status VARCHAR(50) DEFAULT 'OPEN',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP NULL,
+      FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
+      FOREIGN KEY (item_id) REFERENCES checklist_items(id),
+      FOREIGN KEY (responsible_person_id) REFERENCES users(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    `CREATE INDEX IF NOT EXISTS idx_action_plan_audit ON action_plan(audit_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_action_plan_status ON action_plan(status)`,
     
     // Add escalation columns if they don't exist (for existing databases)
     `ALTER TABLE action_items ADD COLUMN IF NOT EXISTS escalated TINYINT(1) DEFAULT 0`,

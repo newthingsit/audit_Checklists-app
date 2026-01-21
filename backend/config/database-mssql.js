@@ -341,6 +341,33 @@ const createTables = async () => {
       FOREIGN KEY ([assigned_to]) REFERENCES [users]([id]),
       FOREIGN KEY ([escalated_to]) REFERENCES [users]([id])
     )`,
+
+    // Action Plan table (auto-generated Top-3 deviations)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND type in (N'U'))
+    CREATE TABLE [dbo].[action_plan] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [audit_id] INT NOT NULL,
+      [item_id] INT,
+      [checklist_category] NVARCHAR(255),
+      [checklist_question] NVARCHAR(500),
+      [deviation_reason] NTEXT,
+      [severity] NVARCHAR(50) DEFAULT 'MINOR',
+      [corrective_action] NTEXT,
+      [responsible_person] NVARCHAR(255),
+      [responsible_person_id] INT,
+      [target_date] DATE,
+      [status] NVARCHAR(50) DEFAULT 'OPEN',
+      [created_at] DATETIME DEFAULT GETDATE(),
+      [completed_at] DATETIME NULL,
+      FOREIGN KEY ([audit_id]) REFERENCES [audits]([id]) ON DELETE CASCADE,
+      FOREIGN KEY ([item_id]) REFERENCES [checklist_items]([id]),
+      FOREIGN KEY ([responsible_person_id]) REFERENCES [users]([id])
+    )`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_plan_audit')
+     CREATE INDEX idx_action_plan_audit ON action_plan(audit_id)`,
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_action_plan_status')
+     CREATE INDEX idx_action_plan_status ON action_plan(status)`,
     
     // Add escalation columns if they don't exist (for existing databases)
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('action_items') AND name = 'escalated')

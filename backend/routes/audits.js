@@ -247,7 +247,7 @@ const SEVERITY_CONFIG = {
 };
 
 // Categories that warrant MAJOR severity (configurable)
-const MAJOR_SEVERITY_CATEGORIES = ['QUALITY', 'PROCESS', 'PROCESSES', 'SPEED OF SERVICE', 'SERVICE'];
+const MAJOR_SEVERITY_CATEGORIES = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
 
 /**
  * Determine severity based on is_critical flag and category
@@ -274,17 +274,18 @@ function determineSeverity(isCritical, category) {
 /**
  * Determine deviation reason based on the response data
  */
-function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark) {
+function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark, speedOfServiceBreach) {
   const reasons = [];
   
   // Check if selected option score = 0
-  const numericMark = parseFloat(selectedMark) || 0;
+  const parsedMark = parseFloat(selectedMark);
+  const numericMark = Number.isFinite(parsedMark) ? parsedMark : null;
   if (selectedMark === '0' || numericMark === 0) {
     reasons.push('Selected option score = 0');
   }
   
   // Check if critical AND score < max
-  if (isCritical && numericMark < maxMark) {
+  if (isCritical && numericMark !== null && numericMark < maxMark) {
     reasons.push('Critical item with score below maximum');
   }
   
@@ -293,12 +294,12 @@ function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark)
     reasons.push('Required item with missing answer');
   }
   
-  // Check for failed status
-  if (item.status === 'failed') {
-    reasons.push('Item marked as failed');
+  // Speed of Service Avg SLA breach
+  if (speedOfServiceBreach) {
+    reasons.push('Speed of Service Avg exceeds SLA');
   }
   
-  return reasons.length > 0 ? reasons.join('; ') : 'Score below passing threshold';
+  return reasons.length > 0 ? reasons.join('; ') : 'Deviation detected';
 }
 
 /**
@@ -306,13 +307,14 @@ function getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark)
  * 
  * DEVIATION IDENTIFICATION CRITERIA:
  * - Selected option score = 0
- * - is_critical = "yes" AND score < max
- * - Required = "yes" AND answer is missing
- * - Status = 'failed'
+ * - is_critical = true AND score < max
+ * - Required = true AND answer is missing
+ * - Speed of Service Avg breaches SLA (time > threshold)
  * 
  * RANKING (deviation_score):
  * - Sort by deviation_score DESC (severity level)
  * - Then by is_critical DESC
+ * - Then by score ASC
  * - Select TOP 3 only
  */
 function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCreate = true) {
@@ -330,12 +332,17 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       ai.mark,
       ai.comment,
       ai.photo_url,
+      ai.time_entries,
+      ai.average_time_minutes,
       ci.title,
       ci.description,
       ci.category,
+      ci.section,
       ci.is_critical,
       ci.required,
       ci.weight,
+      ci.is_time_based,
+      ci.target_time_minutes,
       cio.option_text as selected_option_text,
       cio.mark as selected_mark,
       (SELECT MAX(${isSqlServer ? 'TRY_CAST(mark AS FLOAT)' : 'CAST(mark AS REAL)'}) 
@@ -356,13 +363,23 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
     // Apply deviation identification logic
     const deviationsWithScore = (allItems || []).map(item => {
       const selectedMark = item.selected_mark || item.mark || '';
-      const numericMark = parseFloat(selectedMark) || 0;
+      const parsedMark = parseFloat(selectedMark);
+      const numericMark = Number.isFinite(parsedMark) ? parsedMark : null;
       const maxMark = parseFloat(item.max_mark) || 3;
       const isCritical = item.is_critical === 1 || item.is_critical === true;
       const isRequired = item.required === 1 || item.required === true;
+      const categoryText = String(item.category || '').toUpperCase();
+      const isSpeedOfService = categoryText.includes('SPEED OF SERVICE');
+      const isAvgSection = String(item.section || '').toLowerCase().includes('avg');
+      const avgMinutes = (item.average_time_minutes !== null && item.average_time_minutes !== undefined)
+        ? Number(item.average_time_minutes)
+        : computeAverageMinutes(item.time_entries);
+      const defaultSlaMinutes = Number(process.env.SPEED_OF_SERVICE_SLA_MINUTES || process.env.SOS_SLA_MINUTES || 2);
+      const targetMinutes = Number(item.target_time_minutes) || defaultSlaMinutes;
       
       // DEVIATION FLAG CRITERIA:
       let deviationFlag = false;
+      let speedOfServiceBreach = false;
       
       // 1. Selected option score = 0
       if (selectedMark === '0' || numericMark === 0) {
@@ -370,23 +387,19 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       }
       
       // 2. is_critical AND score < max
-      if (isCritical && numericMark < maxMark) {
+      if (isCritical && numericMark !== null && numericMark < maxMark) {
         deviationFlag = true;
       }
       
       // 3. Required AND answer missing
-      if (isRequired && !item.selected_option_id && !item.mark && item.status !== 'completed') {
+      if (isRequired && !item.selected_option_id && !item.mark && !item.comment && item.status !== 'completed') {
         deviationFlag = true;
       }
       
-      // 4. Status = 'failed'
-      if (item.status === 'failed') {
+      // 4. Speed of Service Avg breaches SLA (time > threshold)
+      if (isSpeedOfService && isAvgSection && Number.isFinite(avgMinutes) && avgMinutes > targetMinutes) {
         deviationFlag = true;
-      }
-      
-      // 5. Option text indicates failure (No, Fail, etc.)
-      if (item.selected_option_text && ['No', 'N', 'Fail', 'F'].includes(item.selected_option_text)) {
-        deviationFlag = true;
+        speedOfServiceBreach = true;
       }
       
       if (!deviationFlag) {
@@ -395,7 +408,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       
       // Determine severity and deviation_score
       const severity = determineSeverity(isCritical, item.category);
-      const deviationReason = getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark);
+      const deviationReason = getDeviationReason(item, selectedMark, isCritical, isRequired, maxMark, speedOfServiceBreach);
       
       return {
         item_id: item.item_id,
@@ -405,6 +418,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
         category: item.category,
         is_critical: isCritical,
         required: isRequired,
+        deviation_flag: true,
         severity: severity.label,
         severity_level: severity.level,
         priority: severity.priority,
@@ -419,7 +433,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       };
     }).filter(item => item !== null); // Remove non-deviations
     
-    // RANKING: Sort by deviation_score DESC, then is_critical DESC
+    // RANKING: Sort by deviation_score DESC, then is_critical DESC, then score ASC
     deviationsWithScore.sort((a, b) => {
       // Primary: deviation_score (severity level) DESC
       if (b.deviation_score !== a.deviation_score) {
@@ -429,8 +443,10 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       if (b.is_critical !== a.is_critical) {
         return b.is_critical ? 1 : -1;
       }
-      // Tertiary: weight DESC (higher weight = more important)
-      return (b.weight || 1) - (a.weight || 1);
+      // Tertiary: score ASC (lower scores are higher priority)
+      const aScore = Number.isFinite(parseFloat(a.mark)) ? parseFloat(a.mark) : 0;
+      const bScore = Number.isFinite(parseFloat(b.mark)) ? parseFloat(b.mark) : 0;
+      return aScore - bScore;
     });
     
     // SELECT TOP 3 ONLY
@@ -438,15 +454,15 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
     
     logger.info(`[Action Plan] Audit ${auditId}: Found ${deviationsWithScore.length} total deviations, selected Top ${top3Deviations.length}`);
     
-    // Auto-create action items for top 3 deviations if enabled
+    // Auto-create action plan entries for top 3 deviations if enabled
     if (autoCreate && top3Deviations.length > 0) {
-      // First check if action items already exist for this audit
+      // First check if action plan entries already exist for this audit
       dbInstance.get(
-        'SELECT COUNT(*) as count FROM action_items WHERE audit_id = ?',
+        'SELECT COUNT(*) as count FROM action_plan WHERE audit_id = ?',
         [auditId],
         (countErr, countResult) => {
           if (countErr) {
-            logger.error('[Action Plan] Error checking existing action items:', countErr);
+            logger.error('[Action Plan] Error checking existing action plan:', countErr);
             return callback(null, {
               audit_id: auditId,
               deviations: top3Deviations,
@@ -455,74 +471,104 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
             });
           }
 
-          // Only create action items if none exist yet (backward compatibility)
-          if (countResult.count === 0) {
-            const insertPromises = top3Deviations.map((deviation) => {
-              return new Promise((resolve, reject) => {
-                // Calculate default due date (7 days from now)
-                const dueDate = new Date();
-                dueDate.setDate(dueDate.getDate() + 7);
-                const dueDateStr = dueDate.toISOString().split('T')[0];
-
-                dbInstance.run(
-                  `INSERT INTO action_items (audit_id, item_id, title, description, severity, priority, status, due_date, corrective_action, category)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                  [
-                    auditId,
-                    deviation.item_id,
-                    deviation.title,
-                    deviation.deviation_reason, // Use deviation_reason as description
-                    deviation.severity,
-                    deviation.priority,
-                    'OPEN', // Status defaults to OPEN
-                    dueDateStr,
-                    '', // corrective_action to be filled by user
-                    deviation.category || '' // Category from checklist item
-                  ],
-                  function(insertErr) {
-                    if (insertErr) {
-                      logger.error('[Action Plan] Error creating action item:', insertErr);
-                      reject(insertErr);
-                    } else {
-                      logger.info(`[Action Plan] Created action item ${this.lastID} for deviation: ${deviation.title} (Severity: ${deviation.severity})`);
-                      resolve(this.lastID);
-                    }
-                  }
-                );
-              });
+          if (countResult.count > 0) {
+            return callback(null, {
+              audit_id: auditId,
+              deviations: top3Deviations,
+              total_deviations: deviationsWithScore.length,
+              top3_count: top3Deviations.length,
+              action_plan_existing: countResult.count
             });
+          }
 
-            Promise.all(insertPromises)
-              .then((createdIds) => {
-                logger.info(`[Action Plan] Successfully created ${createdIds.length} action items for audit ${auditId}`);
-                callback(null, {
-                  audit_id: auditId,
-                  deviations: top3Deviations,
-                  total_deviations: deviationsWithScore.length,
-                  top3_count: top3Deviations.length,
-                  action_items_created: createdIds.length
-                });
-              })
-              .catch(insertErr => {
-                logger.error('[Action Plan] Error in batch insert:', insertErr);
-                callback(null, {
+          dbInstance.get(
+            `SELECT a.completed_at, u.name as auditor_name
+             FROM audits a
+             LEFT JOIN users u ON a.user_id = u.id
+             WHERE a.id = ?`,
+            [auditId],
+            (auditErr, auditRow) => {
+              if (auditErr) {
+                logger.error('[Action Plan] Error fetching audit info:', auditErr);
+                return callback(null, {
                   audit_id: auditId,
                   deviations: top3Deviations,
                   total_deviations: deviationsWithScore.length,
                   top3_count: top3Deviations.length
                 });
+              }
+
+              const slaDays = Number(process.env.ACTION_PLAN_SLA_DAYS || 7);
+              const baseDate = auditRow?.completed_at ? new Date(auditRow.completed_at) : new Date();
+              const targetDate = new Date(baseDate);
+              targetDate.setDate(targetDate.getDate() + (Number.isFinite(slaDays) ? slaDays : 7));
+              const targetDateStr = targetDate.toISOString().split('T')[0];
+              const auditorName = auditRow?.auditor_name || 'Auditor';
+
+              const insertPromises = top3Deviations.map((deviation) => {
+                return new Promise((resolve, reject) => {
+                  const correctiveAction = deviation.comment || deviation.deviation_reason || `Corrective action required for: ${deviation.title}`;
+                  dbInstance.run(
+                    `INSERT INTO action_plan (
+                      audit_id,
+                      item_id,
+                      checklist_category,
+                      checklist_question,
+                      deviation_reason,
+                      severity,
+                      corrective_action,
+                      responsible_person,
+                      responsible_person_id,
+                      target_date,
+                      status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                      auditId,
+                      deviation.item_id,
+                      deviation.category,
+                      deviation.title,
+                      deviation.deviation_reason,
+                      deviation.severity,
+                      correctiveAction,
+                      auditorName,
+                      null,
+                      targetDateStr,
+                      'OPEN'
+                    ],
+                    function(insertErr) {
+                      if (insertErr) {
+                        logger.error('[Action Plan] Error creating action plan entry:', insertErr);
+                        reject(insertErr);
+                      } else {
+                        resolve(this.lastID);
+                      }
+                    }
+                  );
+                });
               });
-          } else {
-            // Action items already exist, just return deviations
-            logger.info(`[Action Plan] Action items already exist for audit ${auditId}, skipping creation`);
-            callback(null, {
-              audit_id: auditId,
-              deviations: top3Deviations,
-              total_deviations: deviationsWithScore.length,
-              top3_count: top3Deviations.length,
-              action_items_exist: true
-            });
-          }
+
+              Promise.all(insertPromises)
+                .then((createdIds) => {
+                  logger.info(`[Action Plan] Created ${createdIds.length} action plan entries for audit ${auditId}`);
+                  callback(null, {
+                    audit_id: auditId,
+                    deviations: top3Deviations,
+                    total_deviations: deviationsWithScore.length,
+                    top3_count: top3Deviations.length,
+                    action_plan_created: createdIds.length
+                  });
+                })
+                .catch(insertErr => {
+                  logger.error('[Action Plan] Error in batch insert:', insertErr);
+                  callback(null, {
+                    audit_id: auditId,
+                    deviations: top3Deviations,
+                    total_deviations: deviationsWithScore.length,
+                    top3_count: top3Deviations.length
+                  });
+                });
+            }
+          );
         }
       );
     } else {
@@ -1930,6 +1976,12 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                             logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
                           }
                         });
+                        // Auto-generate action plan entries (Top-3 deviations)
+                        generateActionPlanWithDeviations(dbInstance, auditId, (err) => {
+                          if (err) {
+                            logger.error('[Action Plan] Error generating action plan after completion:', err);
+                          }
+                        });
                       }
                       res.json({ 
                         message: 'Audit item updated successfully',
@@ -2877,73 +2929,50 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Audit must be completed to generate action plan' });
     }
 
-    // Get action items for this audit (with assigned user info)
+    // Get action plan entries for this audit (with responsible user info)
     dbInstance.all(
-      `SELECT ai.*, u.name as assigned_to_name, u.email as assigned_to_email
-       FROM action_items ai
-       LEFT JOIN users u ON ai.assigned_to = u.id
-       WHERE ai.audit_id = ?
-       ORDER BY ai.id ASC`,
+      `SELECT ap.*, u.name as responsible_person_name, u.email as responsible_person_email
+       FROM action_plan ap
+       LEFT JOIN users u ON ap.responsible_person_id = u.id
+       WHERE ap.audit_id = ?
+       ORDER BY ap.id ASC`,
       [auditId],
-      (itemsErr, actionItems) => {
+      (itemsErr, actionPlanItems) => {
         if (itemsErr) {
-          logger.error('Error fetching action items:', itemsErr);
+          logger.error('Error fetching action plan:', itemsErr);
         }
 
-        generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
-          if (err) {
-            logger.error('Error generating action plan:', err);
-            return res.status(500).json({ error: 'Error generating action plan', details: err.message });
-          }
+        const actionItems = (actionPlanItems || []).map(item => ({
+          id: item.id,
+          item_id: item.item_id,
+          category: item.checklist_category || '',
+          deviation: item.checklist_question,
+          deviation_reason: item.deviation_reason || '',
+          severity: item.severity || 'MINOR',
+          corrective_action: item.corrective_action || '',
+          responsible_person: item.responsible_person || item.responsible_person_name || '',
+          responsible_person_id: item.responsible_person_id || null,
+          target_date: item.target_date,
+          status: item.status || 'OPEN',
+          created_at: item.created_at
+        }));
 
-          res.json({
-            audit_id: auditId,
-            restaurant_name: audit.restaurant_name,
-            completed_at: audit.completed_at,
-            score: audit.score,
-            // Enhanced deviation data with category, severity, deviation_reason
-            deviations: (actionPlan.deviations || []).map(d => ({
-              item_id: d.item_id,
-              category: d.category,
-              title: d.title,
-              severity: d.severity,
-              severity_level: d.severity_level,
-              deviation_reason: d.deviation_reason,
-              selected_option: d.selected_option,
-              mark: d.mark,
-              max_mark: d.max_mark,
-              is_critical: d.is_critical
-            })),
-            total_deviations: actionPlan.total_deviations,
-            top3_count: actionPlan.top3_count,
-            // Action items with full details (Category, Title, Severity, Corrective Action, Responsible, Target Date, Status)
-            action_items: (actionItems || []).map(item => {
-              // Find matching deviation for additional info (fallback for legacy records)
-              const matchingDeviation = (actionPlan.deviations || []).find(d => d.item_id === item.item_id);
-              return {
-                id: item.id,
-                item_id: item.item_id,
-                category: item.category || matchingDeviation?.category || '', // Use stored category first
-                deviation: item.title, // Checklist Title
-                deviation_reason: item.description || matchingDeviation?.deviation_reason || '',
-                severity: item.severity || 'MINOR', // CRITICAL / MAJOR / MINOR
-                corrective_action: item.corrective_action || '', // User fills this
-                responsible_person: item.assigned_to_name || '', // User fills this
-                responsible_person_id: item.assigned_to,
-                target_date: item.due_date, // User fills this
-                status: item.status || 'OPEN', // OPEN / IN_PROGRESS / CLOSED
-                priority: item.priority,
-                created_at: item.created_at
-              };
-            })
-          });
-        }, false); // Don't auto-create again since we're just fetching
+        res.json({
+          audit_id: auditId,
+          restaurant_name: audit.restaurant_name,
+          completed_at: audit.completed_at,
+          score: audit.score,
+          deviations: [],
+          total_deviations: actionItems.length,
+          top3_count: actionItems.length,
+          action_items: actionItems
+        });
       }
     );
   });
 });
 
-// Update action item (corrective action, responsible person, target date, status)
+// Update action plan item (corrective action, responsible person, target date, status)
 router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   const actionId = parseInt(req.params.actionId, 10);
@@ -2955,16 +2984,16 @@ router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
   const { corrective_action, responsible_person_id, target_date, status } = req.body;
   const dbInstance = db.getDb();
 
-  // Verify audit exists and action item belongs to it
+  // Verify audit exists and action plan item belongs to it
   dbInstance.get(
-    'SELECT ai.* FROM action_items ai WHERE ai.id = ? AND ai.audit_id = ?',
+    'SELECT ap.* FROM action_plan ap WHERE ap.id = ? AND ap.audit_id = ?',
     [actionId, auditId],
     (err, actionItem) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
       if (!actionItem) {
-        return res.status(404).json({ error: 'Action item not found' });
+        return res.status(404).json({ error: 'Action plan item not found' });
       }
 
       // Build update query dynamically
@@ -2975,42 +3004,58 @@ router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
         updates.push('corrective_action = ?');
         params.push(corrective_action);
       }
-      if (responsible_person_id !== undefined) {
-        updates.push('assigned_to = ?');
-        params.push(responsible_person_id || null);
-      }
-      if (target_date !== undefined) {
-        updates.push('due_date = ?');
-        params.push(target_date || null);
-      }
-      if (status !== undefined) {
-        updates.push('status = ?');
-        params.push(status);
-        // If status is changing to completed/closed, set completed_at
-        if (status === 'CLOSED' || status === 'completed') {
-          updates.push('completed_at = CURRENT_TIMESTAMP');
+      const finalizeUpdate = (responsibleName = null) => {
+        if (responsible_person_id !== undefined) {
+          updates.push('responsible_person_id = ?');
+          params.push(responsible_person_id || null);
+          updates.push('responsible_person = ?');
+          params.push(responsibleName || null);
         }
-      }
-
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
-      }
-
-      params.push(actionId);
-
-      dbInstance.run(
-        `UPDATE action_items SET ${updates.join(', ')} WHERE id = ?`,
-        params,
-        function(updateErr) {
-          if (updateErr) {
-            logger.error('Error updating action item:', updateErr);
-            return res.status(500).json({ error: 'Error updating action item' });
+        if (target_date !== undefined) {
+          updates.push('target_date = ?');
+          params.push(target_date || null);
+        }
+        if (status !== undefined) {
+          updates.push('status = ?');
+          params.push(status);
+          // If status is changing to completed/closed, set completed_at
+          if (status === 'CLOSED' || status === 'completed') {
+            updates.push('completed_at = CURRENT_TIMESTAMP');
           }
-
-          logger.info(`[Action Item] Updated action item ${actionId} for audit ${auditId}`);
-          res.json({ success: true, message: 'Action item updated' });
         }
-      );
+
+        if (updates.length === 0) {
+          return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        params.push(actionId);
+
+        dbInstance.run(
+          `UPDATE action_plan SET ${updates.join(', ')} WHERE id = ?`,
+          params,
+          function(updateErr) {
+            if (updateErr) {
+              logger.error('Error updating action plan item:', updateErr);
+              return res.status(500).json({ error: 'Error updating action plan item' });
+            }
+
+            logger.info(`[Action Plan] Updated action plan item ${actionId} for audit ${auditId}`);
+            res.json({ success: true, message: 'Action plan item updated' });
+          }
+        );
+      };
+
+      if (responsible_person_id !== undefined && responsible_person_id !== null && responsible_person_id !== '') {
+        dbInstance.get('SELECT name FROM users WHERE id = ?', [responsible_person_id], (userErr, userRow) => {
+          if (userErr) {
+            logger.error('Error fetching responsible person:', userErr);
+            return finalizeUpdate(null);
+          }
+          finalizeUpdate(userRow?.name || null);
+        });
+        return;
+      }
+      finalizeUpdate(null);
     }
   );
 });

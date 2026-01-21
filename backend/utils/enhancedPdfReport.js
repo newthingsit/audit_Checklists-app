@@ -490,8 +490,8 @@ function drawSpeedOfServiceSection(doc, items) {
 /**
  * Draw Action Plan section
  */
-async function drawActionPlanSection(doc, actionItems, items, photos = {}) {
-  if (!actionItems || actionItems.length === 0) return;
+async function drawActionPlanSection(doc, actionPlanItems) {
+  if (!actionPlanItems || actionPlanItems.length === 0) return;
   
   // New page for action plan
   doc.addPage();
@@ -507,8 +507,8 @@ async function drawActionPlanSection(doc, actionItems, items, photos = {}) {
   doc.y = 70;
   
   // Table header
-  const colWidths = [30, 180, 40, 55, 60, 70, 50];
-  const headers = ['', 'Question', 'Score', 'Response', 'Assigned to', 'Complete by Date', 'Status'];
+  const colWidths = [30, 160, 140, 140, 80, 70, 50];
+  const headers = ['', 'Question', 'Remarks / Deviation', 'To-Do', 'Assigned To', 'Complete By', 'Status'];
   let x = PAGE.MARGIN;
   
   doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
@@ -521,25 +521,15 @@ async function drawActionPlanSection(doc, actionItems, items, photos = {}) {
   
   doc.y += 25;
   
-  // Action items
-  for (let i = 0; i < actionItems.length; i++) {
-    const action = actionItems[i];
-    
-    // Find related item for details
-    const relatedItem = items.find(item => item.item_id === action.item_id) || {};
-    const hasPhoto = relatedItem.photo_url && photos[relatedItem.photo_url];
-    const hasRemarks = relatedItem.comment && relatedItem.comment.trim();
-    
-    // Calculate row height
-    let rowHeight = 80;
-    if (hasPhoto) rowHeight += 50;
+  // Action plan rows
+  for (let i = 0; i < actionPlanItems.length; i++) {
+    const action = actionPlanItems[i];
+    const rowHeight = 60;
     
     // Check for new page
     if (doc.y + rowHeight > PAGE.HEIGHT - 60) {
       doc.addPage();
       doc.y = PAGE.MARGIN;
-      
-      // Redraw header
       x = PAGE.MARGIN;
       doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
       headers.forEach((header, idx) => {
@@ -553,10 +543,8 @@ async function drawActionPlanSection(doc, actionItems, items, photos = {}) {
     const rowY = doc.y;
     x = PAGE.MARGIN;
     
-    // Draw row background
+    // Draw row background and borders
     doc.rect(PAGE.MARGIN, rowY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
-    
-    // Draw vertical lines
     let lineX = PAGE.MARGIN;
     colWidths.forEach(w => {
       lineX += w;
@@ -568,69 +556,30 @@ async function drawActionPlanSection(doc, actionItems, items, photos = {}) {
     doc.text((i + 1).toString(), x + 2, rowY + 10, { width: colWidths[0] - 4, align: 'center' });
     x += colWidths[0];
     
-    // Question column (with Question label, Remarks, Photo, To Do)
-    let qY = rowY + 5;
-    
-    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.SECTION_HEADER);
-    doc.text('Question', x + 2, qY);
-    qY += 10;
-    
+    // Question
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(action.title || relatedItem.title || '', x + 2, qY, { width: colWidths[1] - 4 });
-    qY += 25;
-    
-    // Remarks
-    if (hasRemarks) {
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.REMARKS_RED);
-      doc.text('Remarks', x + 2, qY);
-      qY += 10;
-      doc.font('Helvetica').fontSize(7);
-      doc.text(relatedItem.comment, x + 2, qY, { width: colWidths[1] - 4 });
-      qY += 15;
-    }
-    
-    // Photo
-    if (hasPhoto) {
-      try {
-        const photoBuffer = photos[relatedItem.photo_url];
-        if (photoBuffer) {
-          doc.image(photoBuffer, x + 2, qY, { width: 40, height: 40 });
-        }
-      } catch (err) {
-        // Skip photo on error
-      }
-      qY += 45;
-    }
-    
-    // To Do
-    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.SECTION_HEADER);
-    doc.text('To Do:', x + 2, qY);
-    qY += 10;
-    doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(action.corrective_action || relatedItem.comment || '', x + 2, qY, { width: colWidths[1] - 4 });
-    
+    doc.text(action.checklist_question || action.title || '', x + 2, rowY + 8, { width: colWidths[1] - 4 });
     x += colWidths[1];
     
-    // Score
-    doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text('0', x + 2, rowY + 35, { width: colWidths[2] - 4, align: 'center' });
+    // Remarks / Deviation
+    doc.text(action.deviation_reason || '—', x + 2, rowY + 8, { width: colWidths[2] - 4 });
     x += colWidths[2];
     
-    // Response
-    doc.text('No', x + 2, rowY + 35, { width: colWidths[3] - 4, align: 'center' });
+    // To-Do (Corrective Action)
+    doc.text(action.corrective_action || 'Action required', x + 2, rowY + 8, { width: colWidths[3] - 4 });
     x += colWidths[3];
     
-    // Assigned to
-    doc.text(action.assigned_to_name || action.auditor_name || 'N/A', x + 2, rowY + 35, { width: colWidths[4] - 4, align: 'center' });
+    // Assigned To
+    doc.text(action.responsible_person || action.responsible_person_name || 'Auditor', x + 2, rowY + 8, { width: colWidths[4] - 4, align: 'center' });
     x += colWidths[4];
     
-    // Complete by Date
-    const dueDate = action.due_date ? formatDate(action.due_date, false) : 'N/A';
-    doc.text(dueDate, x + 2, rowY + 35, { width: colWidths[5] - 4, align: 'center' });
+    // Complete By
+    const dueDate = action.target_date ? formatDate(action.target_date, false) : 'N/A';
+    doc.text(dueDate, x + 2, rowY + 8, { width: colWidths[5] - 4, align: 'center' });
     x += colWidths[5];
     
     // Status
-    doc.text(action.status || 'To Do', x + 2, rowY + 35, { width: colWidths[6] - 4, align: 'center' });
+    doc.text(action.status || 'OPEN', x + 2, rowY + 8, { width: colWidths[6] - 4, align: 'center' });
     
     doc.y = rowY + rowHeight;
   }
@@ -780,14 +729,14 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
         );
       });
       
-      // Fetch action items
-      const actionItems = await new Promise((res, rej) => {
+      // Fetch action plan items
+      const actionPlanItems = await new Promise((res, rej) => {
         dbInstance.all(
-          `SELECT ai.*, u.name as assigned_to_name
-           FROM action_items ai
-           LEFT JOIN users u ON ai.assigned_to = u.id
-           WHERE ai.audit_id = ?
-           ORDER BY ai.id`,
+          `SELECT ap.*, u.name as responsible_person_name
+           FROM action_plan ap
+           LEFT JOIN users u ON ap.responsible_person_id = u.id
+           WHERE ap.audit_id = ?
+           ORDER BY ap.id`,
           [auditId],
           (err, rows) => err ? rej(err) : res(rows || [])
         );
@@ -930,6 +879,12 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
         doc.y += 15;
       }
       
+      // ==================== ACTION PLAN ====================
+      
+      if (actionPlanItems.length > 0) {
+        await drawActionPlanSection(doc, actionPlanItems);
+      }
+      
       // ==================== SPECIAL SECTIONS ====================
       
       // Speed of Service Tracking
@@ -937,35 +892,6 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
       
       // Acknowledgement section
       drawAcknowledgementSection(doc, audit, items);
-      
-      // ==================== ACTION PLAN ====================
-      
-      // Create action items from deviations if none exist
-      let actionsToShow = actionItems;
-      if (actionsToShow.length === 0) {
-        // Find deviations
-        const deviations = items.filter(item => {
-          const actualMark = parseFloat(item.mark) || 0;
-          const response = item.selected_option_text || '';
-          return actualMark === 0 || response === 'No' || response === 'N' || item.status === 'failed';
-        });
-        
-        actionsToShow = deviations.slice(0, 10).map((item, idx) => ({
-          id: idx + 1,
-          audit_id: auditId,
-          item_id: item.item_id,
-          title: item.title,
-          severity: item.is_critical ? 'CRITICAL' : 'MAJOR',
-          status: 'To Do',
-          due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          corrective_action: item.comment || item.title,
-          auditor_name: audit.auditor_name
-        }));
-      }
-      
-      if (actionsToShow.length > 0) {
-        await drawActionPlanSection(doc, actionsToShow, items, photos);
-      }
       
       // ==================== PAGE NUMBERS ====================
       
@@ -991,12 +917,21 @@ function identifyDeviations(items) {
     const maxMark = item.maxScore || 3;
     const isCritical = item.is_critical === 1 || item.is_critical === true;
     const response = item.selected_option_text || '';
+    const isRequired = item.required === 1 || item.required === true;
+    const categoryText = String(item.category || '').toUpperCase();
+    const isSpeedOfService = categoryText.includes('SPEED OF SERVICE');
+    const isAvgSection = String(item.section || '').toLowerCase().includes('avg');
+    const avgMinutes = item.average_time_minutes !== undefined && item.average_time_minutes !== null
+      ? Number(item.average_time_minutes)
+      : null;
+    const defaultSlaMinutes = Number(process.env.SPEED_OF_SERVICE_SLA_MINUTES || process.env.SOS_SLA_MINUTES || 2);
+    const targetMinutes = Number(item.target_time_minutes) || defaultSlaMinutes;
     
     // Deviation criteria
     if (actualMark === 0) return true;
     if (isCritical && actualMark < maxMark) return true;
-    if (response === 'No' || response === 'N' || response === 'Fail') return true;
-    if (item.status === 'failed') return true;
+    if (isRequired && !item.selected_option_id && !item.mark && item.status !== 'completed') return true;
+    if (isSpeedOfService && isAvgSection && Number.isFinite(avgMinutes) && avgMinutes > targetMinutes) return true;
     
     return false;
   }).map(item => {
