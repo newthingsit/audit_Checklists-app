@@ -2553,6 +2553,39 @@ const AuditForm = () => {
                 return renderAuditItem(item, index);
               })
             )}
+
+            {auditStatus !== 'completed' && (
+              <Box
+                className={isMobile ? 'mobile-bottom-actions' : ''}
+                sx={{
+                  mt: 3,
+                  display: 'flex',
+                  justifyContent: isMobile ? 'stretch' : 'flex-end',
+                  gap: 2
+                }}
+              >
+                <Button
+                  onClick={handleSubmit}
+                  variant={isCvr ? 'text' : 'outlined'}
+                  sx={isCvr ? { color: cvrTheme.accent.purple } : {}}
+                >
+                  Save Draft
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  variant="contained"
+                  sx={{
+                    ...(isCvr && {
+                      background: cvrTheme.button.next,
+                      color: '#fff',
+                      '&:hover': { background: 'linear-gradient(135deg, #5a3ee6 0%, #8b52e6 100%)' }
+                    })
+                  }}
+                >
+                  Submit
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
 
