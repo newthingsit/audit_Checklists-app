@@ -2045,9 +2045,9 @@ const AuditFormScreen = () => {
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[styles.button, (!selectedLocation || infoPictures.length === 0) && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
+                style={[styles.button, !selectedLocation && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={handleNext}
-                disabled={!selectedLocation || infoPictures.length === 0}
+                disabled={!selectedLocation}
               >
                 {isCvr ? (
                   <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>

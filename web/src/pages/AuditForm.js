@@ -963,11 +963,12 @@ const AuditForm = () => {
   // Always 2 steps: Store Information -> Audit Checklist (no category selection step)
   const steps = ['Store Information', 'Audit Checklist'];
   const completedItems = Object.values(responses).filter(r => r === 'completed').length;
-  // Apply conditional logic filtering to items - show all items (no category filtering)
+  // Apply conditional logic filtering to items (respect category selection)
   const itemsToDisplay = React.useMemo(() => {
+    const baseItems = selectedCategory ? filteredItems : items;
     // Filter items based on conditional logic
-    return filterItemsByCondition(items, items, responses, selectedOptions, comments, inputValues);
-  }, [items, filterItemsByCondition, responses, selectedOptions, comments, inputValues]);
+    return filterItemsByCondition(baseItems, items, responses, selectedOptions, comments, inputValues);
+  }, [selectedCategory, filteredItems, items, filterItemsByCondition, responses, selectedOptions, comments, inputValues]);
 
   // Get grouped items for current display - MUST be before early returns
   const groupedItems = React.useMemo(() => {
