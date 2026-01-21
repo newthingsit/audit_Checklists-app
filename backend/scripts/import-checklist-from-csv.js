@@ -101,6 +101,27 @@ async function main() {
     throw new Error('CSV must have a "title" column');
   }
 
+  const normalizeInputType = (rawType, title, applyPhotoFix) => {
+    const normalized = String(rawType || '').trim().toLowerCase();
+    if (!normalized || normalized === 'auto') {
+      if (applyPhotoFix && /photo/i.test(String(title || ''))) {
+        return 'image_upload';
+      }
+      return normalized || 'auto';
+    }
+    const aliasToPhoto = ['image', 'photo', 'attachment', 'file'];
+    if (applyPhotoFix && aliasToPhoto.includes(normalized)) {
+      return 'image_upload';
+    }
+    return normalized;
+  };
+
+  const photoFixNames = (process.env.PHOTO_FIX_TEMPLATE_NAMES || '')
+    .split(',')
+    .map(n => n.trim().toLowerCase())
+    .filter(Boolean);
+  const applyPhotoFix = photoFixNames.includes(String(templateName || '').trim().toLowerCase());
+
   const items = [];
   for (let i = 1; i < lines.length; i += 1) {
     const values = parseCSVLine(lines[i]);
@@ -130,7 +151,11 @@ async function main() {
       category: catIdx !== -1 ? values[catIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
       subcategory: subIdx !== -1 ? values[subIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
       section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
-      input_type: typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
+        input_type: normalizeInputType(
+          typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
+          title,
+          applyPhotoFix
+        ),
       required: reqIdx !== -1 ? toBool(values[reqIdx]) : true,
       weight: weightIdx !== -1 ? parseInt(values[weightIdx], 10) || 1 : 1,
       is_critical: critIdx !== -1 ? toBool(values[critIdx]) : false,

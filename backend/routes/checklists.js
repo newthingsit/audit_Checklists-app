@@ -1182,6 +1182,27 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     const optIdx = headers.findIndex(h => h === 'options' || h === 'choices');
     
     // Parse items
+    const normalizeInputType = (rawType, title, applyPhotoFix) => {
+      const normalized = String(rawType || '').trim().toLowerCase();
+      if (!normalized || normalized === 'auto') {
+        if (applyPhotoFix && /photo/i.test(String(title || ''))) {
+          return 'image_upload';
+        }
+        return normalized || 'auto';
+      }
+      const aliasToPhoto = ['image', 'photo', 'attachment', 'file'];
+      if (applyPhotoFix && aliasToPhoto.includes(normalized)) {
+        return 'image_upload';
+      }
+      return normalized;
+    };
+
+    const photoFixNames = (process.env.PHOTO_FIX_TEMPLATE_NAMES || '')
+      .split(',')
+      .map(n => n.trim().toLowerCase())
+      .filter(Boolean);
+    const applyPhotoFix = photoFixNames.includes(String(templateName || '').trim().toLowerCase());
+
     const items = [];
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
@@ -1223,13 +1244,16 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
         itemCategory = category || '';
       }
       
+      const rawInputType = typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto';
+      const normalizedInputType = normalizeInputType(rawInputType, title, applyPhotoFix);
+
       items.push({
         title,
         description: descIdx !== -1 ? values[descIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
         category: itemCategory,
         subcategory: subCategory, // Store subcategory separately for PDF grouping
         section: secIdx !== -1 ? values[secIdx]?.replace(/^"|"$/g, '').trim() || '' : '',
-        input_type: typeIdx !== -1 ? values[typeIdx]?.replace(/^"|"$/g, '').trim() || 'auto' : 'auto',
+        input_type: normalizedInputType,
         required: reqVal === 'yes' || reqVal === 'true' || reqVal === '1',
         weight: weightIdx !== -1 ? parseInt(values[weightIdx]) || 1 : 1,
         is_critical: critVal === 'yes' || critVal === 'true' || critVal === '1',

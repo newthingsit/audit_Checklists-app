@@ -19,6 +19,7 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { isPhotoFixTemplate } from '../config/photoFix';
 import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocation } from '../context/LocationContext';
@@ -413,11 +414,14 @@ const AuditFormScreen = () => {
     try {
       setLoading(true);
       // Increased timeout for large templates (174+ items)
+      const shouldBypassCache = isPhotoFixTemplate(templateId, template?.name);
       const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`, {
         timeout: 60000, // 60 seconds timeout for large templates
         headers: {
           'Accept': 'application/json'
-        }
+        },
+        params: shouldBypassCache ? { cache_bust: Date.now() } : undefined,
+        __skipCache: shouldBypassCache
       });
       
       if (response.data && response.data.template) {
@@ -1339,19 +1343,7 @@ const AuditFormScreen = () => {
         }
       }
 
-      // Validate info step data if we're on step 0 or haven't saved it yet
-      if (currentStep === 0 || !notes || !notes.includes('attendees')) {
-        if (!attendees.trim()) {
-          Alert.alert('Error', 'Please enter name of attendees');
-          setSaving(false);
-          return;
-        }
-        if (infoPictures.length === 0) {
-          Alert.alert('Error', 'Please add at least one picture');
-          setSaving(false);
-          return;
-        }
-      }
+      // Info fields are optional in the current mobile UI; avoid blocking save/submit.
 
       // Upload info pictures if they haven't been uploaded yet
       let uploadedPictureUrls = [];

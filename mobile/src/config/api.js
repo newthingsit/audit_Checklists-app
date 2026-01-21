@@ -72,6 +72,9 @@ axios.interceptors.request.use(
     
     // Only process GET requests for caching/throttling
     if (config.method && config.method.toLowerCase() === 'get') {
+      if (config.__skipCache) {
+        return config;
+      }
       // Check for cached response first
       const cached = getCachedResponse(config);
       if (cached) {
@@ -131,7 +134,7 @@ axios.interceptors.response.use(
     }
     
     // Cache GET responses
-    if (response.config.method && response.config.method.toLowerCase() === 'get') {
+    if (response.config.method && response.config.method.toLowerCase() === 'get' && !response.config.__skipCache) {
       cacheResponse(response.config, response);
     }
     

@@ -724,7 +724,15 @@ const Checklists = () => {
           const mainCategory = getValue(catIndex);
           const subCategory = getValue(subCatIndex);
           const itemSection = getValue(secIndex);
-          const itemType = getValue(typeIndex) || 'auto';
+          const normalizeInputType = (rawType, title) => {
+            const normalized = String(rawType || '').trim().toLowerCase();
+            if (!normalized || normalized === 'auto') {
+              return /photo/i.test(String(title || '')) ? 'image_upload' : (normalized || 'auto');
+            }
+            const aliasToPhoto = ['image', 'photo', 'attachment', 'file'];
+            return aliasToPhoto.includes(normalized) ? 'image_upload' : normalized;
+          };
+          const itemType = normalizeInputType(getValue(typeIndex) || 'auto', title);
           const itemWeight = weightIndex !== -1 && values[weightIndex] ? parseInt(values[weightIndex]) || 1 : 1;
           const isCritical = criticalIndex !== -1 && values[criticalIndex] 
             ? (getValue(criticalIndex).toLowerCase() === 'yes' || getValue(criticalIndex).toLowerCase() === 'true' || getValue(criticalIndex) === '1')
