@@ -38,7 +38,14 @@ const apiClient = axios.create({
 // Request interceptor for auth token
 apiClient.interceptors.request.use(
   (config) => {
-    // Token is set globally via axios.defaults.headers
+    // Ensure Authorization is copied from global axios defaults
+    const globalAuth = axios.defaults?.headers?.common?.Authorization;
+    if (globalAuth && !config.headers?.Authorization) {
+      config.headers = {
+        ...config.headers,
+        Authorization: globalAuth,
+      };
+    }
     return config;
   },
   (error) => Promise.reject(error)

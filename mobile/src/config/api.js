@@ -24,18 +24,48 @@ import {
  * For iOS Simulator: Use localhost
  * For Android Emulator: Use 10.0.2.2
  */
+const getExpoHost = () => {
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoClient?.hostUri ||
+    Constants.manifest?.debuggerHost;
+
+  if (!hostUri) return null;
+
+  const withoutProtocol = String(hostUri).replace(/^[a-z]+:\/\//i, '');
+  const hostAndPort = withoutProtocol.split('/')[0];
+  return hostAndPort.split(':')[0] || null;
+};
+
+const getAutoDevApiUrl = () => {
+  const host = getExpoHost();
+  if (!host) {
+    console.warn('Unable to detect Expo host, defaulting to localhost API.');
+    return 'http://localhost:5000/api';
+  }
+  return `http://${host}:5000/api`;
+};
+
 const getApiBaseUrl = () => {
   // Check if we have configuration from app.json
   const appConfig = Constants.expoConfig?.extra?.apiUrl;
+  const envApiUrl = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
+  
+  if (envApiUrl) {
+    return envApiUrl;
+  }
   
   if (__DEV__) {
     // Development mode
-    // Priority: app.json config > fallback to hardcoded IP
+    // Priority: env var > app.json config > auto-detected host
     if (appConfig?.development) {
-      return appConfig.development;
+      const devValue = String(appConfig.development).trim();
+      if (['auto', 'local', 'lan'].includes(devValue.toLowerCase())) {
+        return getAutoDevApiUrl();
+      }
+      return devValue;
     }
-    // Fallback: Use production backend for Expo Go testing
-    return 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api';
+    return getAutoDevApiUrl();
   }
   
   // Production mode

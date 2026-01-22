@@ -10,6 +10,7 @@ const AuthContext = createContext();
 // Token storage key
 const TOKEN_KEY = 'auth_token';
 const TOKEN_EXPIRY_KEY = 'auth_token_expiry';
+const TOKEN_BASE_URL_KEY = 'auth_token_base_url';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -90,6 +91,17 @@ export const AuthProvider = ({ children }) => {
     try {
       // Use SecureStore for encrypted token storage
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      const storedBaseUrl = await SecureStore.getItemAsync(TOKEN_BASE_URL_KEY);
+      
+      if (storedToken && storedBaseUrl && storedBaseUrl !== API_BASE_URL) {
+        // Token belongs to a different backend - force re-login to avoid 401s
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(TOKEN_BASE_URL_KEY);
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['Authorization'];
+        return;
+      }
       if (storedToken) {
         setToken(storedToken);
         axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
@@ -170,6 +182,7 @@ export const AuthProvider = ({ children }) => {
       const { token: newToken, user: userData } = response.data;
       // Use SecureStore for encrypted token storage
       await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+      await SecureStore.setItemAsync(TOKEN_BASE_URL_KEY, API_BASE_URL);
       setToken(newToken);
       setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -191,6 +204,7 @@ export const AuthProvider = ({ children }) => {
     const { token: newToken, user: userData } = response.data;
     // Use SecureStore for encrypted token storage
     await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+    await SecureStore.setItemAsync(TOKEN_BASE_URL_KEY, API_BASE_URL);
     setToken(newToken);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -200,6 +214,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     // Use SecureStore for token removal
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(TOKEN_BASE_URL_KEY);
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
@@ -215,6 +230,7 @@ export const AuthProvider = ({ children }) => {
       
       if (response.data && response.data.user) {
         await SecureStore.setItemAsync(TOKEN_KEY, storedToken);
+        await SecureStore.setItemAsync(TOKEN_BASE_URL_KEY, API_BASE_URL);
         setToken(storedToken);
         setUser(response.data.user);
         return { success: true, user: response.data.user };

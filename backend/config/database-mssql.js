@@ -328,7 +328,8 @@ const createTables = async () => {
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audit_items_unique' AND object_id = OBJECT_ID(N'[dbo].[audit_items]'))
      CREATE UNIQUE INDEX [idx_audit_items_unique] ON [dbo].[audit_items] ([audit_id], [item_id])`,
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audits_client_uuid' AND object_id = OBJECT_ID(N'[dbo].[audits]'))
-     CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])`,
+     CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])
+     WHERE [client_audit_uuid] IS NOT NULL`,
 
     // Add time tracking columns to audit_items if missing
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'time_taken_minutes')
