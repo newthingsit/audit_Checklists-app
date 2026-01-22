@@ -1,0 +1,175 @@
+title,description,category,subcategory,section,input_type,required,weight,is_critical,options
+Food served at the right temperature,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Food served as per specification,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Beverage was served at the required temperature,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Side dishes are properly served with the required texture and taste,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Food came with the proper accompaniments,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Using approved ingredients or foods (Non-Brand/Non-Food Safety critical).,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Portion is adequate and not less or too much,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Food presentation was good,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Beverage was having required taste and consistency,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Beverage presentation was good,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Veg and non-veg segregation is being followed,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Cooked and uncooked food kept separately,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Burnt oil being disposed as per SOP,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Receiving of goods is done at ideal temperatures,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Correct thawing process is being followed,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+No expired product in use,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Hold Time Standards are adhered for Buffet food and beverages in Display Cabinet.,,QUALITY,,,,yes,1,no,Yes:3|No:0|NA:NA
+Staff available at the counter,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Guests are greeted with smile Hi/GM/GA/GE etc., Ma'am/Sir, Welcome to ��� (Brand name)",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Checked for take away or Dine-in,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Customer contact details taken,,SERVICE,,,,yes,1,no,Yes:2|No:0|NA:NA
+The tone of welcoming is warm and inviting,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Eye contact maintained while taking order,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Employee�s speech clear and fully understood,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Staff displaying a high level of confidence when carrying out his/her duties.,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"When taking the order, the server exhibited a good working knowledge of the menu and its ingredients",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Did the staff actively listen, avoid interrupting and give the guest their undivided attention (i.e., the guest should not have to repeat themselves)",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Guests� needs are acknowledged well by the staff if any,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Suggestive selling/ Upselling done at least once,,SERVICE,,,,yes,1,no,Yes:2|No:0|NA:NA
+Offered to describe promotions and special offers,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Customer Issues not avoided or handled according to standard.,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+The staff satisfactorily answered all questions,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+The order is repeated and confirmed,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Asked for the MOP (Mode of Payment),,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"The payment is acknowledged, and change given along with the bill if cash is the MOP",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Serving time informed to the guests,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"If there was a delay in the promise time, were you informed?",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Politely called when your order was ready,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Enquired if any other help needed,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Before delivering, food checked vs BILL",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"The guest is thanked with politeness, wishing enjoyment, and asked to come back again (Thank you & see you soon)",,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Guest requested to share rating/feedback online,,SERVICE,,,,yes,1,no,Yes:2|No:0|NA:NA
+Was the manager present on the floor and managing the shift well,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+Team Member not demonstrating rude or offensive behavior to any guest or other team member.,,SERVICE,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Delivery Station (including boxes, carry bags, branding stickers and tape) set-up and kept ready as per day�s requirement. Phone is kept on and line is working",,Delivery Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Swiggy / Zomato is switched on, Thrive scanners are in place. All items are reflecting available on the aggregator platforms",,Delivery Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Internet connection is working, and online delivery parameters are kept on",,Delivery Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Marketing tools � fliers, coupons, offer cards available",,Delivery Service,,,,yes,1,no,Yes:2|No:0|NA:NA
+Order boxes are properly sealed for dispatch,,Delivery Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+Fliers / coupons / promo materials inserted in every dispatched bag,,Delivery Service,,,,yes,1,no,Yes:2|No:0|NA:NA
+"Dispatcher to ensure while handing over the order to the Riders, order dispatched is done at Riders end",,Delivery Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"If there was NO queue, were customers greeted within 5 seconds?",,Speed of Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"If there was a queue, were customers greeted and directed to order through self-ordering kiosk or scanner within 10 seconds?",,Speed of Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+The order-taking was taken and completed within 2 minutes,,Speed of Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+Order ready within 8 minutes,,Speed of Service,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Open as per posted hours of operation, ready to serve guests or taking orders.",,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Current Menu is well displayed and updated,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Menu grammatically correct and easy to read,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Wall TV working with the right visual,,Accuracy,,,,yes,1,no,Yes:2|No:0|NA:NA
+Menu prices are clearly visible and not cluttered. Number of menu boards - 5,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Latest promos / offers displayed either on TV or as counter tops,,Accuracy,,,,yes,1,no,Yes:2|No:0|NA:NA
+Display products are labelled correctly,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+The tray mat is covering the entire tray without a gap at the ends,,Accuracy,,,,yes,1,no,Yes:2|No:0|NA:NA
+All menu items available (as wanted to order),,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Order correct and complete.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Substitution offered if all ingredients or menu items not available,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Bill clearly itemized and correct.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Correct change provided or credit/debit card receipt returned without error?,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Customer communication as per brand standard � laminated, approved font etc.",,Accuracy,,,,yes,1,no,Yes:2|No:0|NA:NA
+Staff handling product properly.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Appropriate condiments provided.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Menu items served with appropriate accompaniment / Garnish.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+"Correct cutlery, plates and napkins provided. Condiment Policy Followed",,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Side dishes are properly served with the required texture and taste,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Portion is adequate and not less or too much.,,Accuracy,,,,yes,1,no,Yes:3|No:0|NA:NA
+Is mobile ordering available,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+Any app available for ordering,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+Self-ordering kiosk available to check and order food,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+QR Code available to scan and order food,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+Customers asked to fill in their phone number in the POS display,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+Self-ordering Kiosk / Menu card scanner suggested to the guest,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+Staff available to assist guests in placing orders through Self-ordering Kiosk / Menu card scanner,,Technology,,,,yes,1,no,Yes:3|No:0|NA:NA
+Bill was paperless / Bill sent via message on the phone,,Technology,,,,yes,1,no,Yes:3|No:0|NA:NA
+Message for feedback sent to guest,,Technology,,,,yes,1,no,Yes:2|No:0|NA:NA
+"Building is clean, in good condition and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Front signage is clean, not faded and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Main menu (Screens) clean and well maintained,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Advertisement / Marketing tools / communications are clean and well maintained,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Token display clean and well maintained,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Self-ordering kiosk clean, functional, and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Glass Display counter clean, free from fingerprints, functional and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Buffet Display counter and lights clean and free from fingerprints. They are functional and well maintained,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Front counter, Counters tops, and Service Cabinets are clean",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"FOH Lights are clean, not faded and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"All electrical fixtures (Electrical points, AC grill, etc.) are clean, functional, and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+No visible wiring if there is any it should be properly cleaned and neatly tucked,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Floor, skirtings, walls and ceilings are clean, not broken, no colour chipping and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Drain covers and plumbing have no buildup and well maintained,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Trash receptacles have no buildup, functional and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Ice machines or ice bins have no buildup, functional and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"No Cobweb, Rat dropping and Cockroaches visible",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+No Flies are visible at Food counter and food areas,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Visible kitchen area should be clean & organized,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Free of any foul odour,,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Service & drinkware, condiments clean and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Phone, POS, printer PCs, tablets etc. are clean, functional, and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Other equipment is clean, functional and well maintained",,HYGIENE & CLEANLINESS,FOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Staff Communication board / posters well maintained or unutilized.,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Phone, manager�s PC, printer etc. clean and in working properly.",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Back of the house air temperature comfortable,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"HVAC, Make-up air system, exhaust fans, hood systems are clean, functional, and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Back of house floors, skirtings, walls and ceilings are clean, not broken, colours not chipped and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Back of house lights, fixtures or fans are clean, functional, and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"All lighting sources are properly shielded or have shatter proof bulbs in areas where food, service utensils and equipment are stored or prepared.",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Approved equipment in use,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Cold holding or storage equipment are clean, functional, and well maintained. Cold holding equipment temperature within standards (1�F to 5�F).",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Hot holding equipment temperature within standard, functional and clean",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Cooking/production equipment (includes fryers, ovens, microwaves, tandoors etc.) temperature within standard, functional, well maintained and clean",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Burners free of soot buildup and giving perfectly blue flame,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Preparation equipment (includes prep tables, mixer, utensils etc.) working as designed and clean",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Beverage systems and CO2 cylinders are working as designed, clean and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Ice machines and bins are clean, functional and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Food contact surfaces are clean and well maintained,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Cabinets and storages are clean and well maintained,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Temperature of hot water for sanitizing in high temperature dishwasher machines is not ? 82�C (? 180�F). Prep-sink, dishwasher or power soak sink is clean, functional, and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Hand washing sinks functional, clean, well maintained and provided with water tempered through a mixing valve dispensing at 38�C (100�F).",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Back of house drains, drain covers, plumbing clean, functional, and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Back-flow devices or back-flow situations does not exist.,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Grease traps are not clogged, clean and in good condition",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Trash container clean, functional and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+"Other equipment are clean, functional and well maintained",,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Dry-store area kept clean and organized.,,HYGIENE & CLEANLINESS,BOH,,,yes,1,no,Yes:1|No:0|NA:NA
+Chemicals used according to proper procedure or manufacturer's directions.,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Cleaning supplies are stored and maintained clean,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Dishwasher set up correctly and proper cleaning method followed.,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Equipment and utensils dried before stacking / usage and kept in designated racks,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Pest activity is prevented through proper sealing of outer openings,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Pest activity present: evidence exists that action has been taken.,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Pesticides are applied by approved vendors.,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Sanitizer at proper concentration in sanitizer sink,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+Wiping cloths used or stored properly in a sanitizer bucket with correct concentration.,,Cleaning system in place and effective,,,,yes,1,no,Yes:2|No:0|NA:NA
+"No drinking, eating, and smoking in areas not designated for these activities.",,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:3|No:0|NA:NA
+Gum or tobacco not allowed during working hours and in food service area.,,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:3|No:0|NA:NA
+Jewelry not worn on arms or hands except plain ring (i.e. wedding band) when handling food.,,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:2|No:0|NA:NA
+Proper hair restraints worn by all team members when handling food.,,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:2|No:0|NA:NA
+"Team members meet grooming or personal hygiene standards. Unapproved, incomplete, dirty, or faded uniforms not worn by Team.",,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:3|No:0|NA:NA
+Staff meal menu is on display and meal is prepared as per menu.,,Proper appearance and conduct of Team Members,,,,yes,1,no,Yes:1|No:0|NA:NA
+"Safety compliance certificates available - FOSTAC, METRIC (weighing scale), FSSAI, PEST CONTROL AND HALAL",,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Hospitality Certifications are occurring and conducted periodically or / and as per training schedule,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Ingredients (eg condiments) and packaging adequately stocked prior to peak.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+POS registers available and in use.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Fully staffed for current shift business needs,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Proper deployment practices followed.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Team trained as per job designated,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Current and complete specification charts or job aids posted or used as designed.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+"Projection, Ready for Revenue, prep guides or ordering systems in use.",,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Food being prepared as per recipe and correct SOP is followed,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Food tasting record available,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Evidence of cleaning systems/schedules/checklists in use.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Cleaning supplies are of sufficient availability.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Chemicals properly labelled and MSDS available,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Fire-up schedule in place,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+All food items are labelled with MRD,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+FIFO is followed and maintained,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+CVR followed,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+QA Audit happening,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Daily Production Safety Checklist filled and followed,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Shift management tool followed and filled,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Spoilage reports being filled and recorded,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Cash audit happening and spot check register is filled,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Cash handover process being followed / cash pick up register filled,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Check if all the CCTV Cameras and DVR Working properly and recording is happening.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Adobe system is Followed at the outlet / record the outlet GRN closed %,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA
+Check maintenance service help desk is followed in the outlet and complaints are logged as per the same.,,PROCESSES,,,,yes,1,no,Yes:2|No:0|NA:NA

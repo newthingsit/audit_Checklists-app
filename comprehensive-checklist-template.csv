@@ -1,0 +1,112 @@
+title,description,category,subcategory,section,input_type,required,weight,is_critical,options
+# =====================================================
+# COMPREHENSIVE CHECKLIST TEMPLATE - ALL INPUT TYPES
+# =====================================================
+# This template demonstrates all available input types and options
+# Import this file to create a checklist with various field types
+#
+# INPUT TYPES AVAILABLE:
+# - option_select: Yes/No/NA style scoring (most common)
+# - single_answer: Radio button selection
+# - multiple_answer: Checkbox selection (multiple choices)
+# - short_answer: Single line text input
+# - long_answer: Multi-line text area
+# - dropdown: Dropdown select
+# - number: Numeric input only
+# - date: Date picker
+# - time: Time picker
+# - image_upload: Photo/image capture (requires camera/upload)
+# - signature: Digital signature capture
+# - task: Simple task checkbox
+#
+# OPTIONS FORMAT: Label1:Score1|Label2:Score2|Label3:Score3
+# Use pipe (|) or semicolon (;) to separate options
+# =====================================================
+
+# ==========================================
+# SECTION 1: STANDARD YES/NO/NA QUESTIONS
+# ==========================================
+Hand wash sink available with soap,Verify sink has soap and paper towels,QUALITY,Personal Hygiene,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Staff wearing clean uniforms,All staff in proper attire,QUALITY,Staff Appearance,Front Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Floor is clean and dry,Check for spills and debris,QUALITY,Cleanliness,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+
+# ==========================================
+# SECTION 2: CRITICAL ITEMS (Auto-fail if No)
+# ==========================================
+Fire extinguisher present and accessible,Verify not expired and accessible,SAFETY,Fire Safety,Front Area,option_select,yes,3,yes,Yes:3|No:0|NA:NA
+Food stored at proper temperature,Refrigerator at 4C or below,SAFETY,Food Safety,Kitchen,option_select,yes,3,yes,Yes:3|No:0|NA:NA
+No pest evidence observed,Check for droppings or insects,SAFETY,Pest Control,All Areas,option_select,yes,3,yes,Yes:3|No:0|NA:NA
+
+# ==========================================
+# SECTION 3: PASS/FAIL QUESTIONS
+# ==========================================
+Equipment certification current,Check certification dates,COMPLIANCE,Documentation,Back Office,option_select,yes,2,no,Pass:100|Fail:0
+Health permit displayed,Visible to customers,COMPLIANCE,Regulatory,Front Area,option_select,yes,2,no,Pass:100|Fail:0
+
+# ==========================================
+# SECTION 4: RATING SCALE (1-5)
+# ==========================================
+Overall cleanliness rating,Rate 1-5 stars,QUALITY,General,All Areas,option_select,yes,1,no,5-Excellent:100|4-Good:80|3-Average:60|2-Poor:40|1-Very Poor:20
+Customer service quality,Rate staff friendliness,SERVICE,Customer Experience,Front Area,option_select,yes,1,no,5-Excellent:100|4-Good:80|3-Average:60|2-Poor:40|1-Very Poor:20
+Food presentation quality,Rate visual appeal,QUALITY,Food Quality,Kitchen,option_select,yes,1,no,5-Excellent:100|4-Good:80|3-Average:60|2-Poor:40|1-Very Poor:20
+
+# ==========================================
+# SECTION 5: COMPLIANCE LEVELS
+# ==========================================
+Safety training compliance,Staff training records,COMPLIANCE,Training,Back Office,option_select,yes,2,no,Fully Compliant:100|Partially Compliant:50|Non-Compliant:0|NA:NA
+HACCP documentation maintained,Check records are current,COMPLIANCE,Documentation,Back Office,option_select,yes,2,no,Fully Compliant:100|Partially Compliant:50|Non-Compliant:0|NA:NA
+
+# ==========================================
+# SECTION 6: TEMPERATURE CHECKS
+# ==========================================
+Refrigerator temperature check,Should be 0-4C,QUALITY,Food Safety,Kitchen,option_select,yes,2,yes,Within Range:100|Slightly Out:50|Out of Range:0|Not Measured:NA
+Freezer temperature check,Should be -18C or below,QUALITY,Food Safety,Kitchen,option_select,yes,2,yes,Within Range:100|Slightly Out:50|Out of Range:0|Not Measured:NA
+Hot holding temperature,Should be 63C or above,QUALITY,Food Safety,Kitchen,option_select,yes,2,yes,Within Range:100|Slightly Out:50|Out of Range:0|Not Measured:NA
+
+# ==========================================
+# SECTION 7: TEXT INPUT FIELDS (No photos)
+# ==========================================
+Manager on duty name,Enter manager name,INFO,General,Front Area,short_answer,yes,1,no,
+Store opening time,Time store opened today,INFO,Operations,Front Area,time,yes,1,no,
+Audit date,Date of this audit,INFO,General,Front Area,date,yes,1,no,
+Number of staff present,Count of employees,INFO,Staffing,Front Area,number,yes,1,no,
+Additional comments,Any other observations,INFO,General,Front Area,long_answer,no,1,no,
+
+# ==========================================
+# SECTION 8: PHOTO REQUIRED ITEMS
+# ==========================================
+Photo of entrance signage,Take photo of store front,DOCUMENTATION,Photos,Front Area,image_upload,yes,1,no,Captured:3|Not Captured:0
+Photo of kitchen cleanliness,Document kitchen condition,DOCUMENTATION,Photos,Kitchen,image_upload,yes,1,no,Captured:3|Not Captured:0
+Photo of storage area,Document storage organization,DOCUMENTATION,Photos,Storage,image_upload,yes,1,no,Captured:3|Not Captured:0
+
+# ==========================================
+# SECTION 9: SIGNATURE CAPTURE
+# ==========================================
+Manager signature,Manager acknowledges audit,SIGN-OFF,Signatures,Front Area,signature,yes,1,no,
+Auditor signature,Auditor confirms completion,SIGN-OFF,Signatures,Front Area,signature,yes,1,no,
+
+# ==========================================
+# SECTION 10: SIMPLE TASKS (Checkbox style)
+# ==========================================
+Verify cash register balanced,Check end-of-day totals,TASKS,Operations,Front Area,task,yes,1,no,Done:100|Not Done:0
+Check inventory levels,Review stock levels,TASKS,Inventory,Storage,task,yes,1,no,Done:100|Not Done:0
+Review customer feedback,Check recent reviews,TASKS,Customer Service,Back Office,task,no,1,no,Done:100|Not Done:0
+
+# ==========================================
+# SECTION 11: DROPDOWN SELECTIONS
+# ==========================================
+Store condition rating,Select overall rating,QUALITY,General,All Areas,dropdown,yes,1,no,Excellent:100|Good:75|Average:50|Below Average:25|Poor:0
+Busiest time observed,Select peak hour,INFO,Operations,Front Area,dropdown,no,1,no,Morning:0|Lunch:0|Afternoon:0|Dinner:0|Late Night:0
+
+# ==========================================
+# SECTION 12: SPEED OF SERVICE TRACKING
+# ==========================================
+Table Number - Transaction 1,Enter table number,SERVICE,Speed of Service,Trnx-1,short_answer,yes,1,no,
+Order Time - Transaction 1,Time order placed,SERVICE,Speed of Service,Trnx-1,time,yes,1,no,
+Serve Time - Transaction 1,Time food served,SERVICE,Speed of Service,Trnx-1,time,yes,1,no,
+Wait Time (minutes) - Transaction 1,Calculate wait time,SERVICE,Speed of Service,Trnx-1,number,yes,1,no,
+Table Number - Transaction 2,Enter table number,SERVICE,Speed of Service,Trnx-2,short_answer,yes,1,no,
+Order Time - Transaction 2,Time order placed,SERVICE,Speed of Service,Trnx-2,time,yes,1,no,
+Serve Time - Transaction 2,Time food served,SERVICE,Speed of Service,Trnx-2,time,yes,1,no,
+Wait Time (minutes) - Transaction 2,Calculate wait time,SERVICE,Speed of Service,Trnx-2,number,yes,1,no,
+Average Wait Time,Auto-calculated average,SERVICE,Speed of Service,Avg,number,no,1,no,

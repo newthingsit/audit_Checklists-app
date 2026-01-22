@@ -318,8 +318,11 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
       return result;
     };
 
-    // Parse CSV data
-    const lines = csvData.split('\n').filter(line => line.trim());
+    // Parse CSV data - filter empty lines and comment lines (starting with #)
+    const lines = csvData.split('\n').filter(line => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('#');
+    });
     if (lines.length < 2) {
       return res.status(400).json({ error: 'CSV must have at least a header and one data row' });
     }
@@ -329,7 +332,12 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
     const titleIndex = headers.findIndex(h => h.includes('title') || h.includes('item') || h === 'name');
     const descIndex = headers.findIndex(h => h.includes('description') || h.includes('desc'));
     const catIndex = headers.findIndex(h => h.includes('category') || h.includes('cat'));
+    const subcatIndex = headers.findIndex(h => h === 'subcategory' || h === 'subcat' || h === 'sub_category');
+    const secIndex = headers.findIndex(h => h === 'section' || h === 'sec');
+    const typeIndex = headers.findIndex(h => h === 'input_type' || h === 'type' || h === 'field_type');
     const reqIndex = headers.findIndex(h => h.includes('required') || h.includes('mandatory'));
+    const weightIndex = headers.findIndex(h => h === 'weight');
+    const criticalIndex = headers.findIndex(h => h === 'is_critical' || h === 'critical');
     const optionsIndex = headers.findIndex(h => h.includes('option'));
 
     if (titleIndex === -1) {
@@ -355,7 +363,9 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
         const itemOptions = [];
         if (optionsIndex !== -1 && values[optionsIndex]) {
           const optionsStr = values[optionsIndex].replace(/^"|"$/g, '');
-          optionsStr.split(';').forEach((option, optionIndex) => {
+          // Support both pipe (|) and semicolon (;) separators
+          const separator = optionsStr.includes('|') ? '|' : ';';
+          optionsStr.split(separator).forEach((option, optionIndex) => {
             const trimmed = option.trim();
             if (trimmed) {
               const [label, score] = trimmed.split(':').map(s => s.trim());
@@ -370,8 +380,14 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
           });
         }
 
-        // If no options provided, use defaults
-        if (itemOptions.length === 0) {
+        // Get input_type from CSV or default to 'auto'
+        let inputType = 'auto';
+        if (typeIndex !== -1 && values[typeIndex]) {
+          inputType = values[typeIndex].replace(/^"|"$/g, '').trim().toLowerCase() || 'auto';
+        }
+        
+        // If input_type is 'auto' and no options provided, use defaults
+        if (itemOptions.length === 0 && (inputType === 'auto' || inputType === 'option_select')) {
           itemOptions.push(...defaultOptions);
         }
 
@@ -384,16 +400,46 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
             foundCategories.add(csvCategory);
           }
         }
+        
+        // Get subcategory and combine with category if present
+        if (subcatIndex !== -1 && values[subcatIndex]) {
+          const subCategory = values[subcatIndex]?.replace(/^"|"$/g, '').trim();
+          if (subCategory && itemCategory) {
+            itemCategory = `${itemCategory} (${subCategory})`;
+          } else if (subCategory) {
+            itemCategory = subCategory;
+          }
+        }
+        
+        // Get section
+        const section = secIndex !== -1 && values[secIndex] 
+          ? values[secIndex]?.replace(/^"|"$/g, '').trim() || ''
+          : '';
+        
+        // Get weight
+        const weight = weightIndex !== -1 && values[weightIndex] 
+          ? parseInt(values[weightIndex]) || 1 
+          : 1;
+        
+        // Get is_critical
+        const critVal = criticalIndex !== -1 && values[criticalIndex] 
+          ? values[criticalIndex]?.replace(/^"|"$/g, '').toLowerCase().trim() 
+          : 'no';
+        const isCritical = critVal === 'yes' || critVal === 'true' || critVal === '1';
 
         items.push({
           title,
           description: descIndex !== -1 ? (values[descIndex]?.replace(/^"|"$/g, '').trim() || '') : '',
           category: itemCategory,
+          section: section,
+          input_type: inputType,
           required: reqIndex !== -1 
             ? (values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'yes' || 
                values[reqIndex]?.replace(/^"|"$/g, '').toLowerCase() === 'true' || 
                values[reqIndex]?.replace(/^"|"$/g, '') === '1')
             : true,
+          weight: weight,
+          is_critical: isCritical,
           options: itemOptions
         });
       }
@@ -1133,8 +1179,11 @@ router.post('/import/csv', authenticate, requirePermission('manage_templates'), 
     
     const dbInstance = db.getDb();
     
-    // Parse CSV
-    const lines = csvData.split('\n').filter(line => line.trim());
+    // Parse CSV - filter empty lines and comment lines (starting with #)
+    const lines = csvData.split('\n').filter(line => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('#');
+    });
     if (lines.length < 2) {
       return res.status(400).json({ error: 'CSV must have at least a header row and one data row' });
     }

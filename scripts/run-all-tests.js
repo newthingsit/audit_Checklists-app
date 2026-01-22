@@ -12,13 +12,14 @@
  *   node scripts/run-all-tests.js --quick   # Quick tests only
  */
 
-const { spawn, exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 
 const args = process.argv.slice(2);
 const runBackend = args.length === 0 || args.includes('--backend') || args.includes('--all');
 const runWeb = args.includes('--web') || args.includes('--all');
+const runMobile = args.includes('--mobile') || args.includes('--all');
 const quickMode = args.includes('--quick');
 
 // Colors
@@ -66,6 +67,18 @@ function checkServer(port = 5000) {
   });
 }
 
+// Start backend server if not running
+function startBackendServer() {
+  console.log(`${c.yellow}🚀 Starting backend server...${c.reset}`);
+  const proc = spawn('npm', ['start'], {
+    cwd: path.join(rootDir, 'backend'),
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: { ...process.env }
+  });
+  return proc;
+}
+
 // Run command and return promise
 function runCommand(command, cwd, label) {
   return new Promise((resolve) => {
@@ -97,6 +110,7 @@ function runCommand(command, cwd, label) {
 async function main() {
   const startTime = Date.now();
   const results = [];
+  let backendProc = null;
   
   // Check server for backend tests
   if (runBackend) {
@@ -104,10 +118,23 @@ async function main() {
     const serverRunning = await checkServer(5000);
     
     if (!serverRunning) {
-      console.log(`${c.red}❌ Backend server is not running on port 5000${c.reset}`);
-      console.log(`   Start it with: cd backend && npm start`);
-      console.log(`   Or run with --web to skip backend tests`);
-      process.exit(1);
+      backendProc = startBackendServer();
+      let ready = false;
+      for (let i = 0; i < 30; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await checkServer(5000);
+        if (ok) {
+          ready = true;
+          break;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      if (!ready) {
+        console.log(`${c.red}❌ Backend server failed to start on port 5000${c.reset}`);
+        if (backendProc) backendProc.kill();
+        process.exit(1);
+      }
     }
     console.log(`${c.green}✓ Server is running${c.reset}`);
   }
@@ -122,14 +149,34 @@ async function main() {
     results.push(backendResult);
   }
   
-  // Run Web Tests (if CI mode works)
-  if (runWeb && !quickMode) {
-    const webResult = await runCommand(
+  // Run Web Tests (unit)
+  if (runWeb) {
+    const webUnitResult = await runCommand(
       'npm test -- --watchAll=false --passWithNoTests',
       path.join(rootDir, 'web'),
-      'Web Frontend Tests'
+      'Web Frontend Unit Tests'
     );
-    results.push(webResult);
+    results.push(webUnitResult);
+  }
+
+  // Run Web E2E tests (Playwright)
+  if (runWeb && !quickMode) {
+    const webE2eResult = await runCommand(
+      'npm run test:e2e',
+      path.join(rootDir, 'web'),
+      'Web E2E Smoke Tests'
+    );
+    results.push(webE2eResult);
+  }
+
+  // Run Mobile tests
+  if (runMobile) {
+    const mobileResult = await runCommand(
+      'npm test',
+      path.join(rootDir, 'mobile'),
+      'Mobile Logic Tests'
+    );
+    results.push(mobileResult);
   }
   
   // Summary
@@ -162,6 +209,9 @@ ${c.magenta}║${c.reset}                                                       
 ${c.magenta}╚══════════════════════════════════════════════════════════════════╝${c.reset}
 `);
   
+  if (backendProc) {
+    backendProc.kill();
+  }
   process.exit(failed > 0 ? 1 : 0);
 }
 

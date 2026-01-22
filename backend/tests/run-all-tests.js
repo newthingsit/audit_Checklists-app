@@ -115,6 +115,10 @@ async function main() {
   const tests = [
     { name: 'API Endpoints', script: 'tests/api.test.js' },
     { name: 'Required Validation', script: 'tests/required-validation.test.js' },
+    { name: 'Audit Idempotency', script: 'tests/test-audit-idempotency.js' },
+    { name: 'SOS Auto Average', script: 'tests/test-sos-auto-average.js' },
+    { name: 'Template Mismatch', script: 'tests/test-template-mismatch.js' },
+    { name: 'Report Generation', script: 'tests/test-report-generation.js' }
   ];
   
   if (!quickMode) {

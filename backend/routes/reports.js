@@ -44,7 +44,8 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
 
       // First, get all items with their selected options
       dbInstance.all(
-        `SELECT ai.*, ci.title, ci.description, ci.category, ci.required, ci.order_index,
+        `SELECT ai.*, ci.title, ci.description, ci.category, ci.subcategory, ci.section, 
+                ci.required, ci.order_index, ci.input_type, ci.is_critical, ci.weight,
                 cio.option_text as selected_option_text, cio.mark as selected_mark,
                 ai.photo_url, ai.mark, ai.status, ai.comment
          FROM audit_items ai

@@ -255,17 +255,48 @@ const createEmptyItem = (category = '', section = '') => ({
 
 // Sample CSV template for creating NEW checklists (blank template with examples)
 // Format: category = main category, subcategory = sub-category, section = section within subcategory
+// INPUT TYPES: option_select, short_answer, long_answer, number, date, time, image_upload, signature, task, dropdown
 const sampleCsvContent = `title,description,category,subcategory,section,input_type,required,weight,is_critical,options
-Designated hand wash sink,Ensure sink has soap and paper towels,QUALITY,Personal Hygiene,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
-Food storage temperature,Check refrigerators for 4C or below,QUALITY,Food Safety,Kitchen,option_select,yes,1,yes,Yes:3|No:0|NA:NA
-Equipment cleanliness,Clean and sanitize food-contact surfaces,QUALITY,Cleanliness,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
-Fire extinguisher present,Verify fire extinguisher is accessible,SAFETY,Fire Safety,Front Area,option_select,yes,2,yes,Yes:3|No:0|NA:NA
-Staff wearing proper uniforms,All staff wearing clean uniforms,SERVICE,Staff Appearance,Front Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
-Temperature logs maintained,Check temperature logs are filled daily,COMPLIANCE,Documentation,Back Office,option_select,yes,1,no,Yes:3|No:0|NA:NA
-Table Number,Enter the table number,SERVICE,Speed of Service,Trnx-1,short_answer,yes,1,no,
-Dish Name,Enter the dish name,SERVICE,Speed of Service,Trnx-1,short_answer,yes,1,no,
-Time - Attempt 1,Time in minutes,SERVICE,Speed of Service,Trnx-1,number,yes,1,no,
-Average (Auto),Auto-calculated average,SERVICE,Speed of Service,Avg,number,no,1,no,
+Food served at right temperature,Check food temperature before serving,QUALITY,Food Safety,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Hand wash sink with soap available,Verify sink has soap and paper towels,QUALITY,Personal Hygiene,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Staff wearing clean uniforms,All staff in proper clean attire,QUALITY,Staff Appearance,Front Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Floor is clean and dry,Check for spills and debris on floor,QUALITY,Cleanliness,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Tables cleaned after each customer,Verify tables are properly sanitized,QUALITY,Cleanliness,Dining Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Fire extinguisher present and accessible,Verify extinguisher not expired,SAFETY,Fire Safety,Front Area,option_select,yes,3,yes,Yes:3|No:0|NA:NA
+Food stored at proper temperature,Refrigerator maintained at 4C or below,SAFETY,Food Safety,Kitchen,option_select,yes,3,yes,Yes:3|No:0|NA:NA
+Emergency exits clearly marked,Check all exit signs are visible and lit,SAFETY,Emergency,All Areas,option_select,yes,2,yes,Yes:3|No:0|NA:NA
+Health permit displayed,Permit visible to customers at entrance,COMPLIANCE,Regulatory,Front Area,option_select,yes,2,no,Yes:3|No:0|NA:NA
+Temperature logs maintained daily,Check temperature records are complete,COMPLIANCE,Documentation,Kitchen,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Staff training records current,All food safety certifications valid,COMPLIANCE,Training,Back Office,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Greeting provided to customers,Staff welcomes customers on entry,SERVICE,Customer Experience,Front Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Order delivered within standard time,Check service speed meets standards,SERVICE,Speed,Dining Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Bill presented promptly,Check billing process is efficient,SERVICE,Customer Experience,Front Area,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Refrigerator Temperature Reading,Enter current fridge temperature in Celsius,DATA ENTRY,Temperature,Kitchen,number,yes,1,no,
+Freezer Temperature Reading,Enter current freezer temperature in Celsius,DATA ENTRY,Temperature,Kitchen,number,yes,1,no,
+Number of staff on duty,Enter total staff count for this shift,DATA ENTRY,Staff,General,number,yes,1,no,
+Last deep cleaning date,When was kitchen last deep cleaned,DATA ENTRY,Cleaning,Kitchen,date,yes,1,no,
+Next pest control visit,Scheduled date for pest control,DATA ENTRY,Maintenance,General,date,no,1,no,
+Store opening time today,What time did store open today,DATA ENTRY,Operations,General,time,yes,1,no,
+Shift start time,When did current shift begin,DATA ENTRY,Operations,General,time,yes,1,no,
+Any equipment issues noted,Describe any equipment problems found,OBSERVATIONS,Issues,Kitchen,short_answer,no,1,no,
+Customer complaints received,Note any complaints from customers,OBSERVATIONS,Issues,Front Area,short_answer,no,1,no,
+General observations and comments,Detailed notes about overall store condition,OBSERVATIONS,General,All Areas,long_answer,no,1,no,
+Action items from previous audit,List pending items from last inspection,OBSERVATIONS,Follow-up,General,long_answer,no,1,no,
+Photo of store entrance,Capture entrance signage and cleanliness,DOCUMENTATION,Photos,Entrance,image_upload,yes,1,no,
+Photo of kitchen area,Document kitchen cleanliness and organization,DOCUMENTATION,Photos,Kitchen,image_upload,yes,1,no,
+Photo of dining area,Document dining area arrangement,DOCUMENTATION,Photos,Dining Area,image_upload,no,1,no,
+Photo of restroom,Document restroom cleanliness,DOCUMENTATION,Photos,Restroom,image_upload,no,1,no,
+Staff uniform condition rating,Rate overall staff uniform presentation,RATINGS,Staff,Front Area,dropdown,yes,1,no,Excellent:5|Good:4|Average:3|Poor:2|Very Poor:1
+Overall cleanliness rating,Rate overall store cleanliness,RATINGS,Cleanliness,All Areas,dropdown,yes,1,no,Excellent:5|Good:4|Average:3|Poor:2|Very Poor:1
+Customer service rating,Rate customer service quality observed,RATINGS,Service,Front Area,dropdown,yes,1,no,Excellent:5|Good:4|Average:3|Poor:2|Very Poor:1
+Verify daily checklist completed,Confirm staff completed daily checklist,TASKS,Verification,Kitchen,task,yes,1,no,
+Verify cash register balanced,Confirm cash count matches system,TASKS,Verification,Front Area,task,yes,1,no,
+Verify staff break schedule followed,Confirm breaks taken as scheduled,TASKS,Verification,Back Office,task,no,1,no,
+Manager Name,Enter the name of manager on duty,SIGN-OFF,Manager Details,Sign-Off,short_answer,yes,1,no,
+Manager Remarks,Any additional comments or observations from manager,SIGN-OFF,Manager Details,Sign-Off,long_answer,no,1,no,
+Manager Photo,Take photo of manager for verification,SIGN-OFF,Manager Details,Sign-Off,image_upload,yes,1,no,
+Manager Signature,Manager acknowledges and approves this audit,SIGN-OFF,Manager Details,Sign-Off,signature,yes,1,no,
+Auditor Signature,Auditor confirms audit completion and accuracy,SIGN-OFF,Auditor Details,Sign-Off,signature,yes,1,no,
 `;
 
 const Checklists = () => {
@@ -664,7 +695,11 @@ const Checklists = () => {
   const parseCSVData = (csvText) => {
     try {
       setParseError('');
-      const lines = csvText.split('\n').filter(line => line.trim());
+      // Filter empty lines and comment lines (starting with #)
+      const lines = csvText.split('\n').filter(line => {
+        const trimmed = line.trim();
+        return trimmed && !trimmed.startsWith('#');
+      });
       if (lines.length < 2) {
         setParseError('CSV must have at least a header row and one data row');
         setParsedItems([]);

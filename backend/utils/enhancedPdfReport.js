@@ -334,24 +334,95 @@ function drawQuestionTableHeader(doc) {
 }
 
 /**
+ * Get response text based on input type
+ */
+function getResponseByInputType(item) {
+  const inputType = String(item.input_type || '').toLowerCase();
+  
+  switch (inputType) {
+    case 'option_select':
+    case 'dropdown':
+      // Return selected option text or derive from mark
+      return item.selected_option_text || (parseFloat(item.mark) > 0 ? 'Yes' : 'No');
+    
+    case 'short_answer':
+    case 'long_answer':
+      // Return the comment/text response
+      return item.comment || item.response || '-';
+    
+    case 'number':
+      // Return numeric value
+      return item.comment || (item.mark !== undefined ? String(item.mark) : '-');
+    
+    case 'date':
+      // Format date value
+      if (item.comment) {
+        try {
+          const date = new Date(item.comment);
+          if (!isNaN(date.getTime())) {
+            return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+          }
+        } catch (e) { /* ignore */ }
+        return item.comment;
+      }
+      return '-';
+    
+    case 'time':
+      // Return time value
+      return item.comment || '-';
+    
+    case 'image_upload':
+      // Photo indicator
+      return item.photo_url ? 'Photo Attached' : 'No Photo';
+    
+    case 'signature':
+      // Signature indicator
+      return item.photo_url || item.comment ? 'Signed' : 'Not Signed';
+    
+    case 'task':
+      // Task checkbox status
+      const status = String(item.status || '').toLowerCase();
+      if (status === 'completed' || item.mark > 0) return 'Completed';
+      if (status === 'failed') return 'Not Done';
+      return item.selected_option_text || 'Pending';
+    
+    default:
+      // Default: use selected option or derive from mark
+      return item.selected_option_text || (parseFloat(item.mark) > 0 ? 'Yes' : 'No');
+  }
+}
+
+/**
+ * Check if input type is scorable (has numeric score)
+ */
+function isScorableInputType(inputType) {
+  const type = String(inputType || '').toLowerCase();
+  return ['option_select', 'dropdown', 'task', 'auto', ''].includes(type);
+}
+
+/**
  * Draw a question row with optional photo and remarks
  */
 async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
+  const inputType = String(item.input_type || '').toLowerCase();
   const actualMark = parseFloat(item.mark) || 0;
   const maxMark = item.maxScore || 3;
-  const response = item.selected_option_text || (actualMark > 0 ? 'Yes' : 'No');
-  const isNA = response === 'NA' || response === 'N/A' || item.mark === 'NA';
-  const isNo = response === 'No' || response === 'N' || actualMark === 0;
+  const response = getResponseByInputType(item);
+  const isNA = response === 'NA' || response === 'N/A' || item.mark === 'NA' || response === 'Not Applicable';
+  const isNo = response === 'No' || response === 'N' || response === 'Not Done' || response === 'No Photo' || response === 'Not Signed' || actualMark === 0;
+  const isScorable = isScorableInputType(inputType);
   
   // Calculate row height based on content
   let rowHeight = 25;
   const hasPhoto = item.photo_url && photos[item.photo_url];
-  const hasRemarks = item.comment && item.comment.trim();
+  const hasRemarks = item.comment && item.comment.trim() && !['short_answer', 'long_answer', 'number', 'date', 'time'].includes(inputType);
   const hasSubcategoryTag = item.subcategory && item.subcategory.toLowerCase().includes('house keeping');
+  const isLongText = ['long_answer'].includes(inputType) && item.comment && item.comment.length > 50;
   
   if (hasPhoto) rowHeight += 60;
   if (hasRemarks) rowHeight += 20;
   if (hasSubcategoryTag) rowHeight += 15;
+  if (isLongText) rowHeight += Math.min(40, Math.ceil(item.comment.length / 60) * 10);
   
   // Check if we need a new page
   if (doc.y + rowHeight > PAGE.HEIGHT - 60) {
@@ -373,11 +444,15 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   let questionY = rowY + 5;
   doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
   
-  // Draw question text
-  doc.text(item.title || '', x + 3, questionY, { width: colWidths[1] - 6 });
+  // Draw question text with input type indicator for non-standard types
+  let titleText = item.title || '';
+  if (['signature', 'image_upload'].includes(inputType)) {
+    titleText += ` [${inputType === 'signature' ? 'Signature' : 'Photo'}]`;
+  }
+  doc.text(titleText, x + 3, questionY, { width: colWidths[1] - 6 });
   questionY += 12;
   
-  // Draw photo if exists
+  // Draw photo if exists (for image_upload or attached photos)
   if (hasPhoto) {
     try {
       const photoBuffer = photos[item.photo_url];
@@ -398,7 +473,7 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
     questionY += 15;
   }
   
-  // Draw remarks in red
+  // Draw remarks in red (only for scorable items with additional remarks)
   if (hasRemarks) {
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.REMARKS_RED);
     doc.text(`Remarks: ${item.comment}`, x + 3, questionY, { width: colWidths[1] - 6 });
@@ -406,15 +481,28 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   
   x += colWidths[1];
   
-  // Score column
-  doc.font('Helvetica').fontSize(8).fillColor(isNo ? COLORS.DANGER_RED : COLORS.TEXT_PRIMARY);
-  doc.text(`${actualMark}/${maxMark}`, x + 3, rowY + 8, { width: colWidths[2] - 6, align: 'center' });
+  // Score column - show score only for scorable input types
+  if (isScorable) {
+    doc.font('Helvetica').fontSize(8).fillColor(isNo ? COLORS.DANGER_RED : COLORS.TEXT_PRIMARY);
+    doc.text(`${actualMark}/${maxMark}`, x + 3, rowY + 8, { width: colWidths[2] - 6, align: 'center' });
+  } else {
+    // For non-scorable types, show a dash or type indicator
+    doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_SECONDARY);
+    doc.text('-', x + 3, rowY + 8, { width: colWidths[2] - 6, align: 'center' });
+  }
   x += colWidths[2];
   
   // Response column
   const responseText = isNA ? 'Not Applicable' : response;
-  doc.font('Helvetica').fontSize(8).fillColor(isNo ? COLORS.DANGER_RED : COLORS.TEXT_PRIMARY);
-  doc.text(responseText, x + 3, rowY + 8, { width: colWidths[3] - 6, align: 'center' });
+  const responseColor = isNo ? COLORS.DANGER_RED : (response === 'Signed' || response === 'Completed' || response === 'Photo Attached' ? COLORS.SUCCESS_GREEN : COLORS.TEXT_PRIMARY);
+  doc.font('Helvetica').fontSize(8).fillColor(responseColor);
+  
+  // For long text responses, wrap text
+  if (isLongText) {
+    doc.text(responseText, x + 3, rowY + 5, { width: colWidths[3] - 6, align: 'left', lineGap: 2 });
+  } else {
+    doc.text(responseText, x + 3, rowY + 8, { width: colWidths[3] - 6, align: 'center' });
+  }
   
   doc.y = rowY + rowHeight;
   return true;

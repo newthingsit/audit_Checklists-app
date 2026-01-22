@@ -11,6 +11,8 @@
     "test": "node scripts/run-all-tests.js",
     "test:backend": "cd backend && npm test",
     "test:web": "cd web && npm test -- --watchAll=false",
+    "test:mobile": "cd mobile && npm test",
+    "test:all": "node scripts/run-all-tests.js --all",
     "test:setup": "cd backend && npm run test:setup",
     "test:quick": "node scripts/run-all-tests.js --quick"
   },
