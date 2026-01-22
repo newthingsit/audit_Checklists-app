@@ -141,11 +141,29 @@ const buildSpeedOfServiceFromItems = (items) => {
         });
       });
     } else {
+      // For CVR format: extract value from mark, comment, or selected_option_text
+      // Check mark first (for short_answer/number input types), then comment, then selected_option_text
+      const rawValue = item.mark || item.comment || item.selected_option_text || '';
+      const timeValue = rawValue !== '' && rawValue !== null && rawValue !== 'NA' ? rawValue : '';
+      const seconds = normalizeTimeValue(timeValue);
+      
+      // Extract transaction number from section (e.g., "Trnx-1", "Trnx-2") or subcategory
+      let transactionLabel = item.section || item.subcategory || 'Trnx-1';
+      
+      // Normalize transaction label to match expected format
+      if (!transactionLabel.toLowerCase().includes('trnx') && !transactionLabel.toLowerCase().includes('avg')) {
+        // Try to extract from title if it contains transaction info
+        const titleLower = (item.title || '').toLowerCase();
+        if (titleLower.includes('average') || titleLower.includes('avg')) {
+          transactionLabel = 'Avg';
+        }
+      }
+      
       logs.push({
-        transaction_label: item.section || item.subcategory || 'Trnx-1',
+        transaction_label: transactionLabel,
         checkpoint: item.title || 'Checkpoint',
-        time_value: item.comment || item.selected_option_text || '',
-        seconds: normalizeTimeValue(item.comment || item.selected_option_text)
+        time_value: timeValue,
+        seconds: seconds
       });
     }
   });
@@ -188,27 +206,58 @@ const buildTemperatureTrackingFromItems = (items) => {
 
 const buildActionPlan = (items, audit) => {
   const dueDate = audit.completed_at || audit.created_at;
-  return items
+  // Calculate due date as 7 days from audit completion
+  const dueDateObj = new Date(dueDate);
+  dueDateObj.setDate(dueDateObj.getDate() + 7);
+  const targetDueDate = dueDateObj.toISOString();
+  
+  const deviations = items
     .map(item => {
       const maxScore = parseNumeric(item.maxScore) || 0;
       const actualScore = parseNumeric(item.mark) || 0;
       const response = getResponseLabel(item);
       const isNo = response.toLowerCase() === 'no';
       const isBelowPerfect = maxScore > 0 && actualScore < maxScore;
+      const isCritical = item.is_critical === 1 || item.is_critical === true;
+      
       if (!isNo && !isBelowPerfect) return null;
+      
+      // Calculate severity based on score deviation and critical flag
+      let severity = 'MAJOR';
+      if (isCritical) {
+        severity = 'CRITICAL';
+      } else if (actualScore === 0 && maxScore > 0) {
+        severity = 'MAJOR';
+      } else if (actualScore < maxScore * 0.5) {
+        severity = 'MAJOR';
+      } else {
+        severity = 'MINOR';
+      }
+      
+      // Calculate deviation weight for sorting (higher = more severe)
+      const deviationWeight = (isCritical ? 100 : 0) + (maxScore - actualScore);
+      
       return {
         question: item.title || '',
         remarks: item.comment || '',
-        todo: buildTodoText(item.comment || ''),
+        todo: `Selected option score = ${actualScore}; Answer marked as ${response}`,
+        correctiveAction: buildTodoText(item.comment || ''),
         assignedTo: pickAssignedTo(item.category),
-        dueDate,
-        status: 'To Do',
+        dueDate: targetDueDate,
+        status: 'Open',
         response,
         score: `${actualScore}/${maxScore}`,
-        category: item.category || ''
+        category: item.category || 'Quality',
+        severity,
+        deviationWeight,
+        isCritical
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    // Sort by deviation weight (critical items first, then by score deviation)
+    .sort((a, b) => b.deviationWeight - a.deviationWeight);
+  
+  return deviations;
 };
 
 const normalizeSignatureData = (value) => {

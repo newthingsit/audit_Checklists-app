@@ -324,29 +324,59 @@ const AuditReport = () => {
 
         {actionPlan && actionPlan.length > 0 && (
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>Action Plan</Typography>
+            <Typography variant="h6" gutterBottom>Action Plan - Top 3 Deviations</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Corrective actions assigned to address the top identified deviations.
+            </Typography>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>#</TableCell>
-                  <TableCell>Question</TableCell>
-                  <TableCell>Remarks</TableCell>
-                  <TableCell>To-Do</TableCell>
-                  <TableCell align="center">Assigned To</TableCell>
-                  <TableCell align="center">Due Date</TableCell>
+                  <TableCell>Category</TableCell>
+                  <TableCell>Deviation</TableCell>
+                  <TableCell>Severity</TableCell>
+                  <TableCell>Corrective Action</TableCell>
+                  <TableCell align="center">Owner</TableCell>
+                  <TableCell align="center">Target Date</TableCell>
                   <TableCell align="center">Status</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {actionPlan.map((action, index) => (
+                {actionPlan.slice(0, 3).map((action, index) => (
                   <TableRow key={`${action.question}-${index}`}>
                     <TableCell>{index + 1}</TableCell>
+                    <TableCell>{action.category || 'Quality'}</TableCell>
                     <TableCell>{action.question}</TableCell>
-                    <TableCell>{action.remarks || '—'}</TableCell>
-                    <TableCell>{action.todo}</TableCell>
+                    <TableCell>
+                      <Box sx={{ 
+                        bgcolor: action.severity === 'CRITICAL' ? 'error.main' : 'warning.main',
+                        color: 'white',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        display: 'inline-block'
+                      }}>
+                        {action.severity || 'MAJOR'}
+                      </Box>
+                    </TableCell>
+                    <TableCell>{action.todo || action.remarks || 'Address the audit deviation noted for this item.'}</TableCell>
                     <TableCell align="center">{action.assignedTo}</TableCell>
                     <TableCell align="center">{formatDisplayDate(action.dueDate)}</TableCell>
-                    <TableCell align="center">{action.status}</TableCell>
+                    <TableCell align="center">
+                      <Box sx={{ 
+                        bgcolor: action.status === 'Closed' ? 'success.main' : 'info.main',
+                        color: 'white',
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                        display: 'inline-block'
+                      }}>
+                        {action.status}
+                      </Box>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
