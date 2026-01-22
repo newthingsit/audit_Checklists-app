@@ -11,6 +11,15 @@ const app = express();
 
 const PORT = process.env.PORT || 5000;
 
+// ----------------------------------------------------------------------------
+// CORS SAFETY NET: Ensure ACAO is always present for browser requests
+// ----------------------------------------------------------------------------
+// Some platforms can short-circuit OPTIONS or error responses before normal
+// middleware runs. This guard ensures Access-Control-Allow-Origin is always set
+// when a browser sends an Origin header.
+// ----------------------------------------------------------------------------
+const normalizeOrigin = (value) => String(value || '').toLowerCase().replace(/\/$/, '');
+
 // CORS Configuration - Include production domains by default
 const defaultOrigins = [
   'http://localhost:3000',
@@ -28,6 +37,38 @@ const envOrigins = process.env.ALLOWED_ORIGINS
   
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 const primaryProdOrigin = 'https://app.litebitefoods.com';
+
+// Ensure ACAO header is present early for ALL browser requests
+app.use((req, res, next) => {
+  const rawOrigin = req.headers.origin;
+  const origin = (rawOrigin && String(rawOrigin).toLowerCase() !== 'null') ? rawOrigin : null;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const normalizedOrigin = origin ? normalizeOrigin(origin) : null;
+  const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
+
+  const isAllowed = !origin || normalizedAllowedOrigins.includes(normalizedOrigin) || !isProduction;
+  if (isAllowed) {
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Vary', 'Origin');
+  } else if (origin && isProduction) {
+    // Still set ACAO so browser can read the error response
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, X-Requested-With, Accept');
+  }
+
+  next();
+});
 
 // Log allowed origins in production for debugging
 if (process.env.NODE_ENV === 'production') {

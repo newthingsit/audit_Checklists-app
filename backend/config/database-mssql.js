@@ -302,6 +302,10 @@ const createTables = async () => {
       FOREIGN KEY ([team_id]) REFERENCES [teams]([id]),
       FOREIGN KEY ([location_id]) REFERENCES [locations]([id])
     )`,
+
+    // Add client_audit_uuid column for existing audits table
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'client_audit_uuid')
+     ALTER TABLE [dbo].[audits] ADD [client_audit_uuid] NVARCHAR(100) NULL`,
     
     // Audit Items table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND type in (N'U'))
