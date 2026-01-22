@@ -892,7 +892,6 @@ const AuditForm = () => {
           }
           
           // Include input values for number, date, open_ended, short_answer, long_answer, time input types
-          const inputType = getNormalizedInputType(item);
           if (inputValues[item.id] !== undefined && inputValues[item.id] !== '') {
             itemData.input_value = inputValues[item.id];
             // Store in mark field for compatibility with number types
