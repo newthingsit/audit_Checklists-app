@@ -2182,10 +2182,10 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 
                   dbInstance.run(
                     `UPDATE audits 
-                     SET completed_items = ?, score = ?, weighted_score = ?, has_critical_failure = ?, status = ?, 
+                     SET completed_items = ?, total_items = ?, score = ?, weighted_score = ?, has_critical_failure = ?, status = ?, 
                          completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
                      WHERE id = ?`,
-                    [completed, score, weightedScore, hasCriticalFailure ? 1 : 0, auditStatus, completed, total, auditId],
+                    [completed, total, score, weightedScore, hasCriticalFailure ? 1 : 0, auditStatus, completed, total, auditId],
                     function(updateErr) {
                       if (updateErr) {
                         logger.error('Error updating audit:', updateErr.message);
@@ -2322,10 +2322,10 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 
                         dbInstance.run(
                           `UPDATE audits 
-                           SET completed_items = ?, score = ?, status = ?, 
+                           SET completed_items = ?, total_items = ?, score = ?, status = ?, 
                                completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
                            WHERE id = ?`,
-                          [completed, score, auditStatus, completed, templateTotal, auditId],
+                          [completed, templateTotal, score, auditStatus, completed, templateTotal, auditId],
                           function(updateErr) {
                             if (updateErr) {
                               logger.error('Error updating audit:', updateErr.message);
@@ -3009,10 +3009,10 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
         
         dbInstance.run(
           `UPDATE audits 
-           SET completed_items = ?, score = ?, status = ?, 
+           SET completed_items = ?, total_items = ?, score = ?, status = ?, 
                completed_at = CASE WHEN ? = ? THEN CURRENT_TIMESTAMP ELSE completed_at END
            WHERE id = ?`,
-          [completed, score, auditStatus, completed, total, auditId],
+          [completed, total, score, auditStatus, completed, total, auditId],
           function(err) {
             if (err) return callback(err);
             
