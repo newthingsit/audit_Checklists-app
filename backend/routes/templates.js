@@ -5,6 +5,8 @@ const logger = require('../utils/logger');
 
 const router = express.Router();
 
+const normalizeTemplateKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
 // Health check endpoint to test database connection
 router.get('/health', authenticate, (req, res) => {
   const dbInstance = db.getDb();
@@ -34,6 +36,7 @@ router.get('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  const dedupe = req.query.dedupe !== 'false';
   
   // Use a simpler, more reliable query approach
   // First get all templates, then get item counts separately to avoid GROUP BY issues
@@ -74,9 +77,33 @@ router.get('/', authenticate, (req, res) => {
     }
     
     logger.info(`[Templates API] Found ${templates.length} templates for user ${req.user?.id}`);
+
+    let filteredTemplates = templates;
+    if (dedupe) {
+      const deduped = new Map();
+      templates.forEach(template => {
+        const key = normalizeTemplateKey(template.name);
+        if (!key) return;
+        const existing = deduped.get(key);
+        if (!existing) {
+          deduped.set(key, template);
+          return;
+        }
+        const existingDate = Date.parse(existing.created_at || '') || 0;
+        const currentDate = Date.parse(template.created_at || '') || 0;
+        const shouldReplace = currentDate > existingDate || (currentDate === existingDate && template.id > existing.id);
+        if (shouldReplace) {
+          deduped.set(key, template);
+        }
+      });
+      filteredTemplates = Array.from(deduped.values());
+      if (filteredTemplates.length !== templates.length) {
+        logger.warn(`[Templates API] Deduped templates from ${templates.length} to ${filteredTemplates.length}`);
+      }
+    }
     
     // Get item counts for each template
-    const templateIds = templates.map(t => t.id);
+    const templateIds = filteredTemplates.map(t => t.id);
     const placeholders = templateIds.map(() => '?').join(',');
     
     let itemCountQuery;
@@ -96,7 +123,7 @@ router.get('/', authenticate, (req, res) => {
       if (countErr) {
         logger.error('[Templates API] Item count query error:', countErr);
         // Continue without item counts
-        const templatesWithDefaults = templates.map(t => ({
+        const templatesWithDefaults = filteredTemplates.map(t => ({
           ...t,
           item_count: 0,
           categories: []
@@ -130,7 +157,7 @@ router.get('/', authenticate, (req, res) => {
         if (catErr) {
           logger.error('[Templates API] Category query error:', catErr);
           // Continue without categories
-          const templatesWithCounts = templates.map(t => ({
+          const templatesWithCounts = filteredTemplates.map(t => ({
             ...t,
             item_count: countMap[t.id] || 0,
             categories: []
@@ -153,7 +180,7 @@ router.get('/', authenticate, (req, res) => {
         });
         
         // Combine all data
-        const templatesWithCategories = templates.map(template => ({
+        const templatesWithCategories = filteredTemplates.map(template => ({
           ...template,
           item_count: countMap[template.id] || 0,
           categories: categoriesByTemplate[template.id] || []

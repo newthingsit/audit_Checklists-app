@@ -29,7 +29,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import WarningIcon from '@mui/icons-material/Warning';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AddIcon from '@mui/icons-material/Add';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import EditIcon from '@mui/icons-material/Edit';
@@ -124,7 +123,6 @@ const AuditDetail = () => {
   
   // Action Plan state
   const [actionPlan, setActionPlan] = useState(null);
-  const [actionPlanLoading, setActionPlanLoading] = useState(false);
   const [editingActionId, setEditingActionId] = useState(null);
   const [actionEditForm, setActionEditForm] = useState({});
   const [users, setUsers] = useState([]);
@@ -145,14 +143,11 @@ const AuditDetail = () => {
 
   const fetchActionPlan = async (auditId) => {
     try {
-      setActionPlanLoading(true);
       const response = await axios.get(`/api/audits/${auditId}/action-plan`);
       setActionPlan(response.data);
     } catch (error) {
       console.error('Error fetching action plan:', error);
       // Action plan not available is not an error for in-progress audits
-    } finally {
-      setActionPlanLoading(false);
     }
   };
 
@@ -233,6 +228,7 @@ const AuditDetail = () => {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const handleCreateAction = async (item) => {
     setSelectedItem(item);
     setActionForm({

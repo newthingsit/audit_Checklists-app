@@ -304,7 +304,7 @@ const Checklists = () => {
       setLoading(true);
       // Add cache-busting parameter to ensure fresh data after create/update
       const response = await axios.get('/api/templates', {
-        params: { _t: Date.now() }
+        params: { _t: Date.now(), dedupe: 'true' }
       });
       const serverTemplates = response.data.templates || [];
       

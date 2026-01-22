@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
 import { isPhotoFixTemplate } from '../config/photoFix';
 import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocation } from '../context/LocationContext';
+import { useNetwork } from '../context/NetworkContext';
+import { useOffline } from '../context/OfflineContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 import { SignatureModal, SignatureDisplay } from '../components';
 
@@ -71,6 +74,43 @@ const AuditFormScreen = () => {
   const [capturedLocation, setCapturedLocation] = useState(null);
   const [locationVerified, setLocationVerified] = useState(false);
   const [showLocationVerification, setShowLocationVerification] = useState(false);
+
+  // Offline/Network state
+  const { isOnline } = useNetwork();
+  const { saveAuditOffline, queuePhotoForUpload } = useOffline();
+  const [savingDraft, setSavingDraft] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const clientAuditUuidRef = useRef(null);
+
+  const draftStorageKey = useMemo(() => {
+    const templateKey = templateId ? String(templateId) : 'unknown';
+    const scheduleKey = scheduledAuditId ? String(scheduledAuditId) : 'none';
+    const locationKey = locationId ? String(locationId) : 'none';
+    return `audit_draft:${templateKey}:${scheduleKey}:${locationKey}`;
+  }, [templateId, scheduledAuditId, locationId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadDraftIdentity = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(draftStorageKey);
+        if (!stored || !mounted) return;
+        const parsed = JSON.parse(stored);
+        if (parsed?.auditId && !currentAuditId && !auditId) {
+          setCurrentAuditId(parsed.auditId);
+        }
+        if (parsed?.clientAuditUuid) {
+          clientAuditUuidRef.current = parsed.clientAuditUuid;
+        }
+      } catch (error) {
+        console.warn('Failed to load draft identity:', error);
+      }
+    };
+    loadDraftIdentity();
+    return () => {
+      mounted = false;
+    };
+  }, [draftStorageKey, currentAuditId, auditId]);
 
   // Previous failures state for highlighting recurring issues
   const [previousFailures, setPreviousFailures] = useState([]);
@@ -733,19 +773,48 @@ const AuditFormScreen = () => {
       Alert.alert('Error', 'Cannot modify items in a completed audit');
       return;
     }
-    setComments(prev => {
-      const next = { ...prev, [itemId]: value };
-      const sos = getSosAverageItems(items);
-      if (sos && sos.attemptIds.includes(itemId)) {
-        const nums = sos.attemptIds.map(id => (id === itemId ? value : prev[id]))
-          .map(s => parseFloat(String(s || '')))
-          .filter(n => !isNaN(n));
-        next[sos.averageId] = nums.length ? String((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2)) : '';
+    const nextComments = { ...comments, [itemId]: value };
+    const sos = getSosAverageItems(items);
+    let averageUpdate = null;
+    if (sos && sos.attemptIds.includes(itemId)) {
+      const nums = sos.attemptIds
+        .map(id => (id === itemId ? value : comments[id]))
+        .map(s => parseFloat(String(s || '')))
+        .filter(n => !isNaN(n));
+      const avgValue = nums.length ? String((nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2)) : '';
+      nextComments[sos.averageId] = avgValue;
+      averageUpdate = { id: sos.averageId, value: avgValue };
+    }
+    setComments(nextComments);
+    setResponses(prev => {
+      const updated = { ...prev };
+      const hasValue = value && String(value).trim();
+      updated[itemId] = hasValue ? 'completed' : (prev[itemId] || 'pending');
+      if (averageUpdate) {
+        const hasAvg = averageUpdate.value && String(averageUpdate.value).trim();
+        updated[averageUpdate.id] = hasAvg ? 'completed' : (updated[averageUpdate.id] || prev[averageUpdate.id] || 'pending');
       }
-      return next;
+      const item = items.find(i => i.id === itemId) || (averageUpdate && items.find(i => i.id === averageUpdate.id));
+      if (item && item.category) {
+        setCategoryCompletionStatus(prevStatus => {
+          const categoryItems = items.filter(i => i.category === item.category);
+          const completedInCategory = categoryItems.filter(i => {
+            const response = updated[i.id] || prev[i.id];
+            return response && response !== 'pending' && response !== '';
+          }).length;
+          return {
+            ...prevStatus,
+            [item.category]: {
+              completed: completedInCategory,
+              total: categoryItems.length,
+              isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+            }
+          };
+        });
+      }
+      return updated;
     });
-    setResponses(prev => ({ ...prev, [itemId]: value && String(value).trim() ? 'completed' : (prev[itemId] || 'pending') }));
-  }, [auditStatus, getSosAverageItems, items]);
+  }, [auditStatus, comments, getSosAverageItems, items]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
@@ -1271,14 +1340,190 @@ const AuditFormScreen = () => {
     }
   };
 
+  // Save draft locally (works offline)
+  const handleSaveDraft = useCallback(async () => {
+    if (!selectedLocation) {
+      Alert.alert('Error', 'Please select an outlet');
+      return;
+    }
+
+    setSavingDraft(true);
+    try {
+      if (!clientAuditUuidRef.current) {
+        clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+      // Build draft audit data
+      const draftData = {
+        template_id: parseInt(templateId),
+        template_name: template?.name || '',
+        location_id: parseInt(locationId),
+        restaurant_name: selectedLocation?.name || '',
+        store_number: selectedLocation?.store_number || '',
+        status: 'draft',
+        client_audit_uuid: clientAuditUuidRef.current,
+        // Audit state
+        responses: responses,
+        comments: comments,
+        photos: photos,
+        selectedOptions: selectedOptions,
+        multipleSelections: multipleSelections,
+        categoryCompletionStatus: categoryCompletionStatus,
+        selectedCategory: selectedCategory,
+        currentStep: currentStep,
+        // Info fields
+        attendees: attendees,
+        pointsDiscussed: pointsDiscussed,
+        infoPictures: infoPictures,
+        notes: notes,
+        // GPS data
+        capturedLocation: capturedLocation,
+        locationVerified: locationVerified,
+        // Items snapshot (for offline resume)
+        items: items.map(item => ({
+          id: item.id,
+          title: item.title,
+          category: item.category,
+          section: item.section,
+          input_type: item.input_type,
+          is_required: item.is_required,
+          options: item.options,
+        })),
+        // Metadata
+        savedAt: new Date().toISOString(),
+        auditId: currentAuditId, // If resuming existing audit
+        scheduledAuditId: scheduledAuditId,
+      };
+
+      // Save audit draft offline
+      const result = await saveAuditOffline(draftData);
+
+      if (result.success) {
+        await AsyncStorage.setItem(
+          draftStorageKey,
+          JSON.stringify({
+            auditId: currentAuditId || null,
+            clientAuditUuid: clientAuditUuidRef.current
+          })
+        );
+
+        // Queue photos for offline upload if any
+        const photoEntries = Object.entries(photos);
+        for (const [itemId, photoData] of photoEntries) {
+          if (photoData && typeof photoData === 'string' && photoData.startsWith('file://')) {
+            await queuePhotoForUpload({
+              uri: photoData,
+              itemId: parseInt(itemId),
+              auditTempId: result.tempId || null,
+              type: 'image/jpeg',
+              name: `photo_${itemId}_${Date.now()}.jpg`,
+            });
+          }
+        }
+
+        Alert.alert(
+          'Draft Saved',
+          isOnline 
+            ? 'Your progress has been saved. You can resume this audit anytime.'
+            : 'Your progress has been saved offline. It will sync when you\'re back online.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        throw new Error(result.error || 'Failed to save draft');
+      }
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      Alert.alert('Error', 'Failed to save draft. Please try again.');
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [
+    selectedLocation, templateId, template, locationId, responses, comments,
+    photos, selectedOptions, multipleSelections, categoryCompletionStatus,
+    selectedCategory, currentStep, attendees, pointsDiscussed, infoPictures,
+    notes, capturedLocation, locationVerified, items, currentAuditId,
+    scheduledAuditId, saveAuditOffline, queuePhotoForUpload, isOnline, draftStorageKey
+  ]);
+
+  // Auto-save draft every 60 seconds when in audit step and has unsaved changes
+  useEffect(() => {
+    // Only auto-save if: in checklist step, not completed, has a location selected, and has some responses
+    const hasUnsavedWork = currentStep === 2 && 
+                          auditStatus !== 'completed' && 
+                          selectedLocation && 
+                          Object.keys(responses).length > 0;
+    
+    if (!hasUnsavedWork) return;
+
+    const autoSaveInterval = setInterval(async () => {
+      // Silent auto-save (no alerts, no loading indicator for auto-save)
+      try {
+        if (!clientAuditUuidRef.current) {
+          clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        }
+        const draftData = {
+          template_id: parseInt(templateId),
+          template_name: template?.name || '',
+          location_id: parseInt(locationId),
+          restaurant_name: selectedLocation?.name || '',
+          store_number: selectedLocation?.store_number || '',
+          status: 'draft',
+          client_audit_uuid: clientAuditUuidRef.current,
+          responses,
+          comments,
+          photos,
+          selectedOptions,
+          multipleSelections,
+          categoryCompletionStatus,
+          selectedCategory,
+          currentStep,
+          attendees,
+          pointsDiscussed,
+          infoPictures,
+          notes,
+          capturedLocation,
+          locationVerified,
+          items: items.map(item => ({
+            id: item.id,
+            title: item.title,
+            category: item.category,
+            section: item.section,
+            input_type: item.input_type,
+            is_required: item.is_required,
+            options: item.options,
+          })),
+          savedAt: new Date().toISOString(),
+          auditId: currentAuditId,
+          scheduledAuditId,
+          isAutoSave: true,
+        };
+        await saveAuditOffline(draftData);
+        console.log('[AutoSave] Draft saved silently');
+      } catch (error) {
+        console.warn('[AutoSave] Failed to auto-save draft:', error);
+      }
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }, [
+    currentStep, auditStatus, selectedLocation, responses, templateId, template,
+    locationId, comments, photos, selectedOptions, multipleSelections,
+    categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
+    infoPictures, notes, capturedLocation, locationVerified, items,
+    currentAuditId, scheduledAuditId, saveAuditOffline
+  ]);
+
   const handleSubmit = async () => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify a completed audit');
       return;
     }
+    if (saveInFlightRef.current || saving) {
+      return;
+    }
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
-      let currentAuditId = auditId;
+      let activeAuditId = currentAuditId || auditId;
 
       // Get selected store details - if resuming audit, try to get location from audit data
       if (!selectedLocation && locationId && locations.length > 0) {
@@ -1397,9 +1642,8 @@ const AuditFormScreen = () => {
       const notesToSave = JSON.stringify(infoData);
 
       // Determine if we're editing an existing audit
-      if (auditId) {
-        // We have an explicit auditId, update existing audit
-        currentAuditId = auditId;
+      if (activeAuditId) {
+        // We have an auditId, update existing audit
         try {
           const updateData = {
             restaurant_name: selectedLocation.name,
@@ -1417,7 +1661,7 @@ const AuditFormScreen = () => {
             updateData.location_verified = locationVerified;
           }
           
-          await axios.put(`${API_BASE_URL}/audits/${auditId}`, updateData);
+          await axios.put(`${API_BASE_URL}/audits/${activeAuditId}`, updateData);
           // Update local notes state
           setNotes(notesToSave);
         } catch (updateError) {
@@ -1430,7 +1674,7 @@ const AuditFormScreen = () => {
           const existingAuditResponse = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`);
           if (existingAuditResponse.data.audit) {
             // Audit exists, update it
-            currentAuditId = existingAuditResponse.data.audit.id;
+            activeAuditId = existingAuditResponse.data.audit.id;
             const updateData = {
               restaurant_name: selectedLocation.name,
               location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
@@ -1447,7 +1691,7 @@ const AuditFormScreen = () => {
               updateData.location_verified = locationVerified;
             }
             
-            await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, updateData);
+            await axios.put(`${API_BASE_URL}/audits/${activeAuditId}`, updateData);
             // Update local notes state
             setNotes(notesToSave);
           }
@@ -1458,13 +1702,17 @@ const AuditFormScreen = () => {
       }
       
       // Create new audit if we don't have an existing one
-      if (!currentAuditId) {
+      if (!activeAuditId) {
+        if (!clientAuditUuidRef.current) {
+          clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        }
         const auditData = {
           template_id: parseInt(templateId),
           restaurant_name: selectedLocation.name,
           location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
           location_id: parseInt(locationId),
-          notes: notesToSave
+          notes: notesToSave,
+          client_audit_uuid: clientAuditUuidRef.current
         };
 
         // Don't set audit_category when creating new audit - allow multiple categories in same audit
@@ -1485,8 +1733,15 @@ const AuditFormScreen = () => {
         }
         
         const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
-        currentAuditId = auditResponse.data.id;
-        setCurrentAuditId(currentAuditId);
+        activeAuditId = auditResponse.data.id;
+        setCurrentAuditId(activeAuditId);
+        await AsyncStorage.setItem(
+          draftStorageKey,
+          JSON.stringify({
+            auditId: activeAuditId,
+            clientAuditUuid: clientAuditUuidRef.current
+          })
+        );
         // Update local notes state
         setNotes(notesToSave);
       }
@@ -1592,7 +1847,7 @@ const AuditFormScreen = () => {
       // Clear audit_category to allow multiple categories in the same audit
       // This allows users to complete different categories in the same audit session
       try {
-        const batchUrl = `${API_BASE_URL}/audits/${currentAuditId}/items/batch`;
+        const batchUrl = `${API_BASE_URL}/audits/${activeAuditId}/items/batch`;
         const payload = { items: batchItems, audit_category: null };
 
         // Retry batch update on transient failures (especially 429/rate limit)
@@ -1632,7 +1887,7 @@ const AuditFormScreen = () => {
         
         // Fallback to individual updates if batch fails
         // IMPORTANT: Do NOT fire all item updates in parallel (can trigger 429 and make all fail).
-        const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${currentAuditId}/items/${itemId}`;
+        const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${activeAuditId}/items/${itemId}`;
         const errors = [];
 
         for (const updateData of batchItems) {
@@ -1694,7 +1949,7 @@ const AuditFormScreen = () => {
       // Refresh audit data to get updated completion status
       // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
       try {
-        const auditResponse = await axios.get(`${API_BASE_URL}/audits/${currentAuditId}`);
+        const auditResponse = await axios.get(`${API_BASE_URL}/audits/${activeAuditId}`);
         const updatedAudit = auditResponse.data.audit;
         const updatedAuditItems = auditResponse.data.items || [];
         
@@ -1739,7 +1994,7 @@ const AuditFormScreen = () => {
         // If backend says completed, ALL categories are done (regardless of frontend calculation)
         if (isAuditCompleted) {
           // Audit is fully completed - trigger PDF download
-          const pdfUrl = `${API_BASE_URL.replace('/api', '')}/api/reports/audit/${currentAuditId}/pdf`;
+          const pdfUrl = `${API_BASE_URL.replace('/api', '')}/api/reports/audit/${activeAuditId}/pdf`;
           
           // Audit is fully completed - all categories are done
           Alert.alert(
@@ -1748,7 +2003,7 @@ const AuditFormScreen = () => {
             [
               { 
                 text: 'View Audit', 
-                onPress: () => navigation.navigate('AuditDetail', { id: currentAuditId })
+                onPress: () => navigation.navigate('AuditDetail', { id: activeAuditId })
               },
               {
                 text: 'Done',
@@ -1841,6 +2096,7 @@ const AuditFormScreen = () => {
       );
     } finally {
       setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -2001,16 +2257,20 @@ const AuditFormScreen = () => {
           <View style={styles.buttonRow}>
             {auditStatus !== 'completed' && (
               <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary, isCvr && { borderColor: cvrTheme.accent.purple }]}
-                onPress={async () => {
-                  if (!selectedLocation) {
-                    Alert.alert('Error', 'Please select an outlet');
-                    return;
-                  }
-                  Alert.alert('Draft Saved', 'Your draft has been saved');
-                }}
+                style={[styles.button, styles.buttonSecondary, savingDraft && styles.buttonDisabled, isCvr && { borderColor: cvrTheme.accent.purple }]}
+                onPress={handleSaveDraft}
+                disabled={savingDraft}
               >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary, isCvr && { color: cvrTheme.accent.purple }]}>Save Draft</Text>
+                {savingDraft ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={isCvr ? cvrTheme.accent.purple : themeConfig.text.secondary} />
+                    <Text style={[styles.buttonText, styles.buttonTextSecondary, { marginLeft: 8 }, isCvr && { color: cvrTheme.accent.purple }]}>
+                      Saving...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.buttonText, styles.buttonTextSecondary, isCvr && { color: cvrTheme.accent.purple }]}>Save Draft</Text>
+                )}
               </TouchableOpacity>
             )}
             {auditStatus === 'completed' ? (
@@ -2782,21 +3042,16 @@ const AuditFormScreen = () => {
             />
 
             <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
-                onPress={() => {
-                  // Allow navigating back to category selection for viewing different categories
-                  if (categories.length > 1) {
-                    setCurrentStep(1);
-                  } else {
-                    setCurrentStep(0);
-                  }
-                }}
-              >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                  {categories.length > 1 ? 'Change Category' : 'Back'}
-                </Text>
-              </TouchableOpacity>
+              {categories.length <= 1 && (
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={() => setCurrentStep(0)}
+                >
+                  <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
+                    Back
+                  </Text>
+                </TouchableOpacity>
+              )}
               {auditStatus === 'completed' ? (
               <TouchableOpacity
                   style={[styles.button, isCvr && { padding: 0, overflow: 'hidden' }]}
@@ -2817,7 +3072,10 @@ const AuditFormScreen = () => {
                   disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator color="#fff" />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator color="#fff" />
+                    <Text style={[styles.buttonText, { marginLeft: 8 }]}>Saving...</Text>
+                  </View>
                 ) : isCvr ? (
                   <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
                     <Text style={styles.buttonText}>Submit</Text>

@@ -88,7 +88,7 @@ const AuditForm = () => {
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [, setSaving] = useState(false); // Setter is used, value not read
+  const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(searchParams.get('location_id') || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [notes, setNotes] = useState('');
@@ -105,6 +105,11 @@ const AuditForm = () => {
   const [touched, setTouched] = useState({});
   const scheduledId = searchParams.get('scheduled_id');
   const auditId = searchParams.get('audit_id'); // Support resuming existing audit
+  const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
+  const saveInFlightRef = useRef(false);
+  const clientAuditUuidRef = useRef(
+    searchParams.get('client_audit_uuid') || `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null);
   
@@ -208,6 +213,30 @@ const AuditForm = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, auditId]);
+
+  useEffect(() => {
+    if (auditId) {
+      setCurrentAuditId(parseInt(auditId, 10));
+    }
+  }, [auditId]);
+
+  useEffect(() => {
+    if (auditId || !templateId || !locationId) return;
+    try {
+      const draftKey = `audit_draft:${templateId}:${scheduledId || 'none'}:${locationId || 'none'}`;
+      const stored = localStorage.getItem(draftKey);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (parsed?.auditId) {
+        setCurrentAuditId(parsed.auditId);
+      }
+      if (parsed?.clientAuditUuid) {
+        clientAuditUuidRef.current = parsed.clientAuditUuid;
+      }
+    } catch (error) {
+      console.warn('Failed to load draft identity:', error);
+    }
+  }, [auditId, templateId, locationId, scheduledId]);
 
   // Update selectedLocation when locationId changes (e.g., from URL params or audit data)
   useEffect(() => {
@@ -756,6 +785,10 @@ const AuditForm = () => {
       showError('Cannot modify a completed audit');
       return;
     }
+    if (saveInFlightRef.current || saving) {
+      return;
+    }
+    saveInFlightRef.current = true;
 
     // Only validate store selection, allow partial saves
     if (!locationId) {
@@ -776,12 +809,12 @@ const AuditForm = () => {
         return;
       }
 
-      let currentAuditId = auditId;
+      let activeAuditId = currentAuditId || (auditId ? parseInt(auditId, 10) : null);
 
       // If editing existing audit, update it
-      if (auditId) {
+      if (activeAuditId) {
         try {
-          await axios.put(`/api/audits/${auditId}`, {
+          await axios.put(`/api/audits/${activeAuditId}`, {
             restaurant_name: selectedStore.name,
             location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
             location_id: parseInt(locationId),
@@ -792,12 +825,16 @@ const AuditForm = () => {
         }
       } else {
         // Create new audit
+        if (!clientAuditUuidRef.current) {
+          clientAuditUuidRef.current = `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        }
         const auditData = {
           template_id: parseInt(templateId),
           restaurant_name: selectedStore.name,
           location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
           location_id: parseInt(locationId),
-          notes
+          notes,
+          client_audit_uuid: clientAuditUuidRef.current
         };
 
         // Category-wise audits: if a category is selected, scope the audit to that category only.
@@ -810,7 +847,12 @@ const AuditForm = () => {
         }
         
         const auditResponse = await axios.post('/api/audits', auditData);
-        currentAuditId = auditResponse.data.id;
+        activeAuditId = auditResponse.data.id;
+        setCurrentAuditId(activeAuditId);
+        localStorage.setItem(
+          `audit_draft:${templateId || 'unknown'}:${scheduledId || 'none'}:${locationId || 'none'}`,
+          JSON.stringify({ auditId: activeAuditId, clientAuditUuid: clientAuditUuidRef.current })
+        );
       }
 
       // Update all items in a single batch request (much faster!)
@@ -856,14 +898,14 @@ const AuditForm = () => {
           return itemData;
         });
 
-      console.log('[AuditForm] Saving batch items:', { auditId: currentAuditId, itemCount: batchItems.length, sampleItem: batchItems[0] });
+      console.log('[AuditForm] Saving batch items:', { auditId: activeAuditId, itemCount: batchItems.length, sampleItem: batchItems[0] });
       
       if (batchItems.length === 0) {
         throw new Error('No valid items to save. Please ensure all checklist items have valid IDs.');
       }
 
       // Single batch API call instead of multiple individual calls
-      const response = await axios.put(`/api/audits/${currentAuditId}/items/batch`, { 
+      const response = await axios.put(`/api/audits/${activeAuditId}/items/batch`, { 
         items: batchItems,
         audit_category: selectedCategory || null
       });
@@ -871,7 +913,7 @@ const AuditForm = () => {
       // Refresh category completion status after save
       if (response.data && categories.length > 0) {
         // Fetch updated audit items to recalculate completion
-        const auditResponse = await axios.get(`/api/audits/${currentAuditId}`);
+        const auditResponse = await axios.get(`/api/audits/${activeAuditId}`);
         const updatedAuditItems = auditResponse.data.items || [];
         
         // Update responses and options from server response
@@ -900,7 +942,7 @@ const AuditForm = () => {
       // Check if audit was completed - trigger PDF download
       if (response.data && response.data.status === 'completed') {
         // Trigger PDF download automatically
-        const pdfUrl = response.data.pdfUrl || `/api/reports/audit/${currentAuditId}/pdf`;
+        const pdfUrl = response.data.pdfUrl || `/api/reports/audit/${activeAuditId}/pdf`;
         if (pdfUrl) {
           // Open PDF in new tab for download
           window.open(pdfUrl, '_blank');
@@ -909,13 +951,14 @@ const AuditForm = () => {
       } else {
         showSuccess(isEditing ? 'Audit updated successfully!' : 'Audit saved successfully!');
       }
-      navigate(`/audit/${currentAuditId}`);
+      navigate(`/audit/${activeAuditId}`);
     } catch (err) {
       const errorMsg = err.response?.data?.error || 'Failed to save audit';
       setError(errorMsg);
       showError(errorMsg);
     } finally {
       setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -2053,11 +2096,12 @@ const AuditForm = () => {
             }}>
               {isCvr && (
                 <Button 
-                  onClick={() => showSuccess('Draft saved')} 
+                  onClick={handleSubmit}
+                  disabled={saving || isBeforeScheduledDate}
                   variant="text"
                   sx={{ color: cvrTheme.accent.purple }}
                 >
-                  Save Draft
+                  {saving ? 'Saving...' : 'Save Draft'}
                 </Button>
               )}
               <Button 
@@ -2589,13 +2633,15 @@ const AuditForm = () => {
                 <Button
                   onClick={handleSubmit}
                   variant={isCvr ? 'text' : 'outlined'}
+                  disabled={saving}
                   sx={isCvr ? { color: cvrTheme.accent.purple } : {}}
                 >
-                  Save Draft
+                  {saving ? 'Saving...' : 'Save Draft'}
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   variant="contained"
+                  disabled={saving}
                   sx={{
                     ...(isCvr && {
                       background: cvrTheme.button.next,
@@ -2604,7 +2650,7 @@ const AuditForm = () => {
                     })
                   }}
                 >
-                  Submit
+                  {saving ? 'Saving...' : 'Submit'}
                 </Button>
               </Box>
             )}

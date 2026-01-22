@@ -18,8 +18,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CANVAS_WIDTH = SCREEN_WIDTH - 48;
 const CANVAS_HEIGHT = 200;
 
+export const buildSignatureData = (paths) => ({
+  paths,
+  width: CANVAS_WIDTH,
+  height: CANVAS_HEIGHT,
+  timestamp: new Date().toISOString(),
+});
+
 // Signature Pad Component
-const SignaturePad = ({ onSave, onClear, style }) => {
+const SignaturePad = ({ onSave, onClear, onChange, style }) => {
   const [paths, setPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState('');
   const [isSigning, setIsSigning] = useState(false);
@@ -43,7 +50,11 @@ const SignaturePad = ({ onSave, onClear, style }) => {
       onPanResponderRelease: () => {
         setIsSigning(false);
         if (currentPath) {
-          setPaths(prev => [...prev, currentPath]);
+          setPaths(prev => {
+            const updatedPaths = [...prev, currentPath];
+            if (onChange) onChange(buildSignatureData(updatedPaths));
+            return updatedPaths;
+          });
           setCurrentPath('');
         }
       },
@@ -54,6 +65,7 @@ const SignaturePad = ({ onSave, onClear, style }) => {
     setPaths([]);
     setCurrentPath('');
     if (onClear) onClear();
+    if (onChange) onChange(null);
   }, [onClear]);
 
   const save = useCallback(() => {
@@ -65,16 +77,12 @@ const SignaturePad = ({ onSave, onClear, style }) => {
     const allPaths = [...paths];
     if (currentPath) allPaths.push(currentPath);
     
-    const signatureData = {
-      paths: allPaths,
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
-      timestamp: new Date().toISOString(),
-    };
+    const signatureData = buildSignatureData(allPaths);
     
     if (onSave) onSave(signatureData);
+    if (onChange) onChange(signatureData);
     return signatureData;
-  }, [paths, currentPath, onSave]);
+  }, [paths, currentPath, onSave, onChange]);
 
   const isEmpty = paths.length === 0 && !currentPath;
 
@@ -152,6 +160,7 @@ export const SignatureModal = ({
 
   React.useEffect(() => {
     if (visible) {
+      setSignatureData(null);
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
@@ -198,6 +207,7 @@ export const SignatureModal = ({
             ref={signatureRef}
             onSave={setSignatureData}
             onClear={handleClear}
+            onChange={setSignatureData}
           />
 
           <View style={styles.modalActions}>

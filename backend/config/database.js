@@ -131,6 +131,7 @@ const createTables = () => {
       // Add critical failure tracking to audits (migration)
       db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});
       db.run(`ALTER TABLE audits ADD COLUMN weighted_score REAL`, () => {});
+      db.run(`ALTER TABLE audits ADD COLUMN client_audit_uuid TEXT`, () => {});
 
       // Audits table
       db.run(`CREATE TABLE IF NOT EXISTS audits (
@@ -148,6 +149,7 @@ const createTables = () => {
         completed_items INTEGER DEFAULT 0,
         notes TEXT,
         is_mystery_shopper BOOLEAN DEFAULT 0,
+        client_audit_uuid TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         completed_at DATETIME,
         FOREIGN KEY (template_id) REFERENCES checklist_templates(id),
@@ -171,6 +173,10 @@ const createTables = () => {
         FOREIGN KEY (item_id) REFERENCES checklist_items(id),
         FOREIGN KEY (selected_option_id) REFERENCES checklist_item_options(id)
       )`);
+
+      // Ensure uniqueness for audit items and draft tokens
+      db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_items_unique ON audit_items (audit_id, item_id)`);
+      db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_audits_client_uuid ON audits (client_audit_uuid)`);
 
       // Action Items table
       db.run(`CREATE TABLE IF NOT EXISTS action_items (

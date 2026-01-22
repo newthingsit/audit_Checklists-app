@@ -294,6 +294,7 @@ const createTables = async () => {
       [completed_items] INT DEFAULT 0,
       [notes] NTEXT,
       [is_mystery_shopper] BIT DEFAULT 0,
+      [client_audit_uuid] NVARCHAR(100) NULL,
       [created_at] DATETIME DEFAULT GETDATE(),
       [completed_at] DATETIME NULL,
       FOREIGN KEY ([template_id]) REFERENCES [checklist_templates]([id]),
@@ -318,6 +319,12 @@ const createTables = async () => {
       FOREIGN KEY ([item_id]) REFERENCES [checklist_items]([id]),
       FOREIGN KEY ([selected_option_id]) REFERENCES [checklist_item_options]([id])
     )`,
+
+    // Ensure uniqueness for audit items and draft tokens
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audit_items_unique' AND object_id = OBJECT_ID(N'[dbo].[audit_items]'))
+     CREATE UNIQUE INDEX [idx_audit_items_unique] ON [dbo].[audit_items] ([audit_id], [item_id])`,
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audits_client_uuid' AND object_id = OBJECT_ID(N'[dbo].[audits]'))
+     CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])`,
 
     // Add time tracking columns to audit_items if missing
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND name = 'time_taken_minutes')

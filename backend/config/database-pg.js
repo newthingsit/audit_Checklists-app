@@ -127,12 +127,14 @@ const createTables = () => {
         completed_items INTEGER DEFAULT 0,
         notes TEXT,
         is_mystery_shopper BOOLEAN DEFAULT FALSE,
+        client_audit_uuid VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         completed_at TIMESTAMP,
         FOREIGN KEY (template_id) REFERENCES checklist_templates(id),
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (team_id) REFERENCES teams(id),
-        FOREIGN KEY (location_id) REFERENCES locations(id)
+        FOREIGN KEY (location_id) REFERENCES locations(id),
+        UNIQUE (client_audit_uuid)
       )`,
       
       // Audit Items table
@@ -148,7 +150,8 @@ const createTables = () => {
         completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
         FOREIGN KEY (item_id) REFERENCES checklist_items(id),
-        FOREIGN KEY (selected_option_id) REFERENCES checklist_item_options(id)
+        FOREIGN KEY (selected_option_id) REFERENCES checklist_item_options(id),
+        UNIQUE (audit_id, item_id)
       )`,
       
       // Action Items table

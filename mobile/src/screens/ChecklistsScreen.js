@@ -52,7 +52,7 @@ const ChecklistsScreen = () => {
         // Try to fetch from server with cache-busting parameter
         try {
           const response = await axios.get(`${API_BASE_URL}/templates`, {
-            params: { _t: Date.now() }
+            params: { _t: Date.now(), dedupe: 'true' }
           });
           const serverTemplates = response.data.templates || [];
           setTemplates(serverTemplates);

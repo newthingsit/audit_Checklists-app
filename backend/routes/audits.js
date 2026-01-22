@@ -114,6 +114,19 @@ const getNextScheduledDate = (currentDate, frequency) => {
   return date.toISOString().split('T')[0];
 };
 
+const isUniqueConstraintError = (err) => {
+  if (!err) return false;
+  const code = err.code || '';
+  const message = (err.message || '').toLowerCase();
+  return (
+    code === 'SQLITE_CONSTRAINT' ||
+    code === 'ER_DUP_ENTRY' ||
+    code === '23505' ||
+    message.includes('unique') ||
+    message.includes('duplicate')
+  );
+};
+
 const markScheduledAuditInProgress = (dbInstance, scheduleId) => {
   if (!scheduleId) return;
   dbInstance.run(
@@ -905,6 +918,11 @@ router.get('/:id', authenticate, (req, res) => {
       if (!audit) {
         return res.status(404).json({ error: 'Audit not found' });
       }
+      logger.info('[Audit Fetch] Loaded audit template', {
+        auditId,
+        templateId: audit.template_id,
+        templateName: audit.template_name
+      });
 
       // IMPORTANT: When viewing audit detail/report, show ALL template items regardless of audit_category.
       // The audit_category is only used during editing/score calculation to scope the work.
@@ -1226,6 +1244,7 @@ router.post('/', authenticate, (req, res) => {
     template_id, restaurant_name, location, location_id, team_id, notes, scheduled_audit_id,
     // Optional: category-wise audit scope (checklist_items.category)
     audit_category,
+    client_audit_uuid,
     // GPS location data
     gps_latitude, gps_longitude, gps_accuracy, gps_timestamp, location_verified
   } = req.body;
@@ -1273,6 +1292,37 @@ router.post('/', authenticate, (req, res) => {
   proceedWithAuditCreation();
   
   function proceedWithAuditCreation() {
+  const normalizedClientAuditUuid = (typeof client_audit_uuid === 'string' && client_audit_uuid.trim())
+    ? client_audit_uuid.trim()
+    : null;
+
+  const dedupeByClientUuid = (callback) => {
+    if (!normalizedClientAuditUuid) return callback(null);
+    dbInstance.get(
+      'SELECT id, template_id, scheduled_audit_id, status FROM audits WHERE client_audit_uuid = ? AND user_id = ?',
+      [normalizedClientAuditUuid, req.user.id],
+      (err, existingAudit) => {
+        if (err) {
+          logger.error('Error checking client_audit_uuid:', err.message);
+          return callback({ status: 500, message: 'Database error checking audit draft' });
+        }
+        if (!existingAudit) return callback(null);
+        if (existingAudit.template_id !== Number(template_id)) {
+          return callback({ status: 409, message: 'Draft token already used for a different template' });
+        }
+        if (scheduled_audit_id && existingAudit.scheduled_audit_id && Number(existingAudit.scheduled_audit_id) !== Number(scheduled_audit_id)) {
+          return callback({ status: 409, message: 'Draft token already used for a different scheduled audit' });
+        }
+        logger.info('[Audit Create] Deduped by client_audit_uuid', {
+          auditId: existingAudit.id,
+          userId: req.user.id,
+          templateId: existingAudit.template_id,
+          scheduledAuditId: existingAudit.scheduled_audit_id || null
+        });
+        return res.status(200).json({ id: existingAudit.id, deduped: true, status: existingAudit.status });
+      }
+    );
+  };
 
   // If creating audit from scheduled audit, check permission
   const validateScheduledAudit = (callback) => {
@@ -1355,7 +1405,11 @@ router.post('/', authenticate, (req, res) => {
     });
   };
 
-  validateScheduledAudit((scheduleErr, linkedSchedule) => {
+  dedupeByClientUuid((dedupeErr) => {
+    if (dedupeErr) {
+      return res.status(dedupeErr.status).json({ error: dedupeErr.message });
+    }
+    validateScheduledAudit((scheduleErr, linkedSchedule) => {
     if (scheduleErr) {
       return res.status(scheduleErr.status).json({ error: scheduleErr.message });
     }
@@ -1416,6 +1470,12 @@ router.post('/', authenticate, (req, res) => {
         if (err || !template) {
           return res.status(404).json({ error: 'Template not found' });
         }
+        logger.info('[Audit Create] Using template', {
+          templateId: template_id,
+          templateName: template.name,
+          scheduledAuditId: scheduled_audit_id || null,
+          userId: req.user.id
+        });
 
       const normalizedAuditCategory = (typeof audit_category === 'string' && audit_category.trim())
         ? normalizeCategoryValue(audit_category)
@@ -1449,8 +1509,8 @@ router.post('/', authenticate, (req, res) => {
           const originalScheduledDate = linkedSchedule ? linkedSchedule.scheduled_date : null;
           
           // Build INSERT query dynamically to handle optional columns
-          const insertColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id', 'gps_latitude', 'gps_longitude', 'gps_accuracy', 'gps_timestamp', 'location_verified'];
-          const insertValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null, gps_latitude || null, gps_longitude || null, gps_accuracy || null, gps_timestamp || null, location_verified ? 1 : 0];
+          const insertColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id', 'gps_latitude', 'gps_longitude', 'gps_accuracy', 'gps_timestamp', 'location_verified', 'client_audit_uuid'];
+          const insertValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null, gps_latitude || null, gps_longitude || null, gps_accuracy || null, gps_timestamp || null, location_verified ? 1 : 0, normalizedClientAuditUuid];
           
           // Try to include original_scheduled_date if the column exists
           if (originalScheduledDate) {
@@ -1555,6 +1615,7 @@ router.post('/', authenticate, (req, res) => {
         }
       );
       });
+    });
     });
   });
   } // Close proceedWithAuditCreation function
@@ -2503,6 +2564,48 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   insertValues,
                   function(err) {
                     if (err) {
+                      if (isUniqueConstraintError(err)) {
+                        // Another request inserted the row; update instead
+                        const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
+                        const updateValues = [itemStatus, comment || null, photo_url || null];
+                        if (selected_option_id !== undefined) {
+                          updateFields.push('selected_option_id = ?');
+                          updateValues.push(selected_option_id || null);
+                        }
+                        if (effectiveMark !== undefined) {
+                          updateFields.push('mark = ?');
+                          updateValues.push(effectiveMark || null);
+                        }
+                        if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
+                          updateFields.push('time_taken_minutes = ?');
+                          updateValues.push(time_taken_minutes);
+                        }
+                        if (started_at !== undefined && started_at !== null) {
+                          updateFields.push('started_at = ?');
+                          updateValues.push(started_at);
+                        }
+                        if (time_entries !== undefined && time_entries !== null) {
+                          updateFields.push('time_entries = ?');
+                          updateValues.push(typeof time_entries === 'string' ? time_entries : JSON.stringify(time_entries));
+                        }
+                        if (average_time_minutes !== undefined && average_time_minutes !== null) {
+                          updateFields.push('average_time_minutes = ?');
+                          updateValues.push(average_time_minutes);
+                        }
+                        updateValues.push(auditId, itemId);
+                        dbInstance.run(
+                          `UPDATE audit_items SET ${updateFields.join(', ')} WHERE audit_id = ? AND item_id = ?`,
+                          updateValues,
+                          function(updateErr) {
+                            if (updateErr) {
+                              logger.error(`[Batch Update] Error updating duplicate item ${itemId}:`, updateErr);
+                              return reject(updateErr);
+                            }
+                            resolve({ itemId, action: 'updated' });
+                          }
+                        );
+                        return;
+                      }
                       // If error is about missing column, try without time tracking columns
                       if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
                         logger.warn(`[Batch Update] Time tracking columns may not exist, retrying without them for item ${itemId}`);

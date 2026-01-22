@@ -128,12 +128,14 @@ const createTables = async () => {
       completed_items INT DEFAULT 0,
       notes TEXT,
       is_mystery_shopper BOOLEAN DEFAULT FALSE,
+      client_audit_uuid VARCHAR(100),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       completed_at TIMESTAMP NULL,
       FOREIGN KEY (template_id) REFERENCES checklist_templates(id),
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (team_id) REFERENCES teams(id),
-      FOREIGN KEY (location_id) REFERENCES locations(id)
+      FOREIGN KEY (location_id) REFERENCES locations(id),
+      UNIQUE KEY uniq_audits_client_uuid (client_audit_uuid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     
     // Audit Items table
@@ -149,7 +151,8 @@ const createTables = async () => {
       completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (audit_id) REFERENCES audits(id) ON DELETE CASCADE,
       FOREIGN KEY (item_id) REFERENCES checklist_items(id),
-      FOREIGN KEY (selected_option_id) REFERENCES checklist_item_options(id)
+      FOREIGN KEY (selected_option_id) REFERENCES checklist_item_options(id),
+      UNIQUE KEY uniq_audit_items (audit_id, item_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     
     // Action Items table

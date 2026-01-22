@@ -887,6 +887,7 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
 
   const findTemplate = (checklistName) => {
     return new Promise((resolve, reject) => {
+      const strictNameMatch = /\b(QSR|CDR|QA)\b/i.test(String(checklistName || ''));
       // First try exact match (case-insensitive)
       const query1 = dbType === 'mssql' || dbType === 'sqlserver'
         ? 'SELECT TOP 1 id, name FROM checklist_templates WHERE LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))'
@@ -894,6 +895,9 @@ router.post('/import', authenticate, requirePermission('manage_scheduled_audits'
       dbInstance.get(query1, [checklistName], (err, template) => {
         if (err) return reject(err);
         if (template) return resolve(template);
+        if (strictNameMatch) {
+          return resolve(null);
+        }
         
         // Try partial match (case-insensitive)
         const query2 = dbType === 'mssql' || dbType === 'sqlserver'
