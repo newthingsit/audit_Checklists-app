@@ -1823,12 +1823,14 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
         const hasComment = isFilledValue(payload.comment);
         const hasMarkValue = isFilledValue(payload.mark) && String(payload.mark).toUpperCase() !== 'NA';
 
-        if (inputType === 'option_select' || inputType === 'select_from_data_source') return !!hasOption;
+        if (inputType === 'option_select' || inputType === 'select_from_data_source' || inputType === 'dropdown') return !!hasOption;
         if (inputType === 'image_upload') return !!hasPhoto;
-        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature'].includes(inputType)) {
+        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature', 'short_answer', 'long_answer', 'time'].includes(inputType)) {
           return hasComment || hasMarkValue;
         }
-        return !!hasStatus;
+        if (inputType === 'task') return !!hasStatus;
+        // unknown types fall back to having any response
+        return !!hasStatus || !!hasOption || !!hasComment;
       };
 
       const payloadForValidation = {
@@ -2446,13 +2448,14 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         const hasComment = isFilledValue(payload.comment);
         const hasMarkValue = isFilledValue(payload.mark) && String(payload.mark).toUpperCase() !== 'NA';
 
-        if (inputType === 'option_select' || inputType === 'select_from_data_source') return !!hasOption;
+        if (inputType === 'option_select' || inputType === 'select_from_data_source' || inputType === 'dropdown') return !!hasOption;
         if (inputType === 'image_upload') return !!hasPhoto;
-        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature'].includes(inputType)) {
+        if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature', 'short_answer', 'long_answer', 'time'].includes(inputType)) {
           return hasComment || hasMarkValue;
         }
-        // task or unknown types fall back to status
-        return !!hasStatus;
+        if (inputType === 'task') return !!hasStatus;
+        // unknown types fall back to having any response
+        return !!hasStatus || !!hasOption || !!hasComment;
       };
 
       const missingRequired = items
