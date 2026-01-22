@@ -863,9 +863,23 @@ const AuditForm = () => {
       const batchItems = itemsToSave
         .filter(item => item && item.id) // Filter out any items without valid IDs
         .map((item) => {
+          const inputType = getNormalizedInputType(item);
+          let status = responses[item.id] || 'pending';
+          
+          // Auto-set status to 'completed' for items with values
+          if (status === 'pending') {
+            if (selectedOptions[item.id]) {
+              status = 'completed';
+            } else if (inputValues[item.id] && String(inputValues[item.id]).trim() !== '') {
+              status = 'completed';
+            } else if (photos[item.id]) {
+              status = 'completed';
+            }
+          }
+          
           const itemData = {
             itemId: item.id,
-            status: responses[item.id] || 'pending',
+            status: status,
           };
           
           if (selectedOptions[item.id]) {
@@ -877,13 +891,19 @@ const AuditForm = () => {
             }
           }
           
-          // Include input values for number, date, open_ended input types
+          // Include input values for number, date, open_ended, short_answer, long_answer, time input types
+          const inputType = getNormalizedInputType(item);
           if (inputValues[item.id] !== undefined && inputValues[item.id] !== '') {
             itemData.input_value = inputValues[item.id];
-            // Store in mark field for compatibility
+            // Store in mark field for compatibility with number types
             itemData.mark = inputValues[item.id].toString();
+            // For text-based input types, also store in comment field for backend validation
+            if (['short_answer', 'long_answer', 'open_ended', 'description', 'time'].includes(inputType)) {
+              itemData.comment = inputValues[item.id].toString();
+            }
           }
           
+          // Include explicit comments (may override the inputValue-based comment for text types)
           if (comments[item.id]) {
             itemData.comment = comments[item.id];
           }
