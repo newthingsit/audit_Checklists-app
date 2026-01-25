@@ -1391,15 +1391,11 @@ const AuditFormScreen = () => {
             }
           } else {
             // Location not available - ask user if they want to continue without verification
-            const confirmed = await new Promise((resolve) => {
-              Alert.alert(
-                'Location Not Available',
-                'Unable to get your current location. Location verification is required to start the audit.\n\nPlease enable location services and try again.',
-                [
-                  { text: 'OK', style: 'cancel', onPress: () => resolve(false) }
-                ]
-              );
-            });
+            Alert.alert(
+              'Location Not Available',
+              'Unable to get your current location. Location verification is required to start the audit.\n\nPlease enable location services and try again.',
+              [{ text: 'OK', style: 'cancel' }]
+            );
             return;
           }
         } catch (error) {
@@ -1411,6 +1407,51 @@ const AuditFormScreen = () => {
             [{ text: 'OK', style: 'cancel' }]
           );
           return;
+        }
+      }
+      
+      // Check for existing in-progress audit for this template + location BEFORE starting
+      // This prevents duplicate audits when user navigates back and starts again
+      if (!auditId && !isEditing && templateId && locationId) {
+        try {
+          const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
+            params: {
+              template_id: parseInt(templateId),
+              location_id: parseInt(locationId),
+              status: 'in_progress',
+              limit: 1
+            }
+          });
+          
+          const existingAudits = existingCheckResponse.data.audits || [];
+          if (existingAudits.length > 0) {
+            const existingAudit = existingAudits[0];
+            // Found existing in-progress audit - ask user what to do
+            const shouldResume = await new Promise((resolve) => {
+              Alert.alert(
+                'Existing Audit Found',
+                `You have an in-progress audit for this store and checklist (started ${new Date(existingAudit.created_at).toLocaleDateString()}).\n\nWould you like to resume it?`,
+                [
+                  { text: 'Start New', style: 'destructive', onPress: () => resolve(false) },
+                  { text: 'Resume', style: 'default', onPress: () => resolve(true) }
+                ]
+              );
+            });
+            
+            if (shouldResume) {
+              // Resume existing audit - navigate to it
+              console.log(`[AuditForm] Resuming existing audit ${existingAudit.id}`);
+              setCurrentAuditId(existingAudit.id);
+              setIsEditing(true);
+              // Fetch the existing audit data
+              await fetchAuditDataById(existingAudit.id);
+              return; // Don't proceed to step 2 - fetchAuditDataById will handle navigation
+            }
+            // If user chose "Start New", continue to create a new audit
+          }
+        } catch (checkError) {
+          console.log('Could not check for existing audits:', checkError.message);
+          // Continue anyway if check fails
         }
       }
       
@@ -2471,6 +2512,12 @@ const AuditFormScreen = () => {
                     selectedLocation?.id === item.id && styles.storeOptionSelected
                   ]}
                   onPress={() => {
+                    // Reset location verification when store changes
+                    if (selectedLocation?.id !== item.id) {
+                      setLocationVerified(false);
+                      setCapturedLocation(null);
+                      setShowLocationVerification(false);
+                    }
                     setSelectedLocation(item);
                     setLocationId(item.id.toString());
                     setShowStorePicker(false);
