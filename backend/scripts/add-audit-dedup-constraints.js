@@ -133,12 +133,20 @@ async function addSqlServerConstraints(dbInstance) {
     console.warn('Skipped audit_items unique index due to duplicates. Run cleanup first.');
   }
 
+  // Drop existing index if it exists (to recreate with filter)
   await runQuery(
     dbInstance,
-    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audits_client_uuid' AND object_id = OBJECT_ID(N'[dbo].[audits]'))
-     CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])`
+    `IF EXISTS (SELECT * FROM sys.indexes WHERE name = N'idx_audits_client_uuid' AND object_id = OBJECT_ID(N'[dbo].[audits]'))
+     DROP INDEX [idx_audits_client_uuid] ON [dbo].[audits]`
   );
-  console.log('Added unique index on audits (client_audit_uuid)');
+  
+  // Create filtered unique index that only applies to non-NULL values
+  await runQuery(
+    dbInstance,
+    `CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])
+     WHERE [client_audit_uuid] IS NOT NULL`
+  );
+  console.log('Added filtered unique index on audits (client_audit_uuid)');
 }
 
 async function main() {

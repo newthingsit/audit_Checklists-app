@@ -91,6 +91,11 @@ const createTables = () => {
         parent_id INTEGER,
         region TEXT,
         district TEXT,
+        latitude REAL,
+        longitude REAL,
+        group_id INTEGER,
+        brand TEXT,
+        is_active INTEGER DEFAULT 1,
         created_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id),
@@ -132,6 +137,7 @@ const createTables = () => {
       db.run(`ALTER TABLE audits ADD COLUMN has_critical_failure BOOLEAN DEFAULT 0`, () => {});
       db.run(`ALTER TABLE audits ADD COLUMN weighted_score REAL`, () => {});
       db.run(`ALTER TABLE audits ADD COLUMN client_audit_uuid TEXT`, () => {});
+      db.run(`ALTER TABLE audits ADD COLUMN audit_category TEXT`, () => {});
 
       // Audits table
       db.run(`CREATE TABLE IF NOT EXISTS audits (
@@ -150,6 +156,15 @@ const createTables = () => {
         notes TEXT,
         is_mystery_shopper BOOLEAN DEFAULT 0,
         client_audit_uuid TEXT,
+        audit_category TEXT,
+        has_critical_failure BOOLEAN DEFAULT 0,
+        weighted_score REAL,
+        gps_latitude REAL,
+        gps_longitude REAL,
+        gps_accuracy REAL,
+        gps_timestamp DATETIME,
+        location_verified BOOLEAN DEFAULT 0,
+        original_scheduled_date DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         completed_at DATETIME,
         FOREIGN KEY (template_id) REFERENCES checklist_templates(id),
@@ -919,11 +934,10 @@ const seedDefaultUser = async () => {
     if (err) return;
     if (row.count > 0) return; // Already seeded
 
-    // Create default test users
-    const defaultUsers = [
-      { email: 'admin@test.com', password: 'admin123', name: 'Admin User', role: 'admin' },
-      { email: 'admin@example.com', password: 'admin123', name: 'Admin User', role: 'admin' }
-    ];
+    // Create default admin user
+    const defaultEmail = 'admin@test.com';
+    const defaultPassword = 'admin123';
+    const defaultName = 'Admin User';
     
     try {
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);

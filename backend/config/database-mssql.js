@@ -970,6 +970,29 @@ const addMissingColumns = async () => {
       }
     }
     
+    // Fix client_audit_uuid index - drop and recreate with filter for NULL values
+    try {
+      const checkIndex = await pool.request().query(`
+        SELECT i.filter_definition
+        FROM sys.indexes i
+        WHERE i.name = N'idx_audits_client_uuid' 
+        AND i.object_id = OBJECT_ID(N'[dbo].[audits]')
+      `);
+      
+      // If index exists but doesn't have a filter, recreate it
+      if (checkIndex.recordset.length > 0 && !checkIndex.recordset[0].filter_definition) {
+        console.log('Fixing client_audit_uuid index to allow multiple NULLs...');
+        await pool.request().query(`DROP INDEX [idx_audits_client_uuid] ON [dbo].[audits]`);
+        await pool.request().query(`
+          CREATE UNIQUE INDEX [idx_audits_client_uuid] ON [dbo].[audits] ([client_audit_uuid])
+          WHERE [client_audit_uuid] IS NOT NULL
+        `);
+        console.log('client_audit_uuid index recreated with NULL filter');
+      }
+    } catch (err) {
+      console.warn('Error fixing client_audit_uuid index:', err.message);
+    }
+    
     // Check and add team_id to tasks table
     const checkTasksTeamId = await pool.request().query(`
       SELECT COUNT(*) as count 

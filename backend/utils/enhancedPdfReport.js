@@ -541,8 +541,12 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
 function drawSpeedOfServiceSection(doc, speedOfService = []) {
   if (!speedOfService || speedOfService.length === 0) return;
   
-  // Check for new page
-  if (doc.y > PAGE.HEIGHT - 200) {
+  // Calculate estimated height for first group to check if we need a new page
+  const firstGroupRows = speedOfService[0] ? speedOfService[0].entries.length + 3 : 3; // +3 for headers
+  const estimatedHeight = 30 + (firstGroupRows * 20);
+  
+  // Only add new page if we really need the space
+  if (doc.y + estimatedHeight > PAGE.HEIGHT - 40) {
     doc.addPage();
     doc.y = PAGE.MARGIN;
   }
@@ -553,8 +557,13 @@ function drawSpeedOfServiceSection(doc, speedOfService = []) {
   doc.text('SPEED OF SERVICE – TRACKING', PAGE.MARGIN + 10, doc.y + 7, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
   doc.y += 30;
   
+  const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
+  
   speedOfService.forEach(group => {
-    if (doc.y > PAGE.HEIGHT - 100) {
+    // Calculate height needed for this group
+    const groupHeight = 40 + (group.entries.length * 20) + (Number.isFinite(group.averageSeconds) ? 20 : 0);
+    
+    if (doc.y + groupHeight > PAGE.HEIGHT - 40) {
       doc.addPage();
       doc.y = PAGE.MARGIN;
     }
@@ -566,7 +575,6 @@ function drawSpeedOfServiceSection(doc, speedOfService = []) {
     doc.y += 22;
     
     // Table header
-    const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
     let x = PAGE.MARGIN;
     
     doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 18).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
@@ -578,7 +586,7 @@ function drawSpeedOfServiceSection(doc, speedOfService = []) {
     doc.y += 18;
     
     group.entries.forEach((entry, idx) => {
-      if (doc.y > PAGE.HEIGHT - 40) {
+      if (doc.y + 20 > PAGE.HEIGHT - 40) {
         doc.addPage();
         doc.y = PAGE.MARGIN;
       }
@@ -619,7 +627,7 @@ function drawSpeedOfServiceSection(doc, speedOfService = []) {
       doc.y += rowHeight;
     }
     
-    doc.y += 10;
+    doc.y += 8;
   });
 }
 
@@ -629,7 +637,12 @@ function drawSpeedOfServiceSection(doc, speedOfService = []) {
 function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
   if (!temperatureTracking || temperatureTracking.length === 0) return;
   
-  if (doc.y > PAGE.HEIGHT - 200) {
+  // Calculate estimated height for first group to check if we need a new page
+  const firstGroupRows = temperatureTracking[0] ? temperatureTracking[0].entries.length + 3 : 3;
+  const estimatedHeight = 30 + (firstGroupRows * 20);
+  
+  // Only add new page if we really need the space
+  if (doc.y + estimatedHeight > PAGE.HEIGHT - 40) {
     doc.addPage();
     doc.y = PAGE.MARGIN;
   }
@@ -639,8 +652,13 @@ function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
   doc.text('TEMPERATURE TRACKING', PAGE.MARGIN + 10, doc.y + 7, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
   doc.y += 30;
   
+  const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
+  
   temperatureTracking.forEach(group => {
-    if (doc.y > PAGE.HEIGHT - 100) {
+    // Calculate height needed for this group
+    const groupHeight = 40 + (group.entries.length * 20) + (Number.isFinite(group.averageTemp) ? 20 : 0);
+    
+    if (doc.y + groupHeight > PAGE.HEIGHT - 40) {
       doc.addPage();
       doc.y = PAGE.MARGIN;
     }
@@ -650,7 +668,6 @@ function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
     doc.text(group.name, PAGE.MARGIN + 10, doc.y + 5, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
     doc.y += 22;
     
-    const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 120 - 90, 120, 90];
     let x = PAGE.MARGIN;
     
     doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 18).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
@@ -662,7 +679,7 @@ function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
     doc.y += 18;
     
     group.entries.forEach((entry, idx) => {
-      if (doc.y > PAGE.HEIGHT - 40) {
+      if (doc.y + 20 > PAGE.HEIGHT - 40) {
         doc.addPage();
         doc.y = PAGE.MARGIN;
       }
@@ -695,61 +712,89 @@ function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
       doc.y += rowHeight;
     }
     
-    doc.y += 10;
+    doc.y += 8;
   });
 }
 
 /**
- * Draw Action Plan section
+ * Draw Action Plan section - Matches View Report format
+ * Columns: #, Category, Deviation, Severity, Corrective Action, Owner, Target Date, Status
  */
 async function drawActionPlanSection(doc, actionPlanItems) {
   if (!actionPlanItems || actionPlanItems.length === 0) return;
   
-  // New page for action plan
-  doc.addPage();
-  doc.y = PAGE.MARGIN;
+  // Only limit to top 3 deviations as shown in View Report
+  const topDeviations = actionPlanItems.slice(0, 3);
   
-  // Header
-  doc.rect(0, 0, PAGE.WIDTH, 50).fill(COLORS.HEADER_BG);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.WHITE);
-  doc.text('Action Plan', PAGE.MARGIN, 18);
-  doc.font('Helvetica-Bold').fontSize(12);
-  doc.text('Lite Bite Foods', PAGE.WIDTH - PAGE.MARGIN - 100, 18, { width: 100, align: 'right' });
+  // Check if we need a new page (need at least 200px for section)
+  if (doc.y > PAGE.HEIGHT - 200) {
+    doc.addPage();
+    doc.y = PAGE.MARGIN;
+  }
   
-  doc.y = 70;
+  // Section header (matching other sections style, not full page header)
+  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.SECTION_HEADER);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.WHITE);
+  doc.text('ACTION PLAN - TOP 3 DEVIATIONS', PAGE.MARGIN + 10, doc.y + 7, { width: PAGE.CONTENT_WIDTH - 20, align: 'center' });
+  doc.y += 30;
   
-  // Table header
-  const colWidths = [30, 160, 140, 140, 80, 70, 50];
-  const headers = ['', 'Question', 'Remarks / Deviation', 'To-Do', 'Assigned To', 'Complete By', 'Status'];
+  // Subtitle
+  doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_SECONDARY);
+  doc.text('Corrective actions assigned to address the top identified deviations.', PAGE.MARGIN, doc.y, { width: PAGE.CONTENT_WIDTH });
+  doc.y += 15;
+  
+  // Table header - Matching View Report columns exactly
+  // #(25), Category(70), Deviation(120), Severity(50), Corrective Action(120), Owner(60), Target Date(55), Status(55)
+  const colWidths = [25, 70, 110, 50, 110, 55, 50, 45];
+  const headers = ['#', 'Category', 'Deviation', 'Severity', 'Corrective Action', 'Owner', 'Target', 'Status'];
   let x = PAGE.MARGIN;
   
-  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+  const headerHeight = 22;
+  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, headerHeight).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+  
+  // Draw vertical borders for header
+  let borderX = PAGE.MARGIN;
+  colWidths.forEach((width, idx) => {
+    if (idx > 0) {
+      doc.moveTo(borderX, doc.y).lineTo(borderX, doc.y + headerHeight).stroke(COLORS.TABLE_BORDER);
+    }
+    borderX += width;
+  });
   
   headers.forEach((header, idx) => {
     doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(header, x + 2, doc.y + 8, { width: colWidths[idx] - 4, align: 'center' });
+    doc.text(header, x + 2, doc.y + 7, { width: colWidths[idx] - 4, align: 'center', lineBreak: false });
     x += colWidths[idx];
   });
   
-  doc.y += 25;
+  doc.y += headerHeight;
   
   // Action plan rows
-  for (let i = 0; i < actionPlanItems.length; i++) {
-    const action = actionPlanItems[i];
-    const rowHeight = 60;
+  for (let i = 0; i < topDeviations.length; i++) {
+    const action = topDeviations[i];
+    const rowHeight = 45;
     
     // Check for new page
-    if (doc.y + rowHeight > PAGE.HEIGHT - 60) {
+    if (doc.y + rowHeight > PAGE.HEIGHT - 50) {
       doc.addPage();
       doc.y = PAGE.MARGIN;
+      
+      // Redraw header on new page
       x = PAGE.MARGIN;
-      doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+      doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, headerHeight).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+      borderX = PAGE.MARGIN;
+      colWidths.forEach((width, idx) => {
+        if (idx > 0) {
+          doc.moveTo(borderX, doc.y).lineTo(borderX, doc.y + headerHeight).stroke(COLORS.TABLE_BORDER);
+        }
+        borderX += width;
+      });
       headers.forEach((header, idx) => {
         doc.font('Helvetica-Bold').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-        doc.text(header, x + 2, doc.y + 8, { width: colWidths[idx] - 4, align: 'center' });
+        doc.text(header, x + 2, doc.y + 7, { width: colWidths[idx] - 4, align: 'center', lineBreak: false });
         x += colWidths[idx];
       });
-      doc.y += 25;
+      doc.y += headerHeight;
     }
     
     const rowY = doc.y;
@@ -758,43 +803,71 @@ async function drawActionPlanSection(doc, actionPlanItems) {
     // Draw row background and borders
     doc.rect(PAGE.MARGIN, rowY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
     let lineX = PAGE.MARGIN;
-    colWidths.forEach(w => {
+    colWidths.forEach((w, idx) => {
+      if (idx > 0) {
+        doc.moveTo(lineX, rowY).lineTo(lineX, rowY + rowHeight).stroke(COLORS.TABLE_BORDER);
+      }
       lineX += w;
-      doc.moveTo(lineX, rowY).lineTo(lineX, rowY + rowHeight).stroke(COLORS.TABLE_BORDER);
     });
     
-    // Index
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text((i + 1).toString(), x + 2, rowY + 10, { width: colWidths[0] - 4, align: 'center' });
+    // Column 1: Index (#)
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+    doc.text((i + 1).toString(), x + 2, rowY + 8, { width: colWidths[0] - 4, align: 'center', lineBreak: false });
     x += colWidths[0];
     
-    // Question
+    // Column 2: Category
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(action.question || action.checklist_question || action.title || '', x + 2, rowY + 8, { width: colWidths[1] - 4 });
+    const categoryText = action.category || 'Quality';
+    doc.text(categoryText, x + 2, rowY + 5, { width: colWidths[1] - 4, height: rowHeight - 10, lineBreak: true, ellipsis: true });
     x += colWidths[1];
     
-    // Remarks / Deviation
-    doc.text(action.remarks || action.deviation_reason || '—', x + 2, rowY + 8, { width: colWidths[2] - 4 });
+    // Column 3: Deviation (Question)
+    const deviationText = action.question || action.checklist_question || action.title || '';
+    doc.text(deviationText, x + 2, rowY + 5, { width: colWidths[2] - 4, height: rowHeight - 10, lineBreak: true, ellipsis: true });
     x += colWidths[2];
     
-    // To-Do (Corrective Action)
-    doc.text(action.todo || action.corrective_action || 'Action required', x + 2, rowY + 8, { width: colWidths[3] - 4 });
+    // Column 4: Severity (with color badge)
+    const severity = action.severity || 'MAJOR';
+    const severityColor = severity === 'CRITICAL' ? COLORS.DANGER_RED : COLORS.WARNING_YELLOW;
+    const severityY = rowY + 8;
+    const severityWidth = colWidths[3] - 8;
+    const badgeHeight = 14;
+    
+    doc.rect(x + 4, severityY, severityWidth, badgeHeight).fill(severityColor);
+    doc.font('Helvetica-Bold').fontSize(6).fillColor(COLORS.WHITE);
+    doc.text(severity, x + 4, severityY + 4, { width: severityWidth, align: 'center', lineBreak: false });
     x += colWidths[3];
     
-    // Assigned To
-    doc.text(action.assignedTo || action.responsible_person || action.responsible_person_name || 'Auditor', x + 2, rowY + 8, { width: colWidths[4] - 4, align: 'center' });
+    // Column 5: Corrective Action (use correctiveAction field, not todo)
+    doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
+    const correctiveText = action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.';
+    doc.text(correctiveText, x + 2, rowY + 5, { width: colWidths[4] - 4, height: rowHeight - 10, lineBreak: true, ellipsis: true });
     x += colWidths[4];
     
-    // Complete By
-    const dueDate = action.dueDate || action.target_date ? formatDate(action.dueDate || action.target_date, false) : 'N/A';
-    doc.text(dueDate, x + 2, rowY + 8, { width: colWidths[5] - 4, align: 'center' });
+    // Column 6: Owner (Assigned To)
+    const owner = action.assignedTo || action.responsible_person || 'Auditor';
+    doc.text(owner, x + 2, rowY + 8, { width: colWidths[5] - 4, align: 'center', lineBreak: false });
     x += colWidths[5];
     
-    // Status
-    doc.text(action.status || 'OPEN', x + 2, rowY + 8, { width: colWidths[6] - 4, align: 'center' });
+    // Column 7: Target Date
+    const dueDate = action.dueDate || action.target_date ? formatDate(action.dueDate || action.target_date, false) : 'N/A';
+    doc.text(dueDate, x + 2, rowY + 8, { width: colWidths[6] - 4, align: 'center', lineBreak: false });
+    x += colWidths[6];
+    
+    // Column 8: Status (with color badge)
+    const status = action.status || 'Open';
+    const statusColor = status === 'Closed' ? COLORS.SUCCESS_GREEN : COLORS.SECTION_HEADER;
+    const statusY = rowY + 8;
+    const statusWidth = colWidths[7] - 8;
+    
+    doc.rect(x + 4, statusY, statusWidth, badgeHeight).fill(statusColor);
+    doc.font('Helvetica-Bold').fontSize(6).fillColor(COLORS.WHITE);
+    doc.text(status.toUpperCase(), x + 4, statusY + 4, { width: statusWidth, align: 'center', lineBreak: false });
     
     doc.y = rowY + rowHeight;
   }
+  
+  doc.y += 15;
 }
 
 /**
@@ -805,10 +878,16 @@ function drawAcknowledgementSection(doc, acknowledgement, items = []) {
     i.category && i.category.toUpperCase().includes('ACKNOWLEDGEMENT')
   );
   const hasSignature = acknowledgement && acknowledgement.signatureData;
+  const hasManagerName = acknowledgement && acknowledgement.managerName;
   
-  if (!hasSignature && ackItems.length === 0) return;
+  if (!hasSignature && !hasManagerName && ackItems.length === 0) return;
   
-  if (doc.y > PAGE.HEIGHT - 150) {
+  // Calculate estimated height for this section
+  const rowCount = (hasManagerName ? 1 : 0) + (hasSignature ? 1 : 0) + ackItems.length;
+  const estimatedHeight = 50 + (rowCount * 30); // 30px per row approximately
+  
+  // Only add new page if needed
+  if (doc.y + estimatedHeight > PAGE.HEIGHT - 40) {
     doc.addPage();
     doc.y = PAGE.MARGIN;
   }
@@ -965,8 +1044,11 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
       for (const category of categories) {
         const catData = category;
         
-        // New page for each category (or check space)
-        if (doc.y > PAGE.HEIGHT - 200) {
+        // Calculate minimum height needed: category header (30) + table header (18) + at least 1 row (22)
+        const minCategoryHeight = 70;
+        
+        // Only add new page if we can't fit at least the header and one row
+        if (doc.y + minCategoryHeight > PAGE.HEIGHT - 40) {
           doc.addPage();
           doc.y = PAGE.MARGIN;
         }
@@ -979,14 +1061,18 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
         
         for (const subcatData of subcategories) {
           const subcat = subcatData.name;
+          const hasSubcategoryHeader = subcat !== 'General' && subcategories.length > 1;
           
-          if (doc.y > PAGE.HEIGHT - 150) {
+          // Calculate minimum height: subcategory header (if any) + table header + 1 row
+          const minSubcatHeight = (hasSubcategoryHeader ? 25 : 0) + 18 + 22;
+          
+          if (doc.y + minSubcatHeight > PAGE.HEIGHT - 40) {
             doc.addPage();
             doc.y = PAGE.MARGIN;
           }
           
           // Subcategory header (if not 'General')
-          if (subcat !== 'General' && subcategories.length > 1) {
+          if (hasSubcategoryHeader) {
             drawSubcategoryHeader(doc, subcat, subcatData.actualScore, subcatData.perfectScore);
           }
           
@@ -1017,7 +1103,7 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
           }
         }
         
-        doc.y += 15;
+        doc.y += 10;
       }
       
       // ==================== ACTION PLAN ====================

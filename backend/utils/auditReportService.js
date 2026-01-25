@@ -237,11 +237,16 @@ const buildActionPlan = (items, audit) => {
       // Calculate deviation weight for sorting (higher = more severe)
       const deviationWeight = (isCritical ? 100 : 0) + (maxScore - actualScore);
       
+      // Build corrective action text from remarks or generate default
+      const correctiveActionText = buildTodoText(item.comment || '');
+      
       return {
         question: item.title || '',
         remarks: item.comment || '',
-        todo: `Selected option score = ${actualScore}; Answer marked as ${response}`,
-        correctiveAction: buildTodoText(item.comment || ''),
+        // Use corrective action text as primary todo (what View Report expects)
+        todo: correctiveActionText,
+        // Also keep correctiveAction for backward compatibility
+        correctiveAction: correctiveActionText,
         assignedTo: pickAssignedTo(item.category),
         dueDate: targetDueDate,
         status: 'Open',

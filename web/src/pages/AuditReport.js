@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
+  ButtonGroup,
   CircularProgress,
   Container,
   Divider,
   Grid,
+  Menu,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -17,8 +20,11 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import axios from 'axios';
 import Layout from '../components/Layout';
+import PrintableReport from '../components/PrintableReport';
+import { exportToPdf } from '../utils/pdfExport';
 import { showError, showSuccess } from '../utils/toast';
 
 const normalizePhotoUrl = (raw) => {
@@ -51,6 +57,8 @@ const AuditReport = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const printableRef = useRef(null);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -67,10 +75,37 @@ const AuditReport = () => {
     fetchReport();
   }, [id]);
 
-  // Download PDF with proper authentication
-  const handleDownloadPdf = async () => {
+  // High-fidelity PDF export (matches screen exactly)
+  const handleDownloadHighFidelityPdf = async () => {
     try {
       setDownloading(true);
+      setMenuAnchor(null);
+      
+      const element = printableRef.current;
+      if (!element) {
+        throw new Error('Report element not found');
+      }
+      
+      const outletName = report?.audit?.outletName || 'Store';
+      const templateName = report?.audit?.templateName || 'Audit';
+      const filename = `${templateName} - ${outletName} Report.pdf`;
+      
+      await exportToPdf(element, filename);
+      showSuccess('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      showError('Failed to generate PDF. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Server-side PDF export (legacy)
+  const handleDownloadServerPdf = async () => {
+    try {
+      setDownloading(true);
+      setMenuAnchor(null);
+      
       const response = await axios.get(`/api/reports/audit/${id}/enhanced-pdf`, {
         responseType: 'blob',
         headers: {
@@ -96,6 +131,9 @@ const AuditReport = () => {
       setDownloading(false);
     }
   };
+
+  // Default PDF download handler (uses high-fidelity export)
+  const handleDownloadPdf = handleDownloadHighFidelityPdf;
 
   if (loading) {
     return (
@@ -128,14 +166,34 @@ const AuditReport = () => {
           <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)}>
             Back
           </Button>
-          <Button 
-            variant="contained" 
-            startIcon={downloading ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdfIcon />}
-            onClick={handleDownloadPdf}
-            disabled={downloading}
-          >
-            {downloading ? 'Downloading...' : 'Download PDF'}
-          </Button>
+          <Box>
+            <ButtonGroup variant="contained" disabled={downloading}>
+              <Button 
+                startIcon={downloading ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdfIcon />}
+                onClick={handleDownloadPdf}
+              >
+                {downloading ? 'Generating...' : 'Download PDF'}
+              </Button>
+              <Button
+                size="small"
+                onClick={(e) => setMenuAnchor(e.currentTarget)}
+              >
+                <ArrowDropDownIcon />
+              </Button>
+            </ButtonGroup>
+            <Menu
+              anchorEl={menuAnchor}
+              open={Boolean(menuAnchor)}
+              onClose={() => setMenuAnchor(null)}
+            >
+              <MenuItem onClick={handleDownloadHighFidelityPdf}>
+                High-Fidelity PDF (Exact Screen View)
+              </MenuItem>
+              <MenuItem onClick={handleDownloadServerPdf}>
+                Server PDF (Optimized)
+              </MenuItem>
+            </Menu>
+          </Box>
         </Box>
 
         <Paper sx={{ p: 3, mb: 3 }}>
@@ -395,7 +453,7 @@ const AuditReport = () => {
                         {action.severity || 'MAJOR'}
                       </Box>
                     </TableCell>
-                    <TableCell>{action.todo || action.remarks || 'Address the audit deviation noted for this item.'}</TableCell>
+                    <TableCell>{action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.'}</TableCell>
                     <TableCell align="center">{action.assignedTo}</TableCell>
                     <TableCell align="center">{formatDisplayDate(action.dueDate)}</TableCell>
                     <TableCell align="center">
@@ -418,6 +476,17 @@ const AuditReport = () => {
           </Paper>
         )}
       </Container>
+
+      {/* Hidden Printable Report for PDF Generation */}
+      <Box sx={{ 
+        position: 'absolute', 
+        left: '-9999px', 
+        top: 0,
+        width: '210mm', // A4 width
+        backgroundColor: '#ffffff'
+      }}>
+        <PrintableReport ref={printableRef} report={report} />
+      </Box>
     </Layout>
   );
 };

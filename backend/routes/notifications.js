@@ -198,7 +198,7 @@ router.post('/register-token', authenticate, async (req, res) => {
       // Update existing token record
       const dbType = getDbType();
       const updateQuery = dbType === 'mssql'
-        ? `UPDATE push_tokens SET platform = ?, device_name = ?, updated_at = GETDATE() WHERE id = ?`
+        ? `UPDATE push_tokens SET platform = ?, device_name = ?, updated_at = GETUTCDATE() WHERE id = ?`
         : `UPDATE push_tokens SET platform = ?, device_name = ?, updated_at = datetime('now') WHERE id = ?`;
 
       await new Promise((resolve, reject) => {
@@ -214,7 +214,7 @@ router.post('/register-token', authenticate, async (req, res) => {
     // Insert new token
     const dbType = getDbType();
     const insertQuery = dbType === 'mssql'
-      ? `INSERT INTO push_tokens (user_id, token, platform, device_name, created_at) VALUES (?, ?, ?, ?, GETDATE())`
+      ? `INSERT INTO push_tokens (user_id, token, platform, device_name, created_at) VALUES (?, ?, ?, ?, GETUTCDATE())`
       : `INSERT INTO push_tokens (user_id, token, platform, device_name, created_at) VALUES (?, ?, ?, ?, datetime('now'))`;
 
     await new Promise((resolve, reject) => {
@@ -401,7 +401,7 @@ async function sendPushNotification(userId, title, body, data = {}) {
 
     // Save to notification history
     const insertQuery = dbType === 'mssql'
-      ? `INSERT INTO notification_history (user_id, title, body, data, created_at) VALUES (?, ?, ?, ?, GETDATE())`
+      ? `INSERT INTO notification_history (user_id, title, body, data, created_at) VALUES (?, ?, ?, ?, GETUTCDATE())`
       : `INSERT INTO notification_history (user_id, title, body, data, created_at) VALUES (?, ?, ?, ?, datetime('now'))`;
 
     await new Promise((resolve, reject) => {
@@ -452,10 +452,11 @@ async function createNotification(userId, type, title, body, link = null, emailO
       return { success: false, error: 'User not found' };
     }
     
-    // Save in-app notification
+    // Save in-app notification - use 'message' column for compatibility with existing databases
+    // Use GETUTCDATE() for MSSQL to store UTC timestamps (GETDATE() returns local server time)
     const insertQuery = dbType === 'mssql'
-      ? `INSERT INTO notifications (user_id, type, title, body, link, [read], created_at) VALUES (?, ?, ?, ?, ?, 0, GETDATE())`
-      : `INSERT INTO notifications (user_id, type, title, body, link, read, created_at) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))`;
+      ? `INSERT INTO notifications (user_id, type, title, message, link, [read], created_at) VALUES (?, ?, ?, ?, ?, 0, GETUTCDATE())`
+      : `INSERT INTO notifications (user_id, type, title, message, link, read, created_at) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))`;
     
     await new Promise((resolve, reject) => {
       database.run(insertQuery, [userId, type, title, body, link], (err) => {
