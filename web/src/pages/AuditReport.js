@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,7 +19,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import axios from 'axios';
 import Layout from '../components/Layout';
-import { showError } from '../utils/toast';
+import { showError, showSuccess } from '../utils/toast';
 
 const normalizePhotoUrl = (raw) => {
   if (!raw) return '';
@@ -50,6 +50,7 @@ const AuditReport = () => {
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -66,7 +67,35 @@ const AuditReport = () => {
     fetchReport();
   }, [id]);
 
-  const pdfUrl = useMemo(() => `/api/reports/audit/${id}/enhanced-pdf`, [id]);
+  // Download PDF with proper authentication
+  const handleDownloadPdf = async () => {
+    try {
+      setDownloading(true);
+      const response = await axios.get(`/api/reports/audit/${id}/enhanced-pdf`, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const outletName = report?.audit?.outletName || 'Store';
+      const templateName = report?.audit?.templateName || 'Audit';
+      link.download = `${templateName} - ${outletName} Report.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      showSuccess('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      showError('Failed to download PDF. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -99,8 +128,13 @@ const AuditReport = () => {
           <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)}>
             Back
           </Button>
-          <Button variant="contained" startIcon={<PictureAsPdfIcon />} href={pdfUrl}>
-            Download PDF
+          <Button 
+            variant="contained" 
+            startIcon={downloading ? <CircularProgress size={20} color="inherit" /> : <PictureAsPdfIcon />}
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+          >
+            {downloading ? 'Downloading...' : 'Download PDF'}
           </Button>
         </Box>
 

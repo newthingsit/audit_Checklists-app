@@ -721,7 +721,7 @@ router.get('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
-  const { status, restaurant, template_id, date_from, date_to, min_score, max_score, page, limit } = req.query;
+  const { status, restaurant, template_id, location_id, date_from, date_to, min_score, max_score, page, limit } = req.query;
   
   // Pagination settings
   const pageNum = Math.max(1, parseInt(page) || 1);
@@ -756,6 +756,10 @@ router.get('/', authenticate, (req, res) => {
   if (template_id) {
     baseQuery += ' AND a.template_id = ?';
     params.push(template_id);
+  }
+  if (location_id) {
+    baseQuery += ' AND a.location_id = ?';
+    params.push(location_id);
   }
   if (date_from) {
     if (isSqlServer) {

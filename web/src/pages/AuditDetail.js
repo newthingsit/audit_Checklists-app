@@ -451,7 +451,7 @@ const AuditDetail = () => {
             Back to Audits
           </Button>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <Tooltip title="Download Full QA Report with Executive Summary, Deviations & Action Plan">
+            <Tooltip title="Download Full Report with Executive Summary, Deviations & Action Plan">
               <Button
                 variant="contained"
                 color="primary"
@@ -459,7 +459,7 @@ const AuditDetail = () => {
                 onClick={handleDownloadEnhancedReport}
                 sx={{ fontWeight: 600 }}
               >
-                Download QA Report
+                Download PDF
               </Button>
             </Tooltip>
             <Tooltip title="View Storewise Report">

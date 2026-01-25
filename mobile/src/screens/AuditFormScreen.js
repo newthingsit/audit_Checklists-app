@@ -1335,6 +1335,85 @@ const AuditFormScreen = () => {
         return;
       }
       
+      // Check location/distance BEFORE allowing user to start the audit
+      if (selectedLocation?.latitude && selectedLocation?.longitude) {
+        try {
+          // Get current location
+          const currentLocationResult = await getCurrentLocation();
+          
+          if (currentLocationResult.success) {
+            const storeLat = parseFloat(selectedLocation.latitude);
+            const storeLon = parseFloat(selectedLocation.longitude);
+            const distance = calculateDistance(
+              currentLocationResult.location.latitude,
+              currentLocationResult.location.longitude,
+              storeLat,
+              storeLon
+            );
+            
+            // Save captured location for later use
+            setCapturedLocation(currentLocationResult.location);
+            
+            const MAX_DISTANCE_TO_START = 100; // 100 meters - must be within to start audit
+            const WARNING_DISTANCE = 50; // 50 meters warning threshold
+            
+            if (distance > MAX_DISTANCE_TO_START) {
+              // Block user from starting audit if too far
+              Alert.alert(
+                'Location Too Far',
+                `You are ${Math.round(distance)} meters from ${selectedLocation.name}.\n\nYou must be within ${MAX_DISTANCE_TO_START} meters of the store location to start the audit. Please move closer to the store.`,
+                [{ text: 'OK', style: 'cancel' }]
+              );
+              setLocationVerified(false);
+              return;
+            } else if (distance > WARNING_DISTANCE) {
+              // Show warning but allow to proceed
+              const confirmed = await new Promise((resolve) => {
+                Alert.alert(
+                  'Location Warning',
+                  `You are ${Math.round(distance)} meters from ${selectedLocation.name}.\n\nYou are outside the recommended range (${WARNING_DISTANCE}m) but within the allowed distance. Do you want to continue?`,
+                  [
+                    { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'Continue', onPress: () => resolve(true) }
+                  ]
+                );
+              });
+              
+              if (!confirmed) {
+                return;
+              }
+              setLocationVerified(true);
+              setShowLocationVerification(true);
+            } else {
+              // Within recommended range
+              setLocationVerified(true);
+              setShowLocationVerification(true);
+            }
+          } else {
+            // Location not available - ask user if they want to continue without verification
+            const confirmed = await new Promise((resolve) => {
+              Alert.alert(
+                'Location Not Available',
+                'Unable to get your current location. Location verification is required to start the audit.\n\nPlease enable location services and try again.',
+                [
+                  { text: 'OK', style: 'cancel', onPress: () => resolve(false) }
+                ]
+              );
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking location:', error);
+          // Show error but don't block
+          Alert.alert(
+            'Location Check Failed',
+            'Unable to verify your location. Please ensure location services are enabled.',
+            [{ text: 'OK', style: 'cancel' }]
+          );
+          return;
+        }
+      }
+      
       // Go directly to audit checklist (skip category selection)
       setCurrentStep(2);
     }
@@ -1702,6 +1781,53 @@ const AuditFormScreen = () => {
       }
       
       // Create new audit if we don't have an existing one
+      if (!activeAuditId) {
+        // IMPORTANT: Check for existing in-progress audit for same template + location
+        // This prevents creating duplicate audits when user goes back and starts again
+        try {
+          const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
+            params: {
+              template_id: parseInt(templateId),
+              location_id: parseInt(locationId),
+              status: 'in_progress',
+              limit: 1
+            }
+          });
+          
+          const existingAudits = existingCheckResponse.data.audits || [];
+          if (existingAudits.length > 0) {
+            const existingAudit = existingAudits[0];
+            // Found existing in-progress audit - use it instead of creating new one
+            console.log(`[AuditForm] Found existing in-progress audit ${existingAudit.id}, resuming instead of creating new`);
+            activeAuditId = existingAudit.id;
+            setCurrentAuditId(activeAuditId);
+            
+            // Update the existing audit with current data
+            const updateData = {
+              restaurant_name: selectedLocation.name,
+              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              location_id: parseInt(locationId),
+              notes: notesToSave
+            };
+            
+            if (capturedLocation) {
+              updateData.gps_latitude = capturedLocation.latitude;
+              updateData.gps_longitude = capturedLocation.longitude;
+              updateData.gps_accuracy = capturedLocation.accuracy;
+              updateData.gps_timestamp = capturedLocation.timestamp;
+              updateData.location_verified = locationVerified;
+            }
+            
+            await axios.put(`${API_BASE_URL}/audits/${activeAuditId}`, updateData);
+            setNotes(notesToSave);
+          }
+        } catch (checkError) {
+          // If check fails, continue with creating new audit
+          console.log('Could not check for existing audits, will create new one:', checkError.message);
+        }
+      }
+      
+      // Only create new audit if we still don't have one after checking
       if (!activeAuditId) {
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;

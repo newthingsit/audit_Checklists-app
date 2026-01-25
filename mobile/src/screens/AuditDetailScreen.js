@@ -113,19 +113,24 @@ const AuditDetailScreen = () => {
     }
   };
 
-  // Download PDF report
+  // Download PDF report using enhanced-pdf endpoint
   const handleDownloadPdf = async () => {
     try {
       Alert.alert('Generating PDF', 'Please wait while the PDF report is being generated...');
       
-      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/pdf`;
+      // Use enhanced-pdf endpoint for better report format
+      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/enhanced-pdf`;
       const fileName = `${audit.template_name}_${audit.restaurant_name}_Report.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
-      // Download the PDF
+      // Get auth token from axios defaults if available
+      const authHeader = axios.defaults.headers?.common?.Authorization;
+      
+      // Download the PDF with authentication
       const downloadResult = await FileSystem.downloadAsync(pdfUrl, fileUri, {
         headers: {
-          'Accept': 'application/pdf'
+          'Accept': 'application/pdf',
+          ...(authHeader ? { 'Authorization': authHeader } : {})
         }
       });
       
@@ -147,7 +152,7 @@ const AuditDetailScreen = () => {
           );
         }
       } else {
-        Alert.alert('Error', 'Failed to download PDF report');
+        Alert.alert('Error', 'Failed to download PDF report. Please check your connection and try again.');
       }
     } catch (error) {
       console.error('Error downloading PDF:', error);
@@ -155,10 +160,11 @@ const AuditDetailScreen = () => {
     }
   };
 
-  // Share/View PDF in browser
+  // Share/View PDF in browser using enhanced-pdf endpoint
   const handleViewPdf = async () => {
     try {
-      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/pdf`;
+      // Use enhanced-pdf endpoint for better report format
+      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/enhanced-pdf`;
       const supported = await Linking.canOpenURL(pdfUrl);
       
       if (supported) {
@@ -267,7 +273,7 @@ const AuditDetailScreen = () => {
           <TouchableOpacity
             style={styles.continueButton}
             onPress={async () => {
-              // Check proximity before continuing audit
+              // Check proximity BEFORE continuing audit - must be within 100m
               if (audit.location_id) {
                 try {
                   // Get location details
@@ -286,19 +292,35 @@ const AuditDetailScreen = () => {
                         parseFloat(location.longitude)
                       );
                       
-                      if (distance > 100) {
+                      const MAX_DISTANCE = 100; // 100 meters to start/continue audit
+                      
+                      if (distance > MAX_DISTANCE) {
                         Alert.alert(
                           'Location Too Far',
-                          `You are ${Math.round(distance)}m from the audit location. You must be within 100 meters to continue the audit.`,
+                          `You are ${Math.round(distance)} meters from ${location.name || 'the audit location'}.\n\nYou must be within ${MAX_DISTANCE} meters to continue the audit. Please move closer to the store location.`,
                           [{ text: 'OK' }]
                         );
                         return;
                       }
+                    } else {
+                      // Location not available - block user
+                      Alert.alert(
+                        'Location Required',
+                        'Unable to get your current location. Location verification is required to continue the audit.\n\nPlease enable location services and try again.',
+                        [{ text: 'OK' }]
+                      );
+                      return;
                     }
                   }
                 } catch (error) {
                   console.error('Error checking location:', error);
-                  // Continue anyway if check fails
+                  // Block if location check fails
+                  Alert.alert(
+                    'Location Check Failed',
+                    'Unable to verify your location. Please ensure location services are enabled and try again.',
+                    [{ text: 'OK' }]
+                  );
+                  return;
                 }
               }
               

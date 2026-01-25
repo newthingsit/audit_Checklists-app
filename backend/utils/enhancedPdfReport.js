@@ -219,21 +219,26 @@ function drawDetailsSection(doc, audit) {
  */
 function drawScoreBySection(doc, categoryData) {
   doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.TEXT_PRIMARY);
-  doc.text('Score By', PAGE.MARGIN, doc.y);
-  doc.y += 15;
+  doc.text('Score By Category', PAGE.MARGIN, doc.y, { lineBreak: false });
+  doc.y += 20;
   
   const tableY = doc.y;
   const colWidths = [PAGE.CONTENT_WIDTH * 0.4, PAGE.CONTENT_WIDTH * 0.2, PAGE.CONTENT_WIDTH * 0.2, PAGE.CONTENT_WIDTH * 0.2];
   const rowHeight = 22;
   
-  // Header row
+  // Draw header row background
   let x = PAGE.MARGIN;
-  const headers = ['', 'Perfect Score', 'Actual Score', 'Percentage'];
+  doc.rect(PAGE.MARGIN, tableY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
   
+  // Draw header text and vertical borders
+  const headers = ['Category', 'Perfect Score', 'Actual Score', 'Percentage'];
+  x = PAGE.MARGIN;
   headers.forEach((header, idx) => {
-    doc.rect(x, tableY, colWidths[idx], rowHeight).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+    if (idx > 0) {
+      doc.moveTo(x, tableY).lineTo(x, tableY + rowHeight).stroke(COLORS.TABLE_BORDER);
+    }
     doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(header, x + 5, tableY + 7, { width: colWidths[idx] - 10, align: idx === 0 ? 'left' : 'center' });
+    doc.text(header, x + 5, tableY + 7, { width: colWidths[idx] - 10, align: idx === 0 ? 'left' : 'center', lineBreak: false });
     x += colWidths[idx];
   });
   
@@ -243,35 +248,44 @@ function drawScoreBySection(doc, categoryData) {
     ? categoryData
     : Object.keys(categoryData).sort().map(key => ({
         name: key,
-        perfectScore: categoryData[key].perfectScore,
-        actualScore: categoryData[key].actualScore
+        perfectScore: categoryData[key].perfectScore || 0,
+        actualScore: categoryData[key].actualScore || 0,
+        percentage: categoryData[key].percentage || 0
       }));
   
   rows.forEach((row, idx) => {
-    const percentage = row.perfectScore > 0 ? Math.round((row.actualScore / row.perfectScore) * 100) : 0;
+    const percentage = row.percentage !== undefined ? row.percentage : (row.perfectScore > 0 ? Math.round((row.actualScore / row.perfectScore) * 100) : 0);
     const bgColor = idx % 2 === 0 ? COLORS.LIGHT_BG : COLORS.WHITE;
+    
+    // Draw row background
+    doc.rect(PAGE.MARGIN, rowY, PAGE.CONTENT_WIDTH, rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
+    
+    // Draw vertical borders
+    x = PAGE.MARGIN;
+    colWidths.forEach((width, colIdx) => {
+      if (colIdx > 0) {
+        doc.moveTo(x, rowY).lineTo(x, rowY + rowHeight).stroke(COLORS.TABLE_BORDER);
+      }
+      x += width;
+    });
     
     x = PAGE.MARGIN;
     
     // Category name
-    doc.rect(x, rowY, colWidths[0], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
     doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(String(row.name || '').toUpperCase(), x + 5, rowY + 7, { width: colWidths[0] - 10 });
+    doc.text(String(row.name || '').toUpperCase(), x + 5, rowY + 7, { width: colWidths[0] - 10, lineBreak: false });
     x += colWidths[0];
     
     // Perfect Score
-    doc.rect(x, rowY, colWidths[1], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
-    doc.text(Math.round(row.perfectScore).toString(), x + 5, rowY + 7, { width: colWidths[1] - 10, align: 'center' });
+    doc.text(Math.round(row.perfectScore || 0).toString(), x + 5, rowY + 7, { width: colWidths[1] - 10, align: 'center', lineBreak: false });
     x += colWidths[1];
     
     // Actual Score
-    doc.rect(x, rowY, colWidths[2], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
-    doc.text(Math.round(row.actualScore).toString(), x + 5, rowY + 7, { width: colWidths[2] - 10, align: 'center' });
+    doc.text(Math.round(row.actualScore || 0).toString(), x + 5, rowY + 7, { width: colWidths[2] - 10, align: 'center', lineBreak: false });
     x += colWidths[2];
     
     // Percentage
-    doc.rect(x, rowY, colWidths[3], rowHeight).fill(bgColor).stroke(COLORS.TABLE_BORDER);
-    doc.text(`${percentage}%`, x + 5, rowY + 7, { width: colWidths[3] - 10, align: 'center' });
+    doc.text(`${percentage}%`, x + 5, rowY + 7, { width: colWidths[3] - 10, align: 'center', lineBreak: false });
     
     rowY += rowHeight;
   });
@@ -284,52 +298,74 @@ function drawScoreBySection(doc, categoryData) {
  */
 function drawCategoryHeader(doc, categoryName, actualScore, perfectScore) {
   const percentage = perfectScore > 0 ? Math.round((actualScore / perfectScore) * 100) : 0;
+  const startY = doc.y;
   
-  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 25).fill(COLORS.SECTION_HEADER);
+  doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, 25).fill(COLORS.SECTION_HEADER);
   doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.WHITE);
   doc.text(
     `${categoryName.toUpperCase()} - ${percentage}% (${Math.round(actualScore)}/${Math.round(perfectScore)})`,
     PAGE.MARGIN + 10,
-    doc.y + 7,
-    { width: PAGE.CONTENT_WIDTH - 20 }
+    startY + 7,
+    { width: PAGE.CONTENT_WIDTH - 20, lineBreak: false }
   );
   
-  doc.y += 30;
+  doc.y = startY + 30;
 }
 
 /**
  * Draw subcategory header
  */
 function drawSubcategoryHeader(doc, subcategoryName, actualScore, perfectScore) {
-  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 22).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
+  const startY = doc.y;
+  
+  doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, 22).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.SECTION_HEADER);
   doc.text(
     `${subcategoryName} - (${Math.round(actualScore)}/${Math.round(perfectScore)})`,
     PAGE.MARGIN + 10,
-    doc.y + 6,
-    { width: PAGE.CONTENT_WIDTH - 20, align: 'center' }
+    startY + 6,
+    { width: PAGE.CONTENT_WIDTH - 20, align: 'center', lineBreak: false }
   );
   
-  doc.y += 25;
+  doc.y = startY + 25;
 }
 
 /**
  * Draw question table header
+ * Matches View Report format: #, Question, Score, Response, Remarks, Photo
  */
 function drawQuestionTableHeader(doc) {
-  const colWidths = [35, PAGE.CONTENT_WIDTH - 35 - 60 - 70, 60, 70];
-  const headers = ['', 'Question', 'Score', 'Response'];
+  // Column widths: #(25), Question(flex), Score(45), Response(55), Remarks(65), Photo(55)
+  const fixedWidth = 25 + 45 + 55 + 65 + 55;
+  const questionWidth = PAGE.CONTENT_WIDTH - fixedWidth;
+  const colWidths = [25, questionWidth, 45, 55, 65, 55];
+  const headers = ['#', 'Question', 'Score', 'Response', 'Remarks', 'Photo'];
+  
+  const startY = doc.y;
+  const rowHeight = 18;
+  
+  // Draw header background
+  doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
+  
+  // Draw column borders and text
   let x = PAGE.MARGIN;
-  
-  doc.rect(PAGE.MARGIN, doc.y, PAGE.CONTENT_WIDTH, 18).fill(COLORS.TABLE_HEADER).stroke(COLORS.TABLE_BORDER);
-  
   headers.forEach((header, idx) => {
+    // Draw vertical border for each column
+    if (idx > 0) {
+      doc.moveTo(x, startY).lineTo(x, startY + rowHeight).stroke(COLORS.TABLE_BORDER);
+    }
+    
+    // Draw header text (use lineBreak: false to prevent y position change)
     doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-    doc.text(header, x + 3, doc.y + 5, { width: colWidths[idx] - 6, align: idx === 1 ? 'left' : 'center' });
+    doc.text(header, x + 2, startY + 5, { 
+      width: colWidths[idx] - 4, 
+      align: idx === 1 ? 'left' : 'center',
+      lineBreak: false 
+    });
     x += colWidths[idx];
   });
   
-  doc.y += 18;
+  doc.y = startY + rowHeight;
   return colWidths;
 }
 
@@ -401,7 +437,8 @@ function isScorableInputType(inputType) {
 }
 
 /**
- * Draw a question row with optional photo and remarks
+ * Draw a question row with 6 columns matching View Report format
+ * Columns: #, Question, Score, Response, Remarks, Photo
  */
 async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   const inputType = String(item.input_type || '').toLowerCase();
@@ -413,98 +450,88 @@ async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   const isScorable = isScorableInputType(inputType);
   
   // Calculate row height based on content
-  let rowHeight = 25;
+  let rowHeight = 22;
   const hasPhoto = item.photo_url && photos[item.photo_url];
   const hasRemarks = item.comment && item.comment.trim() && !['short_answer', 'long_answer', 'number', 'date', 'time'].includes(inputType);
-  const hasSubcategoryTag = item.subcategory && item.subcategory.toLowerCase().includes('house keeping');
-  const isLongText = ['long_answer'].includes(inputType) && item.comment && item.comment.length > 50;
   
-  if (hasPhoto) rowHeight += 60;
-  if (hasRemarks) rowHeight += 20;
-  if (hasSubcategoryTag) rowHeight += 15;
-  if (isLongText) rowHeight += Math.min(40, Math.ceil(item.comment.length / 60) * 10);
+  // Photo in separate column - increase row height if photo exists
+  if (hasPhoto) rowHeight = Math.max(rowHeight, 50);
   
   // Check if we need a new page
   if (doc.y + rowHeight > PAGE.HEIGHT - 60) {
     return false; // Signal that we need a new page
   }
   
-  const rowY = doc.y;
+  const startY = doc.y;
   let x = PAGE.MARGIN;
   
-  // Draw row background
-  doc.rect(PAGE.MARGIN, rowY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
+  // Draw row background and border
+  doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, rowHeight).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
   
-  // Question number
+  // Draw vertical column borders
+  let borderX = PAGE.MARGIN;
+  colWidths.forEach((width, idx) => {
+    if (idx > 0) {
+      doc.moveTo(borderX, startY).lineTo(borderX, startY + rowHeight).stroke(COLORS.TABLE_BORDER);
+    }
+    borderX += width;
+  });
+  
+  // Column 1: Question number (#)
   doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
-  doc.text(index.toString(), x + 3, rowY + 8, { width: colWidths[0] - 6, align: 'center' });
+  doc.text(index.toString(), x + 2, startY + 7, { width: colWidths[0] - 4, align: 'center', lineBreak: false });
   x += colWidths[0];
   
-  // Question text column
-  let questionY = rowY + 5;
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_PRIMARY);
+  // Column 2: Question text (allow line break for long text)
+  doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
+  const titleText = item.title || '';
+  doc.text(titleText, x + 2, startY + 4, { width: colWidths[1] - 4, height: rowHeight - 8, lineBreak: true, ellipsis: true });
+  x += colWidths[1];
   
-  // Draw question text with input type indicator for non-standard types
-  let titleText = item.title || '';
-  if (['signature', 'image_upload'].includes(inputType)) {
-    titleText += ` [${inputType === 'signature' ? 'Signature' : 'Photo'}]`;
+  // Column 3: Score - show score only for scorable input types
+  if (isScorable) {
+    doc.font('Helvetica').fontSize(8).fillColor(isNo ? COLORS.DANGER_RED : COLORS.TEXT_PRIMARY);
+    doc.text(`${actualMark}/${maxMark}`, x + 2, startY + 7, { width: colWidths[2] - 4, align: 'center', lineBreak: false });
+  } else {
+    doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_SECONDARY);
+    doc.text('-', x + 2, startY + 7, { width: colWidths[2] - 4, align: 'center', lineBreak: false });
   }
-  doc.text(titleText, x + 3, questionY, { width: colWidths[1] - 6 });
-  questionY += 12;
+  x += colWidths[2];
   
-  // Draw photo if exists (for image_upload or attached photos)
+  // Column 4: Response
+  const responseText = isNA ? 'NA' : response;
+  const responseColor = isNo ? COLORS.DANGER_RED : (response === 'Yes' ? COLORS.SUCCESS_GREEN : COLORS.TEXT_PRIMARY);
+  doc.font('Helvetica').fontSize(8).fillColor(responseColor);
+  doc.text(responseText, x + 2, startY + 7, { width: colWidths[3] - 4, align: 'center', lineBreak: false });
+  x += colWidths[3];
+  
+  // Column 5: Remarks (allow line break for long remarks)
+  const remarksText = hasRemarks ? item.comment : '—';
+  doc.font('Helvetica').fontSize(6).fillColor(hasRemarks ? COLORS.REMARKS_RED : COLORS.TEXT_SECONDARY);
+  doc.text(remarksText, x + 2, startY + 4, { width: colWidths[4] - 4, height: rowHeight - 8, lineBreak: true, ellipsis: true });
+  x += colWidths[4];
+  
+  // Column 6: Photo thumbnail or dash
   if (hasPhoto) {
     try {
       const photoBuffer = photos[item.photo_url];
       if (photoBuffer) {
-        doc.image(photoBuffer, x + 5, questionY, { width: 50, height: 50 });
+        const photoSize = Math.min(colWidths[5] - 8, rowHeight - 6, 40);
+        doc.image(photoBuffer, x + 4, startY + 3, { width: photoSize, height: photoSize });
+      } else {
+        doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_SECONDARY);
+        doc.text('—', x + 2, startY + 7, { width: colWidths[5] - 4, align: 'center', lineBreak: false });
       }
     } catch (err) {
-      // Skip photo on error
+      doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_SECONDARY);
+      doc.text('—', x + 2, startY + 7, { width: colWidths[5] - 4, align: 'center', lineBreak: false });
     }
-    questionY += 55;
-  }
-  
-  // Draw subcategory tag if applicable
-  if (hasSubcategoryTag) {
-    doc.rect(x + 3, questionY, 60, 12).fill('#e2e8f0').stroke(COLORS.TABLE_BORDER);
-    doc.font('Helvetica').fontSize(6).fillColor(COLORS.TEXT_SECONDARY);
-    doc.text('House Keeping', x + 5, questionY + 3, { width: 56 });
-    questionY += 15;
-  }
-  
-  // Draw remarks in red (only for scorable items with additional remarks)
-  if (hasRemarks) {
-    doc.font('Helvetica').fontSize(7).fillColor(COLORS.REMARKS_RED);
-    doc.text(`Remarks: ${item.comment}`, x + 3, questionY, { width: colWidths[1] - 6 });
-  }
-  
-  x += colWidths[1];
-  
-  // Score column - show score only for scorable input types
-  if (isScorable) {
-    doc.font('Helvetica').fontSize(8).fillColor(isNo ? COLORS.DANGER_RED : COLORS.TEXT_PRIMARY);
-    doc.text(`${actualMark}/${maxMark}`, x + 3, rowY + 8, { width: colWidths[2] - 6, align: 'center' });
   } else {
-    // For non-scorable types, show a dash or type indicator
-    doc.font('Helvetica').fontSize(8).fillColor(COLORS.TEXT_SECONDARY);
-    doc.text('-', x + 3, rowY + 8, { width: colWidths[2] - 6, align: 'center' });
-  }
-  x += colWidths[2];
-  
-  // Response column
-  const responseText = isNA ? 'Not Applicable' : response;
-  const responseColor = isNo ? COLORS.DANGER_RED : (response === 'Signed' || response === 'Completed' || response === 'Photo Attached' ? COLORS.SUCCESS_GREEN : COLORS.TEXT_PRIMARY);
-  doc.font('Helvetica').fontSize(8).fillColor(responseColor);
-  
-  // For long text responses, wrap text
-  if (isLongText) {
-    doc.text(responseText, x + 3, rowY + 5, { width: colWidths[3] - 6, align: 'left', lineGap: 2 });
-  } else {
-    doc.text(responseText, x + 3, rowY + 8, { width: colWidths[3] - 6, align: 'center' });
+    doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_SECONDARY);
+    doc.text('—', x + 2, startY + 7, { width: colWidths[5] - 4, align: 'center', lineBreak: false });
   }
   
-  doc.y = rowY + rowHeight;
+  doc.y = startY + rowHeight;
   return true;
 }
 
