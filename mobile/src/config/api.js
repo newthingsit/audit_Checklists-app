@@ -43,6 +43,19 @@ const getAutoDevApiUrl = () => {
     console.warn('Unable to detect Expo host, defaulting to localhost API.');
     return 'http://localhost:5000/api';
   }
+  
+  // Check if running in tunnel mode (exp.direct domain)
+  // Tunnel URLs can't reach local backend, use production API instead
+  if (host.includes('exp.direct') || host.includes('.exp.direct')) {
+    console.log('[API] Tunnel mode detected, using production API');
+    const appConfig = Constants.expoConfig?.extra?.apiUrl;
+    if (appConfig?.production) {
+      return appConfig.production;
+    }
+    // Fallback to Azure backend
+    return 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api';
+  }
+  
   return `http://${host}:5000/api`;
 };
 
@@ -89,6 +102,9 @@ export const RETRY_CONFIG = {
 };
 
 export const API_BASE_URL = getApiBaseUrl();
+
+// Log the API URL being used (helpful for debugging)
+console.log('[API] Using API URL:', API_BASE_URL);
 
 // Configure axios defaults for better performance
 axios.defaults.timeout = API_TIMEOUT;

@@ -19,7 +19,6 @@ import { useOffline } from '../context/OfflineContext';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
-import { SyncStatusBadge, PendingSyncSummary, ConnectionStatusDot } from '../components/OfflineIndicator';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 48) / 2;
@@ -33,7 +32,6 @@ const DashboardScreen = () => {
   const navigation = useNavigation();
   const { user, refreshUser } = useAuth();
   const { isOnline } = useNetwork();
-  const { offlineStats, triggerSync, prefetchForOffline } = useOffline();
   const userPermissions = user?.permissions || [];
 
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
@@ -65,6 +63,18 @@ const DashboardScreen = () => {
   );
 
   const fetchData = useCallback(async () => {
+    // Check if online - require real-time connection
+    if (!isOnline) {
+      Alert.alert(
+        'No Internet Connection',
+        'Please connect to the internet to load dashboard data.',
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     // Recalculate permissions inside fetchData to ensure we have the latest values
     const currentPermissions = user?.permissions || [];
     const canViewTemplatesNow = hasPermission(currentPermissions, 'display_templates') ||
@@ -113,11 +123,16 @@ const DashboardScreen = () => {
       setAnalytics(analyticsRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
+      Alert.alert(
+        'Connection Error',
+        'Failed to load dashboard data. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, isOnline]);
 
   // Fetch data when component mounts or when user/permissions change
   // Single useEffect for fetching - prevents duplicate API calls
@@ -128,6 +143,14 @@ const DashboardScreen = () => {
   }, [user?.id, user?.role, JSON.stringify(user?.permissions)]);
 
   const onRefresh = async () => {
+    if (!isOnline) {
+      Alert.alert(
+        'No Internet Connection',
+        'Please connect to the internet to refresh dashboard data.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setRefreshing(true);
     // Refresh user data first to get updated permissions
     if (refreshUser) {
@@ -167,12 +190,10 @@ const DashboardScreen = () => {
           <View>
             <View style={styles.greetingRow}>
               <Text style={styles.greeting}>Welcome back,</Text>
-              <ConnectionStatusDot size={8} />
             </View>
             <Text style={styles.userName}>{user?.name || 'User'}</Text>
           </View>
           <View style={styles.headerRight}>
-            <SyncStatusBadge onPress={triggerSync} />
             <View style={styles.avatarContainer}>
               <LinearGradient
                 colors={themeConfig.dashboardCards.card1}
@@ -186,19 +207,9 @@ const DashboardScreen = () => {
           </View>
         </View>
         <Text style={styles.subtitle}>
-          {isOnline 
-            ? "Here's an overview of your audit activities"
-            : "You're offline - showing cached data"
-          }
+          Here's an overview of your audit activities
         </Text>
       </View>
-
-      {/* Pending Sync Summary - shows when there's data to sync */}
-      {offlineStats.hasPendingSync && (
-        <View style={styles.syncSummaryContainer}>
-          <PendingSyncSummary onSyncPress={triggerSync} />
-        </View>
-      )}
 
       {/* Stats Cards */}
       <View style={styles.statsContainer}>

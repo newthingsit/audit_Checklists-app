@@ -25,7 +25,6 @@ import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocation } from '../context/LocationContext';
 import { useNetwork } from '../context/NetworkContext';
-import { useOffline } from '../context/OfflineContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 import { SignatureModal, SignatureDisplay } from '../components';
 
@@ -75,12 +74,15 @@ const AuditFormScreen = () => {
   const [locationVerified, setLocationVerified] = useState(false);
   const [showLocationVerification, setShowLocationVerification] = useState(false);
 
-  // Offline/Network state
+  // Network state - real-time only
   const { isOnline } = useNetwork();
-  const { saveAuditOffline, queuePhotoForUpload } = useOffline();
   const [savingDraft, setSavingDraft] = useState(false);
+  
+  // Track if this is the initial mount to prevent duplicate fetches
+  const isInitialMount = React.useRef(true);
   const saveInFlightRef = useRef(false);
   const clientAuditUuidRef = useRef(null);
+  
 
   const draftStorageKey = useMemo(() => {
     const templateKey = templateId ? String(templateId) : 'unknown';
@@ -171,9 +173,10 @@ const AuditFormScreen = () => {
     console.log('[AuditForm] Initial load - templateId:', templateId, 'auditId:', auditId, 'scheduledAuditId:', scheduledAuditId, 'locationId:', initialLocationId);
     if (auditId) {
       // Editing existing audit
-      console.log('[AuditForm] Mode: Editing existing audit');
+      console.log('[AuditForm] Mode: Editing existing audit, auditId:', auditId);
       setIsEditing(true);
-      fetchAuditData();
+      // Use fetchAuditDataById directly to ensure correct ID is used
+      fetchAuditDataById(parseInt(auditId, 10));
     } else if (scheduledAuditId && templateId) {
       // Check if audit already exists for this scheduled audit
       console.log('[AuditForm] Mode: Starting from scheduled audit');
@@ -184,23 +187,34 @@ const AuditFormScreen = () => {
       fetchTemplate();
     } else {
       console.error('[AuditForm] ERROR: No templateId, auditId, or scheduledAuditId provided!');
+      Alert.alert('Error', 'Missing required parameters. Please try again.');
+      setLoading(false);
     }
     fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
 
-  // Preserve state when component is focused (e.g., when navigating back)
+  // Preserve state when component is focused (e.g., when navigating back after save)
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
+      // Skip the first focus (initial mount) since useEffect already handles it
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      
       // Refresh data when screen comes into focus to ensure state is current
-      if (auditId) {
-        fetchAuditData();
+      // This is especially important after saving a category and navigating back
+      if (auditId || currentAuditId) {
+        const idToRefresh = auditId || currentAuditId;
+        console.log('[AuditForm] Screen focused, refreshing audit data for:', idToRefresh);
+        fetchAuditDataById(parseInt(idToRefresh, 10));
       } else if (scheduledAuditId && templateId) {
         checkExistingAudit();
       }
     });
 
     return unsubscribe;
-  }, [navigation, auditId, scheduledAuditId, templateId]);
+  }, [navigation, auditId, currentAuditId, scheduledAuditId, templateId]);
 
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
@@ -260,12 +274,68 @@ const AuditFormScreen = () => {
   const fetchAuditDataById = async (id) => {
     try {
       setLoading(true);
-      // Fetch audit details with increased timeout for large audits
-      const auditResponse = await axios.get(`${API_BASE_URL}/audits/${id}`, {
-        timeout: 60000, // 60 seconds timeout for large audits
-      });
+      console.log('[AuditForm] Fetching audit data for ID:', id);
+      
+      // Check if online - require real-time connection
+      if (!isOnline) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please connect to the internet to load audit data.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setLoading(false);
+        return;
+      }
+      
+      // OPTIMIZATION: Fetch audit and template in parallel if we have templateId from route params
+      // This significantly speeds up loading time (can save 1-3 seconds)
+      const templateIdToFetch = templateId || null;
+      const startTime = Date.now();
+      
+      console.log('[AuditForm] Starting parallel fetch - audit and template (templateId from route:', templateIdToFetch, ')');
+      
+      // Fetch audit and template in parallel for faster loading
+      const [auditResponse, templateResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/audits/${id}`, {
+          timeout: 20000, // Reduced from 60s to 20s for faster failure detection
+        }),
+        // If we have templateId from route, fetch template in parallel
+        templateIdToFetch 
+          ? axios.get(`${API_BASE_URL}/checklists/${templateIdToFetch}`, {
+              timeout: 20000, // Reduced timeout
+            }).catch(err => {
+              // If parallel template fetch fails, we'll fetch it after getting audit
+              console.warn('[AuditForm] Parallel template fetch failed, will fetch after audit:', err.message);
+              return null;
+            })
+          : Promise.resolve(null)
+      ]);
+      
+      const fetchTime = Date.now() - startTime;
+      console.log(`[AuditForm] Parallel fetch completed in ${fetchTime}ms`);
+      
+      console.log('[AuditForm] Audit response received, has audit:', !!auditResponse.data?.audit);
+      
+      if (!auditResponse.data || !auditResponse.data.audit) {
+        throw new Error('Invalid audit response - no audit data');
+      }
+      
       const audit = auditResponse.data.audit;
       const auditItems = auditResponse.data.items || [];
+      
+      console.log('[AuditForm] Audit loaded:', audit.id, 'Status:', audit.status, 'Template ID:', audit.template_id);
+      
+      // Check if parallel-fetched template matches audit's template_id
+      let templateData = null;
+      if (templateResponse && templateResponse.data) {
+        // Verify template matches (in case route templateId differs from audit template_id)
+        if (templateResponse.data.template?.id === audit.template_id || templateIdToFetch === audit.template_id) {
+          templateData = templateResponse.data;
+          console.log('[AuditForm] Template loaded from parallel fetch:', templateData.template?.name);
+        } else {
+          console.warn('[AuditForm] Template ID mismatch - route:', templateIdToFetch, 'audit:', audit.template_id);
+        }
+      }
 
       // Check if audit is completed
       setAuditStatus(audit.status);
@@ -330,47 +400,88 @@ const AuditFormScreen = () => {
         }
       }
 
-      // Fetch template to get all items
-      const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`);
-      setTemplate(templateResponse.data.template);
-      const allItems = templateResponse.data.items || [];
+      // Fetch template if not already loaded from parallel fetch
+      if (!templateData) {
+        console.log('[AuditForm] Fetching template:', audit.template_id);
+        try {
+          const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`, {
+            timeout: 20000, // Reduced from 60s to 20s
+          });
+          templateData = templateResponse.data;
+        } catch (templateError) {
+          console.error('[AuditForm] Template fetch failed:', templateError.message);
+          throw new Error(`Failed to load template: ${templateError.message || 'Unknown error'}`);
+        }
+      }
       
+      if (!templateData || !templateData.template) {
+        throw new Error('Invalid template response - no template data');
+      }
+      
+      console.log('[AuditForm] Template loaded:', templateData.template.name);
+      // Set template and items immediately for faster UI rendering
+      setTemplate(templateData.template);
+      const allItems = templateData.items || [];
+      console.log('[AuditForm] Template has', allItems.length, 'items');
+      
+      if (allItems.length === 0) {
+        console.warn('[AuditForm] Warning: Template has no items');
+      }
+      
+      // OPTIMIZATION: Process items and categories in one pass for better performance
       // Filter out time-related items
       const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
+      
+      // Set items immediately for faster rendering
       setItems(filteredItems);
       
-        // Extract unique categories from filtered items (excluding only time-tracking categories)
-        // Allow "Speed of Service" category - only filter "Speed of Service - Tracking"
-        const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
-          if (!cat || !cat.trim()) return false;
-          const categoryLower = cat.toLowerCase();
-          // Filter out only time-tracking categories, NOT "Speed of Service" checklist
-          return !categoryLower.includes('speed of service - tracking') && 
-                 !categoryLower.includes('time tracking');
-        }))];
-      setCategories(uniqueCategories);
+      // Extract unique categories and build category status in optimized way
+      const categoryMap = new Map();
+      const auditItemsMap = new Map(auditItems.map(ai => [ai.item_id, ai]));
       
-      // Check which categories have been completed in this audit
-      const categoryStatus = {};
-      uniqueCategories.forEach(cat => {
-        const categoryItems = filteredItems.filter(item => item.category === cat);
-        const completedInCategory = categoryItems.filter(item => {
-          const auditItem = auditItems.find(ai => ai.item_id === item.id);
-          if (!auditItem) return false;
-          // Check if item has a valid mark (not null, not undefined, not empty string)
-          // Also check status field as a fallback
+      filteredItems.forEach(item => {
+        const cat = item.category;
+        if (!cat || !cat.trim()) return;
+        
+        const categoryLower = cat.toLowerCase();
+        // Filter out only time-tracking categories
+        if (categoryLower.includes('speed of service - tracking') || 
+            categoryLower.includes('time tracking')) {
+          return;
+        }
+        
+        if (!categoryMap.has(cat)) {
+          categoryMap.set(cat, { items: [], completed: 0 });
+        }
+        
+        const categoryData = categoryMap.get(cat);
+        categoryData.items.push(item);
+        
+        // Check if item is completed
+        const auditItem = auditItemsMap.get(item.id);
+        if (auditItem) {
           const hasMark = auditItem.mark !== null && 
                          auditItem.mark !== undefined && 
                          String(auditItem.mark).trim() !== '';
           const hasStatus = auditItem.status && 
                            auditItem.status !== 'pending' && 
                            auditItem.status !== '';
-          return hasMark || hasStatus;
-        }).length;
+          if (hasMark || hasStatus) {
+            categoryData.completed++;
+          }
+        }
+      });
+      
+      const uniqueCategories = Array.from(categoryMap.keys());
+      setCategories(uniqueCategories);
+      
+      // Build category status object
+      const categoryStatus = {};
+      categoryMap.forEach((data, cat) => {
         categoryStatus[cat] = {
-          completed: completedInCategory,
-          total: categoryItems.length,
-          isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+          completed: data.completed,
+          total: data.items.length,
+          isComplete: data.completed === data.items.length && data.items.length > 0
         };
       });
       setCategoryCompletionStatus(categoryStatus);
@@ -402,34 +513,36 @@ const AuditFormScreen = () => {
         }
       }
 
-      // Populate responses from audit items
+      // OPTIMIZATION: Populate responses from audit items in single loop
       const responsesData = {};
       const optionsData = {};
       const commentsData = {};
       const photosData = {};
+      const baseUrl = API_BASE_URL.replace('/api', '');
 
+      // Use the already-created auditItemsMap for O(1) lookups
       auditItems.forEach(auditItem => {
+        const itemId = auditItem.item_id;
         if (auditItem.status) {
-          responsesData[auditItem.item_id] = auditItem.status;
+          responsesData[itemId] = auditItem.status;
         }
         if (auditItem.selected_option_id) {
-          optionsData[auditItem.item_id] = auditItem.selected_option_id;
+          optionsData[itemId] = auditItem.selected_option_id;
         }
         if (auditItem.comment) {
-          commentsData[auditItem.item_id] = auditItem.comment;
+          commentsData[itemId] = auditItem.comment;
         }
         if (auditItem.photo_url) {
           // Construct full URL if needed - handle both full URLs and paths
           let photoUrl = auditItem.photo_url;
           if (!photoUrl.startsWith('http')) {
-            const baseUrl = API_BASE_URL.replace('/api', '');
             if (photoUrl.startsWith('/')) {
               photoUrl = `${baseUrl}${photoUrl}`;
             } else {
               photoUrl = `${baseUrl}/${photoUrl}`;
             }
           }
-          photosData[auditItem.item_id] = photoUrl;
+          photosData[itemId] = photoUrl;
         }
       });
 
@@ -451,10 +564,52 @@ const AuditFormScreen = () => {
         // Single or no categories, or audit is completed - go directly to checklist
         setCurrentStep(2);
       }
+      
+      const totalLoadTime = Date.now() - startTime;
+      console.log(`[AuditForm] Audit data loaded successfully in ${totalLoadTime}ms. Step:`, uniqueCategories.length > 1 && audit.status !== 'completed' ? 1 : 2);
+      
+      // CRITICAL: Set loading to false to hide the spinner and show the form
+      // Use function form to ensure React processes the state update correctly
+      setLoading(prevLoading => {
+        if (prevLoading) {
+          return false;
+        }
+        return prevLoading;
+      });
     } catch (error) {
-      console.error('Error fetching audit data:', error);
-      Alert.alert('Error', 'Failed to load audit data');
-    } finally {
+      console.error('[AuditForm] Error fetching audit data:', error.message || error);
+      console.error('[AuditForm] Error details:', {
+        code: error.code,
+        response: error.response?.status,
+        responseData: error.response?.data
+      });
+      
+      let errorMessage = 'Failed to load audit data.';
+      if (error.response?.status === 404) {
+        errorMessage = 'Audit not found. It may have been deleted.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to view this audit.';
+      } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'Request timed out. Please check your internet connection and try again.';
+      } else if (!error.response) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      }
+      
+      Alert.alert(
+        'Error Loading Audit',
+        errorMessage,
+        [
+          { 
+            text: 'Go Back', 
+            onPress: () => navigation.goBack(),
+            style: 'cancel'
+          },
+          { 
+            text: 'Retry', 
+            onPress: () => fetchAuditDataById(id)
+          }
+        ]
+      );
       setLoading(false);
     }
   };
@@ -463,16 +618,32 @@ const AuditFormScreen = () => {
     try {
       setLoading(true);
       console.log('[AuditForm] Fetching template:', templateId);
-      // Increased timeout for large templates (174+ items)
+      
+      // Check if online - require real-time connection
+      if (!isOnline) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please connect to the internet to load template.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setLoading(false);
+        return;
+      }
+      
+      const startTime = Date.now();
+      // Reduced timeout for faster failure detection
       const shouldBypassCache = isPhotoFixTemplate(templateId, template?.name);
       const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`, {
-        timeout: 60000, // 60 seconds timeout for large templates
+        timeout: 20000, // Reduced from 60s to 20s
         headers: {
           'Accept': 'application/json'
         },
         params: shouldBypassCache ? { cache_bust: Date.now() } : undefined,
         __skipCache: shouldBypassCache
       });
+      
+      const fetchTime = Date.now() - startTime;
+      console.log(`[AuditForm] Template fetch completed in ${fetchTime}ms`);
       
       console.log('[AuditForm] Template response received, has template:', !!response.data?.template);
       
@@ -530,9 +701,16 @@ const AuditFormScreen = () => {
     }
   };
 
-  const fetchAuditData = async () => {
-    await fetchAuditDataById(auditId);
-  };
+  const fetchAuditData = useCallback(async () => {
+    if (!auditId) {
+      console.error('[AuditForm] fetchAuditData called but auditId is missing');
+      Alert.alert('Error', 'Audit ID is missing. Please try again.');
+      setLoading(false);
+      return;
+    }
+    console.log('[AuditForm] fetchAuditData called with auditId:', auditId);
+    await fetchAuditDataById(parseInt(auditId, 10));
+  }, [auditId, isOnline]);
 
   // Fetch previous audit failures for recurring failures indicator
   // Works for both regular audits and scheduled audits (same location + same checklist)
@@ -1531,42 +1709,21 @@ const AuditFormScreen = () => {
         scheduledAuditId: scheduledAuditId,
       };
 
-      // Save audit draft offline
-      const result = await saveAuditOffline(draftData);
+      // Save draft locally (real-time only - no offline sync)
+      await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
+      await AsyncStorage.setItem(
+        draftStorageKey + '_meta',
+        JSON.stringify({
+          auditId: currentAuditId || null,
+          clientAuditUuid: clientAuditUuidRef.current
+        })
+      );
 
-      if (result.success) {
-        await AsyncStorage.setItem(
-          draftStorageKey,
-          JSON.stringify({
-            auditId: currentAuditId || null,
-            clientAuditUuid: clientAuditUuidRef.current
-          })
-        );
-
-        // Queue photos for offline upload if any
-        const photoEntries = Object.entries(photos);
-        for (const [itemId, photoData] of photoEntries) {
-          if (photoData && typeof photoData === 'string' && photoData.startsWith('file://')) {
-            await queuePhotoForUpload({
-              uri: photoData,
-              itemId: parseInt(itemId),
-              auditTempId: result.tempId || null,
-              type: 'image/jpeg',
-              name: `photo_${itemId}_${Date.now()}.jpg`,
-            });
-          }
-        }
-
-        Alert.alert(
-          'Draft Saved',
-          isOnline 
-            ? 'Your progress has been saved. You can resume this audit anytime.'
-            : 'Your progress has been saved offline. It will sync when you\'re back online.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        throw new Error(result.error || 'Failed to save draft');
-      }
+      Alert.alert(
+        'Draft Saved',
+        'Your progress has been saved locally. You can resume this audit anytime.',
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('Error saving draft:', error);
       Alert.alert('Error', 'Failed to save draft. Please try again.');
@@ -1578,7 +1735,7 @@ const AuditFormScreen = () => {
     photos, selectedOptions, multipleSelections, categoryCompletionStatus,
     selectedCategory, currentStep, attendees, pointsDiscussed, infoPictures,
     notes, capturedLocation, locationVerified, items, currentAuditId,
-    scheduledAuditId, saveAuditOffline, queuePhotoForUpload, isOnline, draftStorageKey
+    scheduledAuditId, isOnline, draftStorageKey
   ]);
 
   // Auto-save draft every 60 seconds when in audit step and has unsaved changes
@@ -1633,7 +1790,7 @@ const AuditFormScreen = () => {
           scheduledAuditId,
           isAutoSave: true,
         };
-        await saveAuditOffline(draftData);
+        await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
         console.log('[AutoSave] Draft saved silently');
       } catch (error) {
         console.warn('[AutoSave] Failed to auto-save draft:', error);
@@ -1646,7 +1803,7 @@ const AuditFormScreen = () => {
     locationId, comments, photos, selectedOptions, multipleSelections,
     categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
     infoPictures, notes, capturedLocation, locationVerified, items,
-    currentAuditId, scheduledAuditId, saveAuditOffline
+    currentAuditId, scheduledAuditId, draftStorageKey
   ]);
 
   const handleSubmit = async () => {
@@ -2130,7 +2287,7 @@ const AuditFormScreen = () => {
         }
       }
 
-      // Refresh audit data to get updated completion status
+      // Refresh audit data to get updated completion status and sync form state
       // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
       try {
         const auditResponse = await axios.get(`${API_BASE_URL}/audits/${activeAuditId}`);
@@ -2142,6 +2299,49 @@ const AuditFormScreen = () => {
         if (updatedAudit.status) {
           setAuditStatus(updatedAudit.status);
         }
+        
+        // CRITICAL: Update form state with saved responses to reflect what was saved
+        // This ensures the form shows the saved data when user continues
+        const updatedResponses = { ...responses };
+        const updatedSelectedOptions = { ...selectedOptions };
+        const updatedComments = { ...comments };
+        const updatedPhotos = { ...photos };
+        const baseUrl = API_BASE_URL.replace('/api', '');
+        
+        updatedAuditItems.forEach(auditItem => {
+          const itemId = auditItem.item_id;
+          // Update responses
+          if (auditItem.status) {
+            updatedResponses[itemId] = auditItem.status;
+          }
+          // Update selected options
+          if (auditItem.selected_option_id) {
+            updatedSelectedOptions[itemId] = auditItem.selected_option_id;
+          }
+          // Update comments
+          if (auditItem.comment) {
+            updatedComments[itemId] = auditItem.comment;
+          }
+          // Update photos
+          if (auditItem.photo_url) {
+            let photoUrl = auditItem.photo_url;
+            if (!photoUrl.startsWith('http')) {
+              if (photoUrl.startsWith('/')) {
+                photoUrl = `${baseUrl}${photoUrl}`;
+              } else {
+                photoUrl = `${baseUrl}/${photoUrl}`;
+              }
+            }
+            updatedPhotos[itemId] = photoUrl;
+          }
+        });
+        
+        // Update form state with refreshed data
+        console.log('[AuditForm] Updating form state after save - responses:', Object.keys(updatedResponses).length, 'items updated');
+        setResponses(updatedResponses);
+        setSelectedOptions(updatedSelectedOptions);
+        setComments(updatedComments);
+        setPhotos(updatedPhotos);
         
         // Recalculate category completion status based on ALL saved items (not just filtered)
         // Get ALL items from template to check completion properly
@@ -2301,6 +2501,39 @@ const AuditFormScreen = () => {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#1976d2" />
+        <Text style={styles.loadingText}>Loading audit...</Text>
+      </View>
+    );
+  }
+
+  // Safety check: If we don't have template or items after loading, show error
+  if (!loading && (!template || !items || items.length === 0)) {
+    console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0);
+    return (
+      <View style={styles.centerContainer}>
+        <Icon name="error-outline" size={64} color={themeConfig.error.main} />
+        <Text style={styles.errorTitle}>Failed to Load Audit</Text>
+        <Text style={styles.errorText}>
+          {!template ? 'Template data is missing.' : 'Checklist items could not be loaded.'}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => {
+            if (auditId) {
+              fetchAuditData();
+            } else if (templateId) {
+              fetchTemplate();
+            }
+          }}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -3292,6 +3525,47 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
+    backgroundColor: themeConfig.background.default,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: themeConfig.text.secondary,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: themeConfig.text.primary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: themeConfig.text.secondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 40,
+  },
+  retryButton: {
+    backgroundColor: themeConfig.primary.main,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: themeConfig.borderRadius.medium,
+    marginBottom: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  backButtonText: {
+    color: themeConfig.text.secondary,
+    fontSize: 14,
   },
   scrollView: {
     flex: 1,

@@ -15,24 +15,19 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
-import { useOffline } from '../context/OfflineContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
 import { themeConfig } from '../config/theme';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoTemplates } from '../components/EmptyState';
-import { OfflineModeCard, PendingSyncSummary } from '../components/OfflineIndicator';
 
 const ChecklistsScreen = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [isUsingCachedData, setIsUsingCachedData] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
   
   const navigation = useNavigation();
   const { user } = useAuth();
   const { isOnline } = useNetwork();
-  const { getCachedTemplates, prefetchForOffline, offlineStats } = useOffline();
   
   const userPermissions = user?.permissions || [];
 
@@ -45,46 +40,41 @@ const ChecklistsScreen = () => {
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
 
-  // Fetch templates - tries online first, falls back to cache
-  const fetchTemplates = useCallback(async (forceOnline = false) => {
+  // Fetch templates - real-time only, no offline fallback
+  const fetchTemplates = useCallback(async () => {
     try {
-      if (isOnline || forceOnline) {
-        // Try to fetch from server with cache-busting parameter
-        try {
-          const response = await axios.get(`${API_BASE_URL}/templates`, {
-            params: { _t: Date.now(), dedupe: 'true' }
-          });
-          const serverTemplates = response.data.templates || [];
-          setTemplates(serverTemplates);
-          setIsUsingCachedData(false);
-          
-          // Prefetch for offline use in background
-          prefetchForOffline();
-          
-          return;
-        } catch (networkError) {
-          console.log('Network error, falling back to cache:', networkError.message);
-        }
-      }
-      
-      // Offline or network error - use cached data
-      const cached = await getCachedTemplates();
-      if (cached.templates.length > 0) {
-        setTemplates(cached.templates);
-        setIsUsingCachedData(true);
-        setLastSync(cached.cachedAt);
-      } else {
+      // Check if online - fail immediately if offline
+      if (!isOnline) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please connect to the internet to load templates.',
+          [{ text: 'OK' }]
+        );
         setTemplates([]);
-        setIsUsingCachedData(false);
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
+
+      // Fetch from server in real-time
+      const response = await axios.get(`${API_BASE_URL}/templates`, {
+        params: { _t: Date.now(), dedupe: 'true' }
+      });
+      const serverTemplates = response.data.templates || [];
+      setTemplates(serverTemplates);
     } catch (error) {
       console.error('Error fetching templates:', error);
+      Alert.alert(
+        'Connection Error',
+        'Failed to load templates. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
+      );
       setTemplates([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isOnline, getCachedTemplates, prefetchForOffline]);
+  }, [isOnline]);
 
   // Track if this is the initial mount to prevent double fetching
   const isInitialMount = React.useRef(true);
@@ -96,8 +86,8 @@ const ChecklistsScreen = () => {
 
   // Refresh when coming back online
   useEffect(() => {
-    if (isOnline && isUsingCachedData) {
-      fetchTemplates(true);
+    if (isOnline && templates.length === 0) {
+      fetchTemplates();
     }
   }, [isOnline]);
 
@@ -109,16 +99,24 @@ const ChecklistsScreen = () => {
         isInitialMount.current = false;
         return;
       }
-      // Only fetch if not currently loading
-      if (!loading) {
+      // Only fetch if not currently loading and online
+      if (!loading && isOnline) {
         fetchTemplates();
       }
-    }, [isOnline, loading])
+    }, [isOnline, loading, fetchTemplates])
   );
 
   const onRefresh = () => {
+    if (!isOnline) {
+      Alert.alert(
+        'No Internet Connection',
+        'Please connect to the internet to refresh templates.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setRefreshing(true);
-    fetchTemplates(true);
+    fetchTemplates();
   };
 
   const handleStartAudit = (template) => {
@@ -180,12 +178,6 @@ const ChecklistsScreen = () => {
           <Icon name="list-alt" size={16} color={themeConfig.text.secondary} />
           <Text style={styles.itemCount}>{item.item_count || 0} items</Text>
         </View>
-        {isUsingCachedData && (
-          <View style={styles.cachedBadge}>
-            <Icon name="cloud-off" size={12} color={themeConfig.warning.dark} />
-            <Text style={styles.cachedText}>Cached</Text>
-          </View>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -213,12 +205,6 @@ const ChecklistsScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Offline Mode Card */}
-      {!isOnline && <OfflineModeCard lastSync={lastSync} />}
-      
-      {/* Pending Sync Summary */}
-      {offlineStats.hasPendingSync && <PendingSyncSummary />}
-
       <FlatList
         data={templates}
         renderItem={renderTemplate}
@@ -235,7 +221,7 @@ const ChecklistsScreen = () => {
         }
         ListEmptyComponent={
           <NoTemplates 
-            onAction={isOnline ? onRefresh : undefined}
+            onAction={onRefresh}
           />
         }
         ListHeaderComponent={
@@ -366,20 +352,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: themeConfig.text.secondary,
     marginLeft: 6,
-  },
-  cachedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: themeConfig.warning.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: themeConfig.borderRadius.small,
-  },
-  cachedText: {
-    fontSize: 11,
-    color: themeConfig.warning.dark,
-    fontWeight: '500',
-    marginLeft: 4,
   },
 });
 
