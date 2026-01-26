@@ -56,7 +56,10 @@ const ScheduledAuditsScreen = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
 
-  // Initial fetch
+  // Track if this is initial mount to prevent double fetching
+  const isInitialMount = useRef(true);
+
+  // Initial fetch - only on mount
   useEffect(() => {
     if (user) {
       fetchScheduledAudits();
@@ -64,11 +67,15 @@ const ScheduledAuditsScreen = () => {
     }
   }, [user]);
 
-  // Auto-refresh when screen is focused
+  // Auto-refresh when screen is focused (but not on initial mount)
   useEffect(() => {
     if (isFocused && user) {
-      // Fetch immediately when screen comes into focus
-      fetchScheduledAuditsSilent();
+      // Skip immediate fetch on initial mount since the first useEffect handles it
+      if (!isInitialMount.current) {
+        // Fetch immediately when screen comes back into focus
+        fetchScheduledAuditsSilent();
+      }
+      isInitialMount.current = false;
       
       // Set up auto-refresh interval
       intervalRef.current = setInterval(() => {

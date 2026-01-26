@@ -86,7 +86,10 @@ const ChecklistsScreen = () => {
     }
   }, [isOnline, getCachedTemplates, prefetchForOffline]);
 
-  // Initial load
+  // Track if this is the initial mount to prevent double fetching
+  const isInitialMount = React.useRef(true);
+
+  // Initial load - only on mount
   useEffect(() => {
     fetchTemplates();
   }, []);
@@ -98,13 +101,19 @@ const ChecklistsScreen = () => {
     }
   }, [isOnline]);
 
-  // Refresh when screen comes into focus
+  // Refresh when screen comes into focus (but not on initial mount)
   useFocusEffect(
     useCallback(() => {
+      // Skip the first focus (initial mount) since useEffect already handles it
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      // Only fetch if not currently loading
       if (!loading) {
         fetchTemplates();
       }
-    }, [isOnline])
+    }, [isOnline, loading])
   );
 
   const onRefresh = () => {

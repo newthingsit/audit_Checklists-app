@@ -168,16 +168,22 @@ const AuditFormScreen = () => {
   }, [templateId, locationId, initialLocationId, items.length]);
 
   useEffect(() => {
+    console.log('[AuditForm] Initial load - templateId:', templateId, 'auditId:', auditId, 'scheduledAuditId:', scheduledAuditId, 'locationId:', initialLocationId);
     if (auditId) {
       // Editing existing audit
+      console.log('[AuditForm] Mode: Editing existing audit');
       setIsEditing(true);
       fetchAuditData();
     } else if (scheduledAuditId && templateId) {
       // Check if audit already exists for this scheduled audit
+      console.log('[AuditForm] Mode: Starting from scheduled audit');
       checkExistingAudit();
     } else if (templateId) {
       // Creating new audit
+      console.log('[AuditForm] Mode: Creating new audit from template');
       fetchTemplate();
+    } else {
+      console.error('[AuditForm] ERROR: No templateId, auditId, or scheduledAuditId provided!');
     }
     fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
@@ -220,11 +226,13 @@ const AuditFormScreen = () => {
   const checkExistingAudit = async () => {
     try {
       setLoading(true);
+      console.log('[AuditForm] Checking for existing audit for scheduled audit:', scheduledAuditId);
       // Check if an audit already exists for this scheduled audit
       const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`);
       if (response.data.audit) {
         // Audit exists, switch to edit mode
         const existingAuditId = response.data.audit.id;
+        console.log('[AuditForm] Found existing audit:', existingAuditId);
         setIsEditing(true);
         // Update route params to include auditId
         navigation.setParams({ auditId: existingAuditId });
@@ -232,20 +240,21 @@ const AuditFormScreen = () => {
         await fetchAuditDataById(existingAuditId);
       } else {
         // No existing audit, create new one
-        fetchTemplate();
+        console.log('[AuditForm] No existing audit, fetching template');
+        await fetchTemplate();
       }
     } catch (error) {
       // If audit not found (404), it's a new audit
       if (error.response?.status === 404) {
-        fetchTemplate();
+        console.log('[AuditForm] No existing audit (404), fetching template');
+        await fetchTemplate();
       } else {
-        console.error('Error checking existing audit:', error);
+        console.error('[AuditForm] Error checking existing audit:', error);
         Alert.alert('Error', 'Failed to check for existing audit. Creating new audit.');
-        fetchTemplate();
+        await fetchTemplate();
       }
-    } finally {
-      setLoading(false);
     }
+    // Note: setLoading(false) is handled inside fetchTemplate and fetchAuditDataById
   };
 
   const fetchAuditDataById = async (id) => {
@@ -453,6 +462,7 @@ const AuditFormScreen = () => {
   const fetchTemplate = async () => {
     try {
       setLoading(true);
+      console.log('[AuditForm] Fetching template:', templateId);
       // Increased timeout for large templates (174+ items)
       const shouldBypassCache = isPhotoFixTemplate(templateId, template?.name);
       const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`, {
@@ -464,17 +474,20 @@ const AuditFormScreen = () => {
         __skipCache: shouldBypassCache
       });
       
+      console.log('[AuditForm] Template response received, has template:', !!response.data?.template);
+      
       if (response.data && response.data.template) {
         setTemplate(response.data.template);
         const allItems = response.data.items || [];
+        console.log('[AuditForm] Template loaded:', response.data.template.name, 'with', allItems.length, 'items');
         
         // Filter out time-related items
-        const filteredItems = allItems.filter(item => !isTimeRelatedItem(item));
-        setItems(filteredItems);
+        const filteredItemsData = allItems.filter(item => !isTimeRelatedItem(item));
+        setItems(filteredItemsData);
         
         // Extract unique categories from filtered items (excluding only time-tracking categories)
         // Allow "Speed of Service" category - only filter "Speed of Service - Tracking"
-        const uniqueCategories = [...new Set(filteredItems.map(item => item.category).filter(cat => {
+        const uniqueCategories = [...new Set(filteredItemsData.map(item => item.category).filter(cat => {
           if (!cat || !cat.trim()) return false;
           const categoryLower = cat.toLowerCase();
           // Filter out only time-tracking categories, NOT "Speed of Service" checklist
@@ -482,21 +495,25 @@ const AuditFormScreen = () => {
                  !categoryLower.includes('time tracking');
         }))];
         setCategories(uniqueCategories);
+        console.log('[AuditForm] Found', uniqueCategories.length, 'categories:', uniqueCategories.slice(0, 3).join(', '), uniqueCategories.length > 3 ? '...' : '');
         
         // If only one category, auto-select it
         if (uniqueCategories.length === 1) {
           setSelectedCategory(uniqueCategories[0]);
-          const filtered = filteredItems.filter(item => item.category === uniqueCategories[0]);
+          const filtered = filteredItemsData.filter(item => item.category === uniqueCategories[0]);
           setFilteredItems(filtered);
+          console.log('[AuditForm] Auto-selected single category:', uniqueCategories[0]);
         } else if (uniqueCategories.length === 0) {
           // No categories, show all filtered items
-          setFilteredItems(filteredItems);
+          setFilteredItems(filteredItemsData);
+          console.log('[AuditForm] No categories, showing all items');
         }
       } else {
+        console.error('[AuditForm] Invalid template response - no template data');
         throw new Error('Invalid template response');
       }
     } catch (error) {
-      console.error('Error fetching template:', error);
+      console.error('[AuditForm] Error fetching template:', error.message || error);
       let errorMessage = 'Failed to load template';
       
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {

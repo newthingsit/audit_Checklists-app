@@ -64,13 +64,6 @@ const DashboardScreen = () => {
     }, [refreshUser])
   );
 
-  // Fetch data when component mounts or when user/permissions change
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user?.id, user?.role, JSON.stringify(user?.permissions), fetchData]);
-
   const fetchData = useCallback(async () => {
     // Recalculate permissions inside fetchData to ensure we have the latest values
     const currentPermissions = user?.permissions || [];
@@ -127,11 +120,12 @@ const DashboardScreen = () => {
   }, [user]);
 
   // Fetch data when component mounts or when user/permissions change
+  // Single useEffect for fetching - prevents duplicate API calls
   useEffect(() => {
     if (user) {
       fetchData();
     }
-  }, [user?.id, user?.role, JSON.stringify(user?.permissions), fetchData]);
+  }, [user?.id, user?.role, JSON.stringify(user?.permissions)]);
 
   const onRefresh = async () => {
     setRefreshing(true);
