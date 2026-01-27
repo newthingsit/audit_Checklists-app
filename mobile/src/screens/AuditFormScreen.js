@@ -2719,12 +2719,19 @@ const AuditFormScreen = () => {
             [
               { 
                 text: 'View Audit', 
-                onPress: () => navigation.navigate('AuditDetail', { id: activeAuditId })
+                onPress: () => {
+                  // Navigate to detail with refresh flag
+                  navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
+                }
               },
               {
                 text: 'Done',
                 style: 'cancel',
-                onPress: () => navigation.goBack()
+                onPress: () => {
+                  // Mark that we need to refresh audit detail on back
+                  navigation.setParams({ refreshAuditDetail: true });
+                  navigation.goBack();
+                }
               }
             ]
           );
@@ -2781,15 +2788,28 @@ const AuditFormScreen = () => {
             [
               { 
                 text: remainingCategories.length > 0 ? 'Continue' : 'Done', 
-                style: remainingCategories.length > 0 ? 'cancel' : 'default',
+                style: remainingCategories.length > 0 ? 'default' : 'default',
                 onPress: remainingCategories.length > 0 ? () => {
-                  // Dismiss alert and allow user to continue working on the audit
-                  // The form state is already updated, so user can continue
-                } : () => navigation.goBack()
+                  // Auto-navigate to next incomplete category
+                  if (remainingCategories.length > 0) {
+                    const nextCategory = remainingCategories[0];
+                    console.log('[AuditForm] Auto-selecting next incomplete category:', nextCategory);
+                    setSelectedCategory(nextCategory);
+                    setCurrentStep(2); // Go back to checklist step
+                  }
+                } : () => {
+                  // Mark that we need to refresh audit detail on back
+                  navigation.setParams({ refreshAuditDetail: true });
+                  navigation.goBack();
+                }
               },
               ...(remainingCategories.length > 0 ? [{
                 text: 'Done',
-                onPress: () => navigation.goBack()
+                onPress: () => {
+                  // Mark that we need to refresh audit detail on back
+                  navigation.setParams({ refreshAuditDetail: true });
+                  navigation.goBack();
+                }
               }] : [])
             ]
           );
@@ -3348,7 +3368,7 @@ const AuditFormScreen = () => {
               {selectedCategory && !isCvr && ` (${selectedCategory})`}
             </Text>
               {(() => {
-                // Calculate detailed breakdown
+                // Calculate detailed breakdown - use local state for real-time display
                 const requiredItems = filteredItems.filter(item => item.is_required);
                 const missingRequired = requiredItems.filter(item => !isItemComplete(item));
                 const itemsNeedingPhotos = filteredItems.filter(item => {
@@ -3356,28 +3376,43 @@ const AuditFormScreen = () => {
                   return item.is_required && fieldType === 'image_upload' && !photos[item.id];
                 });
                 
+                // Calculate real-time completion for current category
+                const currentCategoryCompleted = filteredItems.filter(item => {
+                  const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
+                  const hasComment = comments[item.id] && String(comments[item.id]).trim();
+                  const hasPhoto = !!photos[item.id];
+                  const fieldType = getEffectiveItemFieldType(item);
+                  const isAnswerType = isAnswerFieldType(fieldType);
+                  const isImageType = fieldType === 'image_upload';
+                  
+                  if (isAnswerType) return hasComment;
+                  if (isImageType) return hasPhoto;
+                  return hasResponse;
+                }).length;
+                
                 const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
-                if (currentStatus) {
-                  const percent = currentStatus.total > 0 ? Math.round((currentStatus.completed / currentStatus.total) * 100) : 0;
-                  return (
-                    <View>
-                      <View style={[styles.categoryProgressBar, isCvr && { backgroundColor: cvrTheme.input.border }]}>
-                        <View 
-                          style={[
-                            styles.categoryProgressFill, 
-                            { 
-                              width: `${percent}%`,
-                              backgroundColor: currentStatus.isComplete ? (isCvr ? cvrTheme.accent.green : themeConfig.success.main) : (isCvr ? cvrTheme.accent.purple : themeConfig.primary.main)
-                            }
-                          ]} 
-                        />
-                      </View>
-                      {/* Detailed breakdown */}
-                      {(missingRequired.length > 0 || itemsNeedingPhotos.length > 0) && (
-                        <View style={{ marginTop: 8, gap: 4 }}>
-                          {missingRequired.length > 0 && (
-                            <Text style={[styles.progressText, { fontSize: 12, color: isCvr ? '#ff6b6b' : themeConfig.error.main }]}>
-                              ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
+                const percent = filteredItems.length > 0 ? Math.round((currentCategoryCompleted / filteredItems.length) * 100) : 0;
+                const isComplete = currentCategoryCompleted === filteredItems.length && filteredItems.length > 0;
+                
+                return (
+                  <View>
+                    <View style={[styles.categoryProgressBar, isCvr && { backgroundColor: cvrTheme.input.border }]}>
+                      <View 
+                        style={[
+                          styles.categoryProgressFill, 
+                          { 
+                            width: `${percent}%`,
+                            backgroundColor: isComplete ? (isCvr ? cvrTheme.accent.green : themeConfig.success.main) : (isCvr ? cvrTheme.accent.purple : themeConfig.primary.main)
+                          }
+                        ]} 
+                      />
+                    </View>
+                    {/* Detailed breakdown */}
+                    {(missingRequired.length > 0 || itemsNeedingPhotos.length > 0) && (
+                      <View style={{ marginTop: 8, gap: 4 }}>
+                        {missingRequired.length > 0 && (
+                          <Text style={[styles.progressText, { fontSize: 12, color: isCvr ? '#ff6b6b' : themeConfig.error.main }]}>
+                            ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
                             </Text>
                           )}
                           {itemsNeedingPhotos.length > 0 && (

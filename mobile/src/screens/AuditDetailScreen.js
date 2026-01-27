@@ -40,12 +40,24 @@ const AuditDetailScreen = () => {
   // Preserve state when component is focused (e.g., when navigating back)
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      // Refresh audit data when screen comes into focus
+      // Force refresh audit data when screen comes into focus
+      // This ensures real-time progress updates when user navigates back
+      console.log('[AuditDetail] Screen focused, refreshing audit data');
       fetchAudit();
     });
 
     return unsubscribe;
   }, [navigation, id]);
+
+  // Also refresh when route params change (e.g., refreshAuditDetail flag)
+  useEffect(() => {
+    if (route.params?.refresh || route.params?.refreshAuditDetail) {
+      console.log('[AuditDetail] Refresh requested via params, fetching latest data');
+      fetchAudit();
+      // Clear the refresh flag
+      navigation.setParams({ refresh: false, refreshAuditDetail: false });
+    }
+  }, [route.params]);
 
   const fetchAudit = async () => {
     try {
