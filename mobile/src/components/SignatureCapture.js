@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,18 @@ const SignaturePad = ({ onSave, onClear, onChange, style }) => {
   const [paths, setPaths] = useState([]);
   const [currentPath, setCurrentPath] = useState('');
   const [isSigning, setIsSigning] = useState(false);
+  // Use refs to track current state for onChange callbacks (avoid stale closures)
+  const pathsRef = useRef([]);
+  const currentPathRef = useRef('');
+
+  // Update refs when state changes
+  useEffect(() => {
+    pathsRef.current = paths;
+  }, [paths]);
+
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -39,23 +51,50 @@ const SignaturePad = ({ onSave, onClear, onChange, style }) => {
       onPanResponderGrant: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
         setIsSigning(true);
-        setCurrentPath(`M${locationX},${locationY}`);
+        const newPath = `M${locationX},${locationY}`;
+        setCurrentPath(newPath);
+        currentPathRef.current = newPath;
+        // Notify onChange immediately when drawing starts so button enables
+        if (onChange) {
+          const allPaths = pathsRef.current.length > 0 ? [...pathsRef.current, newPath] : [newPath];
+          onChange(buildSignatureData(allPaths));
+        }
       },
       
       onPanResponderMove: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(prev => `${prev} L${locationX},${locationY}`);
+        setCurrentPath(prev => {
+          const updated = prev ? `${prev} L${locationX},${locationY}` : `M${locationX},${locationY}`;
+          currentPathRef.current = updated;
+          // Notify onChange during drawing so button stays enabled in real-time
+          if (onChange) {
+            const allPaths = pathsRef.current.length > 0 ? [...pathsRef.current, updated] : [updated];
+            onChange(buildSignatureData(allPaths));
+          }
+          return updated;
+        });
       },
       
       onPanResponderRelease: () => {
         setIsSigning(false);
-        if (currentPath) {
+        const pathToSave = currentPathRef.current;
+        if (pathToSave) {
           setPaths(prev => {
-            const updatedPaths = [...prev, currentPath];
+            const updatedPaths = [...prev, pathToSave];
+            pathsRef.current = updatedPaths;
             if (onChange) onChange(buildSignatureData(updatedPaths));
             return updatedPaths;
           });
           setCurrentPath('');
+          currentPathRef.current = '';
+        } else {
+          // If no currentPath but we have paths, still notify
+          if (pathsRef.current.length > 0 && onChange) {
+            onChange(buildSignatureData(pathsRef.current));
+          } else if (onChange) {
+            // No signature at all
+            onChange(null);
+          }
         }
       },
     })
@@ -64,9 +103,11 @@ const SignaturePad = ({ onSave, onClear, onChange, style }) => {
   const clear = useCallback(() => {
     setPaths([]);
     setCurrentPath('');
+    pathsRef.current = [];
+    currentPathRef.current = '';
     if (onClear) onClear();
     if (onChange) onChange(null);
-  }, [onClear]);
+  }, [onClear, onChange]);
 
   const save = useCallback(() => {
     if (paths.length === 0 && !currentPath) {
@@ -170,7 +211,7 @@ export const SignatureModal = ({
   }, [visible]);
 
   const handleSave = () => {
-    if (signatureData) {
+    if (signatureData && signatureData.paths && signatureData.paths.length > 0) {
       onSave(signatureData);
       onClose();
     }
@@ -222,14 +263,14 @@ export const SignatureModal = ({
             <TouchableOpacity
               style={[
                 styles.saveButton,
-                !signatureData && styles.saveButtonDisabled
+                (!signatureData || !signatureData.paths || signatureData.paths.length === 0) && styles.saveButtonDisabled
               ]}
               onPress={handleSave}
-              disabled={!signatureData}
+              disabled={!signatureData || !signatureData.paths || signatureData.paths.length === 0}
               activeOpacity={0.7}
             >
               <LinearGradient
-                colors={signatureData 
+                colors={(signatureData && signatureData.paths && signatureData.paths.length > 0)
                   ? themeConfig.dashboardCards.card1 
                   : [themeConfig.text.disabled, themeConfig.text.disabled]
                 }

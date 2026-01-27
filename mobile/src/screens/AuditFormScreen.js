@@ -13,7 +13,7 @@ import {
   FlatList,
   Platform
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -82,6 +82,35 @@ const AuditFormScreen = () => {
   const isInitialMount = React.useRef(true);
   const saveInFlightRef = useRef(false);
   const clientAuditUuidRef = useRef(null);
+  const isInitialLoadInProgressRef = useRef(false); // Track if initial load is in progress
+  const hasInitialLoadedRef = useRef(false); // Track if initial load has completed
+  const lastLoadParamsRef = useRef(null); // Track last loaded params to prevent duplicates
+  const wasJustCompletedRef = useRef(false); // Track if we just set status to completed to prevent overwrite
+  
+  // Refs to track current values for focus effect (avoid dependency issues)
+  const auditIdRef = useRef(auditId);
+  const currentAuditIdRef = useRef(currentAuditId);
+  const scheduledAuditIdRef = useRef(scheduledAuditId);
+  const templateIdRef = useRef(templateId);
+  
+  // Track focus state and refresh timing to prevent excessive refreshes
+  const wasFocusedRef = useRef(false);
+  const lastRefreshAuditIdRef = useRef(null);
+  const lastRefreshTimeRef = useRef(0);
+  
+  // Update refs when values change
+  useEffect(() => {
+    auditIdRef.current = auditId;
+  }, [auditId]);
+  useEffect(() => {
+    currentAuditIdRef.current = currentAuditId;
+  }, [currentAuditId]);
+  useEffect(() => {
+    scheduledAuditIdRef.current = scheduledAuditId;
+  }, [scheduledAuditId]);
+  useEffect(() => {
+    templateIdRef.current = templateId;
+  }, [templateId]);
   
 
   const draftStorageKey = useMemo(() => {
@@ -170,51 +199,118 @@ const AuditFormScreen = () => {
   }, [templateId, locationId, initialLocationId, items.length]);
 
   useEffect(() => {
+    const currentParams = `${templateId}-${auditId}-${scheduledAuditId}`;
+    
+    // Skip if we've already loaded with these exact parameters
+    if (hasInitialLoadedRef.current && lastLoadParamsRef.current === currentParams) {
+      console.log('[AuditForm] Skipping duplicate initial load - already loaded with same params');
+      return;
+    }
+    
+    // Skip if initial load is already in progress
+    if (isInitialLoadInProgressRef.current) {
+      console.log('[AuditForm] Skipping - initial load already in progress');
+      return;
+    }
+    
     console.log('[AuditForm] Initial load - templateId:', templateId, 'auditId:', auditId, 'scheduledAuditId:', scheduledAuditId, 'locationId:', initialLocationId);
+    isInitialLoadInProgressRef.current = true;
+    hasInitialLoadedRef.current = true;
+    lastLoadParamsRef.current = currentParams;
+    
     if (auditId) {
       // Editing existing audit
       console.log('[AuditForm] Mode: Editing existing audit, auditId:', auditId);
       setIsEditing(true);
       // Use fetchAuditDataById directly to ensure correct ID is used
-      fetchAuditDataById(parseInt(auditId, 10));
+      fetchAuditDataById(parseInt(auditId, 10)).finally(() => {
+        isInitialLoadInProgressRef.current = false;
+      });
     } else if (scheduledAuditId && templateId) {
       // Check if audit already exists for this scheduled audit
       console.log('[AuditForm] Mode: Starting from scheduled audit');
-      checkExistingAudit();
+      Promise.resolve(checkExistingAudit()).finally(() => {
+        isInitialLoadInProgressRef.current = false;
+      });
     } else if (templateId) {
       // Creating new audit
       console.log('[AuditForm] Mode: Creating new audit from template');
-      fetchTemplate();
+      Promise.resolve(fetchTemplate()).finally(() => {
+        isInitialLoadInProgressRef.current = false;
+      });
     } else {
       console.error('[AuditForm] ERROR: No templateId, auditId, or scheduledAuditId provided!');
       Alert.alert('Error', 'Missing required parameters. Please try again.');
       setLoading(false);
+      isInitialLoadInProgressRef.current = false;
     }
     fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
 
-  // Preserve state when component is focused (e.g., when navigating back after save)
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      // Skip the first focus (initial mount) since useEffect already handles it
+  // Refresh data when screen comes into focus, but only if:
+  // 1. We're viewing an existing audit (has auditId)
+  // 2. We were previously unfocused (actually navigated away)
+  // 3. It's been at least 3 seconds since last refresh
+  // This prevents excessive refreshes while still refreshing when needed
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[AuditForm] Focus effect triggered, wasFocused:', wasFocusedRef.current, 'isInitialMount:', isInitialMount.current);
+      
+      // Skip initial mount - handled by useEffect above
       if (isInitialMount.current) {
+        console.log('[AuditForm] Skipping initial mount in focus effect');
         isInitialMount.current = false;
+        wasFocusedRef.current = true;
+        if (auditIdRef.current || currentAuditIdRef.current) {
+          lastRefreshAuditIdRef.current = auditIdRef.current || currentAuditIdRef.current;
+          console.log('[AuditForm] Set lastRefreshAuditId to:', lastRefreshAuditIdRef.current);
+        }
         return;
       }
       
-      // Refresh data when screen comes into focus to ensure state is current
-      // This is especially important after saving a category and navigating back
-      if (auditId || currentAuditId) {
-        const idToRefresh = auditId || currentAuditId;
-        console.log('[AuditForm] Screen focused, refreshing audit data for:', idToRefresh);
-        fetchAuditDataById(parseInt(idToRefresh, 10));
-      } else if (scheduledAuditId && templateId) {
-        checkExistingAudit();
+      // Only refresh if we were previously unfocused (actually navigated away and back)
+      // AND the initial load has already completed (to avoid duplicate fetches)
+      // AND initial load is not in progress
+      if (!wasFocusedRef.current && hasInitialLoadedRef.current && !isInitialLoadInProgressRef.current) {
+        console.log('[AuditForm] Screen was unfocused, now focused - checking if refresh needed');
+        wasFocusedRef.current = true;
+        const currentAuditId = auditIdRef.current || currentAuditIdRef.current;
+        
+        // Only refresh existing audits, and only if it's a different audit or enough time has passed
+        if (currentAuditId) {
+          const now = Date.now();
+          const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
+          const MIN_REFRESH_INTERVAL = 3000; // 3 seconds
+          
+          console.log('[AuditForm] Focus refresh check - currentAuditId:', currentAuditId, 'lastRefreshAuditId:', lastRefreshAuditIdRef.current, 'timeSinceLastRefresh:', timeSinceLastRefresh);
+          
+          // Only refresh if it's a different audit or enough time has passed
+          if (lastRefreshAuditIdRef.current !== currentAuditId || timeSinceLastRefresh >= MIN_REFRESH_INTERVAL) {
+            console.log('[AuditForm] Screen refocused after navigation, refreshing audit:', currentAuditId);
+            fetchAuditDataById(parseInt(currentAuditId, 10));
+            lastRefreshAuditIdRef.current = currentAuditId;
+            lastRefreshTimeRef.current = now;
+          } else {
+            console.log('[AuditForm] Skipping refresh - same audit and too soon since last refresh');
+          }
+        } else {
+          console.log('[AuditForm] No currentAuditId, skipping refresh');
+        }
+      } else {
+        if (!hasInitialLoadedRef.current) {
+          console.log('[AuditForm] Initial load not complete yet, skipping focus refresh');
+        } else {
+          console.log('[AuditForm] Screen was already focused, skipping refresh (likely re-render)');
+        }
       }
-    });
-
-    return unsubscribe;
-  }, [navigation, auditId, currentAuditId, scheduledAuditId, templateId]);
+      
+      // Mark as unfocused when screen loses focus
+      return () => {
+        console.log('[AuditForm] Screen losing focus, marking wasFocused as false');
+        wasFocusedRef.current = false;
+      };
+    }, [])
+  );
 
   // Pre-fill location when scheduled audit provides locationId or when resuming audit
   useEffect(() => {
@@ -237,12 +333,12 @@ const AuditFormScreen = () => {
     }
   }, [initialLocationId, locationId, locations, selectedLocation]);
 
-  const checkExistingAudit = async () => {
+  const checkExistingAudit = async (scheduledId = scheduledAuditId) => {
     try {
       setLoading(true);
-      console.log('[AuditForm] Checking for existing audit for scheduled audit:', scheduledAuditId);
+      console.log('[AuditForm] Checking for existing audit for scheduled audit:', scheduledId);
       // Check if an audit already exists for this scheduled audit
-      const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`);
+      const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledId}`);
       if (response.data.audit) {
         // Audit exists, switch to edit mode
         const existingAuditId = response.data.audit.id;
@@ -571,6 +667,7 @@ const AuditFormScreen = () => {
       // CRITICAL: Set loading to false to hide the spinner and show the form
       // Use function form to ensure React processes the state update correctly
       setLoading(prevLoading => {
+        console.log('[AuditForm] Setting loading to false, prevLoading was:', prevLoading, 'template:', !!templateData?.template, 'items:', filteredItems.length);
         if (prevLoading) {
           return false;
         }
@@ -1015,15 +1112,8 @@ const AuditFormScreen = () => {
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
     let lastError = null;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:635',message:'uploadPhotoWithRetry entry',data:{hasAuthToken:!!authToken,authTokenLength:authToken?.length||0,maxRetries},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:638',message:'Upload attempt start',data:{attempt,maxRetries,apiBaseUrl:API_BASE_URL},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
@@ -1040,10 +1130,6 @@ const AuditFormScreen = () => {
             ...(authToken ? { 'Authorization': authToken } : {}),
         };
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:644',message:'Before fetch request',data:{uploadUrl,hasHeaders:!!requestHeaders,hasAuth:!!requestHeaders.Authorization,formDataKeys:formData._parts?.map(p=>p[0])||'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        
         const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
           headers: requestHeaders,
@@ -1052,10 +1138,6 @@ const AuditFormScreen = () => {
         });
         
         clearTimeout(timeoutId);
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:653',message:'Fetch response received',data:{ok:uploadResponse.ok,status:uploadResponse.status,statusText:uploadResponse.statusText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
 
         if (!uploadResponse.ok) {
           const errorData = await uploadResponse.json().catch(() => ({}));
@@ -1081,9 +1163,6 @@ const AuditFormScreen = () => {
         }
 
         const responseData = await uploadResponse.json();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:679',message:'Upload success',data:{hasPhotoUrl:!!responseData.photo_url,photoUrl:responseData.photo_url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         return responseData;
       } catch (error) {
         lastError = error;
@@ -1097,10 +1176,6 @@ const AuditFormScreen = () => {
           errorMessage: error?.message,
         });
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:681',message:'Upload error caught',data:{errorName:error.name,errorMessage:error.message,errorType:error.type,isAbortError:error.name==='AbortError',isNetworkError:error.message?.includes('Network request failed'),attempt,maxRetries},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-        // #endregion
-        
         // Don't retry on auth or not found errors
         if (error.noRetry) throw error;
         
@@ -1108,9 +1183,6 @@ const AuditFormScreen = () => {
         if (didTimeout || error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
           if (attempt < maxRetries) {
             console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:688',message:'Timeout retry',data:{attempt,maxRetries,waitTime:2000*attempt},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-            // #endregion
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
             continue;
           }
@@ -1120,25 +1192,16 @@ const AuditFormScreen = () => {
         // Network errors - retry with exponential backoff
         if (error.message?.includes('Network request failed') && attempt < maxRetries) {
           console.log(`Network error. Retrying ${attempt + 1}/${maxRetries}...`);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:697',message:'Network error retry',data:{attempt,maxRetries,waitTime:2000*attempt},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-          // #endregion
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
         
         if (attempt === maxRetries) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:703',message:'Max retries reached',data:{attempt,maxRetries,errorName:error.name,errorMessage:error.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'I'})}).catch(()=>{});
-          // #endregion
           throw error;
         }
       }
     }
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:707',message:'All retries exhausted',data:{lastErrorName:lastError?.name,lastErrorMessage:lastError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'J'})}).catch(()=>{});
-    // #endregion
     throw lastError;
   };
 
@@ -1655,7 +1718,7 @@ const AuditFormScreen = () => {
     }
   };
 
-  // Save draft locally (works offline)
+  // Save draft locally and on server (works offline and online)
   const handleSaveDraft = useCallback(async () => {
     if (!selectedLocation) {
       Alert.alert('Error', 'Please select an outlet');
@@ -1667,6 +1730,81 @@ const AuditFormScreen = () => {
       if (!clientAuditUuidRef.current) {
         clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       }
+      
+      let activeAuditId = currentAuditId || auditId;
+      
+      // Try to save draft to server if online (this allows continuing drafts properly)
+      if (isOnline) {
+        try {
+          // Prepare notes with info data
+          const infoData = {
+            pictures: infoPictures.map(pic => {
+              const uriString = typeof pic === 'string' ? pic : (pic?.uri || '');
+              if (uriString.startsWith('http')) {
+                try {
+                  const urlObj = new URL(uriString);
+                  return urlObj.pathname;
+                } catch (e) {
+                  const pathMatch = uriString.match(/\/uploads\/[^?]+/);
+                  return pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, '');
+                }
+              }
+              return uriString.startsWith('/') ? uriString : `/${uriString}`;
+            }),
+          };
+          const notesToSave = JSON.stringify(infoData);
+          
+          if (activeAuditId) {
+            // Update existing audit
+            const updateData = {
+              restaurant_name: selectedLocation.name,
+              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              location_id: parseInt(locationId),
+              notes: notesToSave
+            };
+            
+            if (capturedLocation) {
+              updateData.gps_latitude = capturedLocation.latitude;
+              updateData.gps_longitude = capturedLocation.longitude;
+              updateData.gps_accuracy = capturedLocation.accuracy;
+              updateData.gps_timestamp = capturedLocation.timestamp;
+              updateData.location_verified = locationVerified;
+            }
+            
+            await axios.put(`${API_BASE_URL}/audits/${activeAuditId}`, updateData);
+          } else {
+            // Create new audit on server for draft
+            const auditData = {
+              template_id: parseInt(templateId),
+              restaurant_name: selectedLocation.name,
+              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              location_id: parseInt(locationId),
+              notes: notesToSave,
+              client_audit_uuid: clientAuditUuidRef.current
+            };
+            
+            if (scheduledAuditId) {
+              auditData.scheduled_audit_id = parseInt(scheduledAuditId);
+            }
+            
+            if (capturedLocation) {
+              auditData.gps_latitude = capturedLocation.latitude;
+              auditData.gps_longitude = capturedLocation.longitude;
+              auditData.gps_accuracy = capturedLocation.accuracy;
+              auditData.gps_timestamp = capturedLocation.timestamp;
+              auditData.location_verified = locationVerified;
+            }
+            
+            const auditResponse = await axios.post(`${API_BASE_URL}/audits`, auditData);
+            activeAuditId = auditResponse.data.id;
+            setCurrentAuditId(activeAuditId);
+          }
+        } catch (serverError) {
+          // If server save fails, log but continue with local save
+          console.warn('Failed to save draft to server, saving locally only:', serverError);
+        }
+      }
+      
       // Build draft audit data
       const draftData = {
         template_id: parseInt(templateId),
@@ -1705,23 +1843,25 @@ const AuditFormScreen = () => {
         })),
         // Metadata
         savedAt: new Date().toISOString(),
-        auditId: currentAuditId, // If resuming existing audit
+        auditId: activeAuditId, // Use the audit ID from server if available
         scheduledAuditId: scheduledAuditId,
       };
 
-      // Save draft locally (real-time only - no offline sync)
+      // Save draft locally (works offline)
       await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
       await AsyncStorage.setItem(
         draftStorageKey + '_meta',
         JSON.stringify({
-          auditId: currentAuditId || null,
+          auditId: activeAuditId || null,
           clientAuditUuid: clientAuditUuidRef.current
         })
       );
 
       Alert.alert(
         'Draft Saved',
-        'Your progress has been saved locally. You can resume this audit anytime.',
+        activeAuditId 
+          ? 'Your progress has been saved. You can resume this audit anytime.'
+          : 'Your progress has been saved locally. You can resume this audit anytime.',
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -1735,7 +1875,7 @@ const AuditFormScreen = () => {
     photos, selectedOptions, multipleSelections, categoryCompletionStatus,
     selectedCategory, currentStep, attendees, pointsDiscussed, infoPictures,
     notes, capturedLocation, locationVerified, items, currentAuditId,
-    scheduledAuditId, isOnline, draftStorageKey
+    scheduledAuditId, isOnline, draftStorageKey, auditId
   ]);
 
   // Auto-save draft every 60 seconds when in audit step and has unsaved changes
@@ -1920,9 +2060,6 @@ const AuditFormScreen = () => {
           }
         } catch (uploadError) {
           console.error('Error uploading info pictures:', uploadError);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/1d3e7330-642b-44b4-b4ce-0fa1401e36b4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuditFormScreen.js:1063',message:'Info pictures upload error in handleSubmit',data:{errorName:uploadError?.name,errorMessage:uploadError?.message,errorType:uploadError?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'P2'})}).catch(()=>{});
-          // #endregion
           Alert.alert('Error', 'Failed to upload pictures. Please try again.');
           setSaving(false);
           return;
@@ -2287,6 +2424,54 @@ const AuditFormScreen = () => {
         }
       }
 
+      // IMMEDIATE REAL-TIME CHECK: Check completion based on what was actually saved in batch
+      // Use the batchItems data to determine completion, not state (which might be stale)
+      const savedItemsMap = new Map();
+      batchItems.forEach(updateData => {
+        savedItemsMap.set(updateData.itemId, updateData);
+      });
+      
+      // Check if all items in template are complete based on what was saved
+      const allItemsInTemplateComplete = items.every(item => {
+        const savedData = savedItemsMap.get(item.id);
+        if (!savedData) {
+          // Item wasn't in this batch - check current state
+          const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
+          const hasComment = comments[item.id] && String(comments[item.id]).trim();
+          const hasPhoto = !!photos[item.id];
+          const fieldType = getEffectiveItemFieldType(item);
+          const isAnswerType = isAnswerFieldType(fieldType);
+          const isImageType = fieldType === 'image_upload';
+          
+          if (isAnswerType) return hasComment;
+          if (isImageType) return hasPhoto;
+          return hasResponse;
+        }
+        
+        // Item was in batch - check saved data
+        const hasStatus = savedData.status && savedData.status !== 'pending' && savedData.status !== '';
+        const hasMark = savedData.mark !== null && savedData.mark !== undefined && String(savedData.mark).trim() !== '';
+        const hasComment = savedData.comment && String(savedData.comment).trim();
+        const hasPhoto = savedData.photo_url;
+        
+        return hasStatus || hasMark || hasComment || hasPhoto;
+      });
+      
+      // IMMEDIATE STATUS UPDATE: If all items complete, update status instantly using functional update
+      if (allItemsInTemplateComplete && items.length > 0) {
+        wasJustCompletedRef.current = true; // Set flag BEFORE state update
+        setAuditStatus(prevStatus => {
+          if (prevStatus !== 'completed') {
+            console.log('[AuditForm] IMMEDIATE: All items complete detected, updating status from', prevStatus, 'to completed NOW');
+            return 'completed';
+          }
+          wasJustCompletedRef.current = false; // Reset if already completed
+          return prevStatus;
+        });
+      } else {
+        wasJustCompletedRef.current = false; // Reset if not all complete
+      }
+      
       // Refresh audit data to get updated completion status and sync form state
       // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
       try {
@@ -2296,8 +2481,87 @@ const AuditFormScreen = () => {
         
         // Update audit status from backend (this is the source of truth)
         const isAuditCompleted = updatedAudit.status === 'completed';
+        console.log('[AuditForm] Save response - audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
+        
+        // REAL-TIME STATUS UPDATE: Update status immediately from backend response using functional update
+        // BUT: Don't overwrite 'completed' status if we just set it and backend hasn't processed yet
         if (updatedAudit.status) {
-          setAuditStatus(updatedAudit.status);
+          setAuditStatus(prevStatus => {
+            // If we just set it to completed (via immediate check) and backend says in_progress with 0 completed_items,
+            // it means backend hasn't processed the batch yet - keep our completed status
+            const shouldKeepCompleted = wasJustCompletedRef.current && 
+                                       prevStatus === 'completed' && 
+                                       updatedAudit.status === 'in_progress' && 
+                                       updatedAudit.completed_items === 0;
+            
+            if (shouldKeepCompleted) {
+              console.log('[AuditForm] Keeping completed status - backend not processed yet (completed_items: 0, wasJustCompleted: true, prevStatus:', prevStatus, ')');
+              // Reset flag after using it
+              wasJustCompletedRef.current = false;
+              return prevStatus; // Keep completed
+            }
+            
+            // Reset flag if we're updating to something else
+            if (wasJustCompletedRef.current) {
+              wasJustCompletedRef.current = false;
+            }
+            
+            if (prevStatus !== updatedAudit.status) {
+              console.log('[AuditForm] Updated auditStatus state from', prevStatus, 'to', updatedAudit.status, '(real-time update)');
+              return updatedAudit.status;
+            }
+            return prevStatus;
+          });
+        }
+        
+        // REAL-TIME CHECK: Also check if all items are complete based on saved data from backend
+        // This provides immediate feedback even if backend hasn't calculated yet
+        const allItemsComplete = items.every(item => {
+          const auditItem = updatedAuditItems.find(ai => ai.item_id === item.id);
+          if (!auditItem) return false;
+          const markValue = auditItem.mark;
+          const hasMark = markValue !== null && 
+                         markValue !== undefined && 
+                         String(markValue).trim() !== '';
+          const hasStatus = auditItem.status && 
+                           auditItem.status !== 'pending' && 
+                           auditItem.status !== '';
+          return hasMark || hasStatus;
+        });
+        
+        // If backend says completed OR all items are complete, update status immediately using functional update
+        if ((isAuditCompleted || allItemsComplete) && items.length > 0) {
+          setAuditStatus(prevStatus => {
+            if (prevStatus !== 'completed') {
+              console.log('[AuditForm] Status update needed - backend:', isAuditCompleted, 'local check:', allItemsComplete, 'updating from', prevStatus);
+              return 'completed';
+            }
+            return prevStatus;
+          });
+          
+          // Also trigger backend completion check if not already completed
+          if (!isAuditCompleted) {
+            setTimeout(() => {
+              axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
+                .then(() => {
+                  console.log('[AuditForm] Backend confirmed completion');
+                  // Refresh to get updated status
+                  setTimeout(() => {
+                    fetchAuditDataById(activeAuditId).catch(() => {});
+                  }, 300);
+                })
+                .catch(err => {
+                  console.log('[AuditForm] Backend completion check:', err.message, 'status:', err.response?.status);
+                  // If 404, the endpoint might not exist or audit doesn't exist - that's okay, status is already set
+                  if (err.response?.status !== 404) {
+                    // For other errors, still try to refresh after a delay
+                    setTimeout(() => {
+                      fetchAuditDataById(activeAuditId).catch(() => {});
+                    }, 1000);
+                  }
+                });
+            }, 500); // Wait 500ms for backend to process batch
+          }
         }
         
         // CRITICAL: Update form state with saved responses to reflect what was saved
@@ -2376,9 +2640,22 @@ const AuditFormScreen = () => {
         
         // IMPORTANT: Use backend's completion status as source of truth
         // If backend says completed, ALL categories are done (regardless of frontend calculation)
-        if (isAuditCompleted) {
+        // REAL-TIME: Status is already updated above, now handle UI updates
+        const currentStatus = updatedAudit.status || auditStatus;
+        if (isAuditCompleted || currentStatus === 'completed') {
           // Audit is fully completed - trigger PDF download
           const pdfUrl = `${API_BASE_URL.replace('/api', '')}/api/reports/audit/${activeAuditId}/pdf`;
+          
+          // Status is already updated in real-time above, just refresh data for consistency
+          console.log('[AuditForm] Audit completed, refreshing data to confirm status');
+          // Refresh immediately to update UI
+          setTimeout(() => {
+            fetchAuditDataById(activeAuditId).then(() => {
+              console.log('[AuditForm] Audit data refreshed after completion');
+            }).catch(err => {
+              console.error('[AuditForm] Error refreshing audit after completion:', err);
+            });
+          }, 300); // Shorter delay since status is already updated
           
           // Audit is fully completed - all categories are done
           Alert.alert(
@@ -2403,6 +2680,42 @@ const AuditFormScreen = () => {
             return !status.isComplete;
           });
           
+          // REAL-TIME STATUS CHECK: Check if all categories are complete
+          const allCategoriesComplete = categories.every(cat => {
+            const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
+            return status.isComplete;
+          });
+          
+          // REAL-TIME UPDATE: If all categories complete, update status immediately using functional update
+          if (allCategoriesComplete && categories.length > 0 && !isAuditCompleted) {
+            setAuditStatus(prevStatus => {
+              if (prevStatus !== 'completed') {
+                console.log('[AuditForm] All categories complete - updating status from', prevStatus, 'to completed in real-time');
+                return 'completed';
+              }
+              return prevStatus;
+            });
+            
+            // Also notify backend to confirm completion
+            axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
+              .then(() => {
+                console.log('[AuditForm] Backend confirmed completion');
+                // Quick refresh to sync
+                setTimeout(() => {
+                  fetchAuditDataById(activeAuditId).catch(() => {});
+                }, 300);
+              })
+              .catch(err => {
+                console.log('[AuditForm] Backend completion check:', err.message);
+                // Still refresh to check backend status
+                setTimeout(() => {
+                  fetchAuditDataById(activeAuditId).then(() => {
+                    console.log('[AuditForm] Refreshed after category completion check');
+                  }).catch(() => {});
+                }, 500);
+              });
+          }
+          
           const message = remainingCategories.length > 0
             ? `Category saved successfully! ${remainingCategories.length} categor${remainingCategories.length === 1 ? 'y' : 'ies'} remaining.`
             : 'Category saved successfully!';
@@ -2414,7 +2727,10 @@ const AuditFormScreen = () => {
               { 
                 text: remainingCategories.length > 0 ? 'Continue' : 'Done', 
                 style: remainingCategories.length > 0 ? 'cancel' : 'default',
-                onPress: remainingCategories.length > 0 ? undefined : () => navigation.goBack()
+                onPress: remainingCategories.length > 0 ? () => {
+                  // Dismiss alert and allow user to continue working on the audit
+                  // The form state is already updated, so user can continue
+                } : () => navigation.goBack()
               },
               ...(remainingCategories.length > 0 ? [{
                 text: 'Done',
@@ -2432,7 +2748,11 @@ const AuditFormScreen = () => {
           [
             { 
               text: 'Continue', 
-              style: 'cancel'
+              style: 'cancel',
+              onPress: () => {
+                // Dismiss alert and allow user to continue working on the audit
+                // The form state is already updated, so user can continue
+              }
             },
             { 
               text: 'Done', 
@@ -2498,6 +2818,7 @@ const AuditFormScreen = () => {
   };
 
   if (loading) {
+    console.log('[AuditForm] RENDER: Showing loading spinner');
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#1976d2" />
@@ -2505,10 +2826,12 @@ const AuditFormScreen = () => {
       </View>
     );
   }
+  
+  console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep);
 
   // Safety check: If we don't have template or items after loading, show error
   if (!loading && (!template || !items || items.length === 0)) {
-    console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0);
+    console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep);
     return (
       <View style={styles.centerContainer}>
         <Icon name="error-outline" size={64} color={themeConfig.error.main} />
@@ -2786,6 +3109,69 @@ const AuditFormScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Step 1: Category Selection (for audits with multiple categories) */}
+      {currentStep === 1 && (
+        <View style={styles.container}>
+          <View style={[styles.progressBar, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
+            <Text style={[styles.sectionTitle, isCvr && { color: cvrTheme.text.primary }]}>
+              Select Category
+            </Text>
+            <Text style={[styles.sectionSubtitle, isCvr && { color: cvrTheme.text.secondary }]}>
+              Choose a category to continue the audit
+            </Text>
+          </View>
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            {categories.length > 0 ? (
+              categories.map((cat) => {
+                const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
+                const isSelected = selectedCategory === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.categoryCard,
+                      isSelected && styles.categoryCardSelected,
+                      isCvr && { backgroundColor: isSelected ? cvrTheme.accent.purple : cvrTheme.background.card }
+                    ]}
+                    onPress={() => {
+                      handleCategorySelect(cat);
+                      // Auto-advance to checklist when category is selected
+                      setCurrentStep(2);
+                    }}
+                  >
+                    <View style={styles.categoryCardContent}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={[
+                          styles.categoryName,
+                          isSelected && { color: isCvr ? '#fff' : themeConfig.primary.main },
+                          isCvr && { color: isSelected ? '#fff' : cvrTheme.text.primary }
+                        ]}>
+                          {cat}
+                        </Text>
+                        {catStatus.isComplete && (
+                          <Icon name="check-circle" size={20} color={isCvr ? cvrTheme.accent.green : themeConfig.success.main} />
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.categoryCount,
+                        isSelected && { color: isCvr ? 'rgba(255,255,255,0.8)' : themeConfig.text.secondary },
+                        isCvr && { color: isSelected ? 'rgba(255,255,255,0.8)' : cvrTheme.text.secondary }
+                      ]}>
+                        {catStatus.completed} of {catStatus.total} items completed
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <View style={styles.centerContainer}>
+                <Text style={styles.errorText}>No categories available</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Step 2: Audit Checklist (directly after Store Information, no category selection) */}
       {currentStep === 2 && (
