@@ -388,17 +388,28 @@ const AuditFormScreen = () => {
       const templateIdToFetch = templateId || null;
       const startTime = Date.now();
       
-      console.log('[AuditForm] Starting parallel fetch - audit and template (templateId from route:', templateIdToFetch, ')');
+      console.log('[AuditForm] Starting parallel fetch - audit and template (templateId from route:', templateIdToFetch, ', API URL:', API_BASE_URL, ')');
       
       // Fetch audit and template in parallel for faster loading
       const [auditResponse, templateResponse] = await Promise.all([
         axios.get(`${API_BASE_URL}/audits/${id}`, {
-          timeout: 20000, // Reduced from 60s to 20s for faster failure detection
+          timeout: 30000, // Increased to 30s for production (slower networks)
+        }).catch(err => {
+          // Log detailed error for debugging
+          console.error('[AuditForm] Audit fetch error:', {
+            message: err.message,
+            code: err.code,
+            status: err.response?.status,
+            statusText: err.response?.statusText,
+            url: `${API_BASE_URL}/audits/${id}`,
+            isNetworkError: !err.response
+          });
+          throw err; // Re-throw to be caught by outer catch
         }),
         // If we have templateId from route, fetch template in parallel
         templateIdToFetch 
           ? axios.get(`${API_BASE_URL}/checklists/${templateIdToFetch}`, {
-              timeout: 20000, // Reduced timeout
+              timeout: 30000, // Increased timeout for production
             }).catch(err => {
               // If parallel template fetch fails, we'll fetch it after getting audit
               console.warn('[AuditForm] Parallel template fetch failed, will fetch after audit:', err.message);
@@ -498,19 +509,25 @@ const AuditFormScreen = () => {
 
       // Fetch template if not already loaded from parallel fetch
       if (!templateData) {
-        console.log('[AuditForm] Fetching template:', audit.template_id);
+        console.log('[AuditForm] Fetching template:', audit.template_id, 'from API:', API_BASE_URL);
         try {
           const templateResponse = await axios.get(`${API_BASE_URL}/checklists/${audit.template_id}`, {
-            timeout: 20000, // Reduced from 60s to 20s
+            timeout: 30000, // Increased to 30s for production (slower networks)
           });
           templateData = templateResponse.data;
         } catch (templateError) {
-          console.error('[AuditForm] Template fetch failed:', templateError.message);
+          console.error('[AuditForm] Template fetch failed:', {
+            message: templateError.message,
+            code: templateError.code,
+            status: templateError.response?.status,
+            url: `${API_BASE_URL}/checklists/${audit.template_id}`
+          });
           throw new Error(`Failed to load template: ${templateError.message || 'Unknown error'}`);
         }
       }
       
       if (!templateData || !templateData.template) {
+        console.error('[AuditForm] Invalid template data:', { hasTemplateData: !!templateData, hasTemplate: !!templateData?.template });
         throw new Error('Invalid template response - no template data');
       }
       
@@ -692,6 +709,12 @@ const AuditFormScreen = () => {
         errorMessage = 'Network error. Please check your internet connection and try again.';
       }
       
+      // Ensure loading is set to false and state is cleared to trigger error UI
+      setLoading(false);
+      setTemplate(null);
+      setItems([]);
+      
+      // Show alert but don't block - let the error UI handle retry
       Alert.alert(
         'Error Loading Audit',
         errorMessage,
@@ -703,11 +726,13 @@ const AuditFormScreen = () => {
           },
           { 
             text: 'Retry', 
-            onPress: () => fetchAuditDataById(id)
+            onPress: () => {
+              setLoading(true);
+              fetchAuditDataById(id);
+            }
           }
         ]
       );
-      setLoading(false);
     }
   };
 
@@ -2831,7 +2856,7 @@ const AuditFormScreen = () => {
 
   // Safety check: If we don't have template or items after loading, show error
   if (!loading && (!template || !items || items.length === 0)) {
-    console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep);
+    console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'auditId:', auditId, 'templateId:', templateId);
     return (
       <View style={styles.centerContainer}>
         <Icon name="error-outline" size={64} color={themeConfig.error.main} />
@@ -2842,10 +2867,16 @@ const AuditFormScreen = () => {
         <TouchableOpacity
           style={styles.retryButton}
           onPress={() => {
-            if (auditId) {
-              fetchAuditData();
+            if (auditId || currentAuditId) {
+              const idToFetch = auditId || currentAuditId;
+              console.log('[AuditForm] Retry: Fetching audit data for ID:', idToFetch);
+              fetchAuditDataById(parseInt(idToFetch, 10));
             } else if (templateId) {
+              console.log('[AuditForm] Retry: Fetching template for ID:', templateId);
               fetchTemplate();
+            } else {
+              console.error('[AuditForm] Retry: No auditId or templateId available');
+              Alert.alert('Error', 'Unable to retry. Missing required parameters.');
             }
           }}
         >
@@ -2857,6 +2888,22 @@ const AuditFormScreen = () => {
         >
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+  
+  // Additional safety: If currentStep is not 0, 1, or 2, reset to a valid step
+  if (currentStep !== 0 && currentStep !== 1 && currentStep !== 2) {
+    console.warn('[AuditForm] Invalid currentStep:', currentStep, '- resetting to step 0');
+    // Use setTimeout to avoid state update during render
+    setTimeout(() => {
+      setCurrentStep(0);
+    }, 0);
+    // Return loading state while resetting
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#1976d2" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
