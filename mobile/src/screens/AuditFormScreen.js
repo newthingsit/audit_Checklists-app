@@ -671,21 +671,12 @@ const AuditFormScreen = () => {
       setPhotos(photosData);
 
       // Start at appropriate step
-      // IMPORTANT: For in_progress audits with multiple categories, always show category selection
-      // This allows users to switch between categories and continue completing the audit
-      // Only go directly to checklist if:
-      // 1. Single category (or no categories)
-      // 2. Audit is completed (all categories done)
-      if (uniqueCategories.length > 1 && audit.status !== 'completed') {
-        // Multiple categories and audit is in_progress - show category selection to allow switching
-        setCurrentStep(1);
-      } else {
-        // Single or no categories, or audit is completed - go directly to checklist
-        setCurrentStep(2);
-      }
+      // Skip category selection and go directly to checklist when continuing audit
+      // User can switch categories using the tabs at the top of the checklist
+      setCurrentStep(2);
       
       const totalLoadTime = Date.now() - startTime;
-      console.log(`[AuditForm] Audit data loaded successfully in ${totalLoadTime}ms. Step:`, uniqueCategories.length > 1 && audit.status !== 'completed' ? 1 : 2);
+      console.log(`[AuditForm] Audit data loaded successfully in ${totalLoadTime}ms. Step: 2`);
       
       // CRITICAL: Set loading to false to hide the spinner and show the form
       // Use function form to ensure React processes the state update correctly
@@ -3290,7 +3281,8 @@ const AuditFormScreen = () => {
       {/* Step 2: Audit Checklist (directly after Store Information, no category selection) */}
       {currentStep === 2 && (
         <View style={styles.container}>
-          <View style={[styles.progressBar, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
+          {/* Fixed Header with Category Tabs and Progress */}
+          <View style={[styles.stickyHeader, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
             {/* Horizontal Category Tabs (all templates) */}
             {categories.length > 1 && (
               <View style={{ marginBottom: 12 }}>
@@ -4167,6 +4159,18 @@ const styles = StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  stickyHeader: {
+    backgroundColor: '#e3f2fd',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    zIndex: 10,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   progressText: {
     fontSize: 14,
