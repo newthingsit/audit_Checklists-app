@@ -3368,6 +3368,8 @@ const AuditFormScreen = () => {
               {selectedCategory && !isCvr && ` (${selectedCategory})`}
             </Text>
               {(() => {
+                if (!filteredItems.length) return null;
+
                 // Calculate detailed breakdown - use local state for real-time display
                 const requiredItems = filteredItems.filter(item => item.is_required);
                 const missingRequired = requiredItems.filter(item => !isItemComplete(item));
@@ -3390,7 +3392,6 @@ const AuditFormScreen = () => {
                   return hasResponse;
                 }).length;
                 
-                const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
                 const percent = filteredItems.length > 0 ? Math.round((currentCategoryCompleted / filteredItems.length) * 100) : 0;
                 const isComplete = currentCategoryCompleted === filteredItems.length && filteredItems.length > 0;
                 
@@ -3413,19 +3414,17 @@ const AuditFormScreen = () => {
                         {missingRequired.length > 0 && (
                           <Text style={[styles.progressText, { fontSize: 12, color: isCvr ? '#ff6b6b' : themeConfig.error.main }]}>
                             ⚠️ {missingRequired.length} required item{missingRequired.length !== 1 ? 's' : ''} incomplete
-                            </Text>
-                          )}
-                          {itemsNeedingPhotos.length > 0 && (
-                            <Text style={[styles.progressText, { fontSize: 12, color: isCvr ? '#ff6b6b' : themeConfig.error.main }]}>
-                              📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
-                </Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                }
-                return null;
+                          </Text>
+                        )}
+                        {itemsNeedingPhotos.length > 0 && (
+                          <Text style={[styles.progressText, { fontSize: 12, color: isCvr ? '#ff6b6b' : themeConfig.error.main }]}>
+                            📷 {itemsNeedingPhotos.length} item{itemsNeedingPhotos.length !== 1 ? 's' : ''} need{itemsNeedingPhotos.length === 1 ? 's' : ''} photo{itemsNeedingPhotos.length !== 1 ? 's' : ''}
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
               })()}
             </View>
           </View>
