@@ -287,6 +287,7 @@ const AuditFormScreen = () => {
           // Only refresh if it's a different audit or enough time has passed
           if (lastRefreshAuditIdRef.current !== currentAuditId || timeSinceLastRefresh >= MIN_REFRESH_INTERVAL) {
             console.log('[AuditForm] Screen refocused after navigation, refreshing audit:', currentAuditId);
+            // Don't show loading spinner on refresh - keep existing data visible
             fetchAuditDataById(parseInt(currentAuditId, 10));
             lastRefreshAuditIdRef.current = currentAuditId;
             lastRefreshTimeRef.current = now;
@@ -369,8 +370,13 @@ const AuditFormScreen = () => {
 
   const fetchAuditDataById = async (id) => {
     try {
-      setLoading(true);
-      console.log('[AuditForm] Fetching audit data for ID:', id);
+      // Only show full loading spinner if we don't have data yet
+      // If we have data, keep it visible and show subtle loading indicator
+      const hasExistingData = template && items && items.length > 0;
+      if (!hasExistingData) {
+        setLoading(true);
+      }
+      console.log('[AuditForm] Fetching audit data for ID:', id, 'hasExistingData:', hasExistingData);
       
       // Check if online - require real-time connection
       if (!isOnline) {
@@ -738,8 +744,12 @@ const AuditFormScreen = () => {
 
   const fetchTemplate = async () => {
     try {
-      setLoading(true);
-      console.log('[AuditForm] Fetching template:', templateId);
+      // Only show full loading spinner if we don't have data yet
+      const hasExistingData = template && items && items.length > 0;
+      if (!hasExistingData) {
+        setLoading(true);
+      }
+      console.log('[AuditForm] Fetching template:', templateId, 'hasExistingData:', hasExistingData);
       
       // Check if online - require real-time connection
       if (!isOnline) {
@@ -1697,23 +1707,31 @@ const AuditFormScreen = () => {
       // This prevents duplicate audits when user navigates back and starts again
       if (!auditId && !isEditing && templateId && locationId) {
         try {
-          const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
-            params: {
-              template_id: parseInt(templateId),
-              location_id: parseInt(locationId),
-              status: 'in_progress',
-              limit: 1
+          const statusesToCheck = ['in_progress', 'draft'];
+          let existingAudit = null;
+
+          for (const status of statusesToCheck) {
+            const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
+              params: {
+                template_id: parseInt(templateId),
+                location_id: parseInt(locationId),
+                status,
+                limit: 1
+              }
+            });
+            const existingAudits = existingCheckResponse.data.audits || [];
+            if (existingAudits.length > 0) {
+              existingAudit = existingAudits[0];
+              break;
             }
-          });
+          }
           
-          const existingAudits = existingCheckResponse.data.audits || [];
-          if (existingAudits.length > 0) {
-            const existingAudit = existingAudits[0];
+          if (existingAudit) {
             // Found existing in-progress audit - ask user what to do
             const shouldResume = await new Promise((resolve) => {
               Alert.alert(
                 'Existing Audit Found',
-                `You have an in-progress audit for this store and checklist (started ${new Date(existingAudit.created_at).toLocaleDateString()}).\n\nWould you like to resume it?`,
+                `You have an in-progress or draft audit for this store and checklist (started ${new Date(existingAudit.created_at).toLocaleDateString()}).\n\nWould you like to resume it?`,
                 [
                   { text: 'Start New', style: 'destructive', onPress: () => resolve(false) },
                   { text: 'Resume', style: 'default', onPress: () => resolve(true) }
@@ -1782,8 +1800,8 @@ const AuditFormScreen = () => {
           if (activeAuditId) {
             // Update existing audit
             const updateData = {
-              restaurant_name: selectedLocation.name,
-              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              restaurant_name: store.name,
+              location: store.store_number ? `Store ${store.store_number}` : store.name,
               location_id: parseInt(locationId),
               notes: notesToSave
             };
@@ -1984,25 +2002,29 @@ const AuditFormScreen = () => {
     try {
       let activeAuditId = currentAuditId || auditId;
 
-      // Get selected store details - if resuming audit, try to get location from audit data
-      if (!selectedLocation && locationId && locations.length > 0) {
+      // Resolve store selection even when state is stale after resume
+      let resolvedLocation = selectedLocation;
+      if (!resolvedLocation && locationId && locations.length > 0) {
         const location = locations.find(l => l.id === parseInt(locationId));
         if (location) {
+          resolvedLocation = location;
           setSelectedLocation(location);
         }
       }
 
       // Final check - if still no location, show error
-      if (!selectedLocation || !locationId) {
+      if (!resolvedLocation || !locationId) {
         Alert.alert('Error', 'Please select a store');
         setSaving(false);
         return;
       }
 
+      const store = resolvedLocation;
+
       // Geo-fencing validation: Check if captured location is within allowed distance
-      if (capturedLocation && selectedLocation?.latitude && selectedLocation?.longitude) {
-        const storeLat = parseFloat(selectedLocation.latitude);
-        const storeLon = parseFloat(selectedLocation.longitude);
+      if (capturedLocation && store?.latitude && store?.longitude) {
+        const storeLat = parseFloat(store.latitude);
+        const storeLon = parseFloat(store.longitude);
         const distance = calculateDistance(
           capturedLocation.latitude,
           capturedLocation.longitude,
@@ -2016,7 +2038,7 @@ const AuditFormScreen = () => {
         if (distance > MAX_ALLOWED_DISTANCE) {
           Alert.alert(
             'Location Too Far',
-            `You are ${Math.round(distance)}m from ${selectedLocation.name}.\n\nAudits must be conducted within ${MAX_ALLOWED_DISTANCE}m of the store location. Please move closer to the store or capture your location again.`,
+            `You are ${Math.round(distance)}m from ${store.name}.\n\nAudits must be conducted within ${MAX_ALLOWED_DISTANCE}m of the store location. Please move closer to the store or capture your location again.`,
             [{ text: 'OK', style: 'cancel' }]
           );
           setSaving(false);
@@ -2026,7 +2048,7 @@ const AuditFormScreen = () => {
           const confirmed = await new Promise((resolve) => {
             Alert.alert(
               'Location Warning',
-              `You are ${Math.round(distance)}m from ${selectedLocation.name}.\n\nYou are outside the recommended range (${WARNING_DISTANCE}m). Are you sure you want to continue?`,
+              `You are ${Math.round(distance)}m from ${store.name}.\n\nYou are outside the recommended range (${WARNING_DISTANCE}m). Are you sure you want to continue?`,
               [
                 { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
                 { text: 'Continue Anyway', onPress: () => resolve(true) },
@@ -2102,8 +2124,8 @@ const AuditFormScreen = () => {
         // We have an auditId, update existing audit
         try {
           const updateData = {
-            restaurant_name: selectedLocation.name,
-            location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+            restaurant_name: store.name,
+            location: store.store_number ? `Store ${store.store_number}` : store.name,
             location_id: parseInt(locationId),
             notes: notesToSave
           };
@@ -2159,21 +2181,29 @@ const AuditFormScreen = () => {
       
       // Create new audit if we don't have an existing one
       if (!activeAuditId) {
-        // IMPORTANT: Check for existing in-progress audit for same template + location
+        // IMPORTANT: Check for existing in-progress or draft audit for same template + location
         // This prevents creating duplicate audits when user goes back and starts again
         try {
-          const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
-            params: {
-              template_id: parseInt(templateId),
-              location_id: parseInt(locationId),
-              status: 'in_progress',
-              limit: 1
+          const statusesToCheck = ['in_progress', 'draft'];
+          let existingAudit = null;
+
+          for (const status of statusesToCheck) {
+            const existingCheckResponse = await axios.get(`${API_BASE_URL}/audits`, {
+              params: {
+                template_id: parseInt(templateId),
+                location_id: parseInt(locationId),
+                status,
+                limit: 1
+              }
+            });
+            const existingAudits = existingCheckResponse.data.audits || [];
+            if (existingAudits.length > 0) {
+              existingAudit = existingAudits[0];
+              break;
             }
-          });
+          }
           
-          const existingAudits = existingCheckResponse.data.audits || [];
-          if (existingAudits.length > 0) {
-            const existingAudit = existingAudits[0];
+          if (existingAudit) {
             // Found existing in-progress audit - use it instead of creating new one
             console.log(`[AuditForm] Found existing in-progress audit ${existingAudit.id}, resuming instead of creating new`);
             activeAuditId = existingAudit.id;
@@ -2181,8 +2211,8 @@ const AuditFormScreen = () => {
             
             // Update the existing audit with current data
             const updateData = {
-              restaurant_name: selectedLocation.name,
-              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+              restaurant_name: store.name,
+              location: store.store_number ? `Store ${store.store_number}` : store.name,
               location_id: parseInt(locationId),
               notes: notesToSave
             };
@@ -2211,8 +2241,8 @@ const AuditFormScreen = () => {
         }
         const auditData = {
           template_id: parseInt(templateId),
-          restaurant_name: selectedLocation.name,
-          location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
+          restaurant_name: store.name,
+          location: store.store_number ? `Store ${store.store_number}` : store.name,
           location_id: parseInt(locationId),
           notes: notesToSave,
           client_audit_uuid: clientAuditUuidRef.current
@@ -2250,7 +2280,7 @@ const AuditFormScreen = () => {
       }
 
       // Validate required checklist items before saving
-      const requiredItems = (filteredItems || []).filter(item => item?.required);
+      const requiredItems = (filteredItems || []).filter(item => item?.is_required);
       const missingRequired = requiredItems.filter(item => !isItemComplete(item));
       if (missingRequired.length > 0) {
         // Check for missing photos specifically
@@ -2842,8 +2872,12 @@ const AuditFormScreen = () => {
     }
   };
 
-  if (loading) {
-    console.log('[AuditForm] RENDER: Showing loading spinner');
+  // Only show loading spinner if we don't have any data yet
+  // If we have data, keep it visible while refreshing (prevents blank screen flash)
+  const hasData = template && items && items.length > 0;
+  
+  if (loading && !hasData) {
+    console.log('[AuditForm] RENDER: Showing loading spinner (no data yet)');
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#1976d2" />
@@ -2852,7 +2886,13 @@ const AuditFormScreen = () => {
     );
   }
   
-  console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep);
+  // If loading but we have data, show data with a subtle loading indicator
+  if (loading && hasData) {
+    console.log('[AuditForm] RENDER: Refreshing - showing existing data with loading overlay');
+    // Continue to render the form below, but we'll add a subtle loading indicator
+  }
+  
+  console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
 
   // Safety check: If we don't have template or items after loading, show error
   if (!loading && (!template || !items || items.length === 0)) {
@@ -2925,6 +2965,13 @@ const AuditFormScreen = () => {
 
   return (
     <View style={[styles.container, isCvr && { backgroundColor: cvrTheme.background.primary }]}>
+      {/* Subtle loading overlay when refreshing with existing data */}
+      {loading && hasData && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="small" color="#1976d2" />
+        </View>
+      )}
+      
       {/* Read-only banner for completed audits */}
       {auditStatus === 'completed' && (
         <View style={styles.completedBanner}>
@@ -3302,11 +3349,11 @@ const AuditFormScreen = () => {
             </Text>
               {(() => {
                 // Calculate detailed breakdown
-                const requiredItems = filteredItems.filter(item => item.required);
+                const requiredItems = filteredItems.filter(item => item.is_required);
                 const missingRequired = requiredItems.filter(item => !isItemComplete(item));
                 const itemsNeedingPhotos = filteredItems.filter(item => {
                   const fieldType = getEffectiveItemFieldType(item);
-                  return item.required && fieldType === 'image_upload' && !photos[item.id];
+                  return item.is_required && fieldType === 'image_upload' && !photos[item.id];
                 });
                 
                 const currentStatus = selectedCategory ? categoryCompletionStatus[selectedCategory] : null;
@@ -3403,7 +3450,7 @@ const AuditFormScreen = () => {
               const fieldType = getEffectiveItemFieldType(item);
               const optionType = isOptionFieldType(fieldType);
               const answerType = isAnswerFieldType(fieldType);
-              const isMissingRequiredPhoto = item.required && fieldType === 'image_upload' && !photos[item.id];
+              const isMissingRequiredPhoto = item.is_required && fieldType === 'image_upload' && !photos[item.id];
               
               return (
               <View 
@@ -3446,7 +3493,7 @@ const AuditFormScreen = () => {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.itemTitle}>
                       {itemIndex + 1}. {item.title}
-                      {item.required && <Text style={styles.required}> *</Text>}
+                      {item.is_required && <Text style={styles.required}> *</Text>}
                     </Text>
                   </View>
                   {getStatusIcon(responses[item.id])}

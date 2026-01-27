@@ -174,6 +174,7 @@ const ScheduledAuditsScreen = () => {
     const hasStartPermission = hasPermission(userPermissions, 'start_scheduled_audits') || 
                                hasPermission(userPermissions, 'manage_scheduled_audits') || 
                                isAdmin(user);
+    const isManager = hasPermission(userPermissions, 'manage_scheduled_audits') || isAdmin(user);
     
     if (!hasStartPermission) return false;
     
@@ -186,6 +187,9 @@ const ScheduledAuditsScreen = () => {
     // Backend will handle the actual date validation
     // Frontend allows any date to enable pre-poning functionality
     
+    // Managers/Admins can start regardless of assignment
+    if (isManager) return true;
+
     const isCreator = schedule.created_by === user?.id;
     const isAssignee = schedule.assigned_to ? schedule.assigned_to === user?.id : false;
     if (schedule.assigned_to) {
@@ -260,6 +264,38 @@ const ScheduledAuditsScreen = () => {
     if (auditStatus && auditStatus === 'completed') return false;
     
     return true;
+  };
+
+  // Allow recovery when status is in_progress but no linked audit is found (API miss or desync)
+  const canRecoverSchedule = (schedule) => {
+    const statusValue = getStatusValue(schedule.status);
+    if (statusValue !== 'in_progress') return false;
+
+    const linkedAudit = linkedAudits[schedule.id];
+    if (linkedAudit) return false;
+
+    // Reuse start permissions for safety
+    const hasStartPermission = hasPermission(userPermissions, 'start_scheduled_audits') || 
+                               hasPermission(userPermissions, 'manage_scheduled_audits') || 
+                               isAdmin(user);
+    return hasStartPermission;
+  };
+
+  const handleRecoverAudit = (schedule) => {
+    if (!canRecoverSchedule(schedule)) return;
+
+    Alert.alert(
+      'Resume Audit',
+      'This scheduled audit is marked in progress but no linked audit was found. Do you want to reopen it now?'
+      , [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reopen', onPress: () => navigation.navigate('AuditForm', {
+          templateId: schedule.template_id,
+          scheduledAuditId: schedule.id,
+          locationId: schedule.location_id || null,
+        }) }
+      ]
+    );
   };
 
   const canReschedule = (schedule) => {
@@ -606,6 +642,15 @@ const ScheduledAuditsScreen = () => {
         >
           <Icon name="play-arrow" size={20} color="#fff" />
           <Text style={styles.startButtonText}>Continue Audit</Text>
+        </TouchableOpacity>
+      )}
+      {canRecoverSchedule(item) && (
+        <TouchableOpacity
+          style={[styles.startButton, styles.continueButton]}
+          onPress={() => handleRecoverAudit(item)}
+        >
+          <Icon name="replay" size={20} color="#fff" />
+          <Text style={styles.startButtonText}>Resume (Recover)</Text>
         </TouchableOpacity>
       )}
       {canReschedule(item) && (
