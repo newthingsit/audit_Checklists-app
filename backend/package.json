@@ -22,6 +22,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.45.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.45.0",
+    "@opentelemetry/instrumentation": "^0.45.0",
+    "@opentelemetry/resources": "^1.21.0",
+    "@opentelemetry/sdk-trace-node": "^0.45.0",
+    "@opentelemetry/semantic-conventions": "^1.21.0",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",

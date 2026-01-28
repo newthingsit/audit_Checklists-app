@@ -1,0 +1,193 @@
+[
+  {
+    "query_id": "q1_cvr_complete",
+    "scenario": "Complete CVR Audit with Multiple Items",
+    "audit_type": "CVR",
+    "restaurant_id": "REST_001",
+    "user_id": "USER_123",
+    "items": [
+      {
+        "item_id": "greeting_1",
+        "category": "Customer Greeting",
+        "question": "Was customer greeted within 30 seconds?",
+        "response": "yes",
+        "notes": "Greeted at host stand immediately"
+      },
+      {
+        "item_id": "seating_1",
+        "category": "Seating",
+        "question": "Was table clean and properly set?",
+        "response": "yes",
+        "notes": "Clean and ready"
+      },
+      {
+        "item_id": "drink_service_1",
+        "category": "Drink Service",
+        "question": "Were drinks delivered within 2 minutes?",
+        "response": "no",
+        "notes": "Took 3 minutes"
+      },
+      {
+        "item_id": "food_delivery_1",
+        "category": "Food Delivery",
+        "question": "Food delivered within promised time?",
+        "response": "yes",
+        "notes": "Prompt service"
+      }
+    ],
+    "expected_outcome": "success",
+    "expected_sync": true
+  },
+  {
+    "query_id": "q2_qsr_offline",
+    "scenario": "Offline Submission with Sync",
+    "audit_type": "QSR",
+    "restaurant_id": "REST_002",
+    "user_id": "USER_456",
+    "offline": true,
+    "items": [
+      {
+        "item_id": "cleanliness_1",
+        "category": "Cleanliness",
+        "question": "Is dining area clean?",
+        "response": "yes",
+        "notes": "Recently cleaned"
+      },
+      {
+        "item_id": "restrooms_1",
+        "category": "Restrooms",
+        "question": "Are restrooms clean and stocked?",
+        "response": "yes",
+        "notes": "Full stock"
+      }
+    ],
+    "sync_on_reconnect": true,
+    "expected_outcome": "success",
+    "expected_data_loss": false
+  },
+  {
+    "query_id": "q3_cdr_dynamic_items",
+    "scenario": "Multi-Category Item Entry",
+    "audit_type": "CDR",
+    "restaurant_id": "REST_003",
+    "user_id": "USER_789",
+    "items": [
+      {
+        "item_id": "food_quality_1",
+        "category": "Food Quality",
+        "question": "Is food temperature appropriate?",
+        "response": "yes",
+        "notes": ""
+      },
+      {
+        "item_id": "dynamic_issue_1",
+        "category": "Quality Issues",
+        "question": "Any quality issues observed?",
+        "response": "yes",
+        "notes": "Customer reported cold fries - resolved",
+        "is_dynamic": true
+      }
+    ],
+    "expected_outcome": "success",
+    "navigation_count": 2
+  },
+  {
+    "query_id": "q4_long_session",
+    "scenario": "Long Audit Session",
+    "audit_type": "CVR",
+    "restaurant_id": "REST_001",
+    "user_id": "USER_123",
+    "session_duration_minutes": 35,
+    "items_count": 20,
+    "category_transitions": 8,
+    "expected_outcome": "success",
+    "expected_crashes": 0,
+    "expected_sync_failures": 0
+  },
+  {
+    "query_id": "q5_concurrent_users",
+    "scenario": "Concurrent Multi-User Audits",
+    "audit_type": "Mixed",
+    "restaurant_id": "REST_004",
+    "concurrent_users": 3,
+    "users": [
+      {
+        "user_id": "USER_111",
+        "audit_type": "CVR"
+      },
+      {
+        "user_id": "USER_222",
+        "audit_type": "QSR"
+      },
+      {
+        "user_id": "USER_333",
+        "audit_type": "CDR"
+      }
+    ],
+    "expected_outcome": "success",
+    "expected_conflicts": 0,
+    "expected_data_consistency": true
+  },
+  {
+    "query_id": "q6_category_completion",
+    "scenario": "Category Completion and Navigation",
+    "audit_type": "CVR",
+    "restaurant_id": "REST_005",
+    "user_id": "USER_555",
+    "categories": [
+      {
+        "name": "Greeting",
+        "items": 3,
+        "all_completed": true
+      },
+      {
+        "name": "Seating",
+        "items": 2,
+        "all_completed": true
+      },
+      {
+        "name": "Service",
+        "items": 4,
+        "all_completed": true
+      }
+    ],
+    "expected_auto_navigation": true,
+    "expected_progress_updates": true
+  },
+  {
+    "query_id": "q7_error_handling",
+    "scenario": "Error Recovery During Audit",
+    "audit_type": "QSR",
+    "restaurant_id": "REST_006",
+    "user_id": "USER_666",
+    "simulate_errors": [
+      {
+        "error_type": "network_timeout",
+        "at_item": 5,
+        "recovery": "automatic_retry"
+      }
+    ],
+    "expected_outcome": "success",
+    "expected_recovery_time_ms": 5000
+  },
+  {
+    "query_id": "q8_location_tracking",
+    "scenario": "Location Tracking During Audit",
+    "audit_type": "CVR",
+    "restaurant_id": "REST_007",
+    "user_id": "USER_777",
+    "location_data": {
+      "start_coordinates": [40.7128, -74.0060],
+      "location_updates": 5,
+      "expected_accuracy": "high"
+    },
+    "items": [
+      {
+        "item_id": "greeting_1",
+        "category": "Greeting",
+        "response": "yes"
+      }
+    ],
+    "expected_outcome": "success"
+  }
+]

@@ -1,3 +1,7 @@
+// Initialize tracing FIRST
+import { initTracing } from './utils/tracing';
+initTracing();
+
 import React, { useRef, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';

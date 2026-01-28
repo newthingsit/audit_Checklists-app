@@ -1,3 +1,7 @@
+// Initialize OpenTelemetry tracing FIRST before any other imports
+const { initializeTracing } = require('./utils/tracing');
+initializeTracing();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

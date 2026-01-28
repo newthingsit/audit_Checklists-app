@@ -1,0 +1,135 @@
+{
+  "evaluation_metrics": [
+    {
+      "name": "audit_completion_accuracy",
+      "description": "Verify that audits are completed correctly with all required fields filled and validated",
+      "evaluator_type": "CoherenceEvaluator",
+      "criteria": [
+        "All mandatory fields are present",
+        "Data types are correct",
+        "Validation rules are applied",
+        "No missing or malformed entries"
+      ]
+    },
+    {
+      "name": "data_sync_reliability",
+      "description": "Ensure real-time sync between mobile and backend captures all audit responses without loss",
+      "evaluator_type": "RelevanceEvaluator",
+      "criteria": [
+        "All submitted items appear in backend database",
+        "Timestamps match submission time",
+        "No data corruption during sync",
+        "Offline-to-online transition completes successfully"
+      ]
+    },
+    {
+      "name": "category_navigation_flow",
+      "description": "Validate that auto-navigation between categories works correctly and audit flow is smooth",
+      "evaluator_type": "GroundednessEvaluator",
+      "criteria": [
+        "User navigates through categories in correct order",
+        "Auto-navigation triggers on category completion",
+        "Progress display is accurate",
+        "No navigation state loss"
+      ]
+    }
+  ],
+  "test_scenarios": [
+    {
+      "id": "scenario_1",
+      "name": "Complete CVR Audit with Multiple Items",
+      "description": "User completes a full CVR (Customer Service) audit with items spanning multiple categories",
+      "audit_type": "CVR",
+      "expected_outcome": "All items submitted, categories navigated sequentially, progress updates in real-time"
+    },
+    {
+      "id": "scenario_2",
+      "name": "Offline Submission with Sync",
+      "description": "User submits audit items while offline, then reconnects to sync data",
+      "audit_type": "QSR",
+      "expected_outcome": "Items stored locally, synced on reconnect, no data loss"
+    },
+    {
+      "id": "scenario_3",
+      "name": "Multi-Category Item Entry",
+      "description": "User enters dynamic items across multiple categories in single audit",
+      "audit_type": "CDR",
+      "expected_outcome": "Items categorized correctly, navigation preserves context, data integrity maintained"
+    },
+    {
+      "id": "scenario_4",
+      "name": "Long Audit Session",
+      "description": "User conducts extended audit session (30+ minutes) with multiple category transitions",
+      "audit_type": "CVR",
+      "expected_outcome": "Session remains stable, no crashes, sync completes successfully"
+    },
+    {
+      "id": "scenario_5",
+      "name": "Concurrent Multi-User Audits",
+      "description": "Multiple users submit audits simultaneously to same restaurant",
+      "audit_type": "Mixed",
+      "expected_outcome": "All submissions recorded, no conflicts, data consistency maintained"
+    }
+  ],
+  "query_templates": [
+    {
+      "type": "audit_submission",
+      "template": {
+        "action": "submit_audit",
+        "audit_id": "AUD_{{timestamp}}_{{user_id}}",
+        "audit_type": "{{audit_type}}",
+        "restaurant_id": "REST_{{store_number}}",
+        "user_id": "USER_{{user_id}}",
+        "items": [
+          {
+            "item_id": "ITEM_{{category}}_{{index}}",
+            "category": "{{category}}",
+            "response": "{{response_value}}",
+            "notes": "{{notes}}"
+          }
+        ],
+        "start_time": "{{start_timestamp}}",
+        "completion_time": "{{completion_timestamp}}",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "category_navigation",
+      "template": {
+        "action": "navigate_category",
+        "from_category": "{{from_category}}",
+        "to_category": "{{to_category}}",
+        "items_completed": "{{items_completed_count}}",
+        "progress_percentage": "{{progress_percent}}",
+        "timestamp": "{{timestamp}}"
+      }
+    },
+    {
+      "type": "offline_sync",
+      "template": {
+        "action": "sync_offline_data",
+        "pending_items": "{{pending_count}}",
+        "connection_status": "{{connection_type}}",
+        "last_sync": "{{last_sync_timestamp}}",
+        "items_to_sync": [
+          {
+            "item_id": "ITEM_{{id}}",
+            "local_timestamp": "{{local_ts}}",
+            "sync_status": "pending"
+          }
+        ]
+      }
+    },
+    {
+      "type": "error_recovery",
+      "template": {
+        "action": "handle_error",
+        "error_type": "{{error_type}}",
+        "error_code": "{{error_code}}",
+        "context": "{{context}}",
+        "recovery_action": "{{recovery_action}}",
+        "timestamp": "{{timestamp}}"
+      }
+    }
+  ]
+}
