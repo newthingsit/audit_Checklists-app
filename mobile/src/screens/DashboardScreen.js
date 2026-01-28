@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ const DashboardScreen = () => {
   const { user, refreshUser } = useAuth();
   const { isOnline } = useNetwork();
   const userPermissions = user?.permissions || [];
+  const lastRefreshRef = useRef(0);
 
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
                          hasPermission(userPermissions, 'manage_audits') ||
@@ -53,25 +54,19 @@ const DashboardScreen = () => {
                                     hasPermission(userPermissions, 'view_analytics') || 
                                     isAdmin(user);
 
-  // Refresh user data when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      if (refreshUser) {
-        refreshUser();
-      }
-    }, [refreshUser])
-  );
-
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (options = {}) => {
+    const { silent = false } = options;
     // Check if online - require real-time connection
     if (!isOnline) {
-      Alert.alert(
-        'No Internet Connection',
-        'Please connect to the internet to load dashboard data.',
-        [{ text: 'OK' }]
-      );
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please connect to the internet to load dashboard data.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        setRefreshing(false);
+      }
       return;
     }
 
@@ -91,24 +86,34 @@ const DashboardScreen = () => {
     const canViewAnalyticsNow = hasPermission(currentPermissions, 'view_analytics') || isAdmin(user);
 
     try {
+      const requestConfig = {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' }
+      };
+
       const fetchPromises = [
         canViewTemplatesNow
-          ? axios.get(`${API_BASE_URL}/templates`, { params: { _t: Date.now() } }).catch(() => ({ data: { templates: [] } }))
+          ? axios.get(`${API_BASE_URL}/templates`, requestConfig).catch(() => ({ data: { templates: [] } }))
           : Promise.resolve({ data: { templates: [] } }),
         canViewAuditsNow
-          ? axios.get(`${API_BASE_URL}/audits`).catch(() => ({ data: { audits: [] } }))
+          ? axios.get(`${API_BASE_URL}/audits`, requestConfig).catch(() => ({ data: { audits: [] } }))
           : Promise.resolve({ data: { audits: [] } }),
         canViewActionsNow 
-          ? axios.get(`${API_BASE_URL}/actions`).catch(() => ({ data: { actions: [] } }))
+          ? axios.get(`${API_BASE_URL}/actions`, requestConfig).catch(() => ({ data: { actions: [] } }))
           : Promise.resolve({ data: { actions: [] } }),
         canViewAnalyticsNow
-          ? axios.get(`${API_BASE_URL}/analytics/dashboard`).catch(() => ({ data: null }))
+          ? axios.get(`${API_BASE_URL}/analytics/dashboard`, requestConfig).catch(() => ({ data: null }))
           : Promise.resolve({ data: null })
       ];
 
       const [templatesRes, auditsRes, actionsRes, analyticsRes] = await Promise.all(fetchPromises);
 
       const audits = auditsRes.data.audits || [];
+      const sortedAudits = [...audits].sort((a, b) => {
+        const aTime = new Date(a.updated_at || a.completed_at || a.created_at).getTime();
+        const bTime = new Date(b.updated_at || b.completed_at || b.created_at).getTime();
+        return bTime - aTime;
+      });
       const completed = audits.filter(a => a.status === 'completed').length;
       const pendingActions = (actionsRes.data.actions || []).filter(a => a.status === 'pending').length;
 
@@ -119,20 +124,43 @@ const DashboardScreen = () => {
         pendingActions
       });
 
-      setRecentAudits(audits.slice(0, 5));
+      setRecentAudits(sortedAudits.slice(0, 5));
       setAnalytics(analyticsRes.data);
+      lastRefreshRef.current = Date.now();
     } catch (error) {
       console.error('Error fetching data:', error);
-      Alert.alert(
-        'Connection Error',
-        'Failed to load dashboard data. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
+      if (!silent) {
+        Alert.alert(
+          'Connection Error',
+          'Failed to load dashboard data. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      } else {
+        setRefreshing(false);
+      }
     }
   }, [user, isOnline]);
+
+  // Refresh user data + dashboard when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (refreshUser) {
+        refreshUser();
+      }
+
+      if (user) {
+        const now = Date.now();
+        if (now - lastRefreshRef.current > 3000) {
+          fetchData({ silent: true });
+        }
+      }
+    }, [refreshUser, fetchData, user])
+  );
 
   // Fetch data when component mounts or when user/permissions change
   // Single useEffect for fetching - prevents duplicate API calls

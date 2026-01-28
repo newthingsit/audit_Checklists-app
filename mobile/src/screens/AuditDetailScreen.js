@@ -219,8 +219,26 @@ const AuditDetailScreen = () => {
     );
   }
 
-  const progress = audit.total_items > 0 
-    ? (audit.completed_items / audit.total_items) * 100 
+  const totalItems = audit.total_items && audit.total_items > 0 ? audit.total_items : items.length;
+  const computedCompletedItems = items.filter(item => {
+    const status = item.status;
+    const hasStatus = status && status !== 'pending' && status !== '';
+    const markValue = item.mark;
+    const hasMark = markValue !== null &&
+      markValue !== undefined &&
+      String(markValue).trim() !== '';
+    const hasOption = !!item.selected_option_id;
+    const hasComment = item.comment && String(item.comment).trim() !== '';
+    const hasPhoto = !!item.photo_url;
+    return hasStatus || hasMark || hasOption || hasComment || hasPhoto;
+  }).length;
+
+  const completedItems = audit.status === 'completed'
+    ? (totalItems || computedCompletedItems)
+    : Math.max(audit.completed_items || 0, computedCompletedItems);
+
+  const progress = totalItems > 0 
+    ? Math.min(100, (completedItems / totalItems) * 100)
     : 0;
 
   return (
@@ -255,7 +273,7 @@ const AuditDetailScreen = () => {
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
         <Text style={styles.progressText}>
-          {audit.completed_items || 0} / {audit.total_items || items.length} items completed
+          {completedItems || 0} / {totalItems || items.length} items completed
         </Text>
       </View>
 
@@ -1110,4 +1128,3 @@ const styles = StyleSheet.create({
 });
 
 export default AuditDetailScreen;
-
