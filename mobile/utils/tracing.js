@@ -81,6 +81,12 @@ export class MobileTracer {
     if (this.spans.length === 0) return;
 
     try {
+      const sendFetch = globalThis.fetch || fetchAPI;
+      if (typeof sendFetch !== 'function') {
+        console.warn('[Tracing] fetch is not available; skipping trace flush');
+        return;
+      }
+
       const batch = this.spans.splice(0, this.maxSpans);
       
       const payload = {
@@ -113,7 +119,7 @@ export class MobileTracer {
         ],
       };
 
-      await fetchAPI(`${this.collectorUrl}/v1/traces`, {
+      await sendFetch(`${this.collectorUrl}/v1/traces`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,8 +144,18 @@ export class MobileTracer {
    * Patch fetch to track API calls
    */
   patchFetch() {
-    const originalFetch = fetchAPI;
+    if (this._fetchPatched) {
+      return;
+    }
+
+    const originalFetch = globalThis.fetch || fetchAPI;
+    if (typeof originalFetch !== 'function') {
+      console.warn('[Tracing] fetch is not available; skipping fetch patch');
+      return;
+    }
+
     const self = this;
+    this._fetchPatched = true;
 
     globalThis.fetch = function(url, options = {}) {
       const span = self.startSpan('http.request', {

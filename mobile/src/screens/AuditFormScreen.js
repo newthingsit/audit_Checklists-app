@@ -1073,6 +1073,28 @@ const AuditFormScreen = () => {
     return status && status !== 'pending';
   }, [comments, photos, responses, selectedOptions, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
 
+  const getCategoryTabLabel = useCallback((category) => {
+    if (!category) return '';
+    const trimmed = String(category).trim();
+    const parenMatch = trimmed.match(/^(.*)\(([^)]+)\)\s*$/);
+    if (parenMatch) {
+      const parent = parenMatch[1].trim().replace(/[-–]\s*$/, '');
+      const sub = parenMatch[2].trim();
+      if (!parent) return sub;
+      const parentShort = parent.split(/[&/]/)[0].trim().split(/\s+/)[0] || parent;
+      return `${parentShort}: ${sub}`;
+    }
+    const parts = trimmed.split(/\s[-–]\s/);
+    if (parts.length > 1) {
+      const parent = parts[0].trim();
+      const sub = parts.slice(1).join(' - ').trim();
+      if (!parent) return sub || trimmed;
+      const parentShort = parent.split(/[&/]/)[0].trim().split(/\s+/)[0] || parent;
+      return `${parentShort}: ${sub || parent}`;
+    }
+    return trimmed;
+  }, []);
+
   // Helper: find "Time – Attempt 1"..5 and "Average (Auto)" for SOS auto-calculation
   const getSosAverageItems = useCallback((allItems) => {
     if (!allItems?.length) return null;
@@ -1139,11 +1161,11 @@ const AuditFormScreen = () => {
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let didTimeout = false; // Declare outside try block to be accessible in catch
       try {
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        let didTimeout = false;
         const timeoutMs = 30000; // 30 second timeout (uploads can be slow on mobile networks)
         const timeoutId = setTimeout(() => {
           didTimeout = true;
@@ -2785,7 +2807,7 @@ const AuditFormScreen = () => {
                   if (remainingCategories.length > 0) {
                     const nextCategory = remainingCategories[0];
                     console.log('[AuditForm] Auto-selecting next incomplete category:', nextCategory);
-                    setSelectedCategory(nextCategory);
+                    handleCategorySelect(nextCategory);
                     setCurrentStep(2); // Go back to checklist step
                   }
                 } : () => {
@@ -3341,8 +3363,9 @@ const AuditFormScreen = () => {
                               isActive && { color: tabTextPrimary, fontWeight: '600' }
                             ]}
                             numberOfLines={1}
+                            ellipsizeMode="middle"
                           >
-                            {cat.length > 15 ? cat.substring(0, 15) + '...' : cat}
+                            {getCategoryTabLabel(cat)}
                           </Text>
                         </View>
                         {isActive && <View style={[styles.cvrCategoryTabIndicator, { backgroundColor: tabAccent }]} />}
