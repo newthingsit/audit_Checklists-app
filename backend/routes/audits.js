@@ -95,6 +95,88 @@ const validateInfoStepNotes = (notes) => {
   return null;
 };
 
+const hasNonEmptyValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
+
+const parseMultiSelectionComment = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && Array.isArray(parsed.selections)) {
+      return {
+        text: typeof parsed.text === 'string' ? parsed.text : '',
+        selections: parsed.selections
+      };
+    }
+  } catch (err) {
+    return null;
+  }
+  return null;
+};
+
+const normalizeInputType = (inputType) => String(inputType || '').toLowerCase();
+
+const isMultiSelectInputType = (inputType) => {
+  const normalized = normalizeInputType(inputType);
+  return normalized === 'multiple_answer' || normalized === 'grid';
+};
+
+const isOptionInputType = (inputType) => {
+  const normalized = normalizeInputType(inputType);
+  return normalized === 'option_select' ||
+    normalized === 'select_from_data_source' ||
+    normalized === 'dropdown';
+};
+
+const isAnswerInputType = (inputType) => {
+  const normalized = normalizeInputType(inputType);
+  return [
+    'open_ended',
+    'description',
+    'number',
+    'date',
+    'scan_code',
+    'signature',
+    'short_answer',
+    'long_answer',
+    'time'
+  ].includes(normalized);
+};
+
+const isItemCompletedForProgress = (item) => {
+  const inputType = normalizeInputType(item?.input_type);
+  const markValue = item?.mark;
+  const statusValue = item?.status;
+  const commentValue = item?.comment;
+  const photoValue = item?.photo_url;
+  const selectedOptionId = item?.selected_option_id;
+
+  const hasMark = hasNonEmptyValue(markValue);
+  const hasStatus = hasNonEmptyValue(statusValue) && String(statusValue).toLowerCase() !== 'pending';
+  const hasOption = selectedOptionId !== undefined && selectedOptionId !== null;
+  const hasComment = hasNonEmptyValue(commentValue);
+  const hasPhoto = hasNonEmptyValue(photoValue);
+  const hasMultiSelections = isMultiSelectInputType(inputType) &&
+    !!(parseMultiSelectionComment(commentValue)?.selections?.length);
+
+  if (isMultiSelectInputType(inputType)) return hasMultiSelections || hasMark || hasOption;
+  if (isOptionInputType(inputType)) return hasOption || hasMark;
+  if (inputType === 'image_upload') return hasPhoto || hasMark;
+  if (inputType === 'task') return hasStatus || hasMark;
+  if (isAnswerInputType(inputType)) {
+    if (inputType === 'signature') return hasPhoto || hasComment || hasMark;
+    return hasComment || hasMark;
+  }
+  return hasMark || hasStatus || hasOption || hasComment || hasPhoto;
+};
+
+const getEffectiveMarkValue = (item) => {
+  if (hasNonEmptyValue(item?.mark)) return item.mark;
+  if (hasNonEmptyValue(item?.option_mark)) return item.option_mark;
+  return null;
+};
+
 const getNextScheduledDate = (currentDate, frequency) => {
   if (!frequency) return null;
   const date = new Date(currentDate || new Date());
@@ -938,6 +1020,7 @@ router.get('/:id', authenticate, (req, res) => {
               ci.description, 
               ci.category, 
               ci.required,
+              ci.input_type,
               COALESCE(ci.weight, 1) as weight, 
               COALESCE(ci.is_critical, 0) as is_critical,
               ai.id as audit_item_id,
@@ -976,6 +1059,7 @@ router.get('/:id', authenticate, (req, res) => {
               description: item.description,
               category: item.category,
               required: item.required,
+              input_type: item.input_type || null,
               weight: item.weight,
               is_critical: item.is_critical,
               // Audit item fields (may be null if no audit_item exists)
@@ -1010,6 +1094,35 @@ router.get('/:id', authenticate, (req, res) => {
             
             return normalized;
           });
+
+          const completionStats = {
+            total: itemsNormalized.length,
+            completed: itemsNormalized.filter(item => isItemCompletedForProgress(item)).length
+          };
+
+          if (completionStats.total > 0) {
+            const needsProgressUpdate =
+              audit.completed_items !== completionStats.completed ||
+              audit.total_items !== completionStats.total;
+
+            if (needsProgressUpdate) {
+              audit.completed_items = completionStats.completed;
+              audit.total_items = completionStats.total;
+
+              dbInstance.run(
+                'UPDATE audits SET completed_items = ?, total_items = ? WHERE id = ?',
+                [completionStats.completed, completionStats.total, auditId],
+                (updateErr) => {
+                  if (updateErr) {
+                    logger.warn('[Audit Fetch] Failed to refresh audit progress counts', {
+                      auditId,
+                      error: updateErr.message
+                    });
+                  }
+                }
+              );
+            }
+          }
           
           // Calculate time statistics (handle missing columns gracefully)
           const timeStats = {
@@ -2013,10 +2126,15 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
         // Update audit progress - calculate score based on marks with weighted scoring support
         // Get audit items with their checklist item details including weight and critical flag
         dbInstance.all(
-          `SELECT ai.item_id, ai.mark, ci.id as checklist_item_id, 
-                  COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical
+          `SELECT ai.item_id, ai.mark, ai.comment, ai.photo_url, ai.status, ai.selected_option_id,
+                  cio.mark as option_mark,
+                  ci.id as checklist_item_id,
+                  ci.input_type,
+                  COALESCE(ci.weight, 1) as weight,
+                  COALESCE(ci.is_critical, 0) as is_critical
            FROM audit_items ai
            JOIN checklist_items ci ON ai.item_id = ci.id
+           LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
            WHERE ai.audit_id = ?`,
           [auditId],
           (err, auditItems) => {
@@ -2037,14 +2155,14 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
               let query;
               if (dbType === 'mssql' || dbType === 'sqlserver') {
-                query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
+                query = `SELECT ci.id, ci.input_type, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
                          (SELECT MAX(CASE WHEN ISNUMERIC(cio.mark) = 1 THEN CAST(cio.mark AS FLOAT) ELSE NULL END)
                           FROM checklist_item_options cio 
                           WHERE cio.item_id = ci.id) as max_score
                          FROM checklist_items ci
                          WHERE ci.template_id = ?`;
               } else {
-                query = `SELECT ci.id, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
+                query = `SELECT ci.id, ci.input_type, COALESCE(ci.weight, 1) as weight, COALESCE(ci.is_critical, 0) as is_critical,
                          (SELECT MAX(CASE WHEN cio.mark NOT LIKE '%NA%' AND cio.mark GLOB '[0-9]*' THEN CAST(cio.mark AS REAL) ELSE NULL END)
                           FROM checklist_item_options cio 
                           WHERE cio.item_id = ci.id) as max_score
@@ -2092,16 +2210,20 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                   let hasCriticalFailure = false;
                   
                   auditItems.forEach(item => {
-                    if (item.mark && item.mark !== 'NA') {
-                      const mark = parseFloat(item.mark) || 0;
-                      const weight = parseInt(item.weight) || 1;
-                      actualScore += mark;
-                      weightedActualScore += mark * weight;
-                      
-                      // Check for critical item failure (mark is 0 or very low on critical item)
-                      if (item.is_critical && mark === 0) {
-                        hasCriticalFailure = true;
-                      }
+                    const markValue = getEffectiveMarkValue(item);
+                    if (!hasNonEmptyValue(markValue)) return;
+                    const markStr = String(markValue).trim();
+                    const upper = markStr.toUpperCase();
+                    if (!markStr || upper === 'NA' || upper === 'N/A') return;
+                    const mark = parseFloat(markStr);
+                    if (!Number.isFinite(mark)) return;
+                    const weight = parseInt(item.weight) || 1;
+                    actualScore += mark;
+                    weightedActualScore += mark * weight;
+
+                    // Check for critical item failure (mark is 0 on critical item)
+                    if (item.is_critical && mark === 0) {
+                      hasCriticalFailure = true;
                     }
                   });
 
@@ -2126,44 +2248,22 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                   });
                   
                   // Count how many template items have been completed
-                  // An item is completed only if:
-                  // 1. It exists in audit_items
-                  // 2. It has a valid mark (not null, not empty, not undefined, or is 'NA')
-                  // 3. The mark is a meaningful value (not just whitespace)
                   let completed = 0;
                   let missingItems = [];
-                  
+
                   templateItems.forEach(templateItem => {
                     const auditItem = auditItemMap[templateItem.id];
                     if (!auditItem) {
-                      // Item doesn't exist in audit_items yet - not completed
                       missingItems.push(templateItem.id);
                       return;
                     }
-                    
-                    // Check if item has a valid mark - be very strict
-                    const markValue = auditItem.mark;
-                    
-                    // Check for null, undefined, or empty
-                    if (markValue === null || markValue === undefined) {
-                      missingItems.push(templateItem.id);
-                      return;
-                    }
-                    
-                    // Convert to string and trim
-                    const markStr = String(markValue).trim();
-                    
-                    // Check if it's empty after trimming
-                    if (markStr === '') {
-                      missingItems.push(templateItem.id);
-                      return;
-                    }
-                    
-                    // Check if it's NA (case-insensitive)
-                    const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
-                    
-                    // If it's NA or has a non-empty value, it's completed
-                    if (isNA || markStr.length > 0) {
+
+                    const isCompleted = isItemCompletedForProgress({
+                      ...auditItem,
+                      input_type: templateItem.input_type
+                    });
+
+                    if (isCompleted) {
                       completed++;
                     } else {
                       missingItems.push(templateItem.id);
@@ -2172,9 +2272,9 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                   
                   // Log for debugging if items are missing
                   if (missingItems.length > 0) {
-                    logger.info(`[Audit ${auditId}] Completion check: ${completed}/${total} items completed. Missing marks for ${missingItems.length} items.`);
+                    logger.info(`[Audit ${auditId}] Completion check: ${completed}/${total} items completed. Missing responses for ${missingItems.length} items.`);
                     if (missingItems.length <= 10) {
-                      logger.debug(`[Audit ${auditId}] Missing marks for items: ${missingItems.join(', ')}`);
+                      logger.debug(`[Audit ${auditId}] Missing responses for items: ${missingItems.join(', ')}`);
                     }
                   }
                   
@@ -2183,7 +2283,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                   
                   // Force in_progress if any items are missing
                   if (missingItems.length > 0) {
-                    logger.info(`[Audit ${auditId}] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${total} total items`);
+                    logger.info(`[Audit ${auditId}] Forcing status to 'in_progress': ${missingItems.length} items missing responses out of ${total} total items`);
                   }
 
                   dbInstance.run(
@@ -2259,7 +2359,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                 // IMPORTANT: For completion status, always check ALL template items, not just the selected category.
                 // The audit_category is only used for scoping the work during editing, but completion should
                 // consider all items in the template to ensure the audit is truly complete.
-                const templateItemsQuery = 'SELECT id FROM checklist_items WHERE template_id = ?';
+                const templateItemsQuery = 'SELECT id, input_type FROM checklist_items WHERE template_id = ?';
                 const templateItemsParams = [auditRow.template_id];
 
                 dbInstance.all(
@@ -2275,7 +2375,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                     
                     // Get all audit items with marks
                     dbInstance.all(
-                      'SELECT item_id, mark FROM audit_items WHERE audit_id = ?',
+                      'SELECT item_id, mark, comment, photo_url, status, selected_option_id FROM audit_items WHERE audit_id = ?',
                       [auditId],
                       (auditItemsErr, allAuditItems) => {
                         if (auditItemsErr) {
@@ -2289,31 +2389,23 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                           auditItemMap[item.item_id] = item;
                         });
                         
-                        // Count completed using strict validation
+                        // Count completed using progress-aware validation
                         let completed = 0;
                         let missingItems = [];
-                        
+
                         templateItems.forEach(templateItem => {
                           const auditItem = auditItemMap[templateItem.id];
                           if (!auditItem) {
                             missingItems.push(templateItem.id);
                             return;
                           }
-                          
-                          const markValue = auditItem.mark;
-                          if (markValue === null || markValue === undefined) {
-                            missingItems.push(templateItem.id);
-                            return;
-                          }
-                          
-                          const markStr = String(markValue).trim();
-                          if (markStr === '') {
-                            missingItems.push(templateItem.id);
-                            return;
-                          }
-                          
-                          const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
-                          if (isNA || markStr.length > 0) {
+
+                          const isCompleted = isItemCompletedForProgress({
+                            ...auditItem,
+                            input_type: templateItem.input_type
+                          });
+
+                          if (isCompleted) {
                             completed++;
                           } else {
                             missingItems.push(templateItem.id);
@@ -2323,7 +2415,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                         const auditStatus = (completed === templateTotal && templateTotal > 0 && missingItems.length === 0) ? 'completed' : 'in_progress';
                         
                         if (missingItems.length > 0) {
-                          logger.info(`[Audit ${auditId} - Fallback] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${templateTotal} total`);
+                          logger.info(`[Audit ${auditId} - Fallback] Forcing status to 'in_progress': ${missingItems.length} items missing responses out of ${templateTotal} total`);
                         }
 
                         dbInstance.run(
@@ -2939,7 +3031,17 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
   // The audit_category is only used for scoping the work during editing, but completion should
   // consider all items in the template to ensure the audit is truly complete.
   // Get audit items with their marks (always fetch all items for completion check)
-  const auditItemsQuery = `SELECT ai.item_id, ai.mark FROM audit_items ai WHERE ai.audit_id = ?`;
+  const auditItemsQuery = `SELECT 
+      ai.item_id,
+      ai.mark,
+      ai.comment,
+      ai.photo_url,
+      ai.status,
+      ai.selected_option_id,
+      cio.mark as option_mark
+    FROM audit_items ai
+    LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+    WHERE ai.audit_id = ?`;
   const auditItemsParams = [auditId];
 
   dbInstance.all(
@@ -2951,13 +3053,15 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
       // Get max possible score from template (use MAX numeric score, not just "Yes")
       let query;
       if (isSqlServer) {
-        query = `SELECT ci.id, 
+        query = `SELECT ci.id,
+                 ci.input_type,
                  (SELECT MAX(CASE WHEN ISNUMERIC(cio.mark) = 1 THEN CAST(cio.mark AS FLOAT) ELSE NULL END)
                   FROM checklist_item_options cio 
                   WHERE cio.item_id = ci.id) as max_score
                  FROM checklist_items ci WHERE ci.template_id = ?`;
       } else {
-        query = `SELECT ci.id, 
+        query = `SELECT ci.id,
+                 ci.input_type,
                  (SELECT MAX(CASE WHEN cio.mark NOT LIKE '%NA%' AND cio.mark GLOB '[0-9]*' THEN CAST(cio.mark AS REAL) ELSE NULL END)
                   FROM checklist_item_options cio 
                   WHERE cio.item_id = ci.id) as max_score
@@ -2986,8 +3090,15 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
 
         let actualScore = 0;
         auditItems.forEach(item => {
-          if (item.mark && item.mark !== 'NA') {
-            actualScore += parseFloat(item.mark) || 0;
+          const markValue = getEffectiveMarkValue(item);
+          if (!hasNonEmptyValue(markValue)) return;
+          const markStr = String(markValue).trim();
+          if (!markStr) return;
+          const upper = markStr.toUpperCase();
+          if (upper === 'NA' || upper === 'N/A') return;
+          const numeric = parseFloat(markStr);
+          if (Number.isFinite(numeric)) {
+            actualScore += numeric;
           }
         });
 
@@ -3008,44 +3119,22 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
         });
         
         // Count how many template items have been completed
-        // An item is completed only if:
-        // 1. It exists in audit_items
-        // 2. It has a valid mark (not null, not empty, not undefined, or is 'NA')
-        // 3. The mark is a meaningful value (not just whitespace)
         let completed = 0;
         let missingItems = [];
-        
+
         templateItems.forEach(templateItem => {
           const auditItem = auditItemMap[templateItem.id];
           if (!auditItem) {
-            // Item doesn't exist in audit_items yet - not completed
             missingItems.push(templateItem.id);
             return;
           }
-          
-          // Check if item has a valid mark - be very strict
-          const markValue = auditItem.mark;
-          
-          // Check for null, undefined, or empty
-          if (markValue === null || markValue === undefined) {
-            missingItems.push(templateItem.id);
-            return;
-          }
-          
-          // Convert to string and trim
-          const markStr = String(markValue).trim();
-          
-          // Check if it's empty after trimming
-          if (markStr === '') {
-            missingItems.push(templateItem.id);
-            return;
-          }
-          
-          // Check if it's NA (case-insensitive)
-          const isNA = markStr.toUpperCase() === 'NA' || markStr.toUpperCase() === 'N/A';
-          
-          // If it's NA or has a non-empty value, it's completed
-          if (isNA || markStr.length > 0) {
+
+          const isCompleted = isItemCompletedForProgress({
+            ...auditItem,
+            input_type: templateItem.input_type
+          });
+
+          if (isCompleted) {
             completed++;
           } else {
             missingItems.push(templateItem.id);
@@ -3054,9 +3143,9 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
         
         // Log for debugging if items are missing
         if (missingItems.length > 0) {
-          logger.info(`[Audit ${auditId} - Batch] Completion check: ${completed}/${total} items completed. Missing marks for ${missingItems.length} items.`);
+          logger.info(`[Audit ${auditId} - Batch] Completion check: ${completed}/${total} items completed. Missing responses for ${missingItems.length} items.`);
           if (missingItems.length <= 10) {
-            logger.debug(`[Audit ${auditId} - Batch] Missing marks for items: ${missingItems.join(', ')}`);
+            logger.debug(`[Audit ${auditId} - Batch] Missing responses for items: ${missingItems.join(', ')}`);
           }
         }
         
@@ -3065,7 +3154,7 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
         
         // Force in_progress if any items are missing
         if (missingItems.length > 0) {
-          logger.info(`[Audit ${auditId} - Batch] Forcing status to 'in_progress': ${missingItems.length} items missing marks out of ${total} total items`);
+          logger.info(`[Audit ${auditId} - Batch] Forcing status to 'in_progress': ${missingItems.length} items missing responses out of ${total} total items`);
         }
         
         dbInstance.run(
@@ -3101,7 +3190,13 @@ router.put('/:id/complete', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const userId = req.user.id;
 
-  dbInstance.get('SELECT * FROM audits WHERE id = ? AND user_id = ?', [auditId, userId], (err, audit) => {
+  dbInstance.get(
+    `SELECT a.*, l.name as location_name
+     FROM audits a
+     LEFT JOIN locations l ON a.location_id = l.id
+     WHERE a.id = ? AND a.user_id = ?`,
+    [auditId, userId],
+    (err, audit) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
@@ -3109,130 +3204,130 @@ router.put('/:id/complete', authenticate, (req, res) => {
       return res.status(404).json({ error: 'Audit not found' });
     }
 
-    dbInstance.all(
-      `SELECT COUNT(*) as total, 
-       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-       FROM audit_items WHERE audit_id = ?`,
-      [auditId],
-      (err, result) => {
+    if (audit.status === 'completed') {
+      return res.json({
+        message: 'Audit already completed',
+        score: audit.score,
+        status: 'completed',
+        pdfUrl: `/api/reports/audit/${auditId}/pdf`,
+        actionPlanUrl: `/api/audits/${auditId}/action-plan`
+      });
+    }
+
+    calculateAndUpdateScore(dbInstance, auditId, audit.template_id, audit.audit_category || null, async (scoreErr, scoreData) => {
+      if (scoreErr) {
+        logger.error('Error calculating score during completion:', scoreErr.message);
+        return res.status(500).json({ error: 'Error completing audit' });
+      }
+
+      if (!scoreData || scoreData.status !== 'completed') {
+        return res.status(400).json({
+          error: 'Audit is not fully completed yet. Please answer all required items.',
+          completed: scoreData?.completed || 0,
+          total: scoreData?.total || 0
+        });
+      }
+
+      handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
+
+      // Auto-create action items for failed items
+      const { autoCreateActionItems } = require('../utils/autoActions');
+      autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
         if (err) {
-          return res.status(500).json({ error: 'Database error' });
+          logger.error('Error auto-creating action items:', err);
+        } else if (actions && actions.length > 0) {
+          logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
         }
+      });
 
-        const completed = result[0].completed || 0;
-        const total = result[0].total || 0;
-        const score = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-        dbInstance.run(
-          `UPDATE audits 
-           SET status = 'completed', score = ?, completed_at = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-          [score, auditId],
-          async (err) => {
-            if (err) {
-              return res.status(500).json({ error: 'Error completing audit' });
-            }
-
-            handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
-
-            // Auto-create action items for failed items
-            const { autoCreateActionItems } = require('../utils/autoActions');
-            autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
-              if (err) {
-                logger.error('Error auto-creating action items:', err);
-              } else if (actions && actions.length > 0) {
-                logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
-              }
-            });
-
-            // Send notification to audit creator
-            try {
-              await createNotification(
-                userId,
-                'audit',
-                'Audit Completed',
-                `Audit "${audit.restaurant_name}" has been completed with a score of ${score}%`,
-                `/audits/${auditId}`,
-                {
-                  template: 'auditCompleted',
-                  data: [audit.restaurant_name, score, audit.location_name || 'Not specified']
-                }
-              );
-            } catch (notifErr) {
-              logger.error('Error creating completion notification:', notifErr.message);
-            }
-
-            // Generate PDF report automatically after completion
-            try {
-              const pdfUrl = `/api/reports/audit/${auditId}/pdf`;
-              logger.info(`[PDF Generation] PDF will be available at: ${pdfUrl}`);
-              // PDF is generated on-demand when accessed, so we just log the URL
-            } catch (pdfErr) {
-              logger.error('Error preparing PDF generation:', pdfErr.message);
-            }
-
-            // Generate Action Plan with top-3 deviations and CREATE action items
-            try {
-              generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
-                if (err) {
-                  logger.error('Error generating action plan:', err);
-                } else if (actionPlan && actionPlan.deviations && actionPlan.deviations.length > 0) {
-                  logger.info(`[Action Plan] Generated action plan with ${actionPlan.deviations.length} deviations`);
-                  
-                  // Create actual action items from top-3 deviations
-                  const { autoCreateActionItems } = require('../utils/autoActions');
-                  // Get top 3 failed items to create action items
-                  dbInstance.all(
-                    `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
-                            cio.option_text, cio.mark
-                     FROM audit_items ai
-                     JOIN checklist_items ci ON ai.item_id = ci.id
-                     LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
-                     WHERE ai.audit_id = ?
-                       AND (
-                         ai.status = 'failed' 
-                         OR ai.mark = '0' 
-                         OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'Fail', 'F', '0'))
-                         OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
-                       )
-                     ORDER BY 
-                       CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
-                       CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC
-                     LIMIT 3`,
-                    [auditId],
-                    (err, topDeviations) => {
-                      if (!err && topDeviations && topDeviations.length > 0) {
-                        // Create action items for top 3 deviations
-                        autoCreateActionItems(dbInstance, auditId, { 
-                          onlyCritical: false, 
-                          defaultDueDays: 7,
-                          specificItems: topDeviations.map(d => d.item_id) // Only create for top 3
-                        }, (err, actions) => {
-                          if (err) {
-                            logger.error('Error creating action items from deviations:', err);
-                          } else if (actions && actions.length > 0) {
-                            logger.info(`[Action Plan] Created ${actions.length} action items from top-3 deviations for audit ${auditId}`);
-                          }
-                        });
-                      }
-                    }
-                  );
-                }
-              });
-            } catch (actionPlanErr) {
-              logger.error('Error generating action plan:', actionPlanErr.message);
-            }
-
-            res.json({ 
-              message: 'Audit completed successfully', 
-              score,
-              pdfUrl: `/api/reports/audit/${auditId}/pdf`,
-              actionPlanUrl: `/api/audits/${auditId}/action-plan`
-            });
+      // Send notification to audit creator
+      try {
+        await createNotification(
+          userId,
+          'audit',
+          'Audit Completed',
+          `Audit "${audit.restaurant_name}" has been completed with a score of ${scoreData.score}%`,
+          `/audits/${auditId}`,
+          {
+            template: 'auditCompleted',
+            data: [audit.restaurant_name, scoreData.score, audit.location_name || 'Not specified']
           }
         );
+      } catch (notifErr) {
+        logger.error('Error creating completion notification:', notifErr.message);
       }
-    );
+
+      // Generate PDF report automatically after completion
+      try {
+        const pdfUrl = `/api/reports/audit/${auditId}/pdf`;
+        logger.info(`[PDF Generation] PDF will be available at: ${pdfUrl}`);
+        // PDF is generated on-demand when accessed, so we just log the URL
+      } catch (pdfErr) {
+        logger.error('Error preparing PDF generation:', pdfErr.message);
+      }
+
+      // Generate Action Plan with top-3 deviations and CREATE action items
+      try {
+        generateActionPlanWithDeviations(dbInstance, auditId, (err, actionPlan) => {
+          if (err) {
+            logger.error('Error generating action plan:', err);
+          } else if (actionPlan && actionPlan.deviations && actionPlan.deviations.length > 0) {
+            logger.info(`[Action Plan] Generated action plan with ${actionPlan.deviations.length} deviations`);
+            
+            // Create actual action items from top-3 deviations
+            const { autoCreateActionItems } = require('../utils/autoActions');
+            // Get top 3 failed items to create action items
+            dbInstance.all(
+              `SELECT ai.*, ci.title, ci.description, ci.category, ci.is_critical,
+                      cio.option_text, cio.mark
+               FROM audit_items ai
+               JOIN checklist_items ci ON ai.item_id = ci.id
+               LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
+               WHERE ai.audit_id = ?
+                 AND (
+                   ai.status = 'failed' 
+                   OR ai.mark = '0' 
+                   OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'Fail', 'F', '0'))
+                   OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
+                 )
+               ORDER BY 
+                 CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
+                 CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC
+               LIMIT 3`,
+              [auditId],
+              (err, topDeviations) => {
+                if (!err && topDeviations && topDeviations.length > 0) {
+                  // Create action items for top 3 deviations
+                  autoCreateActionItems(dbInstance, auditId, { 
+                    onlyCritical: false, 
+                    defaultDueDays: 7,
+                    specificItems: topDeviations.map(d => d.item_id) // Only create for top 3
+                  }, (err, actions) => {
+                    if (err) {
+                      logger.error('Error creating action items from deviations:', err);
+                    } else if (actions && actions.length > 0) {
+                      logger.info(`[Action Plan] Created ${actions.length} action items from top-3 deviations for audit ${auditId}`);
+                    }
+                  });
+                }
+              }
+            );
+          }
+        });
+      } catch (actionPlanErr) {
+        logger.error('Error generating action plan for completed audit:', actionPlanErr.message);
+      }
+
+      res.json({ 
+        message: 'Audit completed successfully', 
+        score: scoreData.score,
+        status: 'completed',
+        completed: scoreData.completed,
+        total: scoreData.total,
+        pdfUrl: `/api/reports/audit/${auditId}/pdf`,
+        actionPlanUrl: `/api/audits/${auditId}/action-plan`
+      });
+    });
   });
 });
 

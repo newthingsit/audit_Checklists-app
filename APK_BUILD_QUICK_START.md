@@ -106,6 +106,29 @@ chmod +x 2_Android-SDK-Setup.sh
 bash 2_Android-SDK-Setup.sh
 ```
 
+### **"node.exe is not recognized" when running `npm`/`npx`**
+This means Node.js isn't installed (or isn't on your PATH) in the shell you're using.
+
+**Fix (Windows):**
+1. Install Node.js LTS
+2. Close and re-open PowerShell
+3. Verify:
+```powershell
+node -v
+npm -v
+npx -v
+```
+
+**Fix (WSL):** If you're following the WSL2 build path, run `npm`/`npx` commands inside WSL (the setup script installs Node there).
+
+### **Node install fails with MSI 1603 / "Error 1714" / "System Error 1612"**
+This usually means an older Node.js version is registered, but Windows Installer can't find the older `.msi` to uninstall it.
+
+**Fix:**
+1. Open the MSI log path shown by Chocolatey (it will mention the missing file name, e.g. `node-v22.16.0-x64.msi`).
+2. Download that exact `.msi` and place it at the path the log is trying to use (often `C:\Users\<you>\Downloads\`).
+3. Re-run `choco install nodejs-lts -y` (from an Administrator PowerShell).
+
 ### **"Java not found" during build**
 ```bash
 # In WSL, verify Java:

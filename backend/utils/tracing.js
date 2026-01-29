@@ -7,7 +7,7 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes, defaultResource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-node');
 const { trace, context } = require('@opentelemetry/api');
@@ -20,8 +20,8 @@ function initializeTracing() {
   const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
   
   // Create resource with service name and version
-  const resource = Resource.default().merge(
-    new Resource({
+  const resource = defaultResource().merge(
+    resourceFromAttributes({
       [SemanticResourceAttributes.SERVICE_NAME]: 'audit-backend',
       [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version || '2.0.0',
       environment: process.env.NODE_ENV || 'development',
@@ -29,16 +29,16 @@ function initializeTracing() {
   );
 
   // Create and register the trace provider
-  const tracerProvider = new NodeTracerProvider({
-    resource: resource,
-  });
-
   // Set up OTLP exporter to send spans to the trace collector
   const otlpExporter = new OTLPTraceExporter({
     url: `${otlpEndpoint}/v1/traces`,
   });
 
-  tracerProvider.addSpanProcessor(new BatchSpanProcessor(otlpExporter));
+  const tracerProvider = new NodeTracerProvider({
+    resource: resource,
+    spanProcessors: [new BatchSpanProcessor(otlpExporter)]
+  });
+
   tracerProvider.register();
 
   // Register auto-instrumentations for common libraries

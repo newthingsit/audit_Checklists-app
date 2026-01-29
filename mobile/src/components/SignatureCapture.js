@@ -63,28 +63,25 @@ const SignaturePad = ({ onSave, onClear, onChange, style }) => {
       
       onPanResponderMove: (evt) => {
         const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(prev => {
-          const updated = prev ? `${prev} L${locationX},${locationY}` : `M${locationX},${locationY}`;
-          currentPathRef.current = updated;
-          // Notify onChange during drawing so button stays enabled in real-time
-          if (onChange) {
-            const allPaths = pathsRef.current.length > 0 ? [...pathsRef.current, updated] : [updated];
-            onChange(buildSignatureData(allPaths));
-          }
-          return updated;
-        });
+        const previous = currentPathRef.current;
+        const updated = previous ? `${previous} L${locationX},${locationY}` : `M${locationX},${locationY}`;
+        currentPathRef.current = updated;
+        setCurrentPath(updated);
+        // Notify onChange during drawing so button stays enabled in real-time
+        if (onChange) {
+          const allPaths = pathsRef.current.length > 0 ? [...pathsRef.current, updated] : [updated];
+          onChange(buildSignatureData(allPaths));
+        }
       },
       
       onPanResponderRelease: () => {
         setIsSigning(false);
         const pathToSave = currentPathRef.current;
         if (pathToSave) {
-          setPaths(prev => {
-            const updatedPaths = [...prev, pathToSave];
-            pathsRef.current = updatedPaths;
-            if (onChange) onChange(buildSignatureData(updatedPaths));
-            return updatedPaths;
-          });
+          const updatedPaths = [...pathsRef.current, pathToSave];
+          pathsRef.current = updatedPaths;
+          setPaths(updatedPaths);
+          if (onChange) onChange(buildSignatureData(updatedPaths));
           setCurrentPath('');
           currentPathRef.current = '';
         } else {

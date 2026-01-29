@@ -641,6 +641,9 @@ const AuditForm = () => {
       const value = inputValues[item.id];
       return value !== undefined && value !== null && String(value).trim() !== '';
     }
+    if (isMultiSelectInputType(inputType)) {
+      return (multipleSelections[item.id] || []).length > 0;
+    }
     if (item.options && item.options.length > 0) {
       return !!selectedOptions[item.id];
     }
@@ -905,9 +908,22 @@ const AuditForm = () => {
       // Update all items in a single batch request (much faster!)
       // IMPORTANT: For category-wise audits, only save items for the selected category.
       // Otherwise, saving would create/update "pending" rows for other categories and can flip status back to in_progress.
-      const itemsToSave = selectedCategory ? filteredItems : items;
+      const categoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
+      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments, inputValues);
+      const visibleItemIds = new Set(visibleItems.map(item => item.id));
+      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      const hasLocalResponse = (item) => {
+        const status = responses[item.id];
+        const hasStatus = status && status !== 'pending' && status !== '';
+        const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
+        const hasMulti = (multipleSelections[item.id] || []).length > 0;
+        const hasComment = comments[item.id] && String(comments[item.id]).trim() !== '';
+        const hasPhoto = !!photos[item.id];
+        const hasInput = inputValues[item.id] && String(inputValues[item.id]).trim() !== '';
+        return hasStatus || hasOption || hasMulti || hasComment || hasPhoto || hasInput;
+      };
 
-      const batchItems = itemsToSave
+      const batchItems = visibleItems
         .filter(item => item && item.id) // Filter out any items without valid IDs
         .map((item) => {
           const inputType = getNormalizedInputType(item);
@@ -978,15 +994,25 @@ const AuditForm = () => {
           return itemData;
         });
 
-      console.log('[AuditForm] Saving batch items:', { auditId: activeAuditId, itemCount: batchItems.length, sampleItem: batchItems[0] });
+      const hiddenBatchItems = hiddenItems
+        .filter(item => !hasLocalResponse(item))
+        .map(item => ({
+          itemId: item.id,
+          status: 'completed',
+          mark: 'NA'
+        }));
+
+      const allBatchItems = [...batchItems, ...hiddenBatchItems];
+
+      console.log('[AuditForm] Saving batch items:', { auditId: activeAuditId, itemCount: allBatchItems.length, sampleItem: allBatchItems[0] });
       
-      if (batchItems.length === 0) {
+      if (allBatchItems.length === 0) {
         throw new Error('No valid items to save. Please ensure all checklist items have valid IDs.');
       }
 
       // Single batch API call instead of multiple individual calls
       const response = await axios.put(`/api/audits/${activeAuditId}/items/batch`, { 
-        items: batchItems,
+        items: allBatchItems,
         audit_category: selectedCategory || null
       });
 

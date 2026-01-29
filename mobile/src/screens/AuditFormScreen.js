@@ -1124,6 +1124,9 @@ const AuditFormScreen = () => {
 
   const isItemComplete = useCallback((item) => {
     const fieldType = getEffectiveItemFieldType(item);
+    if (fieldType === 'multiple_answer' || fieldType === 'grid') {
+      return (multipleSelections[item.id] || []).length > 0;
+    }
     if (isOptionFieldType(fieldType)) {
       return !!selectedOptions[item.id];
     }
@@ -1136,7 +1139,7 @@ const AuditFormScreen = () => {
     }
     const status = responses[item.id];
     return status && status !== 'pending';
-  }, [comments, photos, responses, selectedOptions, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
+  }, [comments, photos, responses, selectedOptions, multipleSelections, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
 
   const getCategoryTabLabel = useCallback((category) => {
     if (!category) return '';
@@ -1613,18 +1616,27 @@ const AuditFormScreen = () => {
     });
   }, [evaluateConditionalItem]);
 
-  const handleCategorySelect = (category, section = null) => {
-    setSelectedCategory(category);
-    setSelectedSection(section);
-    // Filter items by category and optionally by section
-    const filtered = items.filter(item => {
+  const getCategoryItems = useCallback((category, section = null) => {
+    return items.filter(item => {
       if (item.category !== category) return false;
       if (section && item.section !== section) return false;
       return true;
     });
-    // Apply conditional logic filtering
-    const conditionallyFiltered = filterItemsByCondition(filtered, items, responses, selectedOptions, comments);
+  }, [items]);
+
+  const applyCategorySelection = useCallback((category, section = null, overrides = {}) => {
+    const nextResponses = overrides.responses || responses;
+    const nextSelectedOptions = overrides.selectedOptions || selectedOptions;
+    const nextComments = overrides.comments || comments;
+    setSelectedCategory(category);
+    setSelectedSection(section);
+    const categoryItems = getCategoryItems(category, section);
+    const conditionallyFiltered = filterItemsByCondition(categoryItems, items, nextResponses, nextSelectedOptions, nextComments);
     setFilteredItems(conditionallyFiltered);
+  }, [comments, filterItemsByCondition, getCategoryItems, items, responses, selectedOptions]);
+
+  const handleCategorySelect = (category, section = null) => {
+    applyCategorySelection(category, section);
   };
 
   // Group items by section for display (Trnx-1, Trnx-2, Avg, etc.)
@@ -2389,7 +2401,23 @@ const AuditFormScreen = () => {
       }
 
       // Use batch update for faster saves - prepare all items
-      const batchItems = filteredItems.map((item) => {
+      const categoryItems = selectedCategory
+        ? getCategoryItems(selectedCategory, selectedSection)
+        : items;
+      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments);
+      const visibleItemIds = new Set(visibleItems.map(item => item.id));
+      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      const hasLocalResponse = (item) => {
+        const status = responses[item.id];
+        const hasStatus = status && status !== 'pending' && status !== '';
+        const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
+        const hasMulti = (multipleSelections[item.id] || []).length > 0;
+        const hasComment = comments[item.id] && String(comments[item.id]).trim() !== '';
+        const hasPhoto = !!photos[item.id];
+        return hasStatus || hasOption || hasMulti || hasComment || hasPhoto;
+      };
+
+      const batchItems = visibleItems.map((item) => {
         const fieldType = getEffectiveItemFieldType(item);
         const isOptionType = isOptionFieldType(fieldType);
         const isAnswerType = isAnswerFieldType(fieldType);
@@ -2483,12 +2511,22 @@ const AuditFormScreen = () => {
         return updateData;
       });
 
+      const hiddenBatchItems = hiddenItems
+        .filter(item => !hasLocalResponse(item))
+        .map(item => ({
+          itemId: item.id,
+          status: 'completed',
+          mark: 'NA'
+        }));
+
+      const allBatchItems = [...batchItems, ...hiddenBatchItems];
+
       // Send batch update request
       // Clear audit_category to allow multiple categories in the same audit
       // This allows users to complete different categories in the same audit session
       try {
         const batchUrl = `${API_BASE_URL}/audits/${activeAuditId}/items/batch`;
-        const payload = { items: batchItems, audit_category: null };
+        const payload = { items: allBatchItems, audit_category: null };
 
         // Retry batch update on transient failures (especially 429/rate limit)
         let batchAttempt = 0;
@@ -2530,7 +2568,7 @@ const AuditFormScreen = () => {
         const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${activeAuditId}/items/${itemId}`;
         const errors = [];
 
-        for (const updateData of batchItems) {
+        for (const updateData of allBatchItems) {
           const itemId = updateData.itemId;
           const maxItemRetries = 3;
           let attempt = 0;
@@ -2577,11 +2615,11 @@ const AuditFormScreen = () => {
           const firstMsg = first?.response?.data?.error || first?.response?.data?.message || first?.message || 'Unknown error';
           
           // If all items failed, throw error
-          if (failedCount === batchItems.length) {
+          if (failedCount === allBatchItems.length) {
             throw new Error(`Failed to save all ${failedCount} items (first error${firstStatus ? ` ${firstStatus}` : ''}: ${firstMsg})`);
           } else {
             // Some items failed - log warning but continue
-            console.warn(`Failed to save ${failedCount} out of ${batchItems.length} items. Continuing...`);
+            console.warn(`Failed to save ${failedCount} out of ${allBatchItems.length} items. Continuing...`);
           }
         }
       }
@@ -2589,7 +2627,7 @@ const AuditFormScreen = () => {
       // IMMEDIATE REAL-TIME CHECK: Check completion based on what was actually saved in batch
       // Use the batchItems data to determine completion, not state (which might be stale)
       const savedItemsMap = new Map();
-      batchItems.forEach(updateData => {
+      allBatchItems.forEach(updateData => {
         savedItemsMap.set(updateData.itemId, updateData);
       });
       
@@ -2922,7 +2960,11 @@ const AuditFormScreen = () => {
                   if (remainingCategories.length > 0) {
                     const nextCategory = remainingCategories[0];
                     console.log('[AuditForm] Auto-selecting next incomplete category:', nextCategory);
-                    handleCategorySelect(nextCategory);
+                    applyCategorySelection(nextCategory, null, {
+                      responses: updatedResponses,
+                      selectedOptions: updatedSelectedOptions,
+                      comments: updatedComments
+                    });
                     setCurrentStep(2); // Go back to checklist step
                   }
                 } : () => {

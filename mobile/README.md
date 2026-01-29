@@ -4,6 +4,10 @@ React Native mobile application for Restaurant Audit & Checklist (Android & iOS)
 
 ## Setup
 
+### Prerequisites
+
+- Node.js LTS installed (verify with `node -v`)
+
 1. Install dependencies:
 ```bash
 npm install
