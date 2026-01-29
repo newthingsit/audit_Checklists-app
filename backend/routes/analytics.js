@@ -841,17 +841,24 @@ router.get('/trends/analysis', authenticate, (req, res) => {
     const completedChange = (current.completed || 0) - (previous.completed || 0);
     const scoreChange = (current.avgScore || 0) - (previous.avgScore || 0);
     
+    const currentPeriod = {
+      total: current.total || 0,
+      completed: current.completed || 0,
+      avgScore: current.avgScore || 0
+    };
+    const previousPeriod = {
+      total: previous.total || 0,
+      completed: previous.completed || 0,
+      avgScore: previous.avgScore || 0
+    };
+
     res.json({
-      currentPeriod: {
-        total: current.total || 0,
-        completed: current.completed || 0,
-        avgScore: current.avgScore || 0
-      },
-      previousPeriod: {
-        total: previous.total || 0,
-        completed: previous.completed || 0,
-        avgScore: previous.avgScore || 0
-      },
+      // Legacy keys for existing clients/tests
+      current: currentPeriod,
+      previous: previousPeriod,
+      // Preferred keys for newer clients
+      currentPeriod,
+      previousPeriod,
       changes: {
         totalChange,
         completedChange,

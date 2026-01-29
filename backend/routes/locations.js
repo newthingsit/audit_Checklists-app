@@ -156,12 +156,13 @@ router.post('/', authenticate, requirePermission('manage_locations'), (req, res)
     `INSERT INTO locations (store_number, name, address, city, state, country, phone, email, parent_id, region, district, latitude, longitude, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [store_number || null, name, address || null, city || null, state || null, country || null, phone || null, email || null, parent_id || null, region || null, district || null, latitude || null, longitude || null, req.user.id],
-    function(err) {
+    function(err, result) {
       if (err) {
         logger.error('Error creating location:', err);
         return res.status(500).json({ error: 'Error creating location' });
       }
-      res.status(201).json({ id: this.lastID, message: 'Location created successfully' });
+      const createdId = (result && result.lastID) ? result.lastID : (this?.lastID || null);
+      res.status(201).json({ id: createdId, message: 'Location created successfully' });
     }
   );
 });

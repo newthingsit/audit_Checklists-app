@@ -2567,6 +2567,11 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
       const isFilledValue = (value) =>
         value !== undefined && value !== null && String(value).trim() !== '';
 
+      const getMultiSelectionCount = (payload) => {
+        const parsed = parseMultiSelectionComment(payload?.comment);
+        return parsed?.selections?.length || 0;
+      };
+
       const isItemComplete = (payload, meta) => {
         const inputType = String(meta?.input_type || '').toLowerCase();
         const status = payload.status;
@@ -2575,7 +2580,9 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         const hasPhoto = isFilledValue(payload.photo_url);
         const hasComment = isFilledValue(payload.comment);
         const hasMarkValue = isFilledValue(payload.mark) && String(payload.mark).toUpperCase() !== 'NA';
+        const hasMulti = isMultiSelectInputType(inputType) && getMultiSelectionCount(payload) > 0;
 
+        if (isMultiSelectInputType(inputType)) return hasMulti || hasOption || hasMarkValue;
         if (inputType === 'option_select' || inputType === 'select_from_data_source' || inputType === 'dropdown') return !!hasOption;
         if (inputType === 'image_upload') return !!hasPhoto;
         if (['open_ended', 'description', 'number', 'date', 'scan_code', 'signature', 'short_answer', 'long_answer', 'time'].includes(inputType)) {
@@ -2583,7 +2590,19 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         }
         if (inputType === 'task') return !!hasStatus;
         // unknown types fall back to having any response
-        return !!hasStatus || !!hasOption || !!hasComment;
+        return !!hasStatus || !!hasOption || !!hasComment || !!hasPhoto || hasMarkValue;
+      };
+
+      const hasAnyResponse = (payload, meta) => {
+        const inputType = String(meta?.input_type || '').toLowerCase();
+        const status = payload.status;
+        const hasStatus = status && status !== 'pending';
+        const hasOption = payload.selected_option_id !== undefined && payload.selected_option_id !== null;
+        const hasPhoto = isFilledValue(payload.photo_url);
+        const hasComment = isFilledValue(payload.comment);
+        const hasMarkValue = isFilledValue(payload.mark);
+        const hasMulti = isMultiSelectInputType(inputType) && getMultiSelectionCount(payload) > 0;
+        return !!hasStatus || !!hasOption || !!hasComment || !!hasPhoto || !!hasMarkValue || !!hasMulti;
       };
 
       const missingRequired = items
@@ -2593,11 +2612,13 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
           const meta = itemMetaById[itemId];
           const isRequired = meta && (meta.required === 1 || meta.required === true);
           if (!isRequired) return null;
+          const attempted = hasAnyResponse(item, meta);
+          if (!attempted) return null;
           return isItemComplete(item, meta) ? null : { itemId, input_type: meta?.input_type || null };
         })
         .filter(Boolean);
 
-      const enforceRequired = req.body?.enforce_required === true || req.body?.enforce_required === 'true';
+      const enforceRequired = req.body?.enforce_required !== false && req.body?.enforce_required !== 'false';
       if (missingRequired.length > 0 && enforceRequired) {
         logger.warn('[Batch Update] Required items missing (enforced)', { auditId, count: missingRequired.length });
         return res.status(400).json({

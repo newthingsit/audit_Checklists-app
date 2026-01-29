@@ -363,6 +363,14 @@ const createTables = async () => {
       FOREIGN KEY ([assigned_to]) REFERENCES [users]([id]),
       FOREIGN KEY ([escalated_to]) REFERENCES [users]([id])
     )`,
+    // Allow standalone action items (audit_id nullable)
+    `IF EXISTS (
+        SELECT 1 FROM sys.columns 
+        WHERE object_id = OBJECT_ID(N'[dbo].[action_items]') 
+          AND name = 'audit_id' 
+          AND is_nullable = 0
+      )
+      ALTER TABLE [dbo].[action_items] ALTER COLUMN [audit_id] INT NULL`,
 
     // Action Plan table (auto-generated Top-3 deviations)
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND type in (N'U'))
@@ -1593,4 +1601,3 @@ module.exports = {
   getDb,
   close
 };
-
