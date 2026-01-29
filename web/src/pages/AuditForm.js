@@ -112,6 +112,36 @@ const AuditForm = () => {
   );
   const [isEditing, setIsEditing] = useState(false);
   const [auditStatus, setAuditStatus] = useState(null);
+
+  const isMultiSelectInputType = (inputType) => {
+    return inputType === 'multiple_answer' || inputType === 'grid';
+  };
+
+  const buildMultiSelectionComment = (text, selections) => {
+    const payload = {
+      text: typeof text === 'string' ? text : '',
+      selections: Array.isArray(selections) ? selections : []
+    };
+    return JSON.stringify(payload);
+  };
+
+  const parseMultiSelectionComment = (raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('{')) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && Array.isArray(parsed.selections)) {
+        return {
+          text: typeof parsed.text === 'string' ? parsed.text : '',
+          selections: parsed.selections
+        };
+      }
+    } catch (err) {
+      return null;
+    }
+    return null;
+  };
   
   // Scheduled audit restrictions
   const [scheduledAudit, setScheduledAudit] = useState(null);
@@ -273,6 +303,10 @@ const AuditForm = () => {
       const templateResponse = await axios.get(`/api/checklists/${audit.template_id}`);
       setTemplate(templateResponse.data.template);
       const allItems = templateResponse.data.items || [];
+      const inputTypeById = {};
+      allItems.forEach(item => {
+        inputTypeById[item.id] = String(item.input_type || '').toLowerCase();
+      });
       setItems(allItems);
 
       // Extract unique categories from items (normalize names for consistent grouping)
@@ -306,6 +340,7 @@ const AuditForm = () => {
       const responsesData = {};
       const optionsData = {};
       const commentsData = {};
+      const multipleSelectionsData = {};
       const photosData = {};
       const inputValuesData = {};
 
@@ -317,7 +352,18 @@ const AuditForm = () => {
           optionsData[auditItem.item_id] = auditItem.selected_option_id;
         }
         if (auditItem.comment) {
-          commentsData[auditItem.item_id] = auditItem.comment;
+          const inputType = inputTypeById[auditItem.item_id];
+          if (isMultiSelectInputType(inputType)) {
+            const parsed = parseMultiSelectionComment(auditItem.comment);
+            if (parsed) {
+              commentsData[auditItem.item_id] = parsed.text || '';
+              multipleSelectionsData[auditItem.item_id] = parsed.selections;
+            } else {
+              commentsData[auditItem.item_id] = auditItem.comment;
+            }
+          } else {
+            commentsData[auditItem.item_id] = auditItem.comment;
+          }
         }
         if (auditItem.photo_url) {
           // Construct full URL if needed
@@ -336,6 +382,7 @@ const AuditForm = () => {
       setResponses(responsesData);
       setSelectedOptions(optionsData);
       setComments(commentsData);
+      setMultipleSelections(multipleSelectionsData);
       setPhotos(photosData);
       setInputValues(inputValuesData);
 
@@ -864,11 +911,14 @@ const AuditForm = () => {
         .filter(item => item && item.id) // Filter out any items without valid IDs
         .map((item) => {
           const inputType = getNormalizedInputType(item);
+          const isMultiSelect = isMultiSelectInputType(inputType);
           let status = responses[item.id] || 'pending';
           
           // Auto-set status to 'completed' for items with values
           if (status === 'pending') {
             if (selectedOptions[item.id]) {
+              status = 'completed';
+            } else if (isMultiSelect && (multipleSelections[item.id] || []).length > 0) {
               status = 'completed';
             } else if (inputValues[item.id] && String(inputValues[item.id]).trim() !== '') {
               status = 'completed';
@@ -903,8 +953,19 @@ const AuditForm = () => {
           }
           
           // Include explicit comments (may override the inputValue-based comment for text types)
-          if (comments[item.id]) {
+          if (comments[item.id] && !isMultiSelect) {
             itemData.comment = comments[item.id];
+          }
+
+          if (isMultiSelect) {
+            const selections = multipleSelections[item.id] || [];
+            const commentText = comments[item.id] || '';
+            if (selections.length > 0 || commentText) {
+              itemData.comment = buildMultiSelectionComment(commentText, selections);
+            }
+            if (selections.length > 0) {
+              itemData.mark = 'NA';
+            }
           }
           
           if (photos[item.id]) {

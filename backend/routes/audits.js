@@ -980,13 +980,13 @@ router.get('/:id', authenticate, (req, res) => {
               is_critical: item.is_critical,
               // Audit item fields (may be null if no audit_item exists)
               audit_item_id: item.audit_item_id,
-              mark: item.mark || null,
-              comment: item.comment || null,
+              mark: item.mark !== undefined && item.mark !== null ? item.mark : null,
+              comment: item.comment !== undefined && item.comment !== null ? item.comment : null,
               status: item.status || 'pending',
-              photo_url: item.photo_url || null,
-              selected_option_id: item.selected_option_id || null,
+              photo_url: item.photo_url !== undefined && item.photo_url !== null ? item.photo_url : null,
+              selected_option_id: item.selected_option_id !== undefined && item.selected_option_id !== null ? item.selected_option_id : null,
               selected_option_text: item.selected_option_text || null,
-              selected_mark: item.selected_mark || null,
+              selected_mark: item.selected_mark !== undefined && item.selected_mark !== null ? item.selected_mark : null,
               time_taken_minutes: null // Column doesn't exist in audit_items table
             };
             
@@ -1917,7 +1917,8 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               
               // Always include comment, photo_url, selected_option_id, and mark fields (can be null)
               insertFields.push('comment', 'photo_url', 'selected_option_id', 'mark');
-              insertValues.push(comment || null, photo_url || null, validSelectedOptionId, finalMark || null);
+              const normalizedFinalMark = isFilledValue(finalMark) ? finalMark : null;
+              insertValues.push(comment || null, photo_url || null, validSelectedOptionId, normalizedFinalMark);
               insertPlaceholders.push('?', '?', '?', '?');
               
               // Add time tracking fields if provided
@@ -1964,7 +1965,8 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
               
               if (finalMark !== undefined) {
                 updateFields.push('mark = ?');
-                updateValues.push(finalMark || null);
+                const normalizedFinalMark = isFilledValue(finalMark) ? finalMark : null;
+                updateValues.push(normalizedFinalMark);
               }
               
               // Add time tracking fields if provided
@@ -2440,6 +2442,36 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
         );
       });
 
+      // Prefetch option marks so we can fill missing marks from selected_option_id
+      const selectedOptionIds = [...new Set(
+        (items || [])
+          .map(i => {
+            const raw = i?.selected_option_id;
+            if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+            const parsed = parseInt(raw, 10);
+            return Number.isFinite(parsed) ? parsed : null;
+          })
+          .filter(id => id !== null)
+      )];
+
+      const optionMarkById = await new Promise((resolve) => {
+        if (selectedOptionIds.length === 0) return resolve({});
+        const placeholders = selectedOptionIds.map(() => '?').join(',');
+        dbInstance.all(
+          `SELECT id, mark FROM checklist_item_options WHERE id IN (${placeholders})`,
+          selectedOptionIds,
+          (optErr, rows) => {
+            if (optErr) {
+              logger.warn('[Batch Update] Failed to prefetch option marks:', optErr.message);
+              return resolve({});
+            }
+            const map = {};
+            (rows || []).forEach(r => { map[r.id] = r.mark; });
+            resolve(map);
+          }
+        );
+      });
+
       const isFilledValue = (value) =>
         value !== undefined && value !== null && String(value).trim() !== '';
 
@@ -2490,7 +2522,12 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
           const { status, comment, photo_url, mark, time_taken_minutes, started_at, time_entries, average_time_minutes } = item;
           // Parse itemId and selected_option_id to integer for MSSQL compatibility
           const itemId = parseInt(item.itemId, 10);
-          const selected_option_id = item.selected_option_id ? parseInt(item.selected_option_id, 10) : null;
+          const hasSelectedOption = Object.prototype.hasOwnProperty.call(item, 'selected_option_id');
+          let selected_option_id = null;
+          if (hasSelectedOption && item.selected_option_id !== null && String(item.selected_option_id).trim() !== '') {
+            const parsed = parseInt(item.selected_option_id, 10);
+            selected_option_id = Number.isFinite(parsed) ? parsed : null;
+          }
           
           if (isNaN(itemId)) {
             return reject(new Error(`Invalid item ID: ${item.itemId}`));
@@ -2521,23 +2558,30 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   .map(t => Number(t))
                   .filter(t => Number.isFinite(t) && t > 0).length;
 
-                const markEmpty = effectiveMark === undefined || effectiveMark === null || String(effectiveMark).trim() === '';
+                let markEmpty = !isFilledValue(effectiveMark);
                 if (isTimeBased && markEmpty && computedAvg !== null && validCount >= 4) {
                   const computedScore = calculateTimeBasedScore(computedAvg, meta?.target_time_minutes || 2);
                   if (computedScore !== null) {
                     effectiveMark = String(computedScore);
                     itemStatus = 'completed';
+                    markEmpty = !isFilledValue(effectiveMark);
                     logger.debug(`[Batch Update] Auto-calculated time-based mark for item ${itemId}: avg=${computedAvg}, score=${effectiveMark}`);
                   }
                 }
 
-                if (selected_option_id && mark && itemStatus === 'pending') {
+                if (markEmpty && selected_option_id && optionMarkById[selected_option_id] !== undefined) {
+                  effectiveMark = optionMarkById[selected_option_id];
+                  markEmpty = !isFilledValue(effectiveMark);
+                }
+
+                if (selected_option_id && itemStatus === 'pending') {
                   itemStatus = 'completed';
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for new item ${itemId} with selected_option_id ${selected_option_id}`);
                 }
                 
                 const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
-                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, effectiveMark || null];
+                const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
+                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, normalizedMark];
                 const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
                 
                 // Add time tracking fields if provided (only if columns exist)
@@ -2575,13 +2619,15 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                         // Another request inserted the row; update instead
                         const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
                         const updateValues = [itemStatus, comment || null, photo_url || null];
-                        if (selected_option_id !== undefined) {
+                        if (hasSelectedOption) {
                           updateFields.push('selected_option_id = ?');
-                          updateValues.push(selected_option_id || null);
+                          updateValues.push(selected_option_id);
                         }
-                        if (effectiveMark !== undefined) {
+                        const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
+                        const shouldUpdateMark = mark !== undefined || normalizedMark !== null;
+                        if (shouldUpdateMark) {
                           updateFields.push('mark = ?');
-                          updateValues.push(effectiveMark || null);
+                          updateValues.push(normalizedMark);
                         }
                         if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
                           updateFields.push('time_taken_minutes = ?');
@@ -2618,7 +2664,8 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                         logger.warn(`[Batch Update] Time tracking columns may not exist, retrying without them for item ${itemId}`);
                         // Retry without time tracking columns
                         const basicFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
-                        const basicValues = [auditId, itemId, status || 'pending', comment || null, photo_url || null, selected_option_id, mark || null];
+                        const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
+                        const basicValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, normalizedMark];
                         const basicPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
                         
                         dbInstance.run(
@@ -2662,17 +2709,23 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                   .map(t => Number(t))
                   .filter(t => Number.isFinite(t) && t > 0).length;
 
-                const markEmpty = effectiveMark === undefined || effectiveMark === null || String(effectiveMark).trim() === '';
+                let markEmpty = !isFilledValue(effectiveMark);
                 if (isTimeBased && markEmpty && computedAvg !== null && validCount >= 4) {
                   const computedScore = calculateTimeBasedScore(computedAvg, meta?.target_time_minutes || 2);
                   if (computedScore !== null) {
                     effectiveMark = String(computedScore);
                     itemStatus = 'completed';
+                    markEmpty = !isFilledValue(effectiveMark);
                     logger.debug(`[Batch Update] Auto-calculated time-based mark for item ${itemId}: avg=${computedAvg}, score=${effectiveMark}`);
                   }
                 }
 
-                if (selected_option_id && mark && itemStatus === 'pending') {
+                if (markEmpty && selected_option_id && optionMarkById[selected_option_id] !== undefined) {
+                  effectiveMark = optionMarkById[selected_option_id];
+                  markEmpty = !isFilledValue(effectiveMark);
+                }
+
+                if (selected_option_id && itemStatus === 'pending') {
                   itemStatus = 'completed';
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for item ${itemId} with selected_option_id ${selected_option_id}`);
                 }
@@ -2680,13 +2733,15 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                 const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
                 const updateValues = [itemStatus, comment || null, photo_url || null];
                 
-                if (selected_option_id !== undefined) {
+                if (hasSelectedOption) {
                   updateFields.push('selected_option_id = ?');
-                  updateValues.push(selected_option_id || null);
+                  updateValues.push(selected_option_id);
                 }
-                if (mark !== undefined) {
+                const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
+                const shouldUpdateMark = mark !== undefined || normalizedMark !== null;
+                if (shouldUpdateMark) {
                   updateFields.push('mark = ?');
-                  updateValues.push(effectiveMark || null);
+                  updateValues.push(normalizedMark);
                 }
                 if (time_taken_minutes !== undefined && time_taken_minutes !== null) {
                   updateFields.push('time_taken_minutes = ?');
@@ -2735,17 +2790,19 @@ router.put('/:id/items/batch', authenticate, async (req, res) => {
                         logger.warn(`[Batch Update] Time tracking columns may not exist, retrying without them for item ${itemId}`);
                         // Retry without time tracking columns
                         const basicFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
-                        const basicValues = [status || 'pending', comment || null, photo_url || null];
+                        const basicValues = [itemStatus, comment || null, photo_url || null];
                         
-                        if (selected_option_id !== undefined) {
+                        if (hasSelectedOption) {
                           basicFields.push('selected_option_id = ?');
-                          basicValues.push(selected_option_id || null);
+                          basicValues.push(selected_option_id);
                         }
-                        if (mark !== undefined) {
+                        const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
+                        const shouldUpdateMark = mark !== undefined || normalizedMark !== null;
+                        if (shouldUpdateMark) {
                           basicFields.push('mark = ?');
-                          basicValues.push(mark || null);
+                          basicValues.push(normalizedMark);
                         }
-                        if (status === 'completed') {
+                        if (itemStatus === 'completed') {
                           basicFields.push('completed_at = CURRENT_TIMESTAMP');
                         }
                         
@@ -3922,4 +3979,3 @@ router.get('/previous-failures/:templateId/:locationId', authenticate, (req, res
 });
 
 module.exports = router;
-

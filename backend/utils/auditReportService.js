@@ -14,6 +14,32 @@ const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ')
 
 const normalizeCategoryKey = (value) => normalizeText(value).toLowerCase();
 
+const parseMultiSelectionComment = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && Array.isArray(parsed.selections)) {
+      return {
+        text: typeof parsed.text === 'string' ? parsed.text : '',
+        selections: parsed.selections
+      };
+    }
+  } catch (err) {
+    return null;
+  }
+  return null;
+};
+
+const normalizeMultiSelectionComment = (item) => {
+  if (!item || !item.comment) return item?.comment || '';
+  const inputType = String(item.input_type || '').toLowerCase();
+  if (inputType !== 'multiple_answer' && inputType !== 'grid') return item.comment;
+  const parsed = parseMultiSelectionComment(item.comment);
+  return parsed ? (parsed.text || '') : item.comment;
+};
+
 const mapToMajorCategory = (category) => {
   const normalized = normalizeCategoryKey(category);
   if (!normalized) return 'PROCESSES';
@@ -334,6 +360,7 @@ async function getAuditReportData(auditId, options = {}) {
 
   const itemsWithScores = items.map(item => ({
     ...item,
+    comment: normalizeMultiSelectionComment(item),
     maxScore: parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 3
   }));
 

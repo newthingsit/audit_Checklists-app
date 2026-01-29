@@ -120,6 +120,21 @@ const AuditFormScreen = () => {
     return `audit_draft:${templateKey}:${scheduleKey}:${locationKey}`;
   }, [templateId, scheduledAuditId, locationId]);
 
+  const clearDraftStorage = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(draftStorageKey);
+      await AsyncStorage.removeItem(draftStorageKey + '_meta');
+    } catch (error) {
+      console.warn('Failed to clear draft storage:', error);
+    }
+  }, [draftStorageKey]);
+
+  const resetDraftIdentity = useCallback(async () => {
+    await clearDraftStorage();
+    clientAuditUuidRef.current = null;
+    setCurrentAuditId(null);
+  }, [clearDraftStorage]);
+
   useEffect(() => {
     let mounted = true;
     const loadDraftIdentity = async () => {
@@ -460,6 +475,8 @@ const AuditFormScreen = () => {
           'This audit has been completed. You can view the details but cannot modify any answers.',
           [{ text: 'View Details' }]
         );
+        // Completed audits should not be treated as resumable drafts
+        clearDraftStorage();
         // Don't return - continue loading to allow viewing in read-only mode
       }
 
@@ -541,6 +558,10 @@ const AuditFormScreen = () => {
       // Set template and items immediately for faster UI rendering
       setTemplate(templateData.template);
       const allItems = templateData.items || [];
+      const itemTypeById = {};
+      allItems.forEach(item => {
+        itemTypeById[item.id] = String(item.input_type || '').toLowerCase();
+      });
       console.log('[AuditForm] Template has', allItems.length, 'items');
       
       if (allItems.length === 0) {
@@ -636,12 +657,15 @@ const AuditFormScreen = () => {
       const responsesData = {};
       const optionsData = {};
       const commentsData = {};
+      const multipleSelectionsData = {};
       const photosData = {};
       const baseUrl = API_BASE_URL.replace('/api', '');
 
       // Use the already-created auditItemsMap for O(1) lookups
       auditItems.forEach(auditItem => {
         const itemId = auditItem.item_id;
+        const itemType = itemTypeById[itemId];
+        const isMultiSelect = isMultiSelectFieldType(itemType);
         if (auditItem.status) {
           responsesData[itemId] = auditItem.status;
         }
@@ -649,7 +673,17 @@ const AuditFormScreen = () => {
           optionsData[itemId] = auditItem.selected_option_id;
         }
         if (auditItem.comment) {
-          commentsData[itemId] = auditItem.comment;
+          if (isMultiSelect) {
+            const parsed = parseMultiSelectionComment(auditItem.comment);
+            if (parsed) {
+              commentsData[itemId] = parsed.text || '';
+              multipleSelectionsData[itemId] = parsed.selections;
+            } else {
+              commentsData[itemId] = auditItem.comment;
+            }
+          } else {
+            commentsData[itemId] = auditItem.comment;
+          }
         }
         if (auditItem.photo_url) {
           // Construct full URL if needed - handle both full URLs and paths
@@ -668,6 +702,7 @@ const AuditFormScreen = () => {
       setResponses(responsesData);
       setSelectedOptions(optionsData);
       setComments(commentsData);
+      setMultipleSelections(multipleSelectionsData);
       setPhotos(photosData);
 
       // Start at appropriate step
@@ -1010,6 +1045,36 @@ const AuditFormScreen = () => {
       return updated;
     });
   }, [auditStatus]);
+
+  const isMultiSelectFieldType = useCallback((fieldType) => {
+    return fieldType === 'multiple_answer' || fieldType === 'grid';
+  }, []);
+
+  const buildMultiSelectionComment = useCallback((text, selections) => {
+    const payload = {
+      text: typeof text === 'string' ? text : '',
+      selections: Array.isArray(selections) ? selections : []
+    };
+    return JSON.stringify(payload);
+  }, []);
+
+  const parseMultiSelectionComment = useCallback((raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('{')) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && Array.isArray(parsed.selections)) {
+        return {
+          text: typeof parsed.text === 'string' ? parsed.text : '',
+          selections: parsed.selections
+        };
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }, []);
 
   const getEffectiveItemFieldType = useCallback((item) => {
     const raw = (item?.input_type || item?.inputType || 'auto').toLowerCase();
@@ -1761,7 +1826,13 @@ const AuditFormScreen = () => {
               await fetchAuditDataById(existingAudit.id);
               return; // Don't proceed to step 2 - fetchAuditDataById will handle navigation
             }
-            // If user chose "Start New", continue to create a new audit
+            // If user chose "Start New", clear any stale draft identity before creating a new audit
+            await resetDraftIdentity();
+            setIsEditing(false);
+          }
+          // If no existing audit found on server but a local draft ID is present, clear it before starting fresh
+          if (!existingAudit && currentAuditId) {
+            await resetDraftIdentity();
           }
         } catch (checkError) {
           console.log('Could not check for existing audits:', checkError.message);
@@ -2322,6 +2393,7 @@ const AuditFormScreen = () => {
         const fieldType = getEffectiveItemFieldType(item);
         const isOptionType = isOptionFieldType(fieldType);
         const isAnswerType = isAnswerFieldType(fieldType);
+        const isMultiSelectType = isMultiSelectFieldType(fieldType);
         const hasAnswer = !!(comments[item.id] && String(comments[item.id]).trim());
         const hasPhoto = !!photos[item.id];
         const statusFromState = responses[item.id] || 'pending';
@@ -2333,6 +2405,12 @@ const AuditFormScreen = () => {
         if (fieldType === 'image_upload') {
           effectiveStatus = hasPhoto ? 'completed' : statusFromState;
         }
+        if (isMultiSelectType) {
+          const selections = multipleSelections[item.id] || [];
+          if (selections.length > 0) {
+            effectiveStatus = 'completed';
+          }
+        }
 
         const updateData = {
           itemId: item.id,
@@ -2341,9 +2419,14 @@ const AuditFormScreen = () => {
         
         if (isOptionType && selectedOptions[item.id]) {
           updateData.selected_option_id = selectedOptions[item.id];
+          // Include mark from selected option so backend can compute completion/score correctly
+          const selectedOpt = item.options?.find(opt => opt.id === selectedOptions[item.id]);
+          if (selectedOpt && selectedOpt.mark !== undefined && selectedOpt.mark !== null) {
+            updateData.mark = selectedOpt.mark;
+          }
         }
         
-        if (comments[item.id]) {
+        if (comments[item.id] && !isMultiSelectType) {
           updateData.comment = comments[item.id];
         }
 
@@ -2361,6 +2444,17 @@ const AuditFormScreen = () => {
           if (st === 'completed') updateData.mark = '100';
           if (st === 'failed') updateData.mark = '0';
           if (st === 'warning') updateData.mark = '50';
+        }
+
+        if (isMultiSelectType) {
+          const selections = multipleSelections[item.id] || [];
+          const commentText = comments[item.id] || '';
+          if (selections.length > 0 || commentText) {
+            updateData.comment = buildMultiSelectionComment(commentText, selections);
+          }
+          if (selections.length > 0) {
+            updateData.mark = 'NA';
+          }
         }
         
         if (photos[item.id]) {
@@ -2549,6 +2643,9 @@ const AuditFormScreen = () => {
         
         // Update audit status from backend (this is the source of truth)
         const isAuditCompleted = updatedAudit.status === 'completed';
+        if (isAuditCompleted) {
+          clearDraftStorage();
+        }
         console.log('[AuditForm] Save response - audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
         
         // REAL-TIME STATUS UPDATE: Update status immediately from backend response using functional update
@@ -2637,11 +2734,18 @@ const AuditFormScreen = () => {
         const updatedResponses = { ...responses };
         const updatedSelectedOptions = { ...selectedOptions };
         const updatedComments = { ...comments };
+        const updatedMultipleSelections = { ...multipleSelections };
         const updatedPhotos = { ...photos };
         const baseUrl = API_BASE_URL.replace('/api', '');
+        const itemTypeById = {};
+        items.forEach(item => {
+          itemTypeById[item.id] = String(item.input_type || '').toLowerCase();
+        });
         
         updatedAuditItems.forEach(auditItem => {
           const itemId = auditItem.item_id;
+          const itemType = itemTypeById[itemId];
+          const isMultiSelect = isMultiSelectFieldType(itemType);
           // Update responses
           if (auditItem.status) {
             updatedResponses[itemId] = auditItem.status;
@@ -2652,7 +2756,17 @@ const AuditFormScreen = () => {
           }
           // Update comments
           if (auditItem.comment) {
-            updatedComments[itemId] = auditItem.comment;
+            if (isMultiSelect) {
+              const parsed = parseMultiSelectionComment(auditItem.comment);
+              if (parsed) {
+                updatedComments[itemId] = parsed.text || '';
+                updatedMultipleSelections[itemId] = parsed.selections;
+              } else {
+                updatedComments[itemId] = auditItem.comment;
+              }
+            } else {
+              updatedComments[itemId] = auditItem.comment;
+            }
           }
           // Update photos
           if (auditItem.photo_url) {
@@ -2673,6 +2787,7 @@ const AuditFormScreen = () => {
         setResponses(updatedResponses);
         setSelectedOptions(updatedSelectedOptions);
         setComments(updatedComments);
+        setMultipleSelections(updatedMultipleSelections);
         setPhotos(updatedPhotos);
         
         // Recalculate category completion status based on ALL saved items (not just filtered)
