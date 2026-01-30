@@ -120,23 +120,33 @@ async function fetchImage(url) {
     }
     
     // Handle remote URLs
-    const protocol = url.startsWith('https') ? https : http;
-    const request = protocol.get(url, { timeout: 5000 }, (response) => {
-      if (response.statusCode !== 200) {
-        return resolve(null);
-      }
-      
-      const chunks = [];
-      response.on('data', chunk => chunks.push(chunk));
-      response.on('end', () => resolve(Buffer.concat(chunks)));
-      response.on('error', () => resolve(null));
-    });
+    // Validate URL format before attempting to fetch
+    if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      return resolve(null);
+    }
     
-    request.on('error', () => resolve(null));
-    request.on('timeout', () => {
-      request.destroy();
+    try {
+      const protocol = url.startsWith('https') ? https : http;
+      const request = protocol.get(url, { timeout: 5000 }, (response) => {
+        if (response.statusCode !== 200) {
+          return resolve(null);
+        }
+        
+        const chunks = [];
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks)));
+        response.on('error', () => resolve(null));
+      });
+      
+      request.on('error', () => resolve(null));
+      request.on('timeout', () => {
+        request.destroy();
+        resolve(null);
+      });
+    } catch (err) {
+      logger.warn(`Error fetching remote image: ${url}`, err.message);
       resolve(null);
-    });
+    }
   });
 }
 

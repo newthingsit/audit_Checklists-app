@@ -85,7 +85,7 @@ const AuditFormScreen = () => {
   const isInitialLoadInProgressRef = useRef(false); // Track if initial load is in progress
   const hasInitialLoadedRef = useRef(false); // Track if initial load has completed
   const lastLoadParamsRef = useRef(null); // Track last loaded params to prevent duplicates
-  const wasJustCompletedRef = useRef(false); // Track if we just set status to completed to prevent overwrite
+  const autoSaveTimeoutRef = useRef(null);
   
   // Refs to track current values for focus effect (avoid dependency issues)
   const auditIdRef = useRef(auditId);
@@ -163,6 +163,7 @@ const AuditFormScreen = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
+  const recurringAlertShownRef = useRef(new Set());
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -894,8 +895,10 @@ const AuditFormScreen = () => {
         const failedIds = new Set(failures.map(item => item.item_id));
         setFailedItemIds(failedIds);
         
-        // Show alert if there are recurring failures
-        if (failures.length > 0) {
+        // Show alert only once per location+template to avoid repeated popups
+        const alertKey = `${templateId}-${locId}`;
+        if (failures.length > 0 && !recurringAlertShownRef.current.has(alertKey)) {
+          recurringAlertShownRef.current.add(alertKey);
           Alert.alert(
             '⚠️ Recurring Failures Detected',
             `${failures.length} item(s) failed in the last audit for this location. These items are highlighted in red to help you focus on recurring issues.`,
@@ -1124,22 +1127,110 @@ const AuditFormScreen = () => {
 
   const isItemComplete = useCallback((item) => {
     const fieldType = getEffectiveItemFieldType(item);
+    const itemStatus = item?.status;
+    const itemMark = item?.mark;
+    const itemComment = item?.comment;
+    const itemPhotoUrl = item?.photo_url;
+    const itemSelectedOptionId = item?.selected_option_id;
+    const hasItemMark = itemMark !== null && itemMark !== undefined && String(itemMark).trim() !== '';
+    const hasItemStatus = itemStatus && itemStatus !== 'pending' && itemStatus !== '';
+    const hasItemComment = itemComment !== null && itemComment !== undefined && String(itemComment).trim() !== '';
+    const hasItemPhoto = !!itemPhotoUrl;
     if (fieldType === 'multiple_answer' || fieldType === 'grid') {
-      return (multipleSelections[item.id] || []).length > 0;
+      return (multipleSelections[item.id] || []).length > 0 || hasItemMark || hasItemStatus || hasItemComment;
     }
     if (isOptionFieldType(fieldType)) {
-      return !!selectedOptions[item.id];
+      return !!selectedOptions[item.id] || !!itemSelectedOptionId || hasItemMark || hasItemStatus;
     }
     if (fieldType === 'image_upload') {
-      return !!photos[item.id];
+      return !!photos[item.id] || hasItemPhoto || hasItemMark || hasItemStatus;
     }
     if (isAnswerFieldType(fieldType)) {
       const value = comments[item.id];
-      return value !== undefined && value !== null && String(value).trim() !== '';
+      return (value !== undefined && value !== null && String(value).trim() !== '') || hasItemComment || hasItemStatus || hasItemMark;
     }
     const status = responses[item.id];
-    return status && status !== 'pending';
+    return (status && status !== 'pending') || hasItemStatus || hasItemMark;
   }, [comments, photos, responses, selectedOptions, multipleSelections, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
+
+  const queueSilentDraftSave = useCallback(() => {
+    if (auditStatus === 'completed') return;
+    if (currentStep !== 2) return;
+    if (!selectedLocation) return;
+
+    const hasAnyResponses =
+      Object.keys(responses).length > 0 ||
+      Object.keys(comments).length > 0 ||
+      Object.keys(photos).length > 0 ||
+      Object.keys(selectedOptions).length > 0 ||
+      Object.keys(multipleSelections).length > 0;
+
+    if (!hasAnyResponses) return;
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        if (!clientAuditUuidRef.current) {
+          clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        }
+        const draftData = {
+          template_id: parseInt(templateId),
+          template_name: template?.name || '',
+          location_id: parseInt(locationId),
+          restaurant_name: selectedLocation?.name || '',
+          store_number: selectedLocation?.store_number || '',
+          status: 'draft',
+          client_audit_uuid: clientAuditUuidRef.current,
+          responses,
+          comments,
+          photos,
+          selectedOptions,
+          multipleSelections,
+          categoryCompletionStatus,
+          selectedCategory,
+          currentStep,
+          attendees,
+          pointsDiscussed,
+          infoPictures,
+          notes,
+          capturedLocation,
+          locationVerified,
+          items: items.map(item => ({
+            id: item.id,
+            title: item.title,
+            category: item.category,
+            section: item.section,
+            input_type: item.input_type,
+            is_required: item.is_required,
+            options: item.options,
+          })),
+          savedAt: new Date().toISOString(),
+          auditId: currentAuditId,
+          scheduledAuditId,
+          isAutoSave: true,
+        };
+        await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
+        console.log('[AutoSave] Draft saved silently (on response)');
+      } catch (error) {
+        console.warn('[AutoSave] Failed to auto-save draft (on response):', error);
+      }
+    }, 800);
+  }, [auditStatus, currentStep, selectedLocation, responses, comments, photos, selectedOptions, multipleSelections, templateId, template, locationId, categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed, infoPictures, notes, capturedLocation, locationVerified, items, currentAuditId, scheduledAuditId, draftStorageKey]);
+
+  useEffect(() => {
+    queueSilentDraftSave();
+  }, [responses, comments, photos, selectedOptions, multipleSelections, currentStep, queueSilentDraftSave]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const getCategoryTabLabel = useCallback((category) => {
     if (!category) return '';
@@ -2624,53 +2715,8 @@ const AuditFormScreen = () => {
         }
       }
 
-      // IMMEDIATE REAL-TIME CHECK: Check completion based on what was actually saved in batch
-      // Use the batchItems data to determine completion, not state (which might be stale)
-      const savedItemsMap = new Map();
-      allBatchItems.forEach(updateData => {
-        savedItemsMap.set(updateData.itemId, updateData);
-      });
-      
-      // Check if all items in template are complete based on what was saved
-      const allItemsInTemplateComplete = items.every(item => {
-        const savedData = savedItemsMap.get(item.id);
-        if (!savedData) {
-          // Item wasn't in this batch - check current state
-          const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
-          const hasComment = comments[item.id] && String(comments[item.id]).trim();
-          const hasPhoto = !!photos[item.id];
-          const fieldType = getEffectiveItemFieldType(item);
-          const isAnswerType = isAnswerFieldType(fieldType);
-          const isImageType = fieldType === 'image_upload';
-          
-          if (isAnswerType) return hasComment;
-          if (isImageType) return hasPhoto;
-          return hasResponse;
-        }
-        
-        // Item was in batch - check saved data
-        const hasStatus = savedData.status && savedData.status !== 'pending' && savedData.status !== '';
-        const hasMark = savedData.mark !== null && savedData.mark !== undefined && String(savedData.mark).trim() !== '';
-        const hasComment = savedData.comment && String(savedData.comment).trim();
-        const hasPhoto = savedData.photo_url;
-        
-        return hasStatus || hasMark || hasComment || hasPhoto;
-      });
-      
-      // IMMEDIATE STATUS UPDATE: If all items complete, update status instantly using functional update
-      if (allItemsInTemplateComplete && items.length > 0) {
-        wasJustCompletedRef.current = true; // Set flag BEFORE state update
-        setAuditStatus(prevStatus => {
-          if (prevStatus !== 'completed') {
-            console.log('[AuditForm] IMMEDIATE: All items complete detected, updating status from', prevStatus, 'to completed NOW');
-            return 'completed';
-          }
-          wasJustCompletedRef.current = false; // Reset if already completed
-          return prevStatus;
-        });
-      } else {
-        wasJustCompletedRef.current = false; // Reset if not all complete
-      }
+      // NOTE: Do not update completion status purely from local batch data.
+      // The backend is the source of truth for completion to avoid race conditions.
       
       // Refresh audit data to get updated completion status and sync form state
       // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
@@ -2687,28 +2733,8 @@ const AuditFormScreen = () => {
         console.log('[AuditForm] Save response - audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
         
         // REAL-TIME STATUS UPDATE: Update status immediately from backend response using functional update
-        // BUT: Don't overwrite 'completed' status if we just set it and backend hasn't processed yet
         if (updatedAudit.status) {
           setAuditStatus(prevStatus => {
-            // If we just set it to completed (via immediate check) and backend says in_progress with 0 completed_items,
-            // it means backend hasn't processed the batch yet - keep our completed status
-            const shouldKeepCompleted = wasJustCompletedRef.current && 
-                                       prevStatus === 'completed' && 
-                                       updatedAudit.status === 'in_progress' && 
-                                       updatedAudit.completed_items === 0;
-            
-            if (shouldKeepCompleted) {
-              console.log('[AuditForm] Keeping completed status - backend not processed yet (completed_items: 0, wasJustCompleted: true, prevStatus:', prevStatus, ')');
-              // Reset flag after using it
-              wasJustCompletedRef.current = false;
-              return prevStatus; // Keep completed
-            }
-            
-            // Reset flag if we're updating to something else
-            if (wasJustCompletedRef.current) {
-              wasJustCompletedRef.current = false;
-            }
-            
             if (prevStatus !== updatedAudit.status) {
               console.log('[AuditForm] Updated auditStatus state from', prevStatus, 'to', updatedAudit.status, '(real-time update)');
               return updatedAudit.status;
@@ -2717,53 +2743,43 @@ const AuditFormScreen = () => {
           });
         }
         
-        // REAL-TIME CHECK: Also check if all items are complete based on saved data from backend
-        // This provides immediate feedback even if backend hasn't calculated yet
-        const allItemsComplete = items.every(item => {
-          const auditItem = updatedAuditItems.find(ai => ai.item_id === item.id);
-          if (!auditItem) return false;
+        // STRICT COMPLETION CHECK:
+        // Only consider complete when completed_items === total_items and no pending/NA mismatches exist.
+        const totalItems = Number(updatedAudit.total_items) || items.length;
+        const completedItems = Number(updatedAudit.completed_items) || 0;
+        const hasPendingOrMismatch = updatedAuditItems.some(auditItem => {
+          const status = auditItem.status;
           const markValue = auditItem.mark;
-          const hasMark = markValue !== null && 
-                         markValue !== undefined && 
-                         String(markValue).trim() !== '';
-          const hasStatus = auditItem.status && 
-                           auditItem.status !== 'pending' && 
-                           auditItem.status !== '';
-          return hasMark || hasStatus;
+          const hasMark = markValue !== null && markValue !== undefined && String(markValue).trim() !== '';
+          const hasStatus = status && status !== 'pending' && status !== '';
+          const isNaMark = String(markValue || '').trim().toUpperCase() === 'NA';
+          if (!hasMark && !hasStatus) return true;
+          if (isNaMark && (!hasStatus || status === 'pending')) return true;
+          return false;
         });
+        const isStrictlyComplete = totalItems > 0 && completedItems === totalItems && !hasPendingOrMismatch;
         
-        // If backend says completed OR all items are complete, update status immediately using functional update
-        if ((isAuditCompleted || allItemsComplete) && items.length > 0) {
-          setAuditStatus(prevStatus => {
-            if (prevStatus !== 'completed') {
-              console.log('[AuditForm] Status update needed - backend:', isAuditCompleted, 'local check:', allItemsComplete, 'updating from', prevStatus);
-              return 'completed';
-            }
-            return prevStatus;
-          });
-          
-          // Also trigger backend completion check if not already completed
-          if (!isAuditCompleted) {
+        // If backend says completed, keep status. If strict check shows complete but backend hasn't updated yet,
+        // trigger backend completion and refresh, but do NOT flip status locally until backend confirms.
+        if ((isAuditCompleted || isStrictlyComplete) && items.length > 0) {
+          if (!isAuditCompleted && isStrictlyComplete) {
             setTimeout(() => {
               axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
                 .then(() => {
                   console.log('[AuditForm] Backend confirmed completion');
-                  // Refresh to get updated status
                   setTimeout(() => {
                     fetchAuditDataById(activeAuditId).catch(() => {});
                   }, 300);
                 })
                 .catch(err => {
                   console.log('[AuditForm] Backend completion check:', err.message, 'status:', err.response?.status);
-                  // If 404, the endpoint might not exist or audit doesn't exist - that's okay, status is already set
                   if (err.response?.status !== 404) {
-                    // For other errors, still try to refresh after a delay
                     setTimeout(() => {
                       fetchAuditDataById(activeAuditId).catch(() => {});
                     }, 1000);
                   }
                 });
-            }, 500); // Wait 500ms for backend to process batch
+            }, 500);
           }
         }
         
@@ -2908,34 +2924,21 @@ const AuditFormScreen = () => {
             return !status.isComplete;
           });
           
-          // REAL-TIME STATUS CHECK: Check if all categories are complete
+          // If all categories are complete but backend isn't updated yet, trigger completion and refresh.
           const allCategoriesComplete = categories.every(cat => {
             const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
             return status.isComplete;
           });
-          
-          // REAL-TIME UPDATE: If all categories complete, update status immediately using functional update
-          if (allCategoriesComplete && categories.length > 0 && !isAuditCompleted) {
-            setAuditStatus(prevStatus => {
-              if (prevStatus !== 'completed') {
-                console.log('[AuditForm] All categories complete - updating status from', prevStatus, 'to completed in real-time');
-                return 'completed';
-              }
-              return prevStatus;
-            });
-            
-            // Also notify backend to confirm completion
+          if (allCategoriesComplete && categories.length > 0 && !isAuditCompleted && isStrictlyComplete) {
             axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
               .then(() => {
                 console.log('[AuditForm] Backend confirmed completion');
-                // Quick refresh to sync
                 setTimeout(() => {
                   fetchAuditDataById(activeAuditId).catch(() => {});
                 }, 300);
               })
               .catch(err => {
                 console.log('[AuditForm] Backend completion check:', err.message);
-                // Still refresh to check backend status
                 setTimeout(() => {
                   fetchAuditDataById(activeAuditId).then(() => {
                     console.log('[AuditForm] Refreshed after category completion check');
@@ -2952,35 +2955,14 @@ const AuditFormScreen = () => {
             'Success', 
             message,
             [
-              { 
-                text: remainingCategories.length > 0 ? 'Continue' : 'Done', 
-                style: remainingCategories.length > 0 ? 'default' : 'default',
-                onPress: remainingCategories.length > 0 ? () => {
-                  // Auto-navigate to next incomplete category
-                  if (remainingCategories.length > 0) {
-                    const nextCategory = remainingCategories[0];
-                    console.log('[AuditForm] Auto-selecting next incomplete category:', nextCategory);
-                    applyCategorySelection(nextCategory, null, {
-                      responses: updatedResponses,
-                      selectedOptions: updatedSelectedOptions,
-                      comments: updatedComments
-                    });
-                    setCurrentStep(2); // Go back to checklist step
-                  }
-                } : () => {
-                  // Mark that we need to refresh audit detail on back
-                  navigation.setParams({ refreshAuditDetail: true });
-                  navigation.goBack();
-                }
-              },
-              ...(remainingCategories.length > 0 ? [{
+              {
                 text: 'Done',
                 onPress: () => {
                   // Mark that we need to refresh audit detail on back
                   navigation.setParams({ refreshAuditDetail: true });
                   navigation.goBack();
                 }
-              }] : [])
+              }
             ]
           );
         }
@@ -3009,6 +2991,7 @@ const AuditFormScreen = () => {
     } catch (error) {
       console.error('Error saving audit:', error);
       let errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+      const isCompletedLock = /Cannot modify items in a completed audit/i.test(errorMessage);
       
       // Provide more helpful error messages
       if (error.message?.includes('Failed to save')) {
@@ -3029,20 +3012,32 @@ const AuditFormScreen = () => {
         errorMessage = 'Network error. Please check your connection and try again.';
       }
       
-      Alert.alert(
-        'Error', 
-        isEditing ? `Failed to update audit: ${errorMessage}` : `Failed to save audit: ${errorMessage}`,
-        [
-          { text: 'OK' },
-          ...(error.response?.status === 401 ? [{
-            text: 'Login',
-            onPress: () => {
-              // Navigate to login if session expired
-              navigation.navigate('Login');
-            }
-          }] : [])
-        ]
-      );
+      if (isCompletedLock) {
+        setAuditStatus('completed');
+        const latestAuditId = currentAuditId || auditId;
+        if (latestAuditId) {
+          fetchAuditDataById(latestAuditId).catch(() => {});
+        }
+        Alert.alert(
+          'Audit Completed',
+          'This audit is already completed and cannot be modified. Your latest data has been refreshed.'
+        );
+      } else {
+        Alert.alert(
+          'Error', 
+          isEditing ? `Failed to update audit: ${errorMessage}` : `Failed to save audit: ${errorMessage}`,
+          [
+            { text: 'OK' },
+            ...(error.response?.status === 401 ? [{
+              text: 'Login',
+              onPress: () => {
+                // Navigate to login if session expired
+                navigation.navigate('Login');
+              }
+            }] : [])
+          ]
+        );
+      }
     } finally {
       setSaving(false);
       saveInFlightRef.current = false;
@@ -3651,7 +3646,7 @@ const AuditFormScreen = () => {
 
               const item = entry.item || entry;
               const itemIndex = itemIndexMap[item.id] ?? index;
-              const isPreviousFailure = failedItemIds.has(item.id);
+              const isPreviousFailure = failedItemIds.has(item.id) && !isItemComplete(item);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               const fieldType = getEffectiveItemFieldType(item);
               const optionType = isOptionFieldType(fieldType);

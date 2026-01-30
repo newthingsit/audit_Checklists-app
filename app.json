@@ -5,10 +5,21 @@
     "extra": {
       "eas": {
         "projectId": "57d2046c-9e50-459f-8f41-006b79f6bca3"
+      },
+      "apiUrl": {
+        "production": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api",
+        "development": "auto"
       }
     },
     "android": {
       "package": "com.kapilchauhan.auditpro"
-    }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/57d2046c-9e50-459f-8f41-006b79f6bca3"
+    },
+    "ios": {}
   }
 }

@@ -51,20 +51,18 @@ function evaluateCategoryRule(dbInstance, category, locationId, templateId, call
   // First, try to find a template-specific rule
   // Then fall back to a general category rule
   const query = templateId ? `
-    SELECT assigned_role, priority_level
+    SELECT TOP 1 assigned_role, priority_level
     FROM assignment_rules
     WHERE category = ? AND is_active = 1
       AND (template_id = ? OR template_id IS NULL)
     ORDER BY 
       CASE WHEN template_id = ? THEN 0 ELSE 1 END,
       priority_level DESC
-    LIMIT 1
   ` : `
-    SELECT assigned_role, priority_level
+    SELECT TOP 1 assigned_role, priority_level
     FROM assignment_rules
     WHERE category = ? AND is_active = 1 AND template_id IS NULL
     ORDER BY priority_level DESC
-    LIMIT 1
   `;
 
   const params = templateId ? [category.toUpperCase(), templateId, templateId] : [category.toUpperCase()];
@@ -85,13 +83,12 @@ function evaluateCategoryRule(dbInstance, category, locationId, templateId, call
 
     // Find user with target role assigned to this location
     const userQuery = locationId ? `
-      SELECT u.id, u.name, u.role, u.email
+      SELECT TOP 1 u.id, u.name, u.role, u.email
       FROM users u
       INNER JOIN user_locations ul ON u.id = ul.user_id
       WHERE u.role = ? AND ul.location_id = ?
-      LIMIT 1
     ` : `
-      SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1
+      SELECT TOP 1 id, name, role, email FROM users WHERE role = ?
     `;
 
     const userParams = locationId ? [targetRole, locationId] : [targetRole];
@@ -109,7 +106,7 @@ function evaluateCategoryRule(dbInstance, category, locationId, templateId, call
 
       // If no location-specific user, try to find any user with the role
       dbInstance.get(
-        'SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1',
+        'SELECT TOP 1 id, name, role, email FROM users WHERE role = ?',
         [targetRole],
         (err, user) => {
           if (err) {
@@ -146,13 +143,12 @@ function evaluateCategoryRuleFallback(dbInstance, category, locationId, callback
 
   // Find user with target role assigned to this location
   const query = locationId ? `
-    SELECT u.id, u.name, u.role, u.email
+    SELECT TOP 1 u.id, u.name, u.role, u.email
     FROM users u
     INNER JOIN user_locations ul ON u.id = ul.user_id
     WHERE u.role = ? AND ul.location_id = ?
-    LIMIT 1
   ` : `
-    SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1
+    SELECT TOP 1 id, name, role, email FROM users WHERE role = ?
   `;
 
   const params = locationId ? [targetRole, locationId] : [targetRole];
@@ -170,7 +166,7 @@ function evaluateCategoryRuleFallback(dbInstance, category, locationId, callback
 
     // If no location-specific user, try to find any user with the role
     dbInstance.get(
-      'SELECT id, name, role, email FROM users WHERE role = ? LIMIT 1',
+      'SELECT TOP 1 id, name, role, email FROM users WHERE role = ?',
       [targetRole],
       (err, user) => {
         if (err) {
@@ -234,7 +230,7 @@ function evaluateLocationRule(dbInstance, locationId, callback) {
  */
 function findLocationAssignedUser(dbInstance, locationId, callback) {
   const query = `
-    SELECT u.id, u.name, u.role, u.email
+    SELECT TOP 1 u.id, u.name, u.role, u.email
     FROM users u
     INNER JOIN user_locations ul ON u.id = ul.user_id
     WHERE ul.location_id = ? 
@@ -244,7 +240,6 @@ function findLocationAssignedUser(dbInstance, locationId, callback) {
       WHEN 'supervisor' THEN 2 
       ELSE 3 
     END
-    LIMIT 1
   `;
 
   dbInstance.get(query, [locationId], (err, user) => {
