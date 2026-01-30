@@ -14,7 +14,9 @@
     "test:mobile": "cd mobile && npm test",
     "test:all": "node scripts/run-all-tests.js --all",
     "test:setup": "cd backend && npm run test:setup",
-    "test:quick": "node scripts/run-all-tests.js --quick"
+    "test:quick": "node scripts/run-all-tests.js --quick",
+    "build:apk:preview": "cd mobile && npx eas build --platform android --profile preview --local --output app-preview.apk",
+    "build:apk:release": "cd mobile && npx eas build --platform android --profile release --local --output app-release.apk"
   },
   "keywords": [],
   "author": "",

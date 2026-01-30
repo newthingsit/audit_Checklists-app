@@ -199,6 +199,23 @@ cp app-preview.apk /mnt/c/Users/<YourUsername>/Downloads/
 
 ## Step 7: Troubleshooting
 
+### Issue: `expo` not found / EAS says Expo SDK < 41
+**Cause:** Running EAS from the repo root, so it reads the root `package.json` and `app.json` instead of the mobile app.
+
+**Fix (recommended):**
+```bash
+cd /mnt/d/audit_Checklists-app/mobile
+npm install
+npx eas build --platform android --profile preview --local --output app-preview.apk
+```
+
+**Fix (from repo root):**
+```bash
+npm run build:apk:preview
+# or
+npm run build:apk:release
+```
+
 ### Issue: `sdkmanager: command not found`
 **Solution:** Verify PATH is set correctly
 ```bash

@@ -48,14 +48,27 @@ echo ""
 
 # Step 5: Configure environment variables
 echo "[5/6] Configuring environment variables..."
-{
-    echo 'export ANDROID_SDK_ROOT=$HOME/android-sdk'
-    echo 'export ANDROID_HOME=$HOME/android-sdk'
-    echo 'export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin'
-    echo 'export PATH=$PATH:$ANDROID_SDK_ROOT/platform-tools'
-    echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
-} >> ~/.bashrc
+ENV_BLOCK=$(cat <<'EOF'
+export ANDROID_SDK_ROOT=$HOME/android-sdk
+export ANDROID_HOME=$HOME/android-sdk
+export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+export PATH=$PATH:$ANDROID_SDK_ROOT/platform-tools
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+EOF
+)
 
+# Append once to .bashrc and .profile (login shells read .profile, non-login shells read .bashrc)
+if ! grep -q "ANDROID_SDK_ROOT" ~/.bashrc 2>/dev/null; then
+    echo "$ENV_BLOCK" >> ~/.bashrc
+fi
+if [ -f ~/.profile ] && ! grep -q "ANDROID_SDK_ROOT" ~/.profile 2>/dev/null; then
+    echo "$ENV_BLOCK" >> ~/.profile
+fi
+if [ -f ~/.bash_profile ] && ! grep -q "ANDROID_SDK_ROOT" ~/.bash_profile 2>/dev/null; then
+    echo "$ENV_BLOCK" >> ~/.bash_profile
+fi
+
+# Load for current shell
 source ~/.bashrc
 echo "✓ Environment variables configured"
 echo ""

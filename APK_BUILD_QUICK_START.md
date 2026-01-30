@@ -106,6 +106,23 @@ chmod +x 2_Android-SDK-Setup.sh
 bash 2_Android-SDK-Setup.sh
 ```
 
+### **"expo not found" or EAS says Expo SDK < 41**
+This happens when the build runs from the repo root, so EAS uses the root `package.json` and `app.json` (which do not include Expo).
+
+**Fix (WSL):**
+```bash
+cd /mnt/d/audit_Checklists-app/mobile
+npm install
+npx eas build --platform android --profile preview --local --output app-preview.apk
+```
+
+**Fix (from repo root):**
+```bash
+npm run build:apk:preview
+# or
+npm run build:apk:release
+```
+
 ### **"node.exe is not recognized" when running `npm`/`npx`**
 This means Node.js isn't installed (or isn't on your PATH) in the shell you're using.
 
