@@ -274,7 +274,7 @@ function evaluateSeverityRule(dbInstance, isCritical, locationId, callback) {
       WHEN 'supervisor' THEN 2 
       ELSE 3 
     END
-    LIMIT 1
+    OFFSET 0 ROWS FETCH NEXT 1 ROW ONLY
   ` : `
     SELECT id, name, role, email 
     FROM users 
@@ -284,7 +284,7 @@ function evaluateSeverityRule(dbInstance, isCritical, locationId, callback) {
       WHEN 'supervisor' THEN 2 
       ELSE 3 
     END
-    LIMIT 1
+    OFFSET 0 ROWS FETCH NEXT 1 ROW ONLY
   `;
 
   const params = locationId ? [locationId] : [];
