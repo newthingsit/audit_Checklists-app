@@ -51,15 +51,17 @@ async function createSubChecklists() {
   
   // Step 3: Group items by category
   const qualityServiceItems = allItems.filter(i => 
-    i.category === 'QUALITY' || i.category === 'SERVICE'
+    i.category === 'Quality' || 
+    i.category?.startsWith('Service')
   );
   
   const hygieneItems = allItems.filter(i => 
-    i.category === 'HYGIENE AND CLEANLINESS'
+    i.category?.startsWith('Hygiene & Cleanliness')
   );
   
   const processesItems = allItems.filter(i => 
-    i.category === 'PROCESSES' || i.category === 'ACKNOWLEDGEMENT'
+    i.category === 'Processes' || 
+    i.category === 'Acknowledgement'
   );
   
   console.log('📊 Item Distribution:');
@@ -106,36 +108,77 @@ async function createSubChecklists() {
     });
     
     if (existingTemplate) {
-      console.log(`⚠️  Template already exists (ID: ${existingTemplate.id})`);
-      console.log('   Skipping creation. Delete existing template first if you want to recreate.');
-      continue;
+      console.log(`   ⚠️  Template already exists (ID: ${existingTemplate.id}), deleting...`);
+      // Delete items first
+      await new Promise((resolve, reject) => {
+        dbInstance.run(
+          'DELETE FROM checklist_items WHERE template_id = ?',
+          [existingTemplate.id],
+          (err) => {
+            if (err) reject(err);
+            else {
+              // Then delete template
+              dbInstance.run(
+                'DELETE FROM checklist_templates WHERE id = ?',
+                [existingTemplate.id],
+                (delErr) => {
+                  if (delErr) reject(delErr);
+                  else resolve();
+                }
+              );
+            }
+          }
+        );
+      });
+      console.log(`   ✅ Deleted old template`);
     }
     
     // Create template
-    const templateId = await new Promise((resolve, reject) => {
+    let templateId = null;
+    await new Promise((resolve, reject) => {
       dbInstance.run(
-        `INSERT INTO checklist_templates (name, description) VALUES (?, ?)`,
-        [subChecklist.name, subChecklist.description],
+        `INSERT INTO checklist_templates (name, description, category) VALUES (?, ?, ?)`,
+        [subChecklist.name, subChecklist.description, 'CVR'],
         function(err) {
-          if (err) reject(err);
-          else resolve(this.lastID);
+          if (err) {
+            reject(err);
+          } else {
+            templateId = this.lastID;
+            resolve();
+          }
         }
       );
     });
     
+    // If lastID didn't work, query for it
+    if (!templateId) {
+      const result = await new Promise((resolve, reject) => {
+        dbInstance.get(
+          `SELECT TOP 1 id FROM checklist_templates WHERE name = ? ORDER BY id DESC`,
+          [subChecklist.name],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row?.id);
+          }
+        );
+      });
+      templateId = result;
+    }
+    
     console.log(`   ✅ Template created (ID: ${templateId})`);
     
-    // Copy items to new template
+    // Copy items to new template (without options for now)
     let copiedCount = 0;
     for (let i = 0; i < subChecklist.items.length; i++) {
       const item = subChecklist.items[i];
       
+      // Insert the checklist item
       await new Promise((resolve, reject) => {
         dbInstance.run(
           `INSERT INTO checklist_items (
             template_id, title, description, category, subcategory, section,
-            input_type, required, weight, is_critical, options, order_index
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            input_type, required, weight, is_critical, order_index
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             templateId,
             item.title,
@@ -147,18 +190,20 @@ async function createSubChecklists() {
             item.required,
             item.weight,
             item.is_critical,
-            item.options,
             i + 1 // New order index
           ],
           function(err) {
             if (err) reject(err);
-            else {
-              copiedCount++;
-              resolve();
-            }
+            else resolve();
           }
         );
       });
+      
+      copiedCount++;
+      
+      if (copiedCount % 25 === 0) {
+        process.stdout.write(`   ✓ Copied ${copiedCount} items...\r`);
+      }
     }
     
     console.log(`   ✅ Copied ${copiedCount} items`);
@@ -173,12 +218,11 @@ async function createSubChecklists() {
       `SELECT 
         ct.id, 
         ct.name, 
-        ct.description,
         COUNT(ci.id) as item_count
        FROM checklist_templates ct
        LEFT JOIN checklist_items ci ON ct.id = ci.template_id
        WHERE ct.name LIKE 'CVR - %'
-       GROUP BY ct.id, ct.name, ct.description
+       GROUP BY ct.id, ct.name
        ORDER BY ct.id`,
       [],
       (err, rows) => {
@@ -193,7 +237,6 @@ async function createSubChecklists() {
     console.log(`\n   ID: ${t.id}`);
     console.log(`   Name: ${t.name}`);
     console.log(`   Items: ${t.item_count}`);
-    console.log(`   Description: ${t.description}`);
   });
   
   console.log('\n✅ Sub-checklist creation complete!\n');
