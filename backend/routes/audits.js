@@ -2481,7 +2481,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 });
 
 // Batch update audit items - OPTIMIZED for faster saves
-router.put('/:id/items/batch', authenticate, requirePermission('edit_audits', 'manage_audits'), async (req, res) => {
+router.put('/:id/items/batch', authenticate, async (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   logger.debug(`[Batch Update] Audit ID: ${auditId}, Body keys: ${Object.keys(req.body || {}).join(', ')}`);
   
