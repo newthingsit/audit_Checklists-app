@@ -1241,4 +1241,120 @@ router.get('/recurring-failures/trend', authenticate, requirePermission('view_an
   });
 });
 
+// Get resolved recurring failures analytics
+router.get('/resolved-recurring-failures', authenticate, requirePermission('view_analytics', 'manage_audits', 'view_audits'), (req, res) => {
+  const dbInstance = db.getDb();
+  const { template_id, location_id, months = 6 } = req.query;
+  
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  const params = [];
+  let templateFilter = '';
+  let locationFilter = '';
+  
+  if (template_id) {
+    templateFilter = 'AND a.template_id = ?';
+    params.push(parseInt(template_id));
+  }
+  if (location_id) {
+    locationFilter = 'AND a.location_id = ?';
+    params.push(parseInt(location_id));
+  }
+  
+  let query;
+  if (isMssql) {
+    query = `
+      SELECT 
+        ai.item_id,
+        ci.title,
+        ci.category,
+        ci.description,
+        a.template_id,
+        ct.name as template_name,
+        a.location_id,
+        l.name as location_name,
+        ai.mark as resolved_mark,
+        a.created_at as resolution_date,
+        a.id as audit_id
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      JOIN locations l ON a.location_id = l.id
+      WHERE ai.resolved_recurring_failure = 1
+        AND a.status = 'completed'
+        AND a.created_at >= DATEADD(month, -?, GETDATE())
+        ${templateFilter}
+        ${locationFilter}
+      ORDER BY a.created_at DESC, ci.category, ci.title
+    `;
+  } else {
+    query = `
+      SELECT 
+        ai.item_id,
+        ci.title,
+        ci.category,
+        ci.description,
+        a.template_id,
+        ct.name as template_name,
+        a.location_id,
+        l.name as location_name,
+        ai.mark as resolved_mark,
+        a.created_at as resolution_date,
+        a.id as audit_id
+      FROM audit_items ai
+      JOIN audits a ON ai.audit_id = a.id
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      JOIN checklist_templates ct ON a.template_id = ct.id
+      JOIN locations l ON a.location_id = l.id
+      WHERE ai.resolved_recurring_failure = 1
+        AND a.status = 'completed'
+        AND a.created_at >= date('now', '-' || ? || ' months')
+        ${templateFilter}
+        ${locationFilter}
+      ORDER BY a.created_at DESC, ci.category, ci.title
+    `;
+  }
+  
+  params.unshift(parseInt(months) || 6);
+  
+  dbInstance.all(query, params, (err, resolutions) => {
+    if (err) {
+      logger.error('Error fetching resolved recurring failures:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    // Calculate summary statistics
+    const byCategory = {};
+    const byStore = {};
+    const byTemplate = {};
+    
+    (resolutions || []).forEach(r => {
+      // By category
+      const cat = r.category || 'Uncategorized';
+      byCategory[cat] = (byCategory[cat] || 0) + 1;
+      
+      // By store
+      const store = r.location_name || 'Unknown';
+      byStore[store] = (byStore[store] || 0) + 1;
+      
+      // By template
+      const template = r.template_name || 'Unknown';
+      byTemplate[template] = (byTemplate[template] || 0) + 1;
+    });
+    
+    res.json({
+      resolutions: resolutions || [],
+      summary: {
+        total_resolutions: resolutions?.length || 0,
+        by_category: byCategory,
+        by_store: byStore,
+        by_template: byTemplate,
+        months: parseInt(months) || 6
+      }
+    });
+  });
+});
+
 module.exports = router;

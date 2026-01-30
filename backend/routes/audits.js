@@ -9,6 +9,24 @@ const RECURRING_FAILURE_THRESHOLD = 2;
 const CRITICAL_RECURRING_THRESHOLD = 3;
 const RECURRING_LOOKBACK_MONTHS = 6;
 
+// Helper function to check if a mark represents a failure
+const isFailureMark = (mark) => {
+  if (!mark && mark !== 0 && mark !== '0') return false;
+  const markStr = String(mark).toUpperCase();
+  if (markStr === '0' || markStr === 'NO' || markStr === 'FAIL') return true;
+  const markNum = parseFloat(mark);
+  return Number.isFinite(markNum) && markNum === 0;
+};
+
+// Helper function to check if a mark represents a pass
+const isPassMark = (mark) => {
+  if (!mark && mark !== 0 && mark !== '0') return false;
+  const markStr = String(mark).toUpperCase();
+  if (markStr === 'YES' || markStr === 'PASS') return true;
+  const markNum = parseFloat(mark);
+  return Number.isFinite(markNum) && markNum > 0;
+};
+
 // Calculate score from average time (minutes). Uses target as the "excellent" threshold.
 // Example with target=2:
 // <2 => 100, 2-3 => 90, 3-4 => 80, 4-5 => 70, >5 => 70 - ((t-5)*10)
@@ -2650,9 +2668,9 @@ router.put('/:id/items/batch', authenticate, requirePermission('edit_audits', 'm
             return reject(new Error(`Invalid item ID: ${item.itemId}`));
           }
           
-          // Check if item exists
+          // Check if item exists and get previous mark for resolution detection
           dbInstance.get(
-            'SELECT id FROM audit_items WHERE audit_id = ? AND item_id = ?',
+            'SELECT id, mark FROM audit_items WHERE audit_id = ? AND item_id = ?',
             [auditId, itemId],
             (err, existingItem) => {
               if (err) return reject(err);
@@ -2696,10 +2714,10 @@ router.put('/:id/items/batch', authenticate, requirePermission('edit_audits', 'm
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for new item ${itemId} with selected_option_id ${selected_option_id}`);
                 }
                 
-                const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark'];
+                const insertFields = ['audit_id', 'item_id', 'status', 'comment', 'photo_url', 'selected_option_id', 'mark', 'resolved_recurring_failure'];
                 const normalizedMark = isFilledValue(effectiveMark) ? effectiveMark : null;
-                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, normalizedMark];
-                const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?'];
+                const insertValues = [auditId, itemId, itemStatus, comment || null, photo_url || null, selected_option_id, normalizedMark, 0];
+                const insertPlaceholders = ['?', '?', '?', '?', '?', '?', '?', '?'];
                 
                 // Add time tracking fields if provided (only if columns exist)
                 // Note: These columns may not exist in all databases yet
@@ -2847,8 +2865,25 @@ router.put('/:id/items/batch', authenticate, requirePermission('edit_audits', 'm
                   logger.debug(`[Batch Update] Auto-setting status to 'completed' for item ${itemId} with selected_option_id ${selected_option_id}`);
                 }
                 
+                // Resolution detection: Check if item was previously failed and is now passing
+                let resolvedRecurring = 0;
+                const previousMark = existingItem.mark;
+                const wasPreviouslyFailed = isFailureMark(previousMark);
+                const isNowPassing = isPassMark(effectiveMark);
+                
+                if (wasPreviouslyFailed && isNowPassing) {
+                  resolvedRecurring = 1;
+                  logger.info(`[Batch Update] Recurring failure resolved for item ${itemId}: ${previousMark} → ${effectiveMark}`);
+                }
+                
                 const updateFields = ['status = ?', 'comment = ?', 'photo_url = ?'];
                 const updateValues = [itemStatus, comment || null, photo_url || null];
+                
+                // Add resolved_recurring_failure if item was failed and now passing
+                if (resolvedRecurring === 1) {
+                  updateFields.push('resolved_recurring_failure = ?');
+                  updateValues.push(1);
+                }
                 
                 if (hasSelectedOption) {
                   updateFields.push('selected_option_id = ?');
@@ -3759,16 +3794,33 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
       ORDER BY ci.order_index, ci.id
     `;
     
-    dbInstance.all(failedItemsQuery, [previousAudit.id], (err, failedItems) => {
-      if (err) {
-        logger.error('Error fetching failed items:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      // Get historical failure count for each item (last 6 months)
-      let historyQuery;
-      if (isSqlServer) {
-        historyQuery = `
+    // OPTIMIZED: Single CTE query combining failed items, history, and critical recurring
+    let optimizedQuery;
+    if (isSqlServer) {
+      optimizedQuery = `
+        WITH failed_items AS (
+          SELECT 
+            ai.item_id,
+            ci.title,
+            ci.description,
+            ci.category,
+            ai.mark,
+            ai.comment,
+            ai.photo_url,
+            COALESCE(ci.weight, 1) as weight,
+            COALESCE(ci.is_critical, 0) as is_critical,
+            ci.order_index
+          FROM audit_items ai
+          JOIN checklist_items ci ON ai.item_id = ci.id
+          WHERE ai.audit_id = ?
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS FLOAT) = 0)
+            )
+        ),
+        history_counts AS (
           SELECT 
             ai.item_id,
             COUNT(*) as failure_count
@@ -3785,10 +3837,90 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
             )
           GROUP BY ai.item_id
+        ),
+        critical_recurring AS (
+          SELECT 
+            ci.id as item_id,
+            ci.title,
+            ci.category,
+            ci.description,
+            COUNT(*) as failure_count,
+            MAX(a.created_at) as last_failure_date
+          FROM audit_items ai
+          JOIN audits a ON ai.audit_id = a.id
+          JOIN checklist_items ci ON ai.item_id = ci.id
+          WHERE a.template_id = ?
+            AND a.location_id = ?
+            AND a.status = 'completed'
+            AND a.created_at >= DATEADD(month, -?, GETDATE())
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+            )
+          GROUP BY ci.id, ci.title, ci.category, ci.description
           HAVING COUNT(*) >= ?
-        `;
-      } else {
-        historyQuery = `
+        )
+        SELECT 
+          'failed' as result_type,
+          f.item_id,
+          f.title,
+          f.description,
+          f.category,
+          f.mark,
+          f.comment,
+          f.photo_url,
+          f.weight,
+          f.is_critical,
+          f.order_index,
+          COALESCE(h.failure_count, 1) as failure_count,
+          CASE WHEN h.failure_count >= ? THEN 1 ELSE 0 END as is_recurring
+        FROM failed_items f
+        LEFT JOIN history_counts h ON f.item_id = h.item_id
+        UNION ALL
+        SELECT 
+          'critical' as result_type,
+          item_id,
+          title,
+          description,
+          category,
+          NULL as mark,
+          NULL as comment,
+          NULL as photo_url,
+          NULL as weight,
+          NULL as is_critical,
+          NULL as order_index,
+          failure_count,
+          1 as is_recurring
+        FROM critical_recurring
+        ORDER BY result_type, order_index, item_id
+      `;
+    } else {
+      optimizedQuery = `
+        WITH failed_items AS (
+          SELECT 
+            ai.item_id,
+            ci.title,
+            ci.description,
+            ci.category,
+            ai.mark,
+            ai.comment,
+            ai.photo_url,
+            COALESCE(ci.weight, 1) as weight,
+            COALESCE(ci.is_critical, 0) as is_critical,
+            ci.order_index
+          FROM audit_items ai
+          JOIN checklist_items ci ON ai.item_id = ci.id
+          WHERE ai.audit_id = ?
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS FLOAT) = 0)
+            )
+        ),
+        history_counts AS (
           SELECT 
             ai.item_id,
             COUNT(*) as failure_count
@@ -3805,110 +3937,105 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
             )
           GROUP BY ai.item_id
+        ),
+        critical_recurring AS (
+          SELECT 
+            ci.id as item_id,
+            ci.title,
+            ci.category,
+            ci.description,
+            COUNT(*) as failure_count,
+            MAX(a.created_at) as last_failure_date
+          FROM audit_items ai
+          JOIN audits a ON ai.audit_id = a.id
+          JOIN checklist_items ci ON ai.item_id = ci.id
+          WHERE a.template_id = ?
+            AND a.location_id = ?
+            AND a.status = 'completed'
+            AND a.created_at >= date('now', '-' || ? || ' months')
+            AND (
+              ai.mark = '0' 
+              OR ai.mark = 'No' 
+              OR ai.mark = 'Fail'
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
+            )
+          GROUP BY ci.id, ci.title, ci.category, ci.description
           HAVING COUNT(*) >= ?
-        `;
+        )
+        SELECT 
+          'failed' as result_type,
+          f.item_id,
+          f.title,
+          f.description,
+          f.category,
+          f.mark,
+          f.comment,
+          f.photo_url,
+          f.weight,
+          f.is_critical,
+          f.order_index,
+          COALESCE(h.failure_count, 1) as failure_count,
+          CASE WHEN h.failure_count >= ? THEN 1 ELSE 0 END as is_recurring
+        FROM failed_items f
+        LEFT JOIN history_counts h ON f.item_id = h.item_id
+        UNION ALL
+        SELECT 
+          'critical' as result_type,
+          item_id,
+          title,
+          description,
+          category,
+          NULL as mark,
+          NULL as comment,
+          NULL as photo_url,
+          NULL as weight,
+          NULL as is_critical,
+          NULL as order_index,
+          failure_count,
+          1 as is_recurring
+        FROM critical_recurring
+        ORDER BY result_type, order_index, item_id
+      `;
+    }
+    
+    const queryParams = [
+      previousAudit.id,
+      template_id,
+      location_id,
+      RECURRING_LOOKBACK_MONTHS,
+      template_id,
+      location_id,
+      RECURRING_LOOKBACK_MONTHS,
+      CRITICAL_RECURRING_THRESHOLD,
+      RECURRING_FAILURE_THRESHOLD
+    ];
+    
+    dbInstance.all(optimizedQuery, queryParams, (err, results) => {
+      if (err) {
+        logger.error('Error fetching recurring failures (optimized):', err);
+        return res.status(500).json({ error: 'Database error' });
       }
       
-      dbInstance.all(historyQuery, [template_id, location_id, RECURRING_LOOKBACK_MONTHS, RECURRING_FAILURE_THRESHOLD], (err, recurringFailures) => {
-        if (err) {
-          logger.error('Error fetching recurring failures:', err);
-          // Continue without recurring data
-          recurringFailures = [];
+      // Split results by type
+      const failedItems = results.filter(r => r.result_type === 'failed');
+      const criticalRecurring = results.filter(r => r.result_type === 'critical');
+      
+      res.json({
+        previousAudit: {
+          id: previousAudit.id,
+          date: previousAudit.completed_at || previousAudit.created_at,
+          score: previousAudit.score,
+          template_name: previousAudit.template_name,
+          location_name: previousAudit.location_name,
+          failed_count: failedItems.length
+        },
+        failedItems: failedItems,
+        recurringFailures: criticalRecurring,
+        summary: {
+          total_failed_last_audit: failedItems.length,
+          recurring_items: criticalRecurring.length,
+          critical_recurring: criticalRecurring.filter(i => i.failure_count >= CRITICAL_RECURRING_THRESHOLD).length
         }
-        
-        // Create a map of recurring failures for quick lookup
-        const recurringMap = new Map();
-        (recurringFailures || []).forEach(rf => {
-          recurringMap.set(rf.item_id, rf.failure_count);
-        });
-        
-        // Enhance failed items with failure count
-        const enhancedFailedItems = (failedItems || []).map(item => ({
-          ...item,
-          failure_count: recurringMap.get(item.item_id) || 1,
-          is_recurring: recurringMap.has(item.item_id)
-        }));
-        
-        // Get items that are recurring (failed 3+ times)
-        let recurringItemsQuery;
-        if (isSqlServer) {
-          recurringItemsQuery = `
-            SELECT 
-              ci.id as item_id,
-              ci.title,
-              ci.category,
-              ci.description,
-              COUNT(*) as failure_count,
-              MAX(a.created_at) as last_failure_date
-            FROM audit_items ai
-            JOIN audits a ON ai.audit_id = a.id
-            JOIN checklist_items ci ON ai.item_id = ci.id
-            WHERE a.template_id = ?
-              AND a.location_id = ?
-              AND a.status = 'completed'
-              AND a.created_at >= DATEADD(month, -?, GETDATE())
-              AND (
-                ai.mark = '0' 
-                OR ai.mark = 'No' 
-                OR ai.mark = 'Fail'
-                OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
-              )
-            GROUP BY ci.id, ci.title, ci.category, ci.description
-            HAVING COUNT(*) >= ?
-            ORDER BY failure_count DESC
-          `;
-        } else {
-          recurringItemsQuery = `
-            SELECT 
-              ci.id as item_id,
-              ci.title,
-              ci.category,
-              ci.description,
-              COUNT(*) as failure_count,
-              MAX(a.created_at) as last_failure_date
-            FROM audit_items ai
-            JOIN audits a ON ai.audit_id = a.id
-            JOIN checklist_items ci ON ai.item_id = ci.id
-            WHERE a.template_id = ?
-              AND a.location_id = ?
-              AND a.status = 'completed'
-              AND a.created_at >= date('now', '-' || ? || ' months')
-              AND (
-                ai.mark = '0' 
-                OR ai.mark = 'No' 
-                OR ai.mark = 'Fail'
-                OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
-              )
-            GROUP BY ci.id, ci.title, ci.category, ci.description
-            HAVING COUNT(*) >= ?
-            ORDER BY failure_count DESC
-          `;
-        }
-        
-        dbInstance.all(recurringItemsQuery, [template_id, location_id, RECURRING_LOOKBACK_MONTHS, CRITICAL_RECURRING_THRESHOLD], (err, criticalRecurring) => {
-          if (err) {
-            logger.error('Error fetching critical recurring:', err);
-            criticalRecurring = [];
-          }
-          
-          res.json({
-            previousAudit: {
-              id: previousAudit.id,
-              date: previousAudit.completed_at || previousAudit.created_at,
-              score: previousAudit.score,
-              template_name: previousAudit.template_name,
-              location_name: previousAudit.location_name,
-              failed_count: enhancedFailedItems.length
-            },
-            failedItems: enhancedFailedItems,
-            recurringFailures: criticalRecurring || [],
-            summary: {
-              total_failed_last_audit: enhancedFailedItems.length,
-              recurring_items: (criticalRecurring || []).length,
-              critical_recurring: (criticalRecurring || []).filter(i => i.failure_count >= CRITICAL_RECURRING_THRESHOLD).length
-            }
-          });
-        });
       });
     });
   });

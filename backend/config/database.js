@@ -602,6 +602,12 @@ const createTables = () => {
               if (alterErr) console.error('Error adding average_time_minutes column:', alterErr);
             });
           }
+          // Add resolved_recurring_failure to track when recurring failures are resolved
+          if (!columnNames.includes('resolved_recurring_failure')) {
+            db.run(`ALTER TABLE audit_items ADD COLUMN resolved_recurring_failure BOOLEAN DEFAULT 0`, (alterErr) => {
+              if (alterErr) console.error('Error adding resolved_recurring_failure column:', alterErr);
+            });
+          }
         }
       });
 
