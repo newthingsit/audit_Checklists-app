@@ -2,8 +2,12 @@ const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
-const { isAdminUser } = require('../middleware/permissions');
+const { isAdminUser, requirePermission } = require('../middleware/permissions');
 const logger = require('../utils/logger');
+
+const RECURRING_FAILURE_THRESHOLD = 2;
+const CRITICAL_RECURRING_THRESHOLD = 3;
+const RECURRING_LOOKBACK_MONTHS = 6;
 
 // Calculate score from average time (minutes). Uses target as the "excellent" threshold.
 // Example with target=2:
@@ -2459,7 +2463,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 });
 
 // Batch update audit items - OPTIMIZED for faster saves
-router.put('/:id/items/batch', authenticate, async (req, res) => {
+router.put('/:id/items/batch', authenticate, requirePermission('edit_audits', 'manage_audits'), async (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   logger.debug(`[Batch Update] Audit ID: ${auditId}, Body keys: ${Object.keys(req.body || {}).join(', ')}`);
   
@@ -3663,7 +3667,7 @@ router.post('/bulk-delete', authenticate, (req, res) => {
 // ========================================
 
 // Get previous audit failures for highlighting during new audit
-router.get('/previous-failures', authenticate, (req, res) => {
+router.get('/previous-failures', authenticate, requirePermission('view_audits', 'view_own_audits', 'manage_audits'), (req, res) => {
   const dbInstance = db.getDb();
   const { template_id, location_id, months_back = 1 } = req.query;
   
@@ -3773,7 +3777,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
           WHERE a.template_id = ?
             AND a.location_id = ?
             AND a.status = 'completed'
-            AND a.created_at >= DATEADD(month, -6, GETDATE())
+            AND a.created_at >= DATEADD(month, -?, GETDATE())
             AND (
               ai.mark = '0' 
               OR ai.mark = 'No' 
@@ -3781,7 +3785,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
             )
           GROUP BY ai.item_id
-          HAVING COUNT(*) >= 2
+          HAVING COUNT(*) >= ?
         `;
       } else {
         historyQuery = `
@@ -3793,7 +3797,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
           WHERE a.template_id = ?
             AND a.location_id = ?
             AND a.status = 'completed'
-            AND a.created_at >= date('now', '-6 months')
+            AND a.created_at >= date('now', '-' || ? || ' months')
             AND (
               ai.mark = '0' 
               OR ai.mark = 'No' 
@@ -3801,11 +3805,11 @@ router.get('/previous-failures', authenticate, (req, res) => {
               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
             )
           GROUP BY ai.item_id
-          HAVING COUNT(*) >= 2
+          HAVING COUNT(*) >= ?
         `;
       }
       
-      dbInstance.all(historyQuery, [template_id, location_id], (err, recurringFailures) => {
+      dbInstance.all(historyQuery, [template_id, location_id, RECURRING_LOOKBACK_MONTHS, RECURRING_FAILURE_THRESHOLD], (err, recurringFailures) => {
         if (err) {
           logger.error('Error fetching recurring failures:', err);
           // Continue without recurring data
@@ -3842,7 +3846,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
             WHERE a.template_id = ?
               AND a.location_id = ?
               AND a.status = 'completed'
-              AND a.created_at >= DATEADD(month, -6, GETDATE())
+              AND a.created_at >= DATEADD(month, -?, GETDATE())
               AND (
                 ai.mark = '0' 
                 OR ai.mark = 'No' 
@@ -3850,7 +3854,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
                 OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
               )
             GROUP BY ci.id, ci.title, ci.category, ci.description
-            HAVING COUNT(*) >= 3
+            HAVING COUNT(*) >= ?
             ORDER BY failure_count DESC
           `;
         } else {
@@ -3868,7 +3872,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
             WHERE a.template_id = ?
               AND a.location_id = ?
               AND a.status = 'completed'
-              AND a.created_at >= date('now', '-6 months')
+              AND a.created_at >= date('now', '-' || ? || ' months')
               AND (
                 ai.mark = '0' 
                 OR ai.mark = 'No' 
@@ -3876,12 +3880,12 @@ router.get('/previous-failures', authenticate, (req, res) => {
                 OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
               )
             GROUP BY ci.id, ci.title, ci.category, ci.description
-            HAVING COUNT(*) >= 3
+            HAVING COUNT(*) >= ?
             ORDER BY failure_count DESC
           `;
         }
         
-        dbInstance.all(recurringItemsQuery, [template_id, location_id], (err, criticalRecurring) => {
+        dbInstance.all(recurringItemsQuery, [template_id, location_id, RECURRING_LOOKBACK_MONTHS, CRITICAL_RECURRING_THRESHOLD], (err, criticalRecurring) => {
           if (err) {
             logger.error('Error fetching critical recurring:', err);
             criticalRecurring = [];
@@ -3901,7 +3905,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
             summary: {
               total_failed_last_audit: enhancedFailedItems.length,
               recurring_items: (criticalRecurring || []).length,
-              critical_recurring: (criticalRecurring || []).filter(i => i.failure_count >= 4).length
+              critical_recurring: (criticalRecurring || []).filter(i => i.failure_count >= CRITICAL_RECURRING_THRESHOLD).length
             }
           });
         });
@@ -3911,7 +3915,7 @@ router.get('/previous-failures', authenticate, (req, res) => {
 });
 
 // Get recurring failures summary for a specific store across all templates
-router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) => {
+router.get('/recurring-failures-by-store/:locationId', authenticate, requirePermission('view_audits', 'view_own_audits', 'manage_audits'), (req, res) => {
   const dbInstance = db.getDb();
   const locationId = parseInt(req.params.locationId);
   
@@ -3940,7 +3944,7 @@ router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) 
       JOIN checklist_templates ct ON a.template_id = ct.id
       WHERE a.location_id = ?
         AND a.status = 'completed'
-        AND a.created_at >= DATEADD(month, -6, GETDATE())
+        AND a.created_at >= DATEADD(month, -${RECURRING_LOOKBACK_MONTHS}, GETDATE())
         AND (
           ai.mark = '0' 
           OR ai.mark = 'No' 
@@ -3948,7 +3952,7 @@ router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) 
           OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
         )
       GROUP BY ci.id, ci.title, ci.category, ct.name, ct.id
-      HAVING COUNT(*) >= 2
+      HAVING COUNT(*) >= ${RECURRING_FAILURE_THRESHOLD}
       ORDER BY failure_count DESC, ci.category
     `;
   } else {
@@ -3968,7 +3972,7 @@ router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) 
       JOIN checklist_templates ct ON a.template_id = ct.id
       WHERE a.location_id = ?
         AND a.status = 'completed'
-        AND a.created_at >= date('now', '-6 months')
+        AND a.created_at >= date('now', '-${RECURRING_LOOKBACK_MONTHS} months')
         AND (
           ai.mark = '0' 
           OR ai.mark = 'No' 
@@ -3976,7 +3980,7 @@ router.get('/recurring-failures-by-store/:locationId', authenticate, (req, res) 
           OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
         )
       GROUP BY ci.id, ci.title, ci.category, ct.name, ct.id
-      HAVING COUNT(*) >= 2
+      HAVING COUNT(*) >= ${RECURRING_FAILURE_THRESHOLD}
       ORDER BY failure_count DESC, ci.category
     `;
   }

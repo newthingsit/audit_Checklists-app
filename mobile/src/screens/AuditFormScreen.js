@@ -880,16 +880,24 @@ const AuditFormScreen = () => {
     try {
       setLoadingPreviousFailures(true);
       const response = await axios.get(
-        `${API_BASE_URL}/audits/previous-failures/${templateId}/${locId}`
+        `${API_BASE_URL}/audits/previous-failures`,
+        {
+          params: {
+            template_id: templateId,
+            location_id: locId,
+            months_back: 6
+          }
+        }
       );
       
-      if (response.data && response.data.failedItems) {
+      if (response.data && Array.isArray(response.data.failedItems)) {
         const failures = response.data.failedItems;
         setPreviousFailures(failures);
-        setPreviousAuditInfo({
-          date: response.data.lastAuditDate,
-          auditId: response.data.lastAuditId
-        });
+        const previousAudit = response.data.previousAudit || null;
+        setPreviousAuditInfo(previousAudit ? {
+          date: previousAudit.date,
+          auditId: previousAudit.id
+        } : null);
         
         // Create a Set of failed item IDs for quick lookup
         const failedIds = new Set(failures.map(item => item.item_id));
@@ -905,6 +913,10 @@ const AuditFormScreen = () => {
             [{ text: 'OK' }]
           );
         }
+      } else {
+        setPreviousFailures([]);
+        setFailedItemIds(new Set());
+        setPreviousAuditInfo(null);
       }
     } catch (error) {
       console.error('Error fetching previous failures:', error);

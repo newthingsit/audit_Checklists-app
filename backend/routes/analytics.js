@@ -1,9 +1,14 @@
 const express = require('express');
 const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+
+const RECURRING_FAILURE_THRESHOLD = 2;
+const CRITICAL_RECURRING_THRESHOLD = 3;
+const RECURRING_LOOKBACK_MONTHS = 6;
 
 // Helper function to check if user is admin
 const isAdminUser = (user) => {
@@ -934,7 +939,7 @@ router.get('/trends/weekly', authenticate, (req, res) => {
 // ========================================
 
 // Get recurring failures dashboard data
-router.get('/recurring-failures', authenticate, (req, res) => {
+router.get('/recurring-failures', authenticate, requirePermission('view_analytics', 'manage_audits', 'view_audits'), (req, res) => {
   const dbInstance = db.getDb();
   const { template_id, location_id, date_from, date_to } = req.query;
   
@@ -946,7 +951,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
   const params = [];
   
   if (isMssql) {
-    dateFilter = 'AND a.created_at >= DATEADD(month, -6, GETDATE())';
+    dateFilter = `AND a.created_at >= DATEADD(month, -${RECURRING_LOOKBACK_MONTHS}, GETDATE())`;
     if (date_from) {
       dateFilter = 'AND a.created_at >= ?';
       params.push(date_from);
@@ -956,7 +961,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
       params.push(date_to);
     }
   } else {
-    dateFilter = "AND a.created_at >= date('now', '-6 months')";
+    dateFilter = `AND a.created_at >= date('now', '-${RECURRING_LOOKBACK_MONTHS} months')`;
     if (date_from) {
       dateFilter = 'AND a.created_at >= ?';
       params.push(date_from);
@@ -1008,7 +1013,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
           OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
         )
       GROUP BY ci.id, ci.title, ci.category, ct.id, ct.name, ci.is_critical
-      HAVING COUNT(DISTINCT a.id) >= 2
+      HAVING COUNT(DISTINCT a.id) >= ${RECURRING_FAILURE_THRESHOLD}
       ORDER BY failure_count DESC, stores_affected DESC
     `;
   } else {
@@ -1038,7 +1043,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
           OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
         )
       GROUP BY ci.id, ci.title, ci.category, ct.id, ct.name, ci.is_critical
-      HAVING COUNT(DISTINCT a.id) >= 2
+      HAVING COUNT(DISTINCT a.id) >= ${RECURRING_FAILURE_THRESHOLD}
       ORDER BY failure_count DESC, stores_affected DESC
     `;
   }
@@ -1075,7 +1080,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
             OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
           )
         GROUP BY l.id, l.name, l.store_number
-        HAVING COUNT(DISTINCT ai.item_id) >= 2
+        HAVING COUNT(DISTINCT ai.item_id) >= ${RECURRING_FAILURE_THRESHOLD}
         ORDER BY recurring_items DESC
       `;
     } else {
@@ -1100,7 +1105,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
             OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS REAL) = 0)
           )
         GROUP BY l.id, l.name, l.store_number
-        HAVING COUNT(DISTINCT ai.item_id) >= 2
+        HAVING COUNT(DISTINCT ai.item_id) >= ${RECURRING_FAILURE_THRESHOLD}
         ORDER BY recurring_items DESC
       `;
     }
@@ -1134,7 +1139,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
       
       // Calculate summary
       const allItems = recurringItems || [];
-      const criticalRecurring = allItems.filter(i => i.failure_count >= 3 || i.is_critical);
+      const criticalRecurring = allItems.filter(i => i.failure_count >= CRITICAL_RECURRING_THRESHOLD || i.is_critical);
       const storesWithRecurring = new Set(allItems.map(i => i.stores_affected)).size;
       
       res.json({
@@ -1160,7 +1165,7 @@ router.get('/recurring-failures', authenticate, (req, res) => {
 });
 
 // Get recurring failures trend over time
-router.get('/recurring-failures/trend', authenticate, (req, res) => {
+router.get('/recurring-failures/trend', authenticate, requirePermission('view_analytics', 'manage_audits', 'view_audits'), (req, res) => {
   const dbInstance = db.getDb();
   const { template_id, location_id, months = 6 } = req.query;
   
