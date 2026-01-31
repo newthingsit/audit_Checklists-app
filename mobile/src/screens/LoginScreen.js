@@ -70,7 +70,7 @@ const LoginScreen = () => {
           errorMessage = error.response.data?.error || error.response.data?.message || `Server error: ${status}`;
         }
       } else if (error.request) {
-        errorMessage = 'Cannot connect to server. Please check:\n\n1. Backend server is running\n2. Correct IP address in API config\n3. Device and computer are on same network';
+        errorMessage = 'Cannot connect to server. Please check your internet connection and try again.';
       } else {
         errorMessage = error.message || 'An unexpected error occurred';
       }

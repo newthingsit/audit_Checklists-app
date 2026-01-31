@@ -960,6 +960,22 @@ const AuditFormScreen = () => {
     }
   }, [responses, selectedOptions, comments, selectedCategory, selectedSection, items, filterItemsByCondition]);
 
+  // Auto-navigate to next category when current category is completed
+  const moveToNextCategory = useCallback((currentCategory) => {
+    const currentIndex = categories.indexOf(currentCategory);
+    if (currentIndex >= 0 && currentIndex < categories.length - 1) {
+      const nextCategory = categories[currentIndex + 1];
+      // Use a small delay to allow UI to update smoothly
+      setTimeout(() => {
+        setSelectedCategory(nextCategory);
+        // Scroll to top of the new category
+        if (typeof window !== 'undefined') {
+          window.scrollTo?.({ top: 0, behavior: 'smooth' });
+        }
+      }, 300);
+    }
+  }, [categories]);
+
   // Optimized handlers with useCallback to prevent unnecessary re-renders
   const handleResponseChange = useCallback((itemId, status) => {
     if (auditStatus === 'completed') {
@@ -980,7 +996,7 @@ const AuditFormScreen = () => {
             return response && response !== 'pending' && response !== '';
           }).length;
           
-          return {
+          const newStatus = {
             ...prevStatus,
             [cat]: {
               completed: completedInCategory,
@@ -988,11 +1004,18 @@ const AuditFormScreen = () => {
               isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
             }
           };
+          
+          // Auto-navigate to next category if current category is completed
+          if (completedInCategory === categoryItems.length && categoryItems.length > 0 && cat === selectedCategory) {
+            moveToNextCategory(cat);
+          }
+          
+          return newStatus;
         });
       }
       return updated;
     });
-  }, [auditStatus, items]);
+  }, [auditStatus, items, selectedCategory, moveToNextCategory]);
 
   const handleOptionChange = useCallback((itemId, optionId) => {
     if (auditStatus === 'completed') {
@@ -1014,7 +1037,7 @@ const AuditFormScreen = () => {
             return response && response !== 'pending' && response !== '';
           }).length;
           
-          return {
+          const newStatus = {
             ...prevStatus,
             [cat]: {
               completed: completedInCategory,
@@ -1022,11 +1045,18 @@ const AuditFormScreen = () => {
               isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
             }
           };
+          
+          // Auto-navigate to next category if current category is completed
+          if (completedInCategory === categoryItems.length && categoryItems.length > 0 && cat === selectedCategory) {
+            moveToNextCategory(cat);
+          }
+          
+          return newStatus;
         });
       }
       return updated;
     });
-  }, [auditStatus, items]);
+  }, [auditStatus, items, selectedCategory, moveToNextCategory]);
 
   const handleCommentChange = useCallback((itemId, comment) => {
     if (auditStatus === 'completed') {
@@ -1485,6 +1515,42 @@ const AuditFormScreen = () => {
         setPhotos(prev => ({ ...prev, [itemId]: fullPhotoUrl }));
         setUploading(prev => ({ ...prev, [itemId]: false }));
         
+        // Mark item as completed when photo is uploaded
+        setResponses(prev => {
+          const updated = { ...prev, [itemId]: 'completed' };
+          
+          // Recalculate category completion after state update
+          const item = items.find(i => i.id === itemId);
+          if (item && item.category) {
+            setCategoryCompletionStatus(prevStatus => {
+              const cat = item.category;
+              const categoryItems = items.filter(i => i.category === cat);
+              const completedInCategory = categoryItems.filter(i => {
+                const response = i.id === itemId ? 'completed' : (updated[i.id] || prev[i.id]);
+                return response && response !== 'pending' && response !== '';
+              }).length;
+              
+              const newStatus = {
+                ...prevStatus,
+                [cat]: {
+                  completed: completedInCategory,
+                  total: categoryItems.length,
+                  isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+                }
+              };
+              
+              // Auto-navigate to next category if current category is completed
+              if (completedInCategory === categoryItems.length && categoryItems.length > 0 && cat === selectedCategory) {
+                moveToNextCategory(cat);
+              }
+              
+              return newStatus;
+            });
+          }
+          
+          return updated;
+        });
+        
         // Photo upload notification removed as per requirement
       }
     } catch (error) {
@@ -1515,7 +1581,7 @@ const AuditFormScreen = () => {
     } finally {
       setUploading(prev => ({ ...prev, [itemId]: false }));
     }
-  }, [auditStatus, photos, uploading]);
+  }, [auditStatus, photos, uploading, items, selectedCategory, moveToNextCategory]);
 
   // Group categories by parent and sections (similar to web app)
   const groupCategories = useCallback((categoryList, itemsList) => {
