@@ -65,6 +65,15 @@ import { showSuccess, showError } from '../utils/toast';
 import { cvrTheme, isCvrTemplate } from '../config/theme';
 import SignatureCanvas from 'react-signature-canvas';
 
+// Import new Phase 1 components
+import AuditInfoForm from '../components/AuditInfoForm';
+import FormStepperHeader from '../components/FormStepperHeader';
+
+// Import new Phase 1 hooks
+import { useAuditFormState } from '../hooks/useAuditFormState';
+import { useCategoryCompletion } from '../hooks/useCategoryCompletion';
+import { useFormValidation } from '../hooks/useFormValidation';
+
 // Helper: normalize category name for consistent grouping and matching
 const normalizeCategoryName = (name) => {
   if (!name) return '';

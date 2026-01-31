@@ -28,6 +28,18 @@ import { useNetwork } from '../context/NetworkContext';
 import { LocationCaptureButton, LocationDisplay, LocationVerification } from '../components/LocationCapture';
 import { SignatureModal, SignatureDisplay } from '../components';
 
+// Import Phase 1 components
+import CategorySelector from '../components/CategorySelector';
+import FormActionButtons from '../components/FormActionButtons';
+import StepIndicator from '../components/StepIndicator';
+import LocationCapture from '../components/LocationCapture';
+import PhotoUpload from '../components/PhotoUpload';
+import SignatureCapture from '../components/SignatureCapture';
+
+// Import Phase 1 hooks
+import { useCategoryNavigation } from '../hooks/useCategoryNavigation';
+import { useAuditData } from '../hooks/useAuditData';
+
 const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
