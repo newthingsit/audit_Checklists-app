@@ -51,12 +51,17 @@ const AuditFormScreen = () => {
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [notes, setNotes] = useState('');
-  const [responses, setResponses] = useState({});
-  const [selectedOptions, setSelectedOptions] = useState({});
-  const [multipleSelections, setMultipleSelections] = useState({}); // Track multiple selected options for multiple_answer type
-  const [comments, setComments] = useState({});
-  const [photos, setPhotos] = useState({});
+  // Consolidated form state using Phase 1 hook
+  const formState = {
+    notes: useState('')[0],
+    setNotes: useState('')[1],
+    responses: useState({})[0],
+    selectedOptions: useState({})[0],
+    multipleSelections: useState({})[0],
+    comments: useState({})[0],
+    photos: useState({})[0],
+  };
+  const categoryNav = useCategoryNavigation([],  [], formState);
   const [uploading, setUploading] = useState({});
   const [datePickerItemId, setDatePickerItemId] = useState(null);
   const [datePickerValue, setDatePickerValue] = useState(new Date());
