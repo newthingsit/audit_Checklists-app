@@ -627,31 +627,49 @@ const AuditFormScreen = () => {
       });
       setCategoryCompletionStatus(categoryStatus);
       
-      // If this audit has a category set, default to it but allow changing if multiple categories exist
-      if (audit.audit_category && uniqueCategories.length > 1) {
-        // If audit has a category but there are multiple categories, allow user to select
-        // Default to the audit's category but don't lock it
-        setSelectedCategory(audit.audit_category);
-        const filtered = filteredItems.filter(item => item.category === audit.audit_category);
-        setFilteredItems(filtered);
-      } else if (audit.audit_category && uniqueCategories.length <= 1) {
+      // CRITICAL FIX: When continuing an audit, auto-select the FIRST INCOMPLETE category
+      // This ensures users don't see already-completed categories again after submitting
+      let categoryToSelect = null;
+      
+      if (audit.audit_category && uniqueCategories.length <= 1) {
         // Only one category, lock to it
-        setSelectedCategory(audit.audit_category);
-        const filtered = filteredItems.filter(item => item.category === audit.audit_category);
-        setFilteredItems(filtered);
-      } else {
-        // If only one category, auto-select it
-        if (uniqueCategories.length === 1) {
-          setSelectedCategory(uniqueCategories[0]);
-          const filtered = filteredItems.filter(item => item.category === uniqueCategories[0]);
-          setFilteredItems(filtered);
-        } else if (uniqueCategories.length === 0) {
-          // No categories, show all filtered items
-          setFilteredItems(filteredItems);
-        } else {
-          // Multiple categories - show all filtered items initially (user can filter later)
-          setFilteredItems(filteredItems);
+        categoryToSelect = audit.audit_category;
+      } else if (auditId || currentAuditId) {
+        // This is a continuing audit - find the first incomplete category
+        const incompleteCategories = uniqueCategories.filter(cat => {
+          const status = categoryStatus[cat];
+          return !status.isComplete;
+        });
+        
+        if (incompleteCategories.length > 0) {
+          // Auto-select the first incomplete category for a smoother UX
+          categoryToSelect = incompleteCategories[0];
+          console.log('[AuditForm] Auto-selecting first incomplete category:', categoryToSelect, 'Incomplete categories:', incompleteCategories.length, 'Total:', uniqueCategories.length);
+        } else if (uniqueCategories.length > 0) {
+          // All categories complete? Just show the first one (should be redirected to completion soon)
+          categoryToSelect = uniqueCategories[0];
+          console.log('[AuditForm] All categories complete, showing first category:', categoryToSelect);
         }
+      } else if (audit.audit_category) {
+        // New audit with category set
+        categoryToSelect = audit.audit_category;
+      } else if (uniqueCategories.length === 1) {
+        // If only one category, auto-select it
+        categoryToSelect = uniqueCategories[0];
+        console.log('[AuditForm] Auto-selected single category:', uniqueCategories[0]);
+      }
+      
+      // Apply category selection
+      if (categoryToSelect) {
+        setSelectedCategory(categoryToSelect);
+        const filtered = filteredItems.filter(item => item.category === categoryToSelect);
+        setFilteredItems(filtered);
+      } else if (uniqueCategories.length === 0) {
+        // No categories, show all filtered items
+        setFilteredItems(filteredItems);
+      } else {
+        // Multiple categories - show all filtered items initially (user can filter by tabs)
+        setFilteredItems(filteredItems);
       }
 
       // OPTIMIZATION: Populate responses from audit items in single loop

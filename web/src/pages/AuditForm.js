@@ -312,29 +312,56 @@ const AuditForm = () => {
       // Extract unique categories from items (normalize names for consistent grouping)
       const uniqueCategories = [...new Set(allItems.map(item => normalizeCategoryName(item.category)).filter(cat => cat))];
       setCategories(uniqueCategories);
+      
+      // Build category completion status by checking auditItems
+      const categoryStatus = {};
+      uniqueCategories.forEach(cat => {
+        const categoryItems = allItems.filter(item => normalizeCategoryName(item.category) === cat);
+        const completedInCategory = categoryItems.filter(item => {
+          const auditItem = auditItems.find(ai => ai.item_id === item.id);
+          if (!auditItem) return false;
+          const hasMark = auditItem.mark !== null && auditItem.mark !== undefined && String(auditItem.mark).trim() !== '';
+          const hasStatus = auditItem.status && auditItem.status !== 'pending' && auditItem.status !== '';
+          return hasMark || hasStatus;
+        }).length;
+        categoryStatus[cat] = {
+          completed: completedInCategory,
+          total: categoryItems.length,
+          isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+        };
+      });
 
-      // For resume audit: ALWAYS show category selection if multiple categories exist
-      // This allows users to switch between categories and continue completing the audit
+      // For resume audit: CRITICAL FIX - Auto-select the FIRST INCOMPLETE category
+      // This ensures users don't see already-completed categories again after submitting
+      let categoryToSelect = null;
+      
       if (uniqueCategories.length > 1) {
-        // Multiple categories - start at category selection step to allow user to choose/switch
-        // Pre-select the audit's category if it has one, but allow changing
-        if (audit.audit_category) {
-          const normalizedAuditCategory = normalizeCategoryName(audit.audit_category);
-          setSelectedCategory(normalizedAuditCategory);
-          setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === normalizedAuditCategory));
+        // Multiple categories - find the first incomplete one
+        const incompleteCategories = uniqueCategories.filter(cat => !categoryStatus[cat].isComplete);
+        
+        if (incompleteCategories.length > 0) {
+          // Auto-select the first incomplete category
+          categoryToSelect = incompleteCategories[0];
+          console.log('[AuditForm] Web: Auto-selecting first incomplete category:', categoryToSelect);
+        } else if (uniqueCategories.length > 0) {
+          // All categories complete? Show the first one (should be redirected to completion soon)
+          categoryToSelect = uniqueCategories[0];
         }
-        // Go to category selection step (step 1) so user can choose which category to work on
-        setActiveStep(1);
       } else if (uniqueCategories.length === 1) {
-        // Single category - auto-select and go directly to checklist
-        setSelectedCategory(uniqueCategories[0]);
-        setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === uniqueCategories[0]));
-        setActiveStep(1);
-      } else {
+        // Single category - auto-select it
+        categoryToSelect = uniqueCategories[0];
+      }
+      
+      if (categoryToSelect) {
+        setSelectedCategory(categoryToSelect);
+        setFilteredItems(allItems.filter(item => normalizeCategoryName(item.category) === categoryToSelect));
+      } else if (uniqueCategories.length === 0) {
         // No categories - show all items directly
         setFilteredItems(allItems);
-        setActiveStep(1);
       }
+      
+      // Always go to category selection step (step 1) to show category tabs
+      setActiveStep(1);
 
       // Populate responses from audit items
       const responsesData = {};
