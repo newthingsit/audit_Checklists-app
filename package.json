@@ -23,7 +23,13 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "axios": "^1.13.2"
+    "@types/node": "^25.1.0",
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "axios": "^1.13.2",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "expo": "^54.0.32",
