@@ -2,7 +2,7 @@
   "name": "audit_checklists-app",
   "version": "1.5.0",
   "description": "A comprehensive web and mobile application for conducting restaurant audits and checklists. This application helps restaurant managers and auditors track compliance, safety, and quality standards.",
-  "main": "index.js",
+  "main": "node_modules/expo/AppEntry.js",
   "directories": {
     "doc": "docs",
     "test": "tests"
