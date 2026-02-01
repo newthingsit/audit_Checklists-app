@@ -2,6 +2,7 @@
 import { initTracing } from './utils/tracing';
 initTracing();
 
+import { registerRootComponent } from 'expo';
 import React, { useRef, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -100,3 +101,5 @@ const styles = StyleSheet.create({
     backgroundColor: themeConfig.background.default,
   },
 });
+
+registerRootComponent(App);
