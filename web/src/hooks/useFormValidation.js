@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { validateAuditItem, validateLocation } from '@shared/utils/formValidation';
+import { validateAuditItem, validateLocation as validateLocationField } from '../utils/formValidation';
 
 /**
  * useFormValidation Hook
@@ -24,7 +24,7 @@ export const useFormValidation = () => {
   }, []);
 
   const validateLocation = useCallback((location) => {
-    return validateLocation(location);
+    return validateLocationField(location);
   }, []);
 
   const markFieldTouched = useCallback((itemId) => {
@@ -78,6 +78,8 @@ export const useFormValidation = () => {
     validateForm,
     clearErrors,
     clearFieldError,
+    setErrors,
+    setTouched,
   };
 };
 

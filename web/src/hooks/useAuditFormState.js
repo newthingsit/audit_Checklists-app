@@ -117,6 +117,12 @@ export const useAuditFormState = (initialValues = {}) => {
     updateComment,
     updatePhoto,
     setNotes,
+    setResponses,
+    setSelectedOptions,
+    setMultipleSelections,
+    setInputValues,
+    setComments,
+    setPhotos,
     
     // Utilities
     clearItemResponses,

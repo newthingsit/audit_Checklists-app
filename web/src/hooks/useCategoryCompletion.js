@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateCategoryCompletionStatus } from '@shared/utils/auditHelpers';
+import { calculateCategoryCompletionStatus } from '../utils/auditHelpers';
 
 /**
  * useCategoryCompletion Hook

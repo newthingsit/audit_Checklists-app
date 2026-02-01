@@ -212,3 +212,44 @@ export const normalizeText = (text: string): string => {
   if (!text) return '';
   return text.trim().replace(/\s+/g, ' ');
 };
+
+/**
+ * Validate a single audit item value using simple rules
+ */
+export const validateAuditItem = (
+  value: string,
+  rules: { required?: boolean; minLength?: number; maxLength?: number; pattern?: RegExp } = {}
+): string | null => {
+  if (rules.required) {
+    const requiredError = validateRequired(value, 'Field');
+    if (requiredError) return requiredError;
+  }
+
+  if (rules.minLength) {
+    const minError = validateMinLength(value, rules.minLength, 'Field');
+    if (minError) return minError;
+  }
+
+  if (rules.maxLength) {
+    const maxError = validateMaxLength(value, rules.maxLength, 'Field');
+    if (maxError) return maxError;
+  }
+
+  if (rules.pattern) {
+    const patternError = validatePattern(value, rules.pattern, 'Field');
+    if (patternError) return patternError;
+  }
+
+  return null;
+};
+
+/**
+ * Validate location object
+ */
+export const validateLocation = (location?: { latitude?: number; longitude?: number }): string | null => {
+  if (!location) return 'Location is required';
+  if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
+    return 'Invalid location coordinates';
+  }
+  return null;
+};

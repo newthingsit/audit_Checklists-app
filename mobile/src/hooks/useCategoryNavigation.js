@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { getFirstIncompleteCategory, getCategoryStatistics } from '@shared/utils/auditHelpers';
+import { getFirstIncompleteCategory, getCategoryStatistics } from '../utils/auditHelpers';
 
 /**
  * useCategoryNavigation Hook (Mobile)

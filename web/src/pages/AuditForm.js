@@ -102,7 +102,32 @@ const AuditForm = () => {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const formState = useAuditFormState(); // Replaces: notes, responses, selectedOptions, multipleSelections, inputValues, comments, photos
-  const { errors, touched, validateField, validateForm, clearErrors } = useFormValidation();
+  const {
+    notes,
+    setNotes,
+    responses,
+    setResponses,
+    selectedOptions,
+    setSelectedOptions,
+    multipleSelections,
+    setMultipleSelections,
+    inputValues,
+    setInputValues,
+    comments,
+    setComments,
+    photos,
+    setPhotos,
+    updateResponse,
+    updateSelectedOption,
+    updateMultipleSelection,
+    updateInputValue,
+    updateComment,
+    updatePhoto,
+    clearItemResponses,
+    getFormData,
+    resetForm,
+  } = formState;
+  const { errors, touched, validateField, validateForm, clearErrors, setErrors, setTouched } = useFormValidation();
   const [uploading, setUploading] = useState({});
   const [error, setError] = useState('');
   const scheduledId = searchParams.get('scheduled_id');
