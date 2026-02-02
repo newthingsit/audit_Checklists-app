@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   stepDotActive: {
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: themeConfig.primary.main,
     borderWidth: 2,
     borderColor: '#fff',
   },
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   stepLabelActive: {
-    color: themeConfig.colors.primary,
+    color: themeConfig.primary.main,
     fontWeight: '600',
   },
   connector: {

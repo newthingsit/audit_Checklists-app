@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cameraButton: {
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: themeConfig.primary.main,
   },
   galleryButton: {
     backgroundColor: '#4caf50',

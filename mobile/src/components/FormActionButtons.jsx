@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   primaryButton: {
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: themeConfig.primary.main,
     flex: 1,
   },
   primaryButtonText: {
@@ -147,10 +147,10 @@ const styles = StyleSheet.create({
   outlineButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: themeConfig.colors.primary,
+    borderColor: themeConfig.primary.main,
   },
   outlineButtonText: {
-    color: themeConfig.colors.primary,
+    color: themeConfig.primary.main,
     fontSize: 14,
     fontWeight: '500',
   },

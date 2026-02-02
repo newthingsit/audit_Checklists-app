@@ -88,7 +88,7 @@ const SignatureCapture = ({
               .m-signature-pad--footer { display: none; margin: 0px; }
               .m-signature-pad { margin: 0px; border: none; }
             `}
-            penColor={themeConfig.colors.primary}
+            penColor={themeConfig.primary.main}
           />
         </View>
 
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: themeConfig.primary.main,
   },
   saveButtonText: {
     color: '#fff',

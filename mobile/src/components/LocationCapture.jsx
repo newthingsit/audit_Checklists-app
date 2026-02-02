@@ -93,7 +93,7 @@ const LocationCapture = ({
 
       {location ? (
         <View style={styles.locationDisplay}>
-          <MaterialIcons name="location-on" size={20} color={themeConfig.colors.primary} />
+          <MaterialIcons name="location-on" size={20} color={themeConfig.primary.main} />
           <View style={styles.locationInfo}>
             <Text style={styles.locationCoords}>
               {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   captureButton: {
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: themeConfig.primary.main,
   },
   buttonText: {
     color: '#fff',

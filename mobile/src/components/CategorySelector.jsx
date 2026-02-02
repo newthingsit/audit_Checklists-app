@@ -34,7 +34,7 @@ const CategorySelector = ({
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={themeConfig.colors.primary} />
+        <ActivityIndicator size="large" color={themeConfig.primary.main} />
         <Text style={styles.loadingText}>Loading categories...</Text>
       </View>
     );
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   categoryItemSelected: {
     backgroundColor: '#e3f2fd',
     borderLeftWidth: 4,
-    borderLeftColor: themeConfig.colors.primary,
+    borderLeftColor: themeConfig.primary.main,
   },
   categoryItemComplete: {
     backgroundColor: '#f1f8f4',
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   categoryNameSelected: {
-    color: themeConfig.colors.primary,
+    color: themeConfig.primary.main,
     fontWeight: '600',
   },
   categoryProgress: {
