@@ -4,6 +4,7 @@ const { authenticate } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { isAdminUser, requirePermission } = require('../middleware/permissions');
 const logger = require('../utils/logger');
+const emailService = require('../utils/emailService');
 
 const RECURRING_FAILURE_THRESHOLD = 2;
 const CRITICAL_RECURRING_THRESHOLD = 3;
@@ -360,6 +361,97 @@ const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null)
     );
   }
 };
+
+/**
+ * Send audit completion email notification
+ * @param {Object} dbInstance - Database instance
+ * @param {number} auditId - The completed audit ID
+ * @param {number} score - The audit score (0-100)
+ */
+function sendAuditCompletionEmail(dbInstance, auditId, score) {
+  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
+  
+  // Query to get audit details for email
+  const query = isSqlServer
+    ? `SELECT a.id, a.status, a.completed_at, 
+              t.name as template_name, 
+              l.name as location_name,
+              u.name as auditor_name, u.email as auditor_email,
+              m.email as manager_email, m.name as manager_name
+       FROM audits a
+       LEFT JOIN templates t ON a.template_id = t.id
+       LEFT JOIN locations l ON a.location_id = l.id
+       LEFT JOIN users u ON a.auditor_id = u.id
+       LEFT JOIN users m ON l.manager_id = m.id
+       WHERE a.id = @auditId`
+    : `SELECT a.id, a.status, a.completed_at, 
+              t.name as template_name, 
+              l.name as location_name,
+              u.name as auditor_name, u.email as auditor_email,
+              m.email as manager_email, m.name as manager_name
+       FROM audits a
+       LEFT JOIN templates t ON a.template_id = t.id
+       LEFT JOIN locations l ON a.location_id = l.id
+       LEFT JOIN users u ON a.auditor_id = u.id
+       LEFT JOIN users m ON l.manager_id = m.id
+       WHERE a.id = ?`;
+  
+  const executeQuery = (callback) => {
+    if (isSqlServer) {
+      const request = dbInstance.request();
+      request.input('auditId', auditId);
+      request.query(query, callback);
+    } else {
+      dbInstance.get(query, [auditId], callback);
+    }
+  };
+  
+  executeQuery((err, result) => {
+    if (err) {
+      logger.error(`[Audit Completion Email] Error fetching audit details: ${err.message}`);
+      return;
+    }
+    
+    const audit = isSqlServer ? (result.recordset?.[0]) : result;
+    if (!audit) {
+      logger.warn(`[Audit Completion Email] Audit ${auditId} not found`);
+      return;
+    }
+    
+    // Build email recipients list
+    const recipients = [];
+    if (audit.auditor_email) recipients.push(audit.auditor_email);
+    if (audit.manager_email && audit.manager_email !== audit.auditor_email) {
+      recipients.push(audit.manager_email);
+    }
+    
+    if (recipients.length === 0) {
+      logger.debug(`[Audit Completion Email] No recipients found for audit ${auditId}`);
+      return;
+    }
+    
+    // Generate email content using template
+    const emailContent = emailService.emailTemplates.auditCompleted(
+      audit.auditor_name || 'Auditor',
+      audit.template_name || 'Audit',
+      score || 0,
+      audit.location_name || 'Location'
+    );
+    
+    // Send email
+    emailService.sendEmail(
+      recipients.join(', '),
+      emailContent.subject,
+      emailContent.text,
+      emailContent.html
+    ).then(() => {
+      logger.info(`[Audit Completion Email] Email sent for audit ${auditId} to ${recipients.join(', ')}`);
+    }).catch((emailErr) => {
+      logger.error(`[Audit Completion Email] Failed to send email for audit ${auditId}: ${emailErr.message}`);
+    });
+  });
+}
 
 /**
  * Generate Action Plan with top-3 deviations for a completed audit
@@ -2335,6 +2427,9 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
                             logger.error('[Action Plan] Error generating action plan after completion:', err);
                           }
                         });
+                        
+                        // Send audit completion email notification
+                        sendAuditCompletionEmail(dbInstance, auditId, score);
                       }
                       res.json({ 
                         message: 'Audit item updated successfully',

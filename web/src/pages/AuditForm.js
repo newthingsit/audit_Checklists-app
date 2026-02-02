@@ -1532,6 +1532,12 @@ const AuditForm = () => {
               );
             }
 
+            // Image upload - photo only input (status handled by photo upload UI below)
+            if (inputType === 'image_upload') {
+              // No status radio buttons for image_upload - photo upload UI is rendered separately
+              return null;
+            }
+
             // Signature input type (draw pad)
             if (inputType === 'signature') {
               return (
