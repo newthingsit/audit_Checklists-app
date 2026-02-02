@@ -1213,6 +1213,7 @@ const Checklists = () => {
                   size="small"
                   placeholder="e.g. Kitchen, Trnx-1, Dining Area"
                   helperText="Section within category (e.g. Kitchen, Trnx-1 to Trnx-4, Avg for Speed of Service)"
+                />
                 <Grid container spacing={2} sx={{ mt: 0 }}>
                   <Grid item xs={12} sm={4}>
                     <FormControl fullWidth size="small">
