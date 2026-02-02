@@ -111,41 +111,75 @@ const Dashboard = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      // Add request cache busting and timeout
+      const requestConfig = {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' },
+        timeout: 30000 // 30 second timeout
+      };
+      
       const fetchPromises = [
         // Templates
         (hasPermission(userPermissions, 'display_templates') || 
          hasPermission(userPermissions, 'view_templates') || 
          hasPermission(userPermissions, 'manage_templates') || 
          isAdmin(user))
-          ? axios.get('/api/templates').catch(() => ({ data: { templates: [] } }))
+          ? withTimeout(axios.get('/api/templates', requestConfig), 30000).catch((err) => {
+              console.error('Templates fetch error:', err.message);
+              return { data: { templates: [] } };
+            })
           : Promise.resolve({ data: { templates: [] } }),
         // Audits
         canViewAudits
-          ? axios.get('/api/audits').catch(() => ({ data: { audits: [] } }))
+          ? withTimeout(axios.get('/api/audits', requestConfig), 30000).catch((err) => {
+              console.error('Audits fetch error:', err.message);
+              return { data: { audits: [] } };
+            })
           : Promise.resolve({ data: { audits: [] } }),
         // Actions
         canViewActions 
-          ? axios.get('/api/actions').catch(() => ({ data: { actions: [] } }))
+          ? withTimeout(axios.get('/api/actions', requestConfig), 30000).catch((err) => {
+              console.error('Actions fetch error:', err.message);
+              return { data: { actions: [] } };
+            })
           : Promise.resolve({ data: { actions: [] } }),
         // Analytics
         canViewAnalytics
-          ? axios.get('/api/analytics/dashboard').catch(() => ({ data: {} }))
+          ? withTimeout(axios.get('/api/analytics/dashboard', requestConfig), 30000).catch((err) => {
+              console.error('Analytics fetch error:', err.message);
+              setError('Dashboard data temporarily unavailable. Showing cached data if available.');
+              return { data: analytics || {} }; // Use existing analytics if available
+            })
           : Promise.resolve({ data: {} }),
         // Trends
         canViewAnalytics
-          ? axios.get('/api/analytics/trends?period=month').catch(() => ({ data: { trends: [] } }))
+          ? withTimeout(axios.get('/api/analytics/trends?period=month', requestConfig), 30000).catch((err) => {
+              console.error('Trends fetch error:', err.message);
+              return { data: { trends: [] } };
+            })
           : Promise.resolve({ data: { trends: [] } }),
         // Leaderboard - Stores
         canViewAnalytics
-          ? axios.get('/api/analytics/leaderboard/stores?limit=5').catch(() => ({ data: { stores: [] } }))
+          ? withTimeout(axios.get('/api/analytics/leaderboard/stores?limit=5', requestConfig), 30000).catch((err) => {
+              console.error('Store leaderboard fetch error:', err.message);
+              return { data: { stores: [] } };
+            })
           : Promise.resolve({ data: { stores: [] } }),
         // Leaderboard - Auditors
         canViewAnalytics
-          ? axios.get('/api/analytics/leaderboard/auditors?limit=5').catch(() => ({ data: { auditors: [] } }))
+          ? withTimeout(axios.get('/api/analytics/leaderboard/auditors?limit=5', requestConfig), 30000).catch((err) => {
+              console.error('Auditor leaderboard fetch error:', err.message);
+              return { data: { auditors: [] } };
+            })
           : Promise.resolve({ data: { auditors: [] } }),
         // Trend Analysis
         canViewAnalytics
-          ? axios.get('/api/analytics/trends/analysis?period=week').catch(() => ({ data: {} }))
+          ? withTimeout(axios.get('/api/analytics/trends/analysis?period=week', requestConfig), 30000).catch((err) => {
+              console.error('Trend analysis fetch error:', err.message);
+              return { data: {} };
+            })
           : Promise.resolve({ data: {} })
       ];
 

@@ -1,6 +1,12 @@
-// Initialize OpenTelemetry tracing FIRST before any other imports
-const { initializeTracing } = require('./utils/tracing');
-initializeTracing();
+// Initialize OpenTelemetry tracing FIRST before any other imports (optional)
+try {
+  const { initializeTracing } = require('./utils/tracing');
+  initializeTracing();
+  console.log('✅ OpenTelemetry tracing initialized successfully');
+} catch (error) {
+  console.warn('⚠️  OpenTelemetry tracing not available:', error.message);
+  console.warn('   Server will continue without distributed tracing');
+}
 
 const express = require('express');
 const cors = require('cors');

@@ -3,6 +3,7 @@ const db = require('../config/database-loader');
 const { authenticate } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const logger = require('../utils/logger');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
@@ -18,10 +19,19 @@ const isAdminUser = (user) => {
 };
 
 // Get dashboard statistics (admins see all audits)
-router.get('/dashboard', authenticate, (req, res) => {
+router.get('/dashboard', authenticate, async (req, res) => {
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
   const dbInstance = db.getDb();
+
+  // Check cache first (5 minute TTL)
+  const cacheKey = `dashboard:${isAdmin ? 'admin' : userId}`;
+  const forceRefresh = req.query.refresh === 'true';
+  
+  if (!forceRefresh && cache.has(cacheKey)) {
+    logger.debug(`Cache hit for dashboard: ${cacheKey}`);
+    return res.json(cache.get(cacheKey));
+  }
 
   // Build user filter for queries
   const userFilter = isAdmin ? '' : 'WHERE user_id = ?';
@@ -379,7 +389,7 @@ router.get('/dashboard', authenticate, (req, res) => {
         avgScore: (currentMonthStats.avg_score || 0) - (lastMonthStats.avg_score || 0)
       };
       
-      res.json({
+      const dashboardData = {
         total,
         completed,
         inProgress,
@@ -401,11 +411,20 @@ router.get('/dashboard', authenticate, (req, res) => {
         monthChange,
         topStores,
         scheduleAdherence: scheduleAdherence || { total: 0, onTime: 0, adherence: 0 }
-      });
+      };
+      
+      // Store in cache (5 minute TTL)
+      cache.set(cacheKey, dashboardData, 300);
+      logger.debug(`Cached dashboard data: ${cacheKey}`);
+      
+      res.json(dashboardData);
     })
     .catch(err => {
       logger.error('Analytics error:', err);
-      res.status(500).json({ error: 'Error fetching analytics' });
+      res.status(500).json({ 
+        error: 'Error fetching analytics',
+        message: 'Unable to load dashboard statistics. Please try again.'
+      });
     });
 });
 
