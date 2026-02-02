@@ -52,15 +52,23 @@ const AuditFormScreen = () => {
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
-  // Consolidated form state using Phase 1 hook
+  // Form state - properly declared useState hooks
+  const [notes, setNotes] = useState('');
+  const [responses, setResponses] = useState({});
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [multipleSelections, setMultipleSelections] = useState({});
+  const [comments, setComments] = useState({});
+  const [photos, setPhotos] = useState({});
+  
+  // Consolidated form state for Phase 1 hook
   const formState = {
-    notes: useState('')[0],
-    setNotes: useState('')[1],
-    responses: useState({})[0],
-    selectedOptions: useState({})[0],
-    multipleSelections: useState({})[0],
-    comments: useState({})[0],
-    photos: useState({})[0],
+    notes,
+    setNotes,
+    responses,
+    selectedOptions,
+    multipleSelections,
+    comments,
+    photos,
   };
   const categoryNav = useCategoryNavigation([],  [], formState);
   const [uploading, setUploading] = useState({});
