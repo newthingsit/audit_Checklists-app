@@ -2,7 +2,19 @@
   "expo": {
     "name": "Lite Bite Foods Audit Pro",
     "slug": "audit-pro",
+    "version": "2.1.4",
+    "orientation": "portrait",
+    "icon": "./mobile/assets/icon.png",
+    "userInterfaceStyle": "light",
     "entryPoint": "./mobile/App.js",
+    "splash": {
+      "image": "./mobile/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "extra": {
       "eas": {
         "projectId": "57d2046c-9e50-459f-8f41-006b79f6bca3"
@@ -13,7 +25,19 @@
       }
     },
     "android": {
-      "package": "com.kapilchauhan.auditpro"
+      "package": "com.kapilchauhan.auditpro",
+      "versionCode": 6,
+      "adaptiveIcon": {
+        "foregroundImage": "./mobile/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "runtimeVersion": {
       "policy": "appVersion"
@@ -21,6 +45,23 @@
     "updates": {
       "url": "https://u.expo.dev/57d2046c-9e50-459f-8f41-006b79f6bca3"
     },
-    "ios": {}
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kapilchauhan.auditpro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Audit Pro to use your location for audit tracking."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Audit Pro to access your photos for audit documentation."
+        }
+      ]
+    ]
   }
 }
