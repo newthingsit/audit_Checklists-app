@@ -1315,7 +1315,7 @@ const AuditFormScreen = () => {
       } catch (error) {
         console.warn('[AutoSave] Failed to auto-save draft (on response):', error);
       }
-    }, 800);
+    }, 200); // Real-time sync: 200ms delay for immediate feedback
   }, [auditStatus, currentStep, selectedLocation, responses, comments, photos, selectedOptions, multipleSelections, templateId, template, locationId, categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed, infoPictures, notes, capturedLocation, locationVerified, items, currentAuditId, scheduledAuditId, draftStorageKey]);
 
   useEffect(() => {
@@ -2242,7 +2242,7 @@ const AuditFormScreen = () => {
     scheduledAuditId, isOnline, draftStorageKey, auditId
   ]);
 
-  // Auto-save draft every 60 seconds when in audit step and has unsaved changes
+  // Real-time auto-save: every 15 seconds when in audit step + immediate on changes
   useEffect(() => {
     // Only auto-save if: in checklist step, not completed, has a location selected, and has some responses
     const hasUnsavedWork = currentStep === 2 && 
@@ -2299,7 +2299,7 @@ const AuditFormScreen = () => {
       } catch (error) {
         console.warn('[AutoSave] Failed to auto-save draft:', error);
       }
-    }, 60000); // 60 seconds
+    }, 15000); // Real-time sync: 15 seconds for background saves
 
     return () => clearInterval(autoSaveInterval);
   }, [
