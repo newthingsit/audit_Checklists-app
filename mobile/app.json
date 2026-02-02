@@ -2,90 +2,52 @@
   "expo": {
     "name": "Lite Bite Foods Audit Pro",
     "slug": "audit-pro",
-    "version": "2.1.7",
-    "sdkVersion": "54.0.0",
+    "version": "2.1.4",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.auditpro.app",
-      "buildNumber": "3",
-      "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to take photos for audit items",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload images for audit items.",
-        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save photos to your library.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to verify audit locations.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to verify audit locations.",
-        "NSFaceIDUsageDescription": "Use Face ID for quick and secure login.",
-        "ITSAppUsesNonExemptEncryption": false
+    "extra": {
+      "eas": {
+        "projectId": "57d2046c-9e50-459f-8f41-006b79f6bca3"
+      },
+      "apiUrl": {
+        "production": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api",
+        "development": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api"
       }
     },
     "android": {
+      "package": "com.kapilchauhan.auditpro",
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.auditpro.app",
-      "versionCode": 8,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT",
-        "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
-    },
-    "plugins": [
-      "expo-secure-store",
-      "expo-location",
-      "expo-local-authentication",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#C41E3A"
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-              "icon": "./assets/icon.png",
-          "cameraPermission": "Allow Lite Bite Foods Audit Pro to access your camera for audit photos."
-      ]
-                "image": "./assets/splash.png",
-    "extra": {
-      "apiUrl": {
-        "development": "auto",
-        "production": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api"
-      },
-      "eas": {
-        "projectId": "57d2046c-9e50-459f-8f41-006b79f6bca3"
-      }
-    },
-    "owner": "kapilchauhan",
-    "updates": {
-      "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/57d2046c-9e50-459f-8f41-006b79f6bca3"
     },
     "runtimeVersion": {
-      "policy": "sdkVersion"
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/57d2046c-9e50-459f-8f41-006b79f6bca3"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kapilchauhan.auditpro"
     }
-                "versionCode": 7,
+  }
 }
-                  "foregroundImage": "./assets/adaptive-icon.png",
+    },
