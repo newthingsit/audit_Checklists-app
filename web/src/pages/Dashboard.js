@@ -63,6 +63,7 @@ import Layout from '../components/Layout';
 import { themeConfig } from '../config/theme';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { withTimeout } from '../utils/fetchUtils';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -74,6 +75,7 @@ const Dashboard = () => {
   const [trends, setTrends] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [leaderboard, setLeaderboard] = useState({ stores: [], auditors: [] });
   const [trendAnalysis, setTrendAnalysis] = useState(null);
   const [leaderboardTab, setLeaderboardTab] = useState(0);
