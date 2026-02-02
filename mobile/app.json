@@ -65,11 +65,10 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Lite Bite Foods Audit Pro to access your photos for audit evidence.",
+              "icon": "./assets/icon.png",
           "cameraPermission": "Allow Lite Bite Foods Audit Pro to access your camera for audit photos."
-        }
       ]
-    ],
+                "image": "./assets/splash.png",
     "extra": {
       "apiUrl": {
         "development": "auto",
@@ -87,5 +86,6 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     }
-  }
+                "versionCode": 7,
 }
+                  "foregroundImage": "./assets/adaptive-icon.png",
