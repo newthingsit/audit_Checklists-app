@@ -3382,10 +3382,10 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
-  const tabAccent = isCvr ? cvrTheme.accent.purple : themeConfig.primary.main;
-  const tabTextPrimary = isCvr ? cvrTheme.text.primary : themeConfig.text.primary;
-  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : themeConfig.text.secondary;
-  const tabSuccess = isCvr ? cvrTheme.accent.green : themeConfig.success.main;
+  const tabAccent = isCvr ? cvrTheme.accent.purple : (themeConfig?.primary?.main || '#B91C1C');
+  const tabTextPrimary = isCvr ? cvrTheme.text.primary : (themeConfig?.text?.primary || '#0C0A09');
+  const tabTextSecondary = isCvr ? cvrTheme.text.secondary : (themeConfig?.text?.secondary || '#44403C');
+  const tabSuccess = isCvr ? cvrTheme.accent.green : (themeConfig?.success?.main || '#047857');
 
   return (
     <View style={[styles.container, isCvr && { backgroundColor: cvrTheme.background.primary }]}>

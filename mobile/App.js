@@ -45,7 +45,7 @@ function AppNavigator() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={themeConfig.primary.main} />
+        <ActivityIndicator size="large" color={themeConfig?.primary?.main || '#B91C1C'} />
       </View>
     );
   }
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: themeConfig.background.default,
+    backgroundColor: themeConfig?.background?.default || '#F8FAFC',
   },
 });
 
