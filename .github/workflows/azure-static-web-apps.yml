@@ -26,16 +26,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd web
-          npm install
+        working-directory: ./web
+        run: npm ci
 
       - name: Build React App
-        run: |
-          cd web
-          npm run build
+        working-directory: ./web
+        run: npm run build
         env:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
           CI: false

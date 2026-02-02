@@ -37,11 +37,18 @@ jobs:
         uses: android-actions/setup-android@v3
       
       - name: Install dependencies
-        run: npm ci
-      
-      - name: Install mobile dependencies
         working-directory: ./mobile
         run: npm ci
+      
+      - name: Check if keystore secrets are configured
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not configured"
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "has_secrets=true" >> $GITHUB_OUTPUT
       
       - name: Decode keystore
         working-directory: ./mobile
