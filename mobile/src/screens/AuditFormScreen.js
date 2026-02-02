@@ -229,11 +229,15 @@ const AuditFormScreen = () => {
     // For scheduled audits, locationId might come from initialLocationId
     const effectiveLocationId = locationId || initialLocationId;
     
-    if (templateId && effectiveLocationId && parseInt(effectiveLocationId) > 0 && items.length > 0) {
+    // Validate that we have proper positive integer values before calling API
+    const parsedLocationId = parseInt(effectiveLocationId, 10);
+    const parsedTemplateId = parseInt(templateId, 10);
+    
+    if (parsedTemplateId > 0 && parsedLocationId > 0 && items.length > 0) {
       // Use the effective location ID for fetching previous failures
       fetchPreviousFailures(effectiveLocationId);
     } else {
-      // Reset previous failures when location changes
+      // Reset previous failures when location changes or is invalid
       setPreviousFailures([]);
       setFailedItemIds(new Set());
       setPreviousAuditInfo(null);
@@ -919,7 +923,15 @@ const AuditFormScreen = () => {
   // Works for both regular audits and scheduled audits (same location + same checklist)
   const fetchPreviousFailures = async (effectiveLocationId = null) => {
     const locId = effectiveLocationId || locationId || initialLocationId;
-    if (!templateId || !locId) return;
+    
+    // Validate IDs before making API call
+    const parsedTemplateId = parseInt(templateId, 10);
+    const parsedLocId = parseInt(locId, 10);
+    
+    if (!parsedTemplateId || !parsedLocId || parsedTemplateId <= 0 || parsedLocId <= 0) {
+      // Silently skip if we don't have valid IDs yet
+      return;
+    }
     
     try {
       setLoadingPreviousFailures(true);
@@ -927,8 +939,8 @@ const AuditFormScreen = () => {
         `${API_BASE_URL}/audits/previous-failures`,
         {
           params: {
-            template_id: templateId,
-            location_id: locId,
+            template_id: parsedTemplateId,
+            location_id: parsedLocId,
             months_back: 6
           }
         }
