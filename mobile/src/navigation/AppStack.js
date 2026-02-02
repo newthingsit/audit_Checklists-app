@@ -19,24 +19,32 @@ import TasksScreen from '../screens/TasksScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+const safeTheme = themeConfig || {
+  primary: { main: '#B91C1C', light: '#DC2626', dark: '#7F1D1D' },
+  text: { primary: '#0C0A09', secondary: '#44403C', disabled: '#A8A29E' },
+  background: { paper: '#ffffff', default: '#F8FAFC' },
+  border: { light: '#F5F5F4' },
+  success: { main: '#047857' },
+};
+
 // Shared stack header options
 const stackScreenOptions = {
   headerStyle: {
-    backgroundColor: themeConfig.background.paper,
+    backgroundColor: safeTheme.background.paper,
     elevation: 0,
     shadowOpacity: 0,
     borderBottomWidth: 1,
-    borderBottomColor: themeConfig.border.light,
+    borderBottomColor: safeTheme.border.light,
   },
-  headerTintColor: themeConfig.text.primary,
+  headerTintColor: safeTheme.text.primary,
   headerTitleStyle: {
     fontWeight: '600',
     fontSize: 17,
-    color: themeConfig.text.primary,
+    color: safeTheme.text.primary,
   },
   headerBackTitleVisible: false,
   cardStyle: {
-    backgroundColor: themeConfig.background.default,
+    backgroundColor: safeTheme.background.default,
   },
 };
 
