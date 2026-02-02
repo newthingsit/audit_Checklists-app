@@ -78,12 +78,13 @@ const insertItemsWithOptions = (dbInstance, templateId, items = [], defaultCateg
 
       const { lastID: itemId } = await runDb(
         dbInstance,
-        'INSERT INTO checklist_items (template_id, title, description, category, required, order_index, input_type, weight, is_critical, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes, section, conditional_item_id, conditional_value, conditional_operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO checklist_items (template_id, title, description, category, subcategory, required, order_index, input_type, weight, is_critical, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes, section, conditional_item_id, conditional_value, conditional_operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           templateId,
           item.title,
           item.description || '',
           item.category || defaultCategory,
+          item.subcategory || null,
           item.required !== false ? 1 : 0,
           item.order_index !== undefined ? item.order_index : index,
           inputType,

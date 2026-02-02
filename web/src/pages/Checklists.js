@@ -234,10 +234,11 @@ const fieldTypeSupportsOptions = (fieldType) =>
   fieldType === 'dropdown' ||
   fieldType === 'grid';
 
-const createEmptyItem = (category = '', section = '') => ({
+const createEmptyItem = (category = '', section = '', subcategory = '') => ({
   title: '',
   description: '',
   category,
+  subcategory: subcategory || '',
   section: section || '',
   input_type: 'option_select',
   required: true,
@@ -407,7 +408,7 @@ const Checklists = () => {
 
   const handleAddItem = () => {
     const last = items[items.length - 1];
-    setItems([...items, createEmptyItem(last?.category || '', last?.section || '')]);
+    setItems([...items, createEmptyItem(last?.category || '', last?.section || '', last?.subcategory || '')]);
   };
 
   const handleRemoveItem = (index) => {
@@ -505,6 +506,7 @@ const Checklists = () => {
         title: item.title,
         description: item.description || '',
         category: item.category || '',
+        subcategory: item.subcategory || '',
         input_type: getEffectiveItemFieldType(item),
         required: item.required !== false,
         weight: item.weight || 1,
@@ -560,6 +562,7 @@ const Checklists = () => {
         title: item.title,
         description: item.description,
         category: item.category,
+        subcategory: item.subcategory || '',
         input_type: item.input_type || item.inputType || 'auto',
         required: item.required !== 0,
         weight: item.weight || 1,
@@ -614,6 +617,7 @@ const Checklists = () => {
         title: item.title,
         description: item.description,
         category: item.category,
+        subcategory: item.subcategory || '',
         input_type: item.input_type || item.inputType || 'auto',
         required: item.required !== 0,
         weight: item.weight || 1,
@@ -622,6 +626,7 @@ const Checklists = () => {
         target_time_minutes: item.target_time_minutes || '',
         min_time_minutes: item.min_time_minutes || '',
         max_time_minutes: item.max_time_minutes || '',
+        section: item.section || '',
         options: (item.options || []).map(option => ({
           option_text: option.option_text || option.title || '',
           mark: option.mark ?? ''
@@ -1175,30 +1180,39 @@ const Checklists = () => {
                   multiline
                   rows={2}
                 />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Category"
+                      value={item.category}
+                      onChange={(e) => handleItemChange(index, 'category', e.target.value)}
+                      margin="dense"
+                      placeholder="e.g. QUALITY, SERVICE, HYGIENE"
+                      helperText="Main category (e.g. Quality, Service, Safety)"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Subcategory"
+                      value={item.subcategory || ''}
+                      onChange={(e) => handleItemChange(index, 'subcategory', e.target.value)}
+                      margin="dense"
+                      placeholder="e.g. Food Safety, Speed of Service"
+                      helperText="Subcategory for grouping in reports"
+                    />
+                  </Grid>
+                </Grid>
                 <TextField
                   fullWidth
-                  label="Category"
-                  value={item.category}
-                  onChange={(e) => handleItemChange(index, 'category', e.target.value)}
+                  label="Section"
+                  value={item.section || ''}
+                  onChange={(e) => handleItemChange(index, 'section', e.target.value)}
                   margin="dense"
-                  placeholder="e.g. SERVICE (Speed of Service)"
-                />
-                <FormControl fullWidth size="small" margin="dense">
-                  <InputLabel>Section</InputLabel>
-                  <Select
-                    value={item.section || ''}
-                    label="Section"
-                    onChange={(e) => handleItemChange(index, 'section', e.target.value)}
-                  >
-                    <MenuItem value="">None</MenuItem>
-                    <MenuItem value="Trnx-1">Trnx-1</MenuItem>
-                    <MenuItem value="Trnx-2">Trnx-2</MenuItem>
-                    <MenuItem value="Trnx-3">Trnx-3</MenuItem>
-                    <MenuItem value="Trnx-4">Trnx-4</MenuItem>
-                    <MenuItem value="Avg">Avg</MenuItem>
-                  </Select>
-                  <FormHelperText>For Speed of Service: use Trnx-1 to Trnx-4, or Avg</FormHelperText>
-                </FormControl>
+                  size="small"
+                  placeholder="e.g. Kitchen, Trnx-1, Dining Area"
+                  helperText="Section within category (e.g. Kitchen, Trnx-1 to Trnx-4, Avg for Speed of Service)"
                 <Grid container spacing={2} sx={{ mt: 0 }}>
                   <Grid item xs={12} sm={4}>
                     <FormControl fullWidth size="small">
