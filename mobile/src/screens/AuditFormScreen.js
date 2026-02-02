@@ -11,7 +11,8 @@ import {
   Image,
   Modal,
   FlatList,
-  Platform
+  Platform,
+  AppState
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -2287,6 +2288,131 @@ const AuditFormScreen = () => {
     categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
     infoPictures, notes, capturedLocation, locationVerified, items,
     currentAuditId, scheduledAuditId, draftStorageKey
+  ]);
+
+  // ==================== APP STATE LISTENER: Save on Background ====================
+  // CRITICAL FIX: Save audit progress when app goes to background (e.g., incoming call)
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      // When app goes from active to background/inactive (call, home button, etc.)
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        console.log('[AppState] App going to background - saving audit progress...');
+        
+        // Check if we have unsaved work that needs to be saved
+        const hasUnsavedWork = currentStep === 2 && 
+                              auditStatus !== 'completed' && 
+                              selectedLocation && 
+                              Object.keys(responses).length > 0;
+        
+        if (hasUnsavedWork) {
+          try {
+            if (!clientAuditUuidRef.current) {
+              clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+            }
+            
+            const draftData = {
+              template_id: parseInt(templateId),
+              template_name: template?.name || '',
+              location_id: parseInt(locationId),
+              restaurant_name: selectedLocation?.name || '',
+              store_number: selectedLocation?.store_number || '',
+              status: 'draft',
+              client_audit_uuid: clientAuditUuidRef.current,
+              responses,
+              comments,
+              photos,
+              selectedOptions,
+              multipleSelections,
+              categoryCompletionStatus,
+              selectedCategory,
+              currentStep,
+              attendees,
+              pointsDiscussed,
+              infoPictures,
+              notes,
+              capturedLocation,
+              locationVerified,
+              items: items.map(item => ({
+                id: item.id,
+                title: item.title,
+                category: item.category,
+                section: item.section,
+                input_type: item.input_type,
+                is_required: item.is_required,
+                options: item.options,
+              })),
+              savedAt: new Date().toISOString(),
+              auditId: currentAuditId,
+              scheduledAuditId,
+              isAutoSave: true,
+              savedOnBackground: true, // Flag to indicate it was saved on background
+            };
+            
+            await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
+            console.log('[AppState] ✅ Audit progress saved successfully before going to background');
+            
+            // Also try to sync to server if online
+            if (isOnline) {
+              try {
+                const dataToSave = {
+                  template_id: parseInt(templateId),
+                  location_id: parseInt(locationId),
+                  status: 'in_progress',
+                  client_audit_uuid: clientAuditUuidRef.current,
+                  scheduled_audit_id: scheduledAuditId || null,
+                  responses: Object.keys(responses).map(itemId => ({
+                    item_id: parseInt(itemId),
+                    response: responses[itemId],
+                    comment: comments[itemId] || '',
+                    photos: photos[itemId] || [],
+                    selected_option: selectedOptions[itemId],
+                    multiple_selections: multipleSelections[itemId] || [],
+                  })),
+                  category_completion_status: categoryCompletionStatus,
+                  selected_category: selectedCategory,
+                  current_step: currentStep,
+                  attendees: attendees || '',
+                  points_discussed: pointsDiscussed || '',
+                  info_pictures: infoPictures || [],
+                  notes: notes || '',
+                  captured_location: capturedLocation,
+                  location_verified: locationVerified,
+                };
+                
+                if (currentAuditId) {
+                  await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, dataToSave);
+                  console.log('[AppState] ✅ Audit synced to server before background');
+                } else {
+                  const response = await axios.post(`${API_BASE_URL}/audits`, dataToSave);
+                  if (response.data?.id) {
+                    setCurrentAuditId(response.data.id);
+                    console.log('[AppState] ✅ New audit created and synced before background');
+                  }
+                }
+              } catch (syncError) {
+                console.warn('[AppState] Failed to sync to server (will retry later):', syncError.message);
+                // Don't block - local save is more important
+              }
+            }
+          } catch (error) {
+            console.error('[AppState] ❌ Failed to save audit on background:', error);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        console.log('[AppState] App returned to foreground');
+      }
+    });
+
+    // Cleanup subscription on unmount
+    return () => {
+      appStateSubscription?.remove();
+    };
+  }, [
+    currentStep, auditStatus, selectedLocation, responses, templateId, template,
+    locationId, comments, photos, selectedOptions, multipleSelections,
+    categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
+    infoPictures, notes, capturedLocation, locationVerified, items,
+    currentAuditId, scheduledAuditId, draftStorageKey, isOnline
   ]);
 
   const handleSubmit = async () => {
