@@ -1,0 +1,12 @@
+*.apk
+*.aab
+*.ipa
+node_modules
+.expo
+.expo-shared
+dist
+build
+android/app/build
+ios/build
+*.log
+.git

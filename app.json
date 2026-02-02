@@ -48,20 +48,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kapilchauhan.auditpro"
-    },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow Audit Pro to use your location for audit tracking."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow Audit Pro to access your photos for audit documentation."
-        }
-      ]
-    ]
+    }
   }
 }
