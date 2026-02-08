@@ -11,8 +11,11 @@ const router = express.Router();
 // Register
 router.post('/register', [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
-  body('name').trim().notEmpty()
+  body('password')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+    .matches(/[0-9]/).withMessage('Password must contain at least one number'),
+  body('name').trim().notEmpty().isLength({ max: 255 }).withMessage('Name must be under 255 characters')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -31,8 +34,8 @@ router.post('/register', [
       return res.status(400).json({ error: 'User already exists' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password (12 rounds per OWASP recommendation)
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
     dbInstance.run(
@@ -275,7 +278,7 @@ router.put('/profile', require('../middleware/auth').authenticate, async (req, r
           }
 
           // Hash new password
-          const hashedPassword = await bcrypt.hash(newPassword, 10);
+          const hashedPassword = await bcrypt.hash(newPassword, 12);
           updateQuery += ', password = ?';
           params.push(hashedPassword);
         }
@@ -299,7 +302,7 @@ router.put('/profile', require('../middleware/auth').authenticate, async (req, r
 // Change password only
 router.put('/change-password', require('../middleware/auth').authenticate, [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -329,7 +332,7 @@ router.put('/change-password', require('../middleware/auth').authenticate, [
       }
 
       // Hash new password
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
 
       // Update password
       dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId], function(err) {
@@ -386,7 +389,8 @@ router.post('/forgot-password', [
         const emailService = require('../utils/emailService');
         // Always use app.litebitefoods.com for password reset links (production frontend)
         // This ensures password reset links always point to the correct production domain
-        const resetLink = `https://app.litebitefoods.com/login?token=${resetToken}`;
+        const frontendUrl = process.env.FRONTEND_URL || 'https://app.litebitefoods.com';
+        const resetLink = `${frontendUrl}/login?token=${resetToken}`;
 
         const emailSubject = 'Password Reset Request - Audit Pro';
         const emailHtml = `
@@ -413,7 +417,7 @@ router.post('/forgot-password', [
               <p style="font-size: 12px; color: #666; word-break: break-all;">${resetLink}</p>
             </div>
             <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
-              <p>© 2025 Lite Bite Foods Audit Pro. All rights reserved.</p>
+              <p>© ${new Date().getFullYear()} Lite Bite Foods Audit Pro. All rights reserved.</p>
             </div>
           </body>
           </html>
@@ -442,7 +446,7 @@ router.post('/forgot-password', [
 // Reset Password - Verify token and update password
 router.post('/reset-password', [
   body('token').notEmpty().withMessage('Reset token is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -478,7 +482,7 @@ router.post('/reset-password', [
       }
 
       // Hash new password
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 12);
 
       // Update password
       dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id], function(err) {

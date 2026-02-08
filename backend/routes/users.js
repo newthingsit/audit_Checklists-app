@@ -126,7 +126,7 @@ router.post('/', authenticate, requirePermission('create_users', 'manage_users')
 
     try {
       // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 12);
 
       // Create user
       dbInstance.run(
@@ -224,7 +224,7 @@ router.put('/:id', authenticate, requirePermission('manage_users'), [
           params.push(role);
         }
         if (password) {
-          const hashedPassword = await bcrypt.hash(password, 10);
+          const hashedPassword = await bcrypt.hash(password, 12);
           updates.push('password = ?');
           params.push(hashedPassword);
         }
@@ -361,12 +361,12 @@ router.post('/import', authenticate, requirePermission('create_users', 'manage_u
         const userPassword = password || 'TempPassword123!';
         
         // Validate password length
-        if (userPassword.length < 6) {
-          return reject(new Error('Password must be at least 6 characters'));
+        if (userPassword.length < 8) {
+          return reject(new Error('Password must be at least 8 characters'));
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(userPassword, 10);
+        const hashedPassword = await bcrypt.hash(userPassword, 12);
 
         // Create user
         dbInstance.run(

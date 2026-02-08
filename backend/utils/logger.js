@@ -24,21 +24,30 @@ const containsSensitiveData = (message) => {
 };
 
 /**
- * Sanitize sensitive data from a message
+ * Sanitize sensitive data from a message or object
  */
-const sanitize = (message) => {
-  if (typeof message !== 'string') return message;
-  
-  // Replace email addresses
-  let sanitized = message.replace(/[\w.-]+@[\w.-]+\.\w+/g, '[EMAIL]');
-  
-  // Replace password mentions with context
-  sanitized = sanitized.replace(/password[:\s]+\S+/gi, 'password: [REDACTED]');
-  
-  // Replace token values
-  sanitized = sanitized.replace(/token[:\s]+\S+/gi, 'token: [REDACTED]');
-  
-  return sanitized;
+const sanitize = (value) => {
+  if (typeof value === 'string') {
+    // Replace email addresses
+    let sanitized = value.replace(/[\w.-]+@[\w.-]+\.\w+/g, '[EMAIL]');
+    // Replace password mentions with context
+    sanitized = sanitized.replace(/password[:\s]+\S+/gi, 'password: [REDACTED]');
+    // Replace token values
+    sanitized = sanitized.replace(/token[:\s]+\S+/gi, 'token: [REDACTED]');
+    return sanitized;
+  }
+  if (value && typeof value === 'object' && !(value instanceof Error)) {
+    const sanitized = Array.isArray(value) ? [] : {};
+    for (const [key, val] of Object.entries(value)) {
+      if (sensitivePatterns.some(p => p.test(key))) {
+        sanitized[key] = '[REDACTED]';
+      } else {
+        sanitized[key] = sanitize(val);
+      }
+    }
+    return sanitized;
+  }
+  return value;
 };
 
 const logger = {

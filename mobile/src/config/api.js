@@ -103,8 +103,10 @@ export const RETRY_CONFIG = {
 
 export const API_BASE_URL = getApiBaseUrl();
 
-// Log the API URL being used (helpful for debugging)
-console.log('[API] Using API URL:', API_BASE_URL);
+// Log the API URL being used (development only)
+if (__DEV__) {
+  console.log('[API] Using API URL:', API_BASE_URL);
+}
 
 // Configure axios defaults for better performance
 axios.defaults.timeout = API_TIMEOUT;

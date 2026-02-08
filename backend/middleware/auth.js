@@ -1,19 +1,20 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('../config/database-loader');
 const logger = require('../utils/logger');
 
-// Require JWT_SECRET in production
+// Require JWT_SECRET in production; generate ephemeral key in development
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') {
-    logger.error('JWT_SECRET environment variable is required in production!');
+    logger.error('FATAL: JWT_SECRET environment variable is required in production!');
     process.exit(1);
   } else {
-    logger.warn('JWT_SECRET not set. Using default (INSECURE - for development only)');
-    logger.debug('Set JWT_SECRET environment variable for production use!');
+    logger.warn('JWT_SECRET not set. Generating ephemeral key (INSECURE - development only)');
+    logger.warn('Set JWT_SECRET in .env for consistent sessions across restarts');
   }
 }
-const SECRET = JWT_SECRET || 'your-secret-key-change-in-production-DEVELOPMENT-ONLY';
+const SECRET = JWT_SECRET || crypto.randomBytes(64).toString('hex');
 
 const authenticate = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');

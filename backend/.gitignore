@@ -1,5 +1,19 @@
 node_modules/
 data/
 .env
+.env.*
 *.log
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+coverage/
+dist/
+.DS_Store
+*.pem
+*.key
+uploads/
+temp/
+server_stdout.log
+server_stderr.log
 

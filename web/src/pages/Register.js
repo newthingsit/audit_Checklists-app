@@ -391,7 +391,7 @@ const Register = () => {
               color: 'rgba(255,255,255,0.4)',
             }}
           >
-            © 2025 Audit Pro. All rights reserved.
+            © {new Date().getFullYear()} Audit Pro. All rights reserved.
           </Typography>
         </Box>
       </Container>
