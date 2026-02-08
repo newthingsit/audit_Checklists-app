@@ -1,0 +1,12 @@
+---
+applications:
+- name: audit-checklist-web
+  memory: 256M
+  instances: 1
+  buildpacks:
+    - staticfile_buildpack
+  path: build
+  env:
+    FORCE_HTTPS: true
+  routes:
+    - route: audit-checklist-web.cfapps.io
