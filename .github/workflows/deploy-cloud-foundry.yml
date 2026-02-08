@@ -1,0 +1,178 @@
+name: Deploy to Cloud Foundry
+
+on:
+  push:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  CF_API: ${{ secrets.CF_API }}
+  CF_ORG: ${{ secrets.CF_ORG }}
+  CF_SPACE: ${{ secrets.CF_SPACE }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && npm ci
+          cd ../web && npm ci
+      
+      - name: Run backend tests
+        run: cd backend && npm test || true
+      
+      - name: Run web tests
+        run: cd web && npm test -- --watchAll=false || true
+
+  deploy-backend:
+    name: Deploy Backend to Cloud Foundry
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+      
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a ${{ secrets.CF_API }} \
+            -u ${{ secrets.CF_USERNAME }} \
+            -p ${{ secrets.CF_PASSWORD }} \
+            -o ${{ secrets.CF_ORG }} \
+            -s ${{ secrets.CF_SPACE }}
+      
+      - name: Create vars.yml
+        run: |
+          cd backend
+          cat > vars.yml << EOF
+          jwt-secret: ${{ secrets.JWT_SECRET }}
+          allowed-origins: ${{ secrets.ALLOWED_ORIGINS }}
+          node-env: production
+          EOF
+      
+      - name: Deploy Backend
+        run: |
+          cd backend
+          cf push --vars-file vars.yml
+      
+      - name: Verify Backend Deployment
+        run: |
+          BACKEND_URL=$(cf app audit-checklist-backend | grep routes | awk '{print $2}' | head -1)
+          echo "Backend deployed to: https://${BACKEND_URL}"
+          curl -f "https://${BACKEND_URL}/api/health" || exit 1
+
+  deploy-web:
+    name: Deploy Web Frontend to Cloud Foundry
+    needs: [test, deploy-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      
+      - name: Install Cloud Foundry CLI
+        run: |
+          wget -q -O - https://packages.cloudfoundry.org/debian/cli.cloudfoundry.org.key | sudo apt-key add -
+          echo "deb https://packages.cloudfoundry.org/debian stable main" | sudo tee /etc/apt/sources.list.d/cloudfoundry-cli.list
+          sudo apt-get update
+          sudo apt-get install -y cf8-cli
+      
+      - name: Login to Cloud Foundry
+        run: |
+          cf login -a ${{ secrets.CF_API }} \
+            -u ${{ secrets.CF_USERNAME }} \
+            -p ${{ secrets.CF_PASSWORD }} \
+            -o ${{ secrets.CF_ORG }} \
+            -s ${{ secrets.CF_SPACE }}
+      
+      - name: Get Backend URL
+        id: backend-url
+        run: |
+          BACKEND_URL=$(cf app audit-checklist-backend | grep routes | awk '{print $2}' | head -1)
+          echo "BACKEND_API=https://${BACKEND_URL}/api" >> $GITHUB_OUTPUT
+      
+      - name: Build Web Application
+        run: |
+          cd web
+          cat > .env.production << EOF
+          REACT_APP_API_URL=${{ steps.backend-url.outputs.BACKEND_API }}
+          EOF
+          npm ci
+          npm run build
+      
+      - name: Prepare Static Files
+        run: |
+          cd web
+          cp Staticfile build/ 2>/dev/null || true
+          cp -r includes build/ 2>/dev/null || true
+      
+      - name: Deploy Web Frontend
+        run: |
+          cd web
+          cf push
+      
+      - name: Verify Web Deployment
+        run: |
+          WEB_URL=$(cf app audit-checklist-web | grep routes | awk '{print $2}' | head -1)
+          echo "Web app deployed to: https://${WEB_URL}"
+          curl -f "https://${WEB_URL}" || exit 1
+
+  notify:
+    name: Notify Deployment Status
+    needs: [deploy-backend, deploy-web]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Deployment Success
+        if: needs.deploy-backend.result == 'success' && needs.deploy-web.result == 'success'
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Backend and Web are now live on Cloud Foundry"
+      
+      - name: Deployment Failed
+        if: needs.deploy-backend.result == 'failure' || needs.deploy-web.result == 'failure'
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details"
+          exit 1

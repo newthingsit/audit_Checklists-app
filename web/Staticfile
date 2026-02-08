@@ -1,0 +1,14 @@
+root: .
+location_include: includes/*.conf
+
+# Enable pushstate for React Router
+pushstate: enabled
+
+# Enable HTTPS
+http_strict_transport_security: true
+http_strict_transport_security_include_subdomains: true
+force_https: true
+
+# Browser caching
+# Cache static assets for 1 year
+directory: visible

@@ -86,8 +86,29 @@ audit_Checklists-app/
 ## Live Deployment
 
 - **Web App**: [https://app.litebitefoods.com](https://app.litebitefoods.com)
-- **Backend API**: Azure App Service
+- **Backend API**: Azure App Service / Cloud Foundry
 - **Mobile**: Expo OTA updates (production branch)
+
+### Cloud Foundry Deployment
+
+Deploy to Cloud Foundry using the provided scripts and configuration:
+
+```bash
+# Quick deployment (interactive)
+./deploy-to-cf.sh
+
+# Or manual deployment:
+# Backend
+cd backend && cf push --vars-file vars.yml
+
+# Web
+cd web && npm run build && cf push
+```
+
+📚 **Deployment Documentation:**
+- [Cloud Foundry Deployment Guide](./CLOUD_FOUNDRY_DEPLOYMENT.md) - Complete step-by-step guide
+- [Pre-Deployment Checklist](./CLOUD_FOUNDRY_CHECKLIST.md) - Verify readiness before deployment
+- [Hosting Plan](./docs/deployment/HOSTING_PLAN.md) - Compare deployment options
 
 ## API Endpoints
 

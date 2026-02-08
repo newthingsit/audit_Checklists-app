@@ -17,3 +17,4 @@ temp/
 server_stdout.log
 server_stderr.log
 
+vars.yml
