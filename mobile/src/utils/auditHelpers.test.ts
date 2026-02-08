@@ -1,87 +1,49 @@
-import { describe, it, expect } from 'vitest';
+/// <reference types="jest" />
 import {
-  calculateCategoryCompletion,
-  calculateChecklistProgress,
-  isCategoryComplete,
-  getCompletionMessage,
-  formatDate,
-  formatTime,
-} from '@utils/auditHelpers';
-import { AuditCategory, AuditChecklist } from '@types';
+  calculateCategoryCompletionStatus,
+  getFirstIncompleteCategory,
+  getCategoryStatistics,
+} from './auditHelpers';
+
+type AuditItem = {
+  id: string;
+  category: string;
+  mark?: string | number | null;
+  status?: string;
+};
 
 describe('Mobile - Audit Helpers', () => {
-  const mockCategory: AuditCategory = {
-    id: 'cat1',
-    name: 'Safety',
-    nameUrdu: 'سیفٹی',
-    items: [
-      { id: 'item1', categoryId: 'cat1', question: 'Is area safe?', response: 'Yes' },
-      { id: 'item2', categoryId: 'cat1', question: 'Are exits clear?', response: '' },
-    ],
-  };
+  const categories = ['Safety', 'Cleanliness'];
+  const items: AuditItem[] = [
+    { id: 'item1', category: 'Safety', mark: 1, status: 'completed' },
+    { id: 'item2', category: 'Safety', mark: null, status: 'pending' },
+    { id: 'item3', category: 'Cleanliness', mark: 1, status: 'completed' },
+  ];
 
-  describe('calculateCategoryCompletion', () => {
-    it('calculates completion percentage', () => {
-      const completion = calculateCategoryCompletion(mockCategory);
-      expect(completion.totalItems).toBe(2);
-      expect(completion.completedItems).toBe(1);
-      expect(completion.percentage).toBe(50);
-    });
-
-    it('handles empty categories', () => {
-      const empty: AuditCategory = {
-        id: 'empty',
-        name: 'Empty',
-        nameUrdu: 'خالی',
-        items: [],
-      };
-      const completion = calculateCategoryCompletion(empty);
-      expect(completion.percentage).toBe(0);
+  describe('calculateCategoryCompletionStatus', () => {
+    it('calculates completion status per category', () => {
+      const status = calculateCategoryCompletionStatus(categories, items);
+      expect(status.Safety.total).toBe(2);
+      expect(status.Safety.completed).toBe(1);
+      expect(status.Safety.percentage).toBe(50);
+      expect(status.Cleanliness.completed).toBe(1);
+      expect(status.Cleanliness.isComplete).toBe(true);
     });
   });
 
-  describe('isCategoryComplete', () => {
-    it('returns true when all items have responses', () => {
-      const complete: AuditCategory = {
-        ...mockCategory,
-        items: [
-          { ...mockCategory.items[0], response: 'Yes' },
-          { ...mockCategory.items[1], response: 'No' },
-        ],
-      };
-      expect(isCategoryComplete(complete)).toBe(true);
-    });
-
-    it('returns false when items are missing responses', () => {
-      expect(isCategoryComplete(mockCategory)).toBe(false);
+  describe('getFirstIncompleteCategory', () => {
+    it('returns the first incomplete category', () => {
+      const result = getFirstIncompleteCategory(categories, items);
+      expect(result).toBe('Safety');
     });
   });
 
-  describe('getCompletionMessage', () => {
-    it('returns appropriate message based on progress', () => {
-      const checklist: AuditChecklist = {
-        id: '1',
-        auditName: 'Test',
-        createdDate: '2024-01-31',
-        categories: [mockCategory],
-      };
-      const message = getCompletionMessage(checklist);
-      expect(message).toBe('50% complete');
-    });
-  });
-
-  describe('formatDate', () => {
-    it('formats date string correctly', () => {
-      const formatted = formatDate('2024-01-31');
-      expect(formatted).toContain('January');
-    });
-  });
-
-  describe('formatTime', () => {
-    it('formats timestamp correctly', () => {
-      const timestamp = new Date('2024-01-31T14:30:00').getTime();
-      const formatted = formatTime(timestamp);
-      expect(formatted).toContain('2:30 PM');
+  describe('getCategoryStatistics', () => {
+    it('aggregates totals across categories', () => {
+      const stats = getCategoryStatistics(categories, items);
+      expect(stats.total).toBe(3);
+      expect(stats.completed).toBe(2);
+      expect(stats.percentage).toBe(67);
     });
   });
 });

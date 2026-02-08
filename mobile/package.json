@@ -42,8 +42,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
     "babel-preset-expo": "~54.0.10",
-    "sharp": "^0.34.5"
+    "jest": "^30.2.0",
+    "react-dom": "^19.1.0",
+    "sharp": "^0.34.5",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.9.3"
   },
   "private": true
 }

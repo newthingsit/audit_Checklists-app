@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/// <reference types="jest" />
 import { renderHook, act } from '@testing-library/react';
-import { useAuditFormState } from '@hooks/useAuditFormState';
+import { useAuditFormState } from './useAuditFormState';
 
 describe('Mobile - useAuditFormState', () => {
-  let hook;
+  let hook: { current: ReturnType<typeof useAuditFormState> };
 
   beforeEach(() => {
     const { result } = renderHook(() => useAuditFormState());

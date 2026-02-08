@@ -1,52 +1,34 @@
-import { describe, it, expect } from 'vitest';
+/// <reference types="jest" />
 import {
-  validateRequired,
-  validatePhone,
-  normalizeText,
-  sanitizeInput,
-} from '@utils/formValidation';
+  validateField,
+  validateAuditForm,
+} from '@shared/utils/formValidation';
 
 describe('Mobile - Form Validation', () => {
-  describe('validateRequired', () => {
-    it('returns error for empty string', () => {
-      expect(validateRequired('', 'Name')).toBe('Name is required');
+  describe('validateField', () => {
+    it('returns a required error when missing', () => {
+      const errors = validateField('', { required: true }, 'Name');
+      expect(errors.length).toBe(1);
+      expect(errors[0].message).toBe('Name is required');
     });
 
-    it('returns error for whitespace only', () => {
-      expect(validateRequired('   ', 'Name')).toBe('Name is required');
-    });
-
-    it('returns null for valid value', () => {
-      expect(validateRequired('John Doe', 'Name')).toBeNull();
-    });
-  });
-
-  describe('validatePhone', () => {
-    it('validates valid Pakistani phone number', () => {
-      expect(validatePhone('03001234567')).toBeNull();
-      expect(validatePhone('+92-300-1234567')).toBeNull();
-    });
-
-    it('returns error for invalid phone', () => {
-      expect(validatePhone('123')).toBe('Invalid phone format (minimum 10 digits)');
+    it('returns no errors for valid input', () => {
+      const errors = validateField('John Doe', { required: true }, 'Name');
+      expect(errors).toEqual([]);
     });
   });
 
-  describe('normalizeText', () => {
-    it('trims whitespace', () => {
-      expect(normalizeText('  hello  ')).toBe('hello');
+  describe('validateAuditForm', () => {
+    it('returns errors for missing required fields', () => {
+      const result = validateAuditForm({ name: '' }, ['name', 'location']);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBe(2);
     });
 
-    it('removes extra spaces', () => {
-      expect(normalizeText('hello    world')).toBe('hello world');
-    });
-  });
-
-  describe('sanitizeInput', () => {
-    it('sanitizes HTML input', () => {
-      const input = '<script>alert("xss")</script>';
-      const result = sanitizeInput(input);
-      expect(result).not.toContain('<script>');
+    it('returns valid when required fields are present', () => {
+      const result = validateAuditForm({ name: 'Test', location: 'Store 1' }, ['name', 'location']);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toEqual([]);
     });
   });
 });

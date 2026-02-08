@@ -1,26 +1,19 @@
-import { cleanup } from '@testing-library/react-native';
-import { afterEach, vi } from 'vitest';
-
-afterEach(() => {
-  cleanup();
-});
-
 // Mock AsyncStorage
-vi.mock('@react-native-async-storage/async-storage', () => ({
+jest.mock('@react-native-async-storage/async-storage', () => ({
   default: {
-    getItem: vi.fn(),
-    setItem: vi.fn(),
-    removeItem: vi.fn(),
-    clear: vi.fn(),
+    getItem: jest.fn(),
+    setItem: jest.fn(),
+    removeItem: jest.fn(),
+    clear: jest.fn(),
   },
 }));
 
 // Mock navigation
-vi.mock('@react-navigation/native', () => ({
+jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
-    navigate: vi.fn(),
-    goBack: vi.fn(),
-    setOptions: vi.fn(),
+    navigate: jest.fn(),
+    goBack: jest.fn(),
+    setOptions: jest.fn(),
   }),
   useRoute: () => ({
     params: {},

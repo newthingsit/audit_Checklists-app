@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { validateAuditItem, validateLocation as validateLocationField } from '../utils/formValidation';
+import { validateLocation as validateLocationField } from '../utils/formValidation';
 
 /**
  * useFormValidation Hook

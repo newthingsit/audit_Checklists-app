@@ -290,8 +290,34 @@ const AuditFormScreen = () => {
       setLoading(false);
       isInitialLoadInProgressRef.current = false;
     }
-    fetchLocations();
   }, [templateId, auditId, scheduledAuditId]);
+
+  // Fetch locations on mount - do this in a separate effect to avoid dependency cycles
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadLocations = async () => {
+      if (!mounted) return;
+      try {
+        const params = scheduledAuditId ? { scheduled_audit_id: scheduledAuditId } : {};
+        const response = await axios.get(`${API_BASE_URL}/locations`, { params }).catch(() => ({ data: { locations: [] } }));
+        const locationsData = response.data.locations || [];
+        if (mounted) {
+          setLocations(locationsData);
+          console.log('[AuditForm] Locations fetched:', locationsData.length, 'locations');
+        }
+      } catch (error) {
+        console.error('Error fetching locations:', error);
+      }
+    };
+    
+    // Load locations once on mount
+    loadLocations();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [scheduledAuditId]);
 
   // Refresh data when screen comes into focus, but only if:
   // 1. We're viewing an existing audit (has auditId)
@@ -359,26 +385,32 @@ const AuditFormScreen = () => {
     }, [])
   );
 
-  // Pre-fill location when scheduled audit provides locationId or when resuming audit
+  // Pre-fill location when audit data is loaded  
+  // Only update when selectedLocation is not set and we have location data
   useEffect(() => {
-    // Handle initialLocationId from route params (for scheduled audits)
-    if (initialLocationId && locations.length > 0 && !selectedLocation) {
-      const location = locations.find(l => l.id === parseInt(initialLocationId));
-      if (location) {
-        setSelectedLocation(location);
+    if (locations.length === 0 || selectedLocation) {
+      // Skip if no locations available or location already selected
+      return;
+    }
+    
+    // Use initialLocationId (for scheduled audits) or locationId (for existing audits)
+    const idToUse = initialLocationId || locationId;
+    if (!idToUse) {
+      // No ID available yet
+      return;
+    }
+    
+    // Find the location in the loaded list
+    const location = locations.find(l => l.id === parseInt(idToUse));
+    if (location) {
+      console.log('[AuditForm] Pre-filling selectedLocation for ID:', idToUse);
+      setSelectedLocation(location);
+      // Also update locationId state if needed
+      if (!locationId && initialLocationId) {
         setLocationId(initialLocationId.toString());
-        // Previous failures will be fetched automatically by the other useEffect
       }
     }
-    // Handle locationId set from audit data (when resuming)
-    else if (locationId && locations.length > 0 && !selectedLocation) {
-      const location = locations.find(l => l.id === parseInt(locationId));
-      if (location) {
-        setSelectedLocation(location);
-        // Previous failures will be fetched automatically by the other useEffect
-      }
-    }
-  }, [initialLocationId, locationId, locations, selectedLocation]);
+  }, [locations, locationId, initialLocationId, selectedLocation]);
 
   const checkExistingAudit = async (scheduledId = scheduledAuditId) => {
     try {
@@ -979,26 +1011,6 @@ const AuditFormScreen = () => {
       // Silently fail - this is not critical functionality
     } finally {
       setLoadingPreviousFailures(false);
-    }
-  };
-
-  const fetchLocations = async () => {
-    try {
-      // If scheduled audit, pass scheduled_audit_id to override store assignments
-      const params = scheduledAuditId ? { scheduled_audit_id: scheduledAuditId } : {};
-      const response = await axios.get(`${API_BASE_URL}/locations`, { params }).catch(() => ({ data: { locations: [] } }));
-      const locationsData = response.data.locations || [];
-      setLocations(locationsData);
-      
-      // If locationId is set (e.g., from URL params), find and set selected location
-      if (locationId && locationsData.length > 0) {
-        const location = locationsData.find(l => l.id === parseInt(locationId));
-        if (location) {
-          setSelectedLocation(location);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching locations:', error);
     }
   };
 
