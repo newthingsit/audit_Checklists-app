@@ -388,7 +388,7 @@ function ThemeWrapper() {
                 path="/dashboard-report"
                 element={
                   <PrivateRoute>
-                    <PermissionRoute permissions={['view_analytics']}>
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
                       <DashboardReport />
                     </PermissionRoute>
                   </PrivateRoute>

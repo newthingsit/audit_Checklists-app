@@ -3443,11 +3443,11 @@ router.put('/:id/complete', authenticate, (req, res) => {
                    ai.status = 'failed' 
                    OR ai.mark = '0' 
                    OR (cio.mark IS NOT NULL AND cio.mark IN ('No', 'N', 'Fail', 'F', '0'))
-                   OR (ai.mark IS NOT NULL AND parseFloat(ai.mark) = 0)
+                   OR (ai.mark IS NOT NULL AND CAST(ai.mark AS REAL) = 0)
                  )
                ORDER BY 
                  CASE WHEN ci.is_critical = 1 THEN 0 ELSE 1 END,
-                 CASE WHEN ai.mark IS NOT NULL THEN parseFloat(ai.mark) ELSE 999 END ASC
+                 CASE WHEN ai.mark IS NOT NULL THEN CAST(ai.mark AS REAL) ELSE 999 END ASC
                LIMIT 3`,
               [auditId],
               (err, topDeviations) => {

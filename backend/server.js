@@ -66,9 +66,8 @@ app.use((req, res, next) => {
     }
     res.setHeader('Vary', 'Origin');
   } else if (origin && isProduction) {
-    // Still set ACAO so browser can read the error response
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // Blocked origin in production - do NOT set CORS headers
+    // Without valid ACAO headers, the browser will block the response
     res.setHeader('Vary', 'Origin');
   }
 

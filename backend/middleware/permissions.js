@@ -271,8 +271,7 @@ const allowOwnOrPermission = (...requiredPermissions) => {
       getUserPermissions(req.user.id, req.user.role, (err, userPermissions) => {
         if (err) {
           logger.error('Error fetching user permissions:', err);
-          // Allow access anyway - route will filter to own items
-          return next();
+          return res.status(500).json({ error: 'Internal server error' });
         }
 
         const hasRequiredPermission = requiredPermissions.some(permission =>
@@ -284,9 +283,9 @@ const allowOwnOrPermission = (...requiredPermissions) => {
           return next();
         }
 
-        // Even without permission, allow access - route handler will filter to own items
-        // This is intentional: users should be able to see their own scheduled audits
+        // User lacks permission - allow access but flag for own-resource filtering only
         req.userPermissions = userPermissions;
+        req.ownOnly = true;
         next();
       });
     });

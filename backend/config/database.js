@@ -940,10 +940,11 @@ const seedDefaultUser = async () => {
     if (err) return;
     if (row.count > 0) return; // Already seeded
 
-    // Create default admin user
-    const defaultEmail = 'admin@test.com';
-    const defaultPassword = 'admin123';
+    // Create default admin user from environment variables
+    const defaultEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@test.com';
+    const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
     const defaultName = 'Admin User';
+    if (!process.env.DEFAULT_ADMIN_EMAIL || !process.env.DEFAULT_ADMIN_PASSWORD) {      console.warn('WARNING: Using default admin credentials. Set DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD env vars for production.');    }
     
     try {
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
@@ -954,9 +955,7 @@ const seedDefaultUser = async () => {
           if (err) {
             console.error('Error creating default user:', err);
           } else {
-            console.log('Default user created successfully');
-            console.log('Email:', defaultEmail);
-            console.log('Password:', defaultPassword);
+            console.log('Default admin user created successfully.');
           }
         }
       );
