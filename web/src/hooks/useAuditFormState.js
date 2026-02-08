@@ -16,6 +16,13 @@ export const useAuditFormState = (initialValues = {}) => {
   const [photos, setPhotos] = useState(initialValues.photos || {});
   const [notes, setNotes] = useState(initialValues.notes || '');
 
+  const normalizePhotoList = useCallback((value) => {
+    if (!value) {
+      return [];
+    }
+    return Array.isArray(value) ? value : [value];
+  }, []);
+
   const updateResponse = useCallback((itemId, value) => {
     setResponses(prev => ({
       ...prev,
@@ -60,9 +67,23 @@ export const useAuditFormState = (initialValues = {}) => {
   const updatePhoto = useCallback((itemId, photo) => {
     setPhotos(prev => ({
       ...prev,
-      [itemId]: photo,
+      [itemId]: normalizePhotoList(photo),
     }));
-  }, []);
+  }, [normalizePhotoList]);
+
+  const addPhoto = useCallback((itemId, photoUri) => {
+    setPhotos(prev => ({
+      ...prev,
+      [itemId]: [...normalizePhotoList(prev[itemId]), photoUri],
+    }));
+  }, [normalizePhotoList]);
+
+  const removePhoto = useCallback((itemId, photoUri) => {
+    setPhotos(prev => ({
+      ...prev,
+      [itemId]: normalizePhotoList(prev[itemId]).filter(uri => uri !== photoUri),
+    }));
+  }, [normalizePhotoList]);
 
   const clearItemResponses = useCallback((itemId) => {
     setResponses(prev => {
@@ -116,6 +137,8 @@ export const useAuditFormState = (initialValues = {}) => {
     updateInputValue,
     updateComment,
     updatePhoto,
+    addPhoto,
+    removePhoto,
     setNotes,
     setResponses,
     setSelectedOptions,

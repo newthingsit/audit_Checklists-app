@@ -14,9 +14,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "types": ["jest", "node"],
 
     /* Linting */
-    "strict": false,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
@@ -32,6 +34,6 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**"],
+  "exclude": ["src/test/**"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

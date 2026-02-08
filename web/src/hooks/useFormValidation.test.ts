@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/// <reference types="jest" />
 import { renderHook, act } from '@testing-library/react';
-import { useFormValidation } from '@hooks/useFormValidation';
+import { useFormValidation } from './useFormValidation';
 
 describe('useFormValidation', () => {
-  let hook;
+  let hook: any;
 
   beforeEach(() => {
     const { result } = renderHook(() => useFormValidation());
@@ -17,35 +17,35 @@ describe('useFormValidation', () => {
 
   it('validates required fields', () => {
     act(() => {
-      hook.current.validateField('name', '');
+      hook.current.validateField('name', '', { required: true });
     });
     expect(hook.current.errors['name']).toBeDefined();
   });
 
   it('validates email format', () => {
     act(() => {
-      hook.current.validateField('email', 'invalid-email');
+      hook.current.validateField('email', 'invalid-email', { email: true });
     });
     expect(hook.current.errors['email']).toBeDefined();
   });
 
   it('validates phone format', () => {
     act(() => {
-      hook.current.validateField('phone', '123');
+      hook.current.validateField('phone', '123', { phone: true });
     });
     expect(hook.current.errors['phone']).toBeDefined();
   });
 
   it('clears errors for valid input', () => {
     act(() => {
-      hook.current.validateField('name', 'John Doe');
+      hook.current.validateField('name', 'John Doe', { required: true });
     });
     expect(hook.current.errors['name']).toBeUndefined();
   });
 
   it('marks fields as touched', () => {
     act(() => {
-      hook.current.validateField('name', '');
+      hook.current.validateField('name', '', { required: true });
     });
     expect(hook.current.touched['name']).toBe(true);
   });
@@ -56,14 +56,23 @@ describe('useFormValidation', () => {
       email: 'test@example.com',
       phone: '',
     };
-    const isValid = hook.current.validateForm(formData);
-    expect(isValid).toBe(false);
+    const rules = {
+      name: { required: true },
+      phone: { required: true },
+    };
+    let isValid: boolean;
+    act(() => {
+      isValid = hook.current.validateForm(formData, rules);
+    });
+    expect(isValid!).toBe(false);
   });
 
   it('clears all errors', () => {
     act(() => {
-      hook.current.validateField('name', '');
-      hook.current.validateField('email', '');
+      hook.current.validateField('name', '', { required: true });
+    });
+    act(() => {
+      hook.current.validateField('email', '', { required: true });
     });
     act(() => {
       hook.current.clearErrors();

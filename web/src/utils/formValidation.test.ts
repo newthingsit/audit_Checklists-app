@@ -1,60 +1,74 @@
-import { describe, it, expect } from 'vitest';
+/// <reference types="jest" />
 import {
-  validateAuditName,
+  validateRequired,
   validateEmail,
   validatePhone,
   validateDateFormat,
-  validateCategoryData,
+  validateCategoryCompletion,
   validateChecklistData,
-} from '@utils/formValidation';
+} from './formValidation';
 
 describe('Form Validation Utilities', () => {
-  describe('validateAuditName', () => {
-    it('validates audit name', () => {
-      expect(validateAuditName('Valid Audit Name')).toBe(true);
-      expect(validateAuditName('')).toBe(false);
+  describe('validateRequired', () => {
+    it('returns error for empty value', () => {
+      expect(validateRequired('', 'Audit Name')).toBe('Audit Name is required');
+    });
+
+    it('returns null for valid value', () => {
+      expect(validateRequired('Valid Audit Name', 'Audit Name')).toBeNull();
     });
   });
 
   describe('validateEmail', () => {
-    it('validates email format', () => {
-      expect(validateEmail('test@example.com')).toBe(true);
-      expect(validateEmail('invalid-email')).toBe(false);
+    it('returns null for valid email', () => {
+      expect(validateEmail('test@example.com')).toBeNull();
+    });
+
+    it('returns error for invalid email', () => {
+      expect(validateEmail('invalid-email')).toBe('Invalid email format');
     });
   });
 
   describe('validatePhone', () => {
-    it('validates phone format', () => {
-      expect(validatePhone('03001234567')).toBe(true);
-      expect(validatePhone('123')).toBe(false);
+    it('returns null for valid phone', () => {
+      expect(validatePhone('03001234567')).toBeNull();
+    });
+
+    it('returns error for invalid phone', () => {
+      expect(validatePhone('123')).toBe('Invalid phone format (minimum 10 digits)');
     });
   });
 
   describe('validateDateFormat', () => {
-    it('validates date format', () => {
-      expect(validateDateFormat('2024-01-31')).toBe(true);
-      expect(validateDateFormat('invalid-date')).toBe(false);
+    it('returns null for valid date', () => {
+      expect(validateDateFormat('2024-01-31')).toBeNull();
+    });
+
+    it('returns error for invalid date format', () => {
+      expect(validateDateFormat('invalid-date')).toBe('Date must be in YYYY-MM-DD format');
     });
   });
 
-  describe('validateCategoryData', () => {
-    it('validates category data structure', () => {
-      const validData = {
-        categoryId: '1',
-        items: [{ id: '1', response: 'Yes' }],
+  describe('validateCategoryCompletion', () => {
+    it('returns true when all items have responses', () => {
+      const category = {
+        id: '1',
+        name: 'Test',
+        items: [{ id: '1', categoryId: '1', question: 'Q1', response: 'Yes' }],
       };
-      expect(validateCategoryData(validData)).toBe(true);
+      expect(validateCategoryCompletion(category as any)).toBe(true);
     });
   });
 
   describe('validateChecklistData', () => {
-    it('validates complete checklist data', () => {
+    it('returns valid for complete checklist data', () => {
       const validData = {
         auditName: 'Test Audit',
         createdDate: '2024-01-31',
         categories: [{ categoryId: '1', items: [] }],
       };
-      expect(validateChecklistData(validData)).toBe(true);
+      const result = validateChecklistData(validData as any);
+      expect(result.isValid).toBe(true);
     });
   });
 });

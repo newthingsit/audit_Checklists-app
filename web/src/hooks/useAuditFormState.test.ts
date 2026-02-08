@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/// <reference types="jest" />
 import { renderHook, act } from '@testing-library/react';
-import { useAuditFormState } from '@hooks/useAuditFormState';
+import { useAuditFormState } from './useAuditFormState';
 
 describe('useAuditFormState', () => {
-  let hook;
+  let hook: any;
 
   beforeEach(() => {
     const { result } = renderHook(() => useAuditFormState());
@@ -24,10 +24,10 @@ describe('useAuditFormState', () => {
 
   it('handles response updates', () => {
     act(() => {
-      hook.current.setResponses({
-        category1: 'Yes',
-        category2: 'No',
-      });
+      hook.current.updateResponse('category1', 'Yes');
+    });
+    act(() => {
+      hook.current.updateResponse('category2', 'No');
     });
     expect(hook.current.responses).toEqual({
       category1: 'Yes',
@@ -37,9 +37,7 @@ describe('useAuditFormState', () => {
 
   it('handles selected options', () => {
     act(() => {
-      hook.current.setSelectedOptions({
-        item1: 'option1',
-      });
+      hook.current.updateSelectedOption('item1', 'option1');
     });
     expect(hook.current.selectedOptions).toEqual({
       item1: 'option1',
@@ -48,9 +46,10 @@ describe('useAuditFormState', () => {
 
   it('handles multiple selections', () => {
     act(() => {
-      hook.current.setMultipleSelections({
-        item1: ['opt1', 'opt2'],
-      });
+      hook.current.updateMultipleSelection('item1', 'opt1');
+    });
+    act(() => {
+      hook.current.updateMultipleSelection('item1', 'opt2');
     });
     expect(hook.current.multipleSelections).toEqual({
       item1: ['opt1', 'opt2'],
@@ -59,9 +58,7 @@ describe('useAuditFormState', () => {
 
   it('handles comments', () => {
     act(() => {
-      hook.current.setComments({
-        item1: 'Comment text',
-      });
+      hook.current.updateComment('item1', 'Comment text');
     });
     expect(hook.current.comments).toEqual({
       item1: 'Comment text',
@@ -71,9 +68,7 @@ describe('useAuditFormState', () => {
   it('handles photos', () => {
     const photoUri = 'file:///path/to/photo.jpg';
     act(() => {
-      hook.current.setPhotos({
-        item1: [photoUri],
-      });
+      hook.current.addPhoto('item1', photoUri);
     });
     expect(hook.current.photos).toEqual({
       item1: [photoUri],
@@ -83,7 +78,9 @@ describe('useAuditFormState', () => {
   it('resets form state', () => {
     act(() => {
       hook.current.setNotes('Note');
-      hook.current.setResponses({ item: 'Yes' });
+    });
+    act(() => {
+      hook.current.updateResponse('item', 'Yes');
     });
     act(() => {
       hook.current.resetForm();
