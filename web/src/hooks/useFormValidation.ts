@@ -59,10 +59,15 @@ export const useFormValidation = (): UseFormValidationReturn => {
         }
       }
 
-      setErrorsState(prev => ({
-        ...prev,
-        [fieldName]: error || undefined,
-      }));
+      setErrorsState(prev => {
+        const next = { ...prev };
+        if (error) {
+          next[fieldName] = error;
+        } else {
+          delete next[fieldName];
+        }
+        return next;
+      });
 
       setTouchedState(prev => ({
         ...prev,

@@ -244,22 +244,10 @@ const Dashboard = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-          <CircularProgress />
-        </Box>
-      </Layout>
-    );
-  }
-
+  // All hooks must be called before any early return (React rules of hooks)
   const completionRate = useMemo(() => 
     stats.audits > 0 ? Math.round((stats.completed / stats.audits) * 100) : 0
   , [stats.audits, stats.completed]);
-  const monthChange = analytics?.monthChange || {};
-  const currentMonthStats = analytics?.currentMonthStats || {};
-  const lastMonthStats = analytics?.lastMonthStats || {};
 
   // Prepare chart data (memoized to avoid recalculation on every render)
   const statusColors = {
@@ -292,6 +280,20 @@ const Dashboard = () => {
       avgScore: Math.round((trend.avg_score || 0) * 100) / 100
     }))
   , [trends]);
+
+  if (loading) {
+    return (
+      <Layout>
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+          <CircularProgress />
+        </Box>
+      </Layout>
+    );
+  }
+
+  const monthChange = analytics?.monthChange || {};
+  const currentMonthStats = analytics?.currentMonthStats || {};
+  const lastMonthStats = analytics?.lastMonthStats || {};
 
   return (
     <Layout>
