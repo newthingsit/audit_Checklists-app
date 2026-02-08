@@ -137,7 +137,7 @@ const AuditDetail = () => {
       const response = await axios.get('/api/users', { params: { scope: 'assignable' } });
       setUsers(response.data.users || []);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching users:', error);
     }
   };
 
@@ -146,7 +146,7 @@ const AuditDetail = () => {
       const response = await axios.get(`/api/audits/${auditId}/action-plan`);
       setActionPlan(response.data);
     } catch (error) {
-      console.error('Error fetching action plan:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching action plan:', error);
       // Action plan not available is not an error for in-progress audits
     }
   };
@@ -158,7 +158,7 @@ const AuditDetail = () => {
       setEditingActionId(null);
       fetchActionPlan(id);
     } catch (error) {
-      console.error('Error updating action item:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating action item:', error);
       showError('Error updating action item');
     }
   };
@@ -208,7 +208,7 @@ const AuditDetail = () => {
         fetchActionPlan(id);
       }
     } catch (error) {
-      console.error('Error fetching audit:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching audit:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Failed to load audit';
       const statusCode = error.response?.status;
       
@@ -251,7 +251,7 @@ const AuditDetail = () => {
       showSuccess('Action item created successfully!');
       fetchAudit();
     } catch (error) {
-      console.error('Error creating action:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error creating action:', error);
       showError('Error creating action item');
     }
   };
@@ -289,7 +289,7 @@ const AuditDetail = () => {
       showSuccess('Item updated successfully!');
       fetchAudit();
     } catch (error) {
-      console.error('Error updating item:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating item:', error);
       showError('Error updating item');
     }
   };
@@ -350,7 +350,7 @@ const AuditDetail = () => {
       
       showSuccess('QA Report downloaded successfully!');
     } catch (error) {
-      console.error('Error downloading enhanced report:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error downloading enhanced report:', error);
       showError('Failed to download QA report. Please try again.');
     }
   };
@@ -376,7 +376,7 @@ const AuditDetail = () => {
         setShowEmailDialog(false);
       }, 2000);
     } catch (error) {
-      console.error('Error sending email:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error sending email:', error);
       setEmailError(error.response?.data?.error || 'Failed to send email');
       showError('Failed to send email');
     } finally {
@@ -397,7 +397,7 @@ const AuditDetail = () => {
         setShowEmailDialog(false);
       }, 2000);
     } catch (error) {
-      console.error('Error sending email:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error sending email:', error);
       setEmailError(error.response?.data?.error || 'Failed to send email to store');
       showError('Failed to send email to store');
     } finally {
@@ -1263,7 +1263,7 @@ const AuditDetail = () => {
                     alt="Audit evidence"
                     style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px' }}
                     onError={(e) => {
-                      console.error('Error loading image:', item.photo_url);
+                      if (process.env.NODE_ENV !== 'production') console.error('Error loading image:', item.photo_url);
                       e.target.style.display = 'none';
                     }}
                   />

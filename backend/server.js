@@ -677,6 +677,13 @@ db.init().then(async () => {
     escalationJob.runEscalationCheck();
   });
 
+  // Cleanup expired refresh tokens daily at midnight
+  const tokenService = require('./utils/tokenService');
+  cron.schedule('0 0 * * *', () => {
+    logger.info('[Cron] Running refresh token cleanup...');
+    tokenService.cleanup().catch(err => logger.error('[Cron] Token cleanup error:', err));
+  });
+
   // Run jobs immediately on startup (for testing)
   if (process.env.RUN_JOBS_ON_STARTUP === 'true') {
     logger.info('[Startup] Running scheduled audits job on startup...');

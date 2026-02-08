@@ -96,7 +96,7 @@ const Stores = () => {
       const response = await axios.get(`/api/locations?${cacheBuster}`);
       setStores(response.data.locations || []);
     } catch (error) {
-      console.error('Error fetching stores:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching stores:', error);
       setStores([]);
     } finally {
       if (showLoading) {
@@ -173,7 +173,7 @@ const Stores = () => {
         await fetchStores(false);
       }, 800);
     } catch (error) {
-      console.error('Error saving store:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving store:', error);
       const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Error saving store';
       showError(errorMsg);
     }
@@ -217,7 +217,7 @@ const Stores = () => {
           await fetchStores(false);
         }, 800);
       } catch (error) {
-        console.error('Error deleting store:', error);
+        if (process.env.NODE_ENV !== 'production') console.error('Error deleting store:', error);
         
         // Handle 409 Conflict - store has audits
         if (error.response?.status === 409 && error.response?.data?.canForceDelete) {
@@ -259,7 +259,7 @@ const Stores = () => {
           await fetchStores(false);
         }, 800);
       } catch (error) {
-        console.error('Error toggling store status:', error);
+        if (process.env.NODE_ENV !== 'production') console.error('Error toggling store status:', error);
         const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update store status';
         showError(errorMsg);
       }
@@ -418,7 +418,7 @@ const Stores = () => {
       setParsedStores([]);
       setParseError('');
     } catch (error) {
-      console.error('Import error:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Import error:', error);
       showError(error.response?.data?.error || 'Failed to import CSV file');
     } finally {
       setImporting(false);
@@ -523,7 +523,7 @@ const Stores = () => {
       
       showSuccess('Stores exported to CSV successfully');
     } catch (error) {
-      console.error('Error exporting CSV:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error exporting CSV:', error);
       showError('Failed to export CSV');
     }
   };
@@ -1008,7 +1008,7 @@ const Stores = () => {
                       },
                       (error) => {
                         showError('Failed to get location. Please enter coordinates manually.');
-                        console.error('Geolocation error:', error);
+                        if (process.env.NODE_ENV !== 'production') console.error('Geolocation error:', error);
                       }
                     );
                   } else {

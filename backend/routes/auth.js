@@ -5,6 +5,7 @@ const { body, validationResult } = require('express-validator');
 const db = require('../config/database-loader');
 const { JWT_SECRET, authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const tokenService = require('../utils/tokenService');
 
 const router = express.Router();
 
@@ -41,21 +42,24 @@ router.post('/register', [
     dbInstance.run(
       'INSERT INTO users (email, password, name) VALUES (?, ?, ?)',
       [email, hashedPassword, name],
-      function(err) {
+      async function(err) {
         if (err) {
           return res.status(500).json({ error: 'Error creating user' });
         }
 
-        const token = jwt.sign(
-          { id: this.lastID, email, name },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
+        try {
+          const newUser = { id: this.lastID, email, name, role: 'user' };
+          const { accessToken, refreshToken } = await tokenService.issueTokenPair(newUser);
 
-        res.status(201).json({
-          token,
-          user: { id: this.lastID, email, name }
-        });
+          res.status(201).json({
+            token: accessToken,
+            refreshToken,
+            user: { id: this.lastID, email, name }
+          });
+        } catch (tokenErr) {
+          logger.error('Error issuing tokens on register:', tokenErr);
+          return res.status(500).json({ error: 'Error creating session' });
+        }
       }
     );
   });
@@ -127,7 +131,7 @@ router.post('/login', [
 
     // IMPORTANT: do not use an `async` callback here; errors from awaited promises can be mishandled by some DB wrappers.
     bcrypt.compare(password, user.password)
-      .then((isMatch) => {
+      .then(async (isMatch) => {
         if (!isMatch) {
           logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
           return res.status(400).json({
@@ -136,18 +140,17 @@ router.post('/login', [
           });
         }
 
-        let token;
+        let tokenPair;
         try {
-          token = jwt.sign(
-            { id: user.id, email: user.email, name: user.name, role: user.role },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
+          tokenPair = await tokenService.issueTokenPair({
+            id: user.id, email: user.email, name: user.name, role: user.role
+          });
         } catch (tokenErr) {
           logger.error('Login token generation error:', tokenErr);
           return res.status(500).json({ error: 'Token generation failed' });
         }
 
+        const { accessToken: token, refreshToken } = tokenPair;
         const role = user.role ? String(user.role).toLowerCase() : '';
 
         // Fast path for admin users - no database query needed
@@ -155,6 +158,7 @@ router.post('/login', [
           logger.security('login_success', { userId: user.id });
           return res.json({
             token,
+            refreshToken,
             user: {
               id: user.id,
               email: user.email,
@@ -173,12 +177,14 @@ router.post('/login', [
             logger.security('login_success', { userId: user.id });
             return res.json({
               token,
+              refreshToken,
               user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
             });
           }
           logger.security('login_success', { userId: user.id });
           return res.json({
             token,
+            refreshToken,
             user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
           });
         });
@@ -188,6 +194,28 @@ router.post('/login', [
         return res.status(500).json({ error: 'Login failed' });
       });
   });
+});
+
+// Refresh access token using a refresh token (rotating)
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token is required' });
+  }
+
+  try {
+    const result = await tokenService.rotateRefreshToken(refreshToken);
+    if (!result) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token. Please log in again.' });
+    }
+    res.json({
+      token: result.accessToken,
+      refreshToken: result.refreshToken
+    });
+  } catch (err) {
+    logger.error('Error refreshing token:', err);
+    return res.status(500).json({ error: 'Failed to refresh token' });
+  }
 });
 
 // Get current user with permissions
@@ -335,11 +363,13 @@ router.put('/change-password', require('../middleware/auth').authenticate, [
       const hashedPassword = await bcrypt.hash(newPassword, 12);
 
       // Update password
-      dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId], function(err) {
+      dbInstance.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId], async function(err) {
         if (err) {
           logger.error('Error updating password:', err);
           return res.status(500).json({ error: 'Error updating password' });
         }
+        // Revoke all refresh tokens so other sessions must re-login
+        await tokenService.revokeAllForUser(userId).catch(e => logger.error('Error revoking tokens:', e));
         logger.security('password_changed', { userId });
         res.json({ message: 'Password changed successfully' });
       });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Container,
   Grid,
@@ -110,15 +110,12 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Add request cache busting and timeout
       const requestConfig = {
-        params: { _t: Date.now() },
-        headers: { 'Cache-Control': 'no-cache' },
         timeout: 30000 // 30 second timeout
       };
       
@@ -129,28 +126,28 @@ const Dashboard = () => {
          hasPermission(userPermissions, 'manage_templates') || 
          isAdmin(user))
           ? withTimeout(axios.get('/api/templates', requestConfig), 30000).catch((err) => {
-              console.error('Templates fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Templates fetch error:', err.message);
               return { data: { templates: [] } };
             })
           : Promise.resolve({ data: { templates: [] } }),
         // Audits
         canViewAudits
           ? withTimeout(axios.get('/api/audits', requestConfig), 30000).catch((err) => {
-              console.error('Audits fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Audits fetch error:', err.message);
               return { data: { audits: [] } };
             })
           : Promise.resolve({ data: { audits: [] } }),
         // Actions
         canViewActions 
           ? withTimeout(axios.get('/api/actions', requestConfig), 30000).catch((err) => {
-              console.error('Actions fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Actions fetch error:', err.message);
               return { data: { actions: [] } };
             })
           : Promise.resolve({ data: { actions: [] } }),
         // Analytics
         canViewAnalytics
           ? withTimeout(axios.get('/api/analytics/dashboard', requestConfig), 30000).catch((err) => {
-              console.error('Analytics fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Analytics fetch error:', err.message);
               setError('Dashboard data temporarily unavailable. Showing cached data if available.');
               return { data: analytics || {} }; // Use existing analytics if available
             })
@@ -158,21 +155,21 @@ const Dashboard = () => {
         // Trends
         canViewAnalytics
           ? withTimeout(axios.get('/api/analytics/trends?period=month', requestConfig), 30000).catch((err) => {
-              console.error('Trends fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Trends fetch error:', err.message);
               return { data: { trends: [] } };
             })
           : Promise.resolve({ data: { trends: [] } }),
         // Leaderboard - Stores
         canViewAnalytics
           ? withTimeout(axios.get('/api/analytics/leaderboard/stores?limit=5', requestConfig), 30000).catch((err) => {
-              console.error('Store leaderboard fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Store leaderboard fetch error:', err.message);
               return { data: { stores: [] } };
             })
           : Promise.resolve({ data: { stores: [] } }),
         // Leaderboard - Auditors
         canViewAnalytics
           ? withTimeout(axios.get('/api/analytics/leaderboard/auditors?limit=5', requestConfig), 30000).catch((err) => {
-              console.error('Auditor leaderboard fetch error:', err.message);
+              if (process.env.NODE_ENV !== 'production') console.error('Auditor leaderboard fetch error:', err.message);
               return { data: { auditors: [] } };
             })
           : Promise.resolve({ data: { auditors: [] } }),
@@ -207,20 +204,21 @@ const Dashboard = () => {
       });
       setTrendAnalysis(trendAnalysisRes.data);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, canViewAudits, canViewActions, canViewAnalytics]);
 
-  const fetchTrendAnalysis = async (period) => {
+  const fetchTrendAnalysis = useCallback(async (period) => {
     try {
       const response = await axios.get(`/api/analytics/trends/analysis?period=${period}`);
       setTrendAnalysis(response.data);
     } catch (error) {
-      console.error('Error fetching trend analysis:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching trend analysis:', error);
     }
-  };
+  }, []);
 
   const handleTrendPeriodChange = (e) => {
     const period = e.target.value;
@@ -256,35 +254,44 @@ const Dashboard = () => {
     );
   }
 
-  const completionRate = stats.audits > 0 ? Math.round((stats.completed / stats.audits) * 100) : 0;
+  const completionRate = useMemo(() => 
+    stats.audits > 0 ? Math.round((stats.completed / stats.audits) * 100) : 0
+  , [stats.audits, stats.completed]);
   const monthChange = analytics?.monthChange || {};
   const currentMonthStats = analytics?.currentMonthStats || {};
   const lastMonthStats = analytics?.lastMonthStats || {};
 
-  // Prepare chart data
+  // Prepare chart data (memoized to avoid recalculation on every render)
   const statusColors = {
     completed: '#4caf50',
     in_progress: '#ff9800',
     pending: '#9e9e9e'
   };
 
-  const pieData = analytics?.byStatus?.map(status => ({
-    name: status.status === 'completed' ? 'Completed' : status.status === 'in_progress' ? 'In Progress' : 'Pending',
-    value: status.count,
-    color: statusColors[status.status] || '#9e9e9e'
-  })) || [];
+  const pieData = useMemo(() => 
+    analytics?.byStatus?.map(status => ({
+      name: status.status === 'completed' ? 'Completed' : status.status === 'in_progress' ? 'In Progress' : 'Pending',
+      value: status.count,
+      color: statusColors[status.status] || '#9e9e9e'
+    })) || []
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  , [analytics?.byStatus]);
 
-  const monthTrendData = analytics?.byMonth?.map(month => ({
-    month: new Date(month.month + '-01').toLocaleDateString('default', { month: 'short', year: 'numeric' }),
-    count: month.count
-  })) || [];
+  const monthTrendData = useMemo(() => 
+    analytics?.byMonth?.map(month => ({
+      month: new Date(month.month + '-01').toLocaleDateString('default', { month: 'short', year: 'numeric' }),
+      count: month.count
+    })) || []
+  , [analytics?.byMonth]);
 
-  const trendChartData = (trends || []).map(trend => ({
-    period: trend.period,
-    total: trend.total,
-    completed: trend.completed,
-    avgScore: Math.round((trend.avg_score || 0) * 100) / 100
-  }));
+  const trendChartData = useMemo(() => 
+    (trends || []).map(trend => ({
+      period: trend.period,
+      total: trend.total,
+      completed: trend.completed,
+      avgScore: Math.round((trend.avg_score || 0) * 100) / 100
+    }))
+  , [trends]);
 
   return (
     <Layout>

@@ -340,24 +340,24 @@ const Checklists = () => {
       });
       const serverTemplates = response.data.templates || [];
       
-      console.log('Templates fetched:', serverTemplates.length, 'templates');
-      console.log('Template data:', serverTemplates);
+      if (process.env.NODE_ENV !== 'production') console.log('Templates fetched:', serverTemplates.length, 'templates');
+      if (process.env.NODE_ENV !== 'production') console.log('Template data:', serverTemplates);
       
       setTemplates(serverTemplates);
       
       if (serverTemplates.length === 0) {
-        console.warn('No templates returned from API. Check:');
-        console.warn('1. Database connection');
-        console.warn('2. User permissions');
-        console.warn('3. API endpoint: /api/templates');
+        if (process.env.NODE_ENV !== 'production') console.warn('No templates returned from API. Check:');
+        if (process.env.NODE_ENV !== 'production') console.warn('1. Database connection');
+        if (process.env.NODE_ENV !== 'production') console.warn('2. User permissions');
+        if (process.env.NODE_ENV !== 'production') console.warn('3. API endpoint: /api/templates');
       }
     } catch (error) {
-      console.error('Error fetching templates:', error);
-      console.error('Error details:', error.response?.data || error.message);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching templates:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error details:', error.response?.data || error.message);
       if (error.response?.status === 403) {
-        console.error('Permission denied - user may not have access to templates');
+        if (process.env.NODE_ENV !== 'production') console.error('Permission denied - user may not have access to templates');
       } else if (error.response?.status === 401) {
-        console.error('Authentication required - user may need to login again');
+        if (process.env.NODE_ENV !== 'production') console.error('Authentication required - user may need to login again');
       }
     } finally {
       setLoading(false);
@@ -541,7 +541,7 @@ const Checklists = () => {
       handleCloseAddDialog();
       fetchTemplates();
     } catch (error) {
-      console.error('Error saving template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving template:', error);
       showError(error.response?.data?.error || 'Error saving template');
     } finally {
       setSavingTemplate(false);
@@ -583,7 +583,7 @@ const Checklists = () => {
       setItems(mappedItems.length > 0 ? mappedItems : [createEmptyItem('')]);
       setShowAddDialog(true);
     } catch (error) {
-      console.error('Error loading template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error loading template:', error);
       showError('Failed to load template');
     }
   };
@@ -595,7 +595,7 @@ const Checklists = () => {
       showSuccess('Template deleted successfully');
       fetchTemplates();
     } catch (error) {
-      console.error('Error deleting template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error deleting template:', error);
       showError(error.response?.data?.error || 'Failed to delete template');
     }
   };
@@ -638,7 +638,7 @@ const Checklists = () => {
       setShowAddDialog(true);
       showSuccess('Template cloned. Please review and save.');
     } catch (error) {
-      console.error('Error cloning template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error cloning template:', error);
       showError(error.response?.data?.error || 'Failed to clone template');
     }
   };
@@ -664,7 +664,7 @@ const Checklists = () => {
       
       showSuccess(`Checklist "${templateName}" exported as CSV`);
     } catch (error) {
-      console.error('Error exporting CSV:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error exporting CSV:', error);
       showError(error.response?.data?.error || 'Failed to export CSV');
     }
   };
@@ -876,7 +876,7 @@ const Checklists = () => {
       handleCloseImportDialog();
       fetchTemplates();
     } catch (error) {
-      console.error('Error importing template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error importing template:', error);
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.details || 
                           error.response?.data?.error || 

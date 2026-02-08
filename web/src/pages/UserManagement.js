@@ -98,7 +98,7 @@ const UserManagement = () => {
         setFormData(prev => ({ ...prev, role: '' }));
       }
     } catch (error) {
-      console.error('Error fetching roles:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching roles:', error);
     }
   };
 
@@ -125,7 +125,7 @@ const UserManagement = () => {
       setUsers(response.data.users || []);
       setFilteredUsers(response.data.users || []);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching users:', error);
       showError('Failed to load users');
     } finally {
       setLoading(false);
@@ -400,7 +400,7 @@ const UserManagement = () => {
       setParsedUsers([]);
       setParseError('');
     } catch (error) {
-      console.error('Import error:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Import error:', error);
       showError(error.response?.data?.error || 'Failed to import CSV file');
     } finally {
       setImporting(false);

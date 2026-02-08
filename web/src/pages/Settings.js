@@ -523,7 +523,7 @@ const Settings = () => {
       const response = await axios.get('/api/templates');
       setTemplates(response.data.templates || []);
     } catch (error) {
-      console.error('Error fetching templates:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching templates:', error);
     }
   };
 
@@ -534,7 +534,7 @@ const Settings = () => {
       setEscalationPaths(response.data.paths || []);
       setGroupedPaths(response.data.grouped || {});
     } catch (error) {
-      console.error('Error fetching escalation paths:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching escalation paths:', error);
     } finally {
       setLoadingPaths(false);
     }
@@ -555,7 +555,7 @@ const Settings = () => {
         setPreferences(prefs);
       }
     } catch (error) {
-      console.error('Error fetching preferences:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching preferences:', error);
       // Use defaults if error - preferences already set in initial state
     } finally {
       setLoading(false);
@@ -588,7 +588,7 @@ const Settings = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching assignment rules:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching assignment rules:', error);
     } finally {
       setLoadingRules(false);
     }
@@ -618,7 +618,7 @@ const Settings = () => {
         }, 100);
       }
     } catch (error) {
-      console.error('Error saving preferences:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving preferences:', error);
       const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Failed to save settings';
       showError(errorMessage);
     } finally {
@@ -636,7 +636,7 @@ const Settings = () => {
       showSuccess('Assignment rules saved successfully');
       await fetchAssignmentRules();
     } catch (error) {
-      console.error('Error saving assignment rules:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving assignment rules:', error);
       const errorMessage = error.response?.data?.error || 'Failed to save assignment rules';
       showError(errorMessage);
     } finally {
@@ -655,7 +655,7 @@ const Settings = () => {
       showSuccess('Assignment rule added successfully');
       await fetchAssignmentRules();
     } catch (error) {
-      console.error('Error adding assignment rule:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error adding assignment rule:', error);
       const errorMessage = error.response?.data?.error || 'Failed to add assignment rule';
       showError(errorMessage);
     }
@@ -673,7 +673,7 @@ const Settings = () => {
       showSuccess('Assignment rule updated successfully');
       await fetchAssignmentRules();
     } catch (error) {
-      console.error('Error updating assignment rule:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating assignment rule:', error);
       const errorMessage = error.response?.data?.error || 'Failed to update assignment rule';
       showError(errorMessage);
     }
@@ -688,7 +688,7 @@ const Settings = () => {
       showSuccess('Assignment rule deleted successfully');
       await fetchAssignmentRules();
     } catch (error) {
-      console.error('Error deleting assignment rule:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error deleting assignment rule:', error);
       const errorMessage = error.response?.data?.error || 'Failed to delete assignment rule';
       showError(errorMessage);
     }
@@ -722,7 +722,7 @@ const Settings = () => {
       showSuccess('Escalation path level added successfully');
       await fetchEscalationPaths();
     } catch (error) {
-      console.error('Error adding escalation path:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error adding escalation path:', error);
       const errorMessage = error.response?.data?.error || 'Failed to add escalation path';
       showError(errorMessage);
     }
@@ -740,7 +740,7 @@ const Settings = () => {
       showSuccess('Escalation path updated successfully');
       await fetchEscalationPaths();
     } catch (error) {
-      console.error('Error updating escalation path:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating escalation path:', error);
       const errorMessage = error.response?.data?.error || 'Failed to update escalation path';
       showError(errorMessage);
     }
@@ -755,7 +755,7 @@ const Settings = () => {
       showSuccess('Escalation path deleted successfully');
       await fetchEscalationPaths();
     } catch (error) {
-      console.error('Error deleting escalation path:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error deleting escalation path:', error);
       const errorMessage = error.response?.data?.error || 'Failed to delete escalation path';
       showError(errorMessage);
     }

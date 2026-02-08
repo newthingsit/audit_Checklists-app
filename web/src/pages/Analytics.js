@@ -43,7 +43,7 @@ const Analytics = () => {
       const response = await axios.get('/api/analytics/dashboard');
       setData(response.data);
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching analytics:', error);
     } finally {
       setLoading(false);
     }

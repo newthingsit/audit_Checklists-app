@@ -115,7 +115,7 @@ const Tasks = () => {
       const response = await axios.get('/api/tasks');
       setTasks(response.data.tasks || []);
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching tasks:', error);
       showError('Failed to load tasks');
     } finally {
       setLoading(false);
@@ -127,7 +127,7 @@ const Tasks = () => {
       const response = await axios.get('/api/tasks/dependencies/options');
       setDependencyOptions(response.data.tasks || []);
     } catch (error) {
-      console.error('Error fetching dependency options:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching dependency options:', error);
     }
   };
 
@@ -136,7 +136,7 @@ const Tasks = () => {
       const response = await axios.get('/api/users');
       setUsers(response.data.users || []);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching users:', error);
     }
   };
 
@@ -145,7 +145,7 @@ const Tasks = () => {
       const response = await axios.get('/api/locations');
       setLocations(response.data.locations || []);
     } catch (error) {
-      console.error('Error fetching locations:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching locations:', error);
     }
   };
 
@@ -238,7 +238,7 @@ const Tasks = () => {
       fetchTasks();
       fetchDependencyOptions();
     } catch (error) {
-      console.error('Error saving task:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving task:', error);
       showError(error.response?.data?.error || 'Failed to save task');
     }
   };
@@ -251,7 +251,7 @@ const Tasks = () => {
       showSuccess('Task deleted successfully');
       fetchTasks();
     } catch (error) {
-      console.error('Error deleting task:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error deleting task:', error);
       showError('Failed to delete task');
     }
   };
@@ -262,7 +262,7 @@ const Tasks = () => {
       showSuccess('Task status updated');
       fetchTasks();
     } catch (error) {
-      console.error('Error updating task status:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating task status:', error);
       showError('Failed to update task status');
     }
   };

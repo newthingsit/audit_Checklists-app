@@ -18,6 +18,7 @@ import { BiometricProvider } from './src/context/BiometricContext';
 import AuthStack from './src/navigation/AuthStack';
 import AppStack from './src/navigation/AppStack';
 import { OfflineBanner } from './src/components/OfflineIndicator';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { themeConfig } from './src/config/theme';
 
 const Stack = createStackNavigator();
@@ -82,11 +83,13 @@ function AppWithProviders() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <SafeAreaProvider>
       <PaperProvider>
         <AppWithProviders />
       </PaperProvider>
     </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

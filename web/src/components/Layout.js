@@ -196,18 +196,21 @@ const Layout = ({ children }) => {
       </Box>
 
       {/* Navigation Menu */}
-      <List sx={{ flex: 1, py: 2, px: 1.5, overflowY: 'auto' }}>
+      <List component="nav" aria-label="Main navigation" sx={{ flex: 1, py: 2, px: 1.5, overflowY: 'auto' }}>
         {menuItems.map((item, index) => {
           const isActive = location.pathname === item.path;
           return (
             <Tooltip 
               key={item.text} 
-              title="" 
+              title={item.text} 
               placement="right"
               arrow
             >
               <ListItem
                 button
+                role="menuitem"
+                aria-label={item.text}
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => handleNavigation(item.path)}
                 sx={{
                   mb: 0.5,
@@ -309,6 +312,7 @@ const Layout = ({ children }) => {
               color="inherit"
               edge="start"
               onClick={handleDrawerToggle}
+              aria-label="Open navigation menu"
               sx={{ mr: 2, display: { md: 'none' }, color: themeConfig.text.secondary }}
             >
               <MenuIcon />

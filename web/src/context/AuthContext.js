@@ -1,10 +1,11 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
 
-// Token storage key
+// Token storage keys
 const TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
 
 /**
  * Secure token storage utilities
@@ -17,14 +18,11 @@ const TOKEN_KEY = 'auth_token';
 class TokenStorage {
   constructor() {
     this.memoryToken = null;
+    this.memoryRefreshToken = null;
   }
 
   get() {
-    // Prefer memory token (most secure)
-    if (this.memoryToken) {
-      return this.memoryToken;
-    }
-    // Fallback to sessionStorage for page refresh persistence
+    if (this.memoryToken) return this.memoryToken;
     try {
       return sessionStorage.getItem(TOKEN_KEY);
     } catch {
@@ -32,13 +30,30 @@ class TokenStorage {
     }
   }
 
-  set(token) {
+  getRefresh() {
+    if (this.memoryRefreshToken) return this.memoryRefreshToken;
+    try {
+      return sessionStorage.getItem(REFRESH_TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  set(token, refreshToken) {
     this.memoryToken = token;
+    if (refreshToken !== undefined) this.memoryRefreshToken = refreshToken;
     try {
       if (token) {
         sessionStorage.setItem(TOKEN_KEY, token);
       } else {
         sessionStorage.removeItem(TOKEN_KEY);
+      }
+      if (refreshToken !== undefined) {
+        if (refreshToken) {
+          sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+        } else {
+          sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+        }
       }
     } catch {
       // sessionStorage not available, memory-only mode
@@ -47,8 +62,10 @@ class TokenStorage {
 
   clear() {
     this.memoryToken = null;
+    this.memoryRefreshToken = null;
     try {
       sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
     } catch {
       // sessionStorage not available
     }
@@ -70,6 +87,65 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(() => tokenStorage.get());
   const initializedRef = useRef(false);
+  const refreshPromiseRef = useRef(null);
+
+  // Silent token refresh — called when a 401 is received
+  const silentRefresh = useCallback(async () => {
+    // Deduplicate concurrent refresh calls
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+
+    const currentRefresh = tokenStorage.getRefresh();
+    if (!currentRefresh) return null;
+
+    refreshPromiseRef.current = axios
+      .post('/api/auth/refresh', { refreshToken: currentRefresh })
+      .then((res) => {
+        const { token: newToken, refreshToken: newRefresh } = res.data;
+        tokenStorage.set(newToken, newRefresh);
+        setToken(newToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+        return newToken;
+      })
+      .catch(() => {
+        // Refresh failed → force logout
+        tokenStorage.clear();
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['Authorization'];
+        return null;
+      })
+      .finally(() => {
+        refreshPromiseRef.current = null;
+      });
+
+    return refreshPromiseRef.current;
+  }, []);
+
+  // Axios response interceptor — auto-refresh on 401
+  useEffect(() => {
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        const originalRequest = error.config;
+        // Only retry once, and not for the refresh endpoint itself
+        if (
+          error.response?.status === 401 &&
+          !originalRequest._retry &&
+          !originalRequest.url?.includes('/auth/refresh') &&
+          !originalRequest.url?.includes('/auth/login')
+        ) {
+          originalRequest._retry = true;
+          const newToken = await silentRefresh();
+          if (newToken) {
+            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+            return axios(originalRequest);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptorId);
+  }, [silentRefresh]);
 
   useEffect(() => {
     // Prevent double initialization in strict mode
@@ -114,8 +190,8 @@ export const AuthProvider = ({ children }) => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const response = await axios.post('/api/auth/login', { email, password });
-        const { token: newToken, user: userData } = response.data;
-        tokenStorage.set(newToken);
+        const { token: newToken, refreshToken: newRefresh, user: userData } = response.data;
+        tokenStorage.set(newToken, newRefresh);
         setToken(newToken);
         setUser(userData);
         axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
@@ -140,8 +216,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password, name) => {
     const response = await axios.post('/api/auth/register', { email, password, name });
-    const { token: newToken, user: userData } = response.data;
-    tokenStorage.set(newToken);
+    const { token: newToken, refreshToken: newRefresh, user: userData } = response.data;
+    tokenStorage.set(newToken, newRefresh);
     setToken(newToken);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;

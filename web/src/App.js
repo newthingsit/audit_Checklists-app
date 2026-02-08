@@ -8,6 +8,7 @@ import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/Th
 import PrivateRoute from './components/PrivateRoute';
 import AdminRoute from './components/AdminRoute';
 import PermissionRoute from './components/PermissionRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import Toast from './components/Toast';
 import { themeConfig } from './config/theme';
 
@@ -315,6 +316,7 @@ function ThemeWrapper() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
+        <ErrorBoundary>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -523,6 +525,7 @@ function ThemeWrapper() {
             </Routes>
           </Suspense>
         </Router>
+        </ErrorBoundary>
       </AuthProvider>
       <Toast />
     </ThemeProvider>

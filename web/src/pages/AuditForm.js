@@ -255,7 +255,7 @@ const AuditForm = () => {
         }
       }
     } catch (error) {
-      console.error('Error fetching scheduled audit:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching scheduled audit:', error);
     }
   };
 
@@ -291,7 +291,7 @@ const AuditForm = () => {
         clientAuditUuidRef.current = parsed.clientAuditUuid;
       }
     } catch (error) {
-      console.warn('Failed to load draft identity:', error);
+      if (process.env.NODE_ENV !== 'production') console.warn('Failed to load draft identity:', error);
     }
   }, [auditId, templateId, locationId, scheduledId]);
 
@@ -369,7 +369,7 @@ const AuditForm = () => {
         if (incompleteCategories.length > 0) {
           // Auto-select the first incomplete category
           categoryToSelect = incompleteCategories[0];
-          console.log('[AuditForm] Web: Auto-selecting first incomplete category:', categoryToSelect);
+          if (process.env.NODE_ENV !== 'production') console.log('[AuditForm] Web: Auto-selecting first incomplete category:', categoryToSelect);
         } else if (uniqueCategories.length > 0) {
           // All categories complete? Show the first one (should be redirected to completion soon)
           categoryToSelect = uniqueCategories[0];
@@ -442,7 +442,7 @@ const AuditForm = () => {
 
       // (activeStep set above based on category scoping)
     } catch (error) {
-      console.error('Error fetching audit data:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching audit data:', error);
       setError('Failed to load audit data');
       showError('Failed to load audit data');
     } finally {
@@ -470,7 +470,7 @@ const AuditForm = () => {
         setFilteredItems(allItems);
       }
     } catch (error) {
-      console.error('Error fetching template:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching template:', error);
       setError('Failed to load template');
     } finally {
       setLoading(false);
@@ -484,7 +484,7 @@ const AuditForm = () => {
       const response = await axios.get('/api/locations', { params }).catch(() => ({ data: { locations: [] } }));
       setLocations(response.data.locations || []);
     } catch (error) {
-      console.error('Error fetching locations:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching locations:', error);
     }
   };
 
@@ -507,7 +507,7 @@ const AuditForm = () => {
         setShowFailuresAlert(true);
       }
     } catch (error) {
-      console.error('Error fetching previous failures:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching previous failures:', error);
       // Don't show error to user, just continue without highlighting
     }
   }, []);
@@ -648,7 +648,7 @@ const AuditForm = () => {
       }
       // Photo upload notification removed as per requirement
     } catch (error) {
-      console.error('Error uploading photo:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error uploading photo:', error);
       showError('Failed to upload photo');
     } finally {
       setUploading({ ...uploading, [itemId]: false });
@@ -925,7 +925,7 @@ const AuditForm = () => {
             notes
           });
         } catch (updateError) {
-          console.warn('Failed to update audit info, continuing with items:', updateError);
+          if (process.env.NODE_ENV !== 'production') console.warn('Failed to update audit info, continuing with items:', updateError);
         }
       } else {
         // Create new audit
@@ -1058,7 +1058,7 @@ const AuditForm = () => {
 
       const allBatchItems = [...batchItems, ...hiddenBatchItems];
 
-      console.log('[AuditForm] Saving batch items:', { auditId: activeAuditId, itemCount: allBatchItems.length, sampleItem: allBatchItems[0] });
+      if (process.env.NODE_ENV !== 'production') console.log('[AuditForm] Saving batch items:', { auditId: activeAuditId, itemCount: allBatchItems.length, sampleItem: allBatchItems[0] });
       
       if (allBatchItems.length === 0) {
         throw new Error('No valid items to save. Please ensure all checklist items have valid IDs.');
@@ -2683,7 +2683,7 @@ const AuditForm = () => {
                                 startIcon={<AddIcon />}
                                 onClick={() => {
                                   // TODO: Implement add new item to section
-                                  console.log('Add new item to section:', sectionData.name);
+                                  if (process.env.NODE_ENV !== 'production') console.log('Add new item to section:', sectionData.name);
                                 }}
                               >
                                 Add New Item

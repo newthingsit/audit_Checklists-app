@@ -81,7 +81,7 @@ const StoreAssignments = () => {
       setAssignments(assignmentsRes.data.assignments || []);
       setSummary(summaryRes.data.summary || {});
     } catch (error) {
-      console.error('Error fetching data:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching data:', error);
       if (showLoading) {
         showError('Failed to load data');
       }
@@ -114,12 +114,12 @@ const StoreAssignments = () => {
         await fetchData(false);
       }, 800);
     } catch (error) {
-      console.error('Error assigning stores:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error assigning stores:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign stores';
       showError(errorMsg);
       // Refresh on error to ensure UI is in sync (without loading spinner)
       await fetchData(false).catch(err => {
-        console.error('Error refreshing data after assignment failure:', err);
+        if (process.env.NODE_ENV !== 'production') console.error('Error refreshing data after assignment failure:', err);
       });
     }
   };
@@ -146,12 +146,12 @@ const StoreAssignments = () => {
         await fetchData(false);
       }, 800);
     } catch (error) {
-      console.error('Error assigning users:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error assigning users:', error);
       const errorMsg = error.response?.data?.error || 'Failed to assign users';
       showError(errorMsg);
       // Refresh on error to ensure UI is in sync (without loading spinner)
       await fetchData(false).catch(err => {
-        console.error('Error refreshing data after assignment failure:', err);
+        if (process.env.NODE_ENV !== 'production') console.error('Error refreshing data after assignment failure:', err);
       });
     }
   };
@@ -171,12 +171,12 @@ const StoreAssignments = () => {
         await fetchData(false);
       }, 800);
     } catch (error) {
-      console.error('Error removing assignment:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error removing assignment:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignment';
       showError(errorMsg);
       // Refresh on error to ensure UI is in sync (without loading spinner)
       await fetchData(false).catch(err => {
-        console.error('Error refreshing data after removal failure:', err);
+        if (process.env.NODE_ENV !== 'production') console.error('Error refreshing data after removal failure:', err);
       });
     }
   };
@@ -196,12 +196,12 @@ const StoreAssignments = () => {
         await fetchData(false);
       }, 800);
     } catch (error) {
-      console.error('Error removing assignments:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error removing assignments:', error);
       const errorMsg = error.response?.data?.error || 'Failed to remove assignments';
       showError(errorMsg);
       // Refresh on error to ensure UI is in sync (without loading spinner)
       await fetchData(false).catch(err => {
-        console.error('Error refreshing data after removal failure:', err);
+        if (process.env.NODE_ENV !== 'production') console.error('Error refreshing data after removal failure:', err);
       });
     }
   };

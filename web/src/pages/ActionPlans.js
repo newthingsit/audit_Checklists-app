@@ -67,7 +67,7 @@ const ActionPlans = () => {
       const response = await axios.get('/api/audits');
       setAudits(response.data.audits || []);
     } catch (error) {
-      console.error('Error fetching audits:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching audits:', error);
     }
   };
 
@@ -99,7 +99,7 @@ const ActionPlans = () => {
       setSelectedActionForHistory(actionId);
       setShowEscalationHistory(true);
     } catch (error) {
-      console.error('Error fetching escalation history:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching escalation history:', error);
       showError('Failed to load escalation history');
     } finally {
       setLoadingHistory(false);
@@ -112,7 +112,7 @@ const ActionPlans = () => {
       setActions(response.data.actions || []);
       setFilteredActions(response.data.actions || []);
     } catch (error) {
-      console.error('Error fetching actions:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching actions:', error);
     } finally {
       setLoading(false);
     }
@@ -178,7 +178,7 @@ const ActionPlans = () => {
       showSuccess('Action item saved successfully!');
       fetchActions();
     } catch (error) {
-      console.error('Error saving action:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error saving action:', error);
       showError(error.response?.data?.error || 'Error saving action item');
     }
   };
@@ -190,7 +190,7 @@ const ActionPlans = () => {
         showSuccess('Action item deleted successfully!');
         fetchActions();
       } catch (error) {
-        console.error('Error deleting action:', error);
+        if (process.env.NODE_ENV !== 'production') console.error('Error deleting action:', error);
         showError('Error deleting action item');
       }
     }
@@ -202,7 +202,7 @@ const ActionPlans = () => {
       showSuccess(`Action item marked as ${newStatus}!`);
       fetchActions();
     } catch (error) {
-      console.error('Error updating status:', error);
+      if (process.env.NODE_ENV !== 'production') console.error('Error updating status:', error);
       showError('Error updating action status');
     }
   };

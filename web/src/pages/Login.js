@@ -207,7 +207,7 @@ const Login = () => {
               boxShadow: '0 0 50px rgba(196, 30, 58, 0.35)',
             },
           }}>
-            <RestaurantIcon sx={{ fontSize: 50, color: 'white' }} />
+            <RestaurantIcon sx={{ fontSize: 50, color: 'white' }} aria-hidden="true" />
           </Box>
 
           {/* Title */}
