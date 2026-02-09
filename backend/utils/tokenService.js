@@ -3,6 +3,8 @@
  *
  * Access tokens : 15 minutes (stateless, carried in Authorization header)
  * Refresh tokens: 7 days    (stored in DB, single-use — rotated on every refresh)
+ *
+ * Supports SQLite and MSSQL (SQL Server) via database-loader.
  */
 
 const crypto = require('crypto');
@@ -13,6 +15,10 @@ const { JWT_SECRET } = require('../middleware/auth');
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Detect database type
+const dbType = (process.env.DB_TYPE || '').toLowerCase();
+const isMssql = dbType === 'mssql' || dbType === 'sqlserver' || !!process.env.MSSQL_SERVER;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,15 +32,20 @@ const signAccessToken = (payload) =>
   jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
 // ---------------------------------------------------------------------------
-// Database helpers (promisified)
+// Database helpers (promisified, works with both SQLite and MSSQL wrappers)
 // ---------------------------------------------------------------------------
 
 const dbRun = (sql, params = []) =>
   new Promise((resolve, reject) => {
     const dbInstance = db.getDb();
-    dbInstance.run(sql, params, function (err) {
+    dbInstance.run(sql, params, function (err, result) {
       if (err) return reject(err);
-      resolve({ lastID: this.lastID, changes: this.changes });
+      // MSSQL wrapper passes result as 2nd arg; SQLite uses `this` context
+      if (result && typeof result === 'object') {
+        resolve(result);
+      } else {
+        resolve({ lastID: this.lastID, changes: this.changes });
+      }
     });
   });
 
@@ -51,20 +62,54 @@ const dbGet = (sql, params = []) =>
 // Ensure refresh_tokens table exists
 // ---------------------------------------------------------------------------
 
+let _tableEnsured = false;
+
 const ensureRefreshTokensTable = async () => {
-  await dbRun(`
-    CREATE TABLE IF NOT EXISTS refresh_tokens (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      token TEXT UNIQUE NOT NULL,
-      expires_at DATETIME NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      revoked INTEGER DEFAULT 0
-    )
-  `);
-  // Index for fast lookups
-  await dbRun(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)`).catch(() => {});
-  await dbRun(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id)`).catch(() => {});
+  if (_tableEnsured) return;
+
+  try {
+    if (isMssql) {
+      // MSSQL syntax — IF NOT EXISTS + IDENTITY instead of AUTOINCREMENT
+      await dbRun(`
+        IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'refresh_tokens')
+        CREATE TABLE refresh_tokens (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          user_id INT NOT NULL,
+          token NVARCHAR(255) UNIQUE NOT NULL,
+          expires_at DATETIME NOT NULL,
+          created_at DATETIME DEFAULT GETDATE(),
+          revoked INT DEFAULT 0
+        )
+      `);
+      // Indexes — MSSQL uses IF NOT EXISTS for indexes differently
+      await dbRun(`
+        IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_refresh_tokens_token')
+        CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token)
+      `).catch(() => {});
+      await dbRun(`
+        IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_refresh_tokens_user')
+        CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id)
+      `).catch(() => {});
+    } else {
+      // SQLite syntax
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          token TEXT UNIQUE NOT NULL,
+          expires_at DATETIME NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          revoked INTEGER DEFAULT 0
+        )
+      `);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token)`).catch(() => {});
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id)`).catch(() => {});
+    }
+    _tableEnsured = true;
+  } catch (err) {
+    logger.error('[TokenService] Error ensuring refresh_tokens table:', err);
+    throw err;
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -141,9 +186,10 @@ const revokeAllForUser = async (userId) => {
  */
 const cleanup = async () => {
   await ensureRefreshTokensTable();
-  const result = await dbRun(
-    "DELETE FROM refresh_tokens WHERE revoked = 1 OR expires_at < datetime('now')"
-  );
+  const cleanupSql = isMssql
+    ? "DELETE FROM refresh_tokens WHERE revoked = 1 OR expires_at < GETDATE()"
+    : "DELETE FROM refresh_tokens WHERE revoked = 1 OR expires_at < datetime('now')";
+  const result = await dbRun(cleanupSql);
   if (result.changes > 0) {
     logger.info(`[TokenService] Cleaned up ${result.changes} expired/revoked refresh tokens`);
   }

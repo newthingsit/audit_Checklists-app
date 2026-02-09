@@ -731,7 +731,24 @@ const createTables = async () => {
     CREATE INDEX idx_user_checklist_permissions_user ON user_checklist_permissions(user_id)`,
 
     `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_user_checklist_permissions_template')
-    CREATE INDEX idx_user_checklist_permissions_template ON user_checklist_permissions(template_id)`
+    CREATE INDEX idx_user_checklist_permissions_template ON user_checklist_permissions(template_id)`,
+
+    // Refresh Tokens table (used by tokenService for JWT refresh flow)
+    `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[refresh_tokens]') AND type in (N'U'))
+    CREATE TABLE [dbo].[refresh_tokens] (
+      [id] INT IDENTITY(1,1) PRIMARY KEY,
+      [user_id] INT NOT NULL,
+      [token] NVARCHAR(255) UNIQUE NOT NULL,
+      [expires_at] DATETIME NOT NULL,
+      [created_at] DATETIME DEFAULT GETDATE(),
+      [revoked] INT DEFAULT 0
+    )`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_refresh_tokens_token')
+    CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token)`,
+
+    `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_refresh_tokens_user')
+    CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id)`
   ];
 
   try {
