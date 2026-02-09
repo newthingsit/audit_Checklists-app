@@ -12,7 +12,8 @@ import {
   Modal,
   FlatList,
   Platform,
-  AppState
+  AppState,
+  Dimensions
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -190,6 +191,9 @@ const AuditFormScreen = () => {
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
   const recurringAlertShownRef = useRef(new Set());
+  const contentScrollViewRef = useRef(null);
+  const categoryTabScrollViewRef = useRef(null);
+  const categoryTabLayoutsRef = useRef({}); // Store layout info for each category tab
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
@@ -790,28 +794,30 @@ const AuditFormScreen = () => {
       // This handles the case where the previous save only included current category items
       try {
         // Try multiple possible draft keys since locationId might vary
-        const possibleKeys = [
+        const possibleKeys = [...new Set([
           `audit_draft:${templateId}:${scheduledAuditId || 'none'}:${auditLocationId || 'none'}`,
           `audit_draft:${templateId}:none:${auditLocationId || 'none'}`,
           `audit_draft:${audit.template_id}:none:${auditLocationId || 'none'}`,
           draftStorageKey,
-        ];
+        ].filter(Boolean))];
         
         let draftData = null;
-        for (const key of [...new Set(possibleKeys)]) {
-          try {
-            const stored = await AsyncStorage.getItem(key);
+        // OPTIMIZATION: Use multiGet to fetch all keys in parallel instead of sequential reads
+        try {
+          const results = await AsyncStorage.multiGet(possibleKeys);
+          for (const [key, stored] of results) {
             if (stored) {
-              const parsed = JSON.parse(stored);
-              // Verify the draft belongs to this audit
-              if (parsed && (parsed.auditId === id || parsed.template_id === audit.template_id)) {
-                draftData = parsed;
-                console.log('[AuditForm] Found local draft for recovery, key:', key, 'savedAt:', parsed.savedAt);
-                break;
-              }
+              try {
+                const parsed = JSON.parse(stored);
+                if (parsed && (parsed.auditId === id || parsed.template_id === audit.template_id)) {
+                  draftData = parsed;
+                  console.log('[AuditForm] Found local draft for recovery, key:', key, 'savedAt:', parsed.savedAt);
+                  break;
+                }
+              } catch (e) { /* skip invalid drafts */ }
             }
-          } catch (e) { /* skip invalid drafts */ }
-        }
+          }
+        } catch (e) { /* multiGet failed, continue without draft */ }
 
         if (draftData && draftData.responses) {
           let mergedCount = 0;
@@ -1153,11 +1159,35 @@ const AuditFormScreen = () => {
   const moveToNextCategory = useCallback((currentCategory) => {
     const currentIndex = categories.indexOf(currentCategory);
     if (currentIndex >= 0 && currentIndex < categories.length - 1) {
-      const nextCategory = categories[currentIndex + 1];
+      // Check if current category is Speed of Service - if so, skip to last category
+      const currentCatLower = currentCategory.toLowerCase();
+      const isSpeedOfService = currentCatLower.includes('speed of service') || currentCatLower.includes('sos');
+      
+      let targetIndex;
+      if (isSpeedOfService) {
+        // Skip directly to the last category (skip Acknowledgement etc.)
+        targetIndex = categories.length - 1;
+      } else {
+        targetIndex = currentIndex + 1;
+      }
+      
+      const targetCategory = categories[targetIndex];
       // Use a small delay to allow UI to update smoothly
       setTimeout(() => {
-        setSelectedCategory(nextCategory);
-        // Scroll to top of the new category
+        setSelectedCategory(targetCategory);
+        // Scroll content to top of the new category (React Native)
+        if (contentScrollViewRef.current) {
+          contentScrollViewRef.current.scrollTo({ y: 0, animated: true });
+        }
+        // Scroll category tabs to center the active tab
+        const tabLayout = categoryTabLayoutsRef.current[targetIndex];
+        if (tabLayout && categoryTabScrollViewRef.current) {
+          // Center the tab: scroll so the tab's center aligns with the screen center
+          const screenWidth = Dimensions.get('window').width;
+          const scrollX = Math.max(0, tabLayout.x - (screenWidth / 2) + (tabLayout.width / 2));
+          categoryTabScrollViewRef.current.scrollTo({ x: scrollX, animated: true });
+        }
+        // Fallback for web
         if (typeof window !== 'undefined') {
           window.scrollTo?.({ top: 0, behavior: 'smooth' });
         }
@@ -1995,6 +2025,18 @@ const AuditFormScreen = () => {
 
   const handleCategorySelect = (category, section = null) => {
     applyCategorySelection(category, section);
+    // Scroll content to top when user selects a category
+    if (contentScrollViewRef.current) {
+      contentScrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+    // Center the selected tab in the horizontal scroll
+    const catIdx = categories.indexOf(category);
+    const tabLayout = categoryTabLayoutsRef.current[catIdx];
+    if (tabLayout && categoryTabScrollViewRef.current) {
+      const screenWidth = Dimensions.get('window').width;
+      const scrollX = Math.max(0, tabLayout.x - (screenWidth / 2) + (tabLayout.width / 2));
+      categoryTabScrollViewRef.current.scrollTo({ x: scrollX, animated: true });
+    }
   };
 
   // Group items by section for display (Trnx-1, Trnx-2, Avg, etc.)
@@ -3869,6 +3911,7 @@ const AuditFormScreen = () => {
             {categories.length > 1 && (
               <View style={{ marginBottom: 12 }}>
                 <ScrollView 
+                  ref={categoryTabScrollViewRef}
                   horizontal 
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ paddingHorizontal: 4 }}
@@ -3899,6 +3942,10 @@ const AuditFormScreen = () => {
                           isActive && styles.cvrCategoryTabActive
                         ]}
                         onPress={() => handleCategorySelect(cat)}
+                        onLayout={(event) => {
+                          const { x, width } = event.nativeEvent.layout;
+                          categoryTabLayoutsRef.current[idx] = { x, width };
+                        }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           {catStatus.isComplete ? (
@@ -4004,7 +4051,7 @@ const AuditFormScreen = () => {
             </View>
           </View>
 
-          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <ScrollView ref={contentScrollViewRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 
             {/* Previous failures summary banner */}
             {previousAuditInfo && previousFailures.length > 0 && (

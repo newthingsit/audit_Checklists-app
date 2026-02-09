@@ -8,14 +8,11 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  Linking,
   Share,
   Platform
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
@@ -125,70 +122,7 @@ const AuditDetailScreen = () => {
     }
   };
 
-  // Download PDF report using enhanced-pdf endpoint
-  const handleDownloadPdf = async () => {
-    try {
-      Alert.alert('Generating PDF', 'Please wait while the PDF report is being generated...');
-      
-      // Use enhanced-pdf endpoint for better report format
-      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/enhanced-pdf`;
-      const fileName = `${audit.template_name}_${audit.restaurant_name}_Report.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      
-      // Get auth token from axios defaults if available
-      const authHeader = axios.defaults.headers?.common?.Authorization;
-      
-      // Download the PDF with authentication
-      const downloadResult = await FileSystem.downloadAsync(pdfUrl, fileUri, {
-        headers: {
-          'Accept': 'application/pdf',
-          ...(authHeader ? { 'Authorization': authHeader } : {})
-        }
-      });
-      
-      if (downloadResult.status === 200) {
-        // Check if sharing is available
-        const isAvailable = await Sharing.isAvailableAsync();
-        
-        if (isAvailable) {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: 'application/pdf',
-            dialogTitle: 'Audit Report PDF',
-            UTI: 'com.adobe.pdf'
-          });
-        } else {
-          Alert.alert(
-            'PDF Downloaded', 
-            `Report saved to: ${downloadResult.uri}`,
-            [{ text: 'OK' }]
-          );
-        }
-      } else {
-        Alert.alert('Error', 'Failed to download PDF report. Please check your connection and try again.');
-      }
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      Alert.alert('Error', 'Failed to download PDF report. Please try again.');
-    }
-  };
-
-  // Share/View PDF in browser using enhanced-pdf endpoint
-  const handleViewPdf = async () => {
-    try {
-      // Use enhanced-pdf endpoint for better report format
-      const pdfUrl = `${API_BASE_URL}/reports/audit/${id}/enhanced-pdf`;
-      const supported = await Linking.canOpenURL(pdfUrl);
-      
-      if (supported) {
-        await Linking.openURL(pdfUrl);
-      } else {
-        Alert.alert('Error', 'Cannot open PDF URL');
-      }
-    } catch (error) {
-      console.error('Error opening PDF:', error);
-      Alert.alert('Error', 'Failed to open PDF report');
-    }
-  };
+  // PDF download/view functions removed - use web app for PDF reports
 
   const getCriteriaColor = (criteria) => {
     switch (criteria?.toLowerCase()) {
@@ -367,28 +301,7 @@ const AuditDetailScreen = () => {
         </View>
       )}
 
-      {/* PDF Download/Share buttons for completed audits */}
-      {audit.status === 'completed' && (
-        <View style={styles.pdfActionContainer}>
-          <Text style={styles.pdfActionTitle}>📄 Download Report</Text>
-          <View style={styles.pdfButtonRow}>
-            <TouchableOpacity
-              style={styles.downloadPdfButton}
-              onPress={handleDownloadPdf}
-            >
-              <Icon name="file-download" size={20} color="#fff" style={styles.buttonIcon} />
-              <Text style={styles.downloadPdfButtonText}>Download PDF</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.viewPdfButton}
-              onPress={handleViewPdf}
-            >
-              <Icon name="visibility" size={20} color="#1976d2" style={styles.buttonIcon} />
-              <Text style={styles.viewPdfButtonText}>View PDF</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      {/* PDF report buttons removed from mobile app - use web app for PDF */}
 
       {/* Action Plan - Top 3 Deviations */}
       {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
@@ -964,55 +877,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  // PDF Download styles
-  pdfActionContainer: {
-    backgroundColor: themeConfig.background.paper,
-    borderRadius: themeConfig.borderRadius.large,
-    padding: 15,
-    marginBottom: 15,
-    ...themeConfig.shadows.small,
-  },
-  pdfActionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: themeConfig.text.primary,
-    marginBottom: 12,
-  },
-  pdfButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  downloadPdfButton: {
-    flex: 1,
-    backgroundColor: '#1976d2',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: themeConfig.borderRadius.medium,
-    ...themeConfig.shadows.small,
-  },
-  downloadPdfButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  viewPdfButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#1976d2',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: themeConfig.borderRadius.medium,
-  },
-  viewPdfButtonText: {
-    color: '#1976d2',
-    fontSize: 14,
-    fontWeight: '600',
   },
   // GPS Location styles
   locationSection: {

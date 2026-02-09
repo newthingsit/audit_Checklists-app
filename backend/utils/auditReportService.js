@@ -167,9 +167,11 @@ const buildSpeedOfServiceFromItems = (items) => {
         });
       });
     } else {
-      // For CVR format: extract value from mark, comment, or selected_option_text
-      // Check mark first (for short_answer/number input types), then comment, then selected_option_text
-      const rawValue = item.mark || item.comment || item.selected_option_text || '';
+      // For CVR format: extract value from comment (time entries), mark, or selected_option_text
+      // IMPORTANT: mark is often 'NA' or 'N/A' for answer-type items (SOS time entries),
+      // so we prioritize comment which holds the actual time value entered by the user
+      const markValue = item.mark && item.mark !== 'NA' && item.mark !== 'N/A' && item.mark !== '' ? item.mark : null;
+      const rawValue = item.comment || markValue || item.selected_option_text || '';
       const timeValue = rawValue !== '' && rawValue !== null && rawValue !== 'NA' ? rawValue : '';
       const seconds = normalizeTimeValue(timeValue);
       
@@ -444,6 +446,45 @@ async function getAuditReportData(auditId, options = {}) {
   );
   const managerSignature = signatures.find(sig => normalizeCategoryKey(sig.signer_role).includes('manager')) || signatures[0] || null;
 
+  // Build acknowledgement data from audit_signatures table first, 
+  // then fall back to extracting from item responses (ACKNOWLEDGEMENT category)
+  let acknowledgement = {
+    managerName: managerSignature ? managerSignature.signer_name : '',
+    signatureData: managerSignature ? normalizeSignatureData(managerSignature.signature_data) : '',
+    signedAt: managerSignature ? managerSignature.signed_at : ''
+  };
+
+  // If no signature record exists in audit_signatures table, try to build from items
+  if (!managerSignature) {
+    const ackItems = itemsWithScores.filter(item => 
+      item.category && normalizeCategoryKey(item.category).includes('acknowledg')
+    );
+    ackItems.forEach(item => {
+      const titleLower = (item.title || '').toLowerCase();
+      if (titleLower.includes('manager') || titleLower.includes('duty')) {
+        // Manager name from comment field
+        if (item.comment && item.comment.trim()) {
+          acknowledgement.managerName = item.comment.trim();
+        }
+      } else if (titleLower.includes('signature') || titleLower.includes('sign')) {
+        // Signature data from comment field (stored as JSON)
+        if (item.comment && item.comment.trim()) {
+          try {
+            const sigData = JSON.parse(item.comment);
+            if (sigData && (sigData.uri || sigData.base64 || sigData.data)) {
+              acknowledgement.signatureData = sigData.uri || sigData.base64 || sigData.data || '';
+            }
+          } catch (e) {
+            // Not JSON, might be a direct base64 or URI string
+            if (item.comment.startsWith('data:') || item.comment.length > 100) {
+              acknowledgement.signatureData = item.comment;
+            }
+          }
+        }
+      }
+    });
+  }
+
   const actionPlan = buildActionPlan(itemsWithScores, audit);
 
   return {
@@ -468,11 +509,7 @@ async function getAuditReportData(auditId, options = {}) {
     detailedCategories: detailedList,
     speedOfService,
     temperatureTracking,
-    acknowledgement: {
-      managerName: managerSignature ? managerSignature.signer_name : '',
-      signatureData: managerSignature ? normalizeSignatureData(managerSignature.signature_data) : '',
-      signedAt: managerSignature ? managerSignature.signed_at : ''
-    },
+    acknowledgement,
     actionPlan,
     items: itemsWithScores
   };
