@@ -32,7 +32,8 @@ import {
   Alert,
   FormControlLabel,
   Checkbox,
-  Tooltip
+  Tooltip,
+  Autocomplete
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -56,6 +57,8 @@ import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import TaskAltOutlinedIcon from '@mui/icons-material/TaskAltOutlined';
 import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
 import QrCodeScannerOutlinedIcon from '@mui/icons-material/QrCodeScannerOutlined';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined';
 import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import CheckBoxIcon from '@mui/icons-material/CheckBox';
@@ -321,6 +324,9 @@ const Checklists = () => {
     templateName: '',
     description: ''
   });
+  const [isDragging, setIsDragging] = useState(false);
+  const [validationSummary, setValidationSummary] = useState(null);
+  const [categorySearch, setCategorySearch] = useState('');
   const navigate = useNavigate();
 
   // Permission checks
@@ -411,9 +417,43 @@ const Checklists = () => {
     setItems([...items, createEmptyItem(last?.category || '', last?.section || '', last?.subcategory || '')]);
   };
 
+  const handleDuplicateItem = (index) => {
+    const source = items[index];
+    const duplicate = {
+      ...JSON.parse(JSON.stringify(source)),
+      title: source.title ? `${source.title} (Copy)` : ''
+    };
+    const newItems = [...items];
+    newItems.splice(index + 1, 0, duplicate);
+    setItems(newItems);
+    showSuccess('Item duplicated');
+  };
+
+  const handleMoveItem = (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= items.length) return;
+    const newItems = [...items];
+    [newItems[index], newItems[newIndex]] = [newItems[newIndex], newItems[index]];
+    setItems(newItems);
+  };
+
   const handleRemoveItem = (index) => {
     setItems(items.filter((_, i) => i !== index));
   };
+
+  // Get unique categories from existing items for auto-suggest
+  const existingCategories = React.useMemo(() => {
+    const cats = new Set();
+    items.forEach(item => { if (item.category) cats.add(item.category); });
+    templates.forEach(t => { (t.categories || []).forEach(c => cats.add(c)); });
+    return Array.from(cats).sort();
+  }, [items, templates]);
+
+  const existingSections = React.useMemo(() => {
+    const secs = new Set();
+    items.forEach(item => { if (item.section) secs.add(item.section); });
+    return Array.from(secs).sort();
+  }, [items]);
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
@@ -818,18 +858,41 @@ const Checklists = () => {
       if (items.length === 0) {
         setParseError('No valid items found in CSV');
         setParsedItems([]);
+        setValidationSummary(null);
         return;
       }
+
+      // Validation summary: check for duplicates, missing fields, etc.
+      const titleCounts = {};
+      let missingCategory = 0;
+      let missingOptions = 0;
+      items.forEach(item => {
+        const key = item.title.toLowerCase().trim();
+        titleCounts[key] = (titleCounts[key] || 0) + 1;
+        if (!item.category) missingCategory++;
+        if ((!item.options || item.options.length === 0) && (item.input_type === 'option_select' || item.input_type === 'auto')) missingOptions++;
+      });
+      const duplicates = Object.entries(titleCounts).filter(([, count]) => count > 1).map(([title]) => title);
+
+      setValidationSummary({
+        total: items.length,
+        duplicates: duplicates.length,
+        duplicateNames: duplicates.slice(0, 5),
+        missingCategory,
+        missingOptions,
+        categories: [...new Set(items.map(i => i.category).filter(Boolean))]
+      });
 
       setParsedItems(items);
     } catch (error) {
       setParseError(`Error parsing CSV: ${error.message}`);
       setParsedItems([]);
+      setValidationSummary(null);
     }
   };
 
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0] || event;
     if (!file) return;
 
     const reader = new FileReader();
@@ -842,6 +905,22 @@ const Checklists = () => {
       showError('Error reading file');
     };
     reader.readAsText(file);
+  };
+
+  // Drag-and-drop handlers for CSV import
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) {
+      handleFileUpload(file);
+      if (!importForm.templateName) {
+        setImportForm(prev => ({ ...prev, templateName: file.name.replace('.csv', '').replace(/[_-]/g, ' ') }));
+      }
+    } else {
+      showError('Please drop a .csv file');
+    }
   };
 
   const handleCsvDataChange = (text) => {
@@ -1138,8 +1217,11 @@ const Checklists = () => {
               rows={2}
             />
             <Divider sx={{ my: 2 }} />
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">Checklist Items</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="h6">Checklist Items</Typography>
+                <Chip label={`${items.filter(i => i.title.trim()).length} / ${items.length}`} size="small" color="primary" variant="outlined" />
+              </Box>
               <Button
                 variant="outlined"
                 size="small"
@@ -1150,18 +1232,40 @@ const Checklists = () => {
               </Button>
             </Box>
             {items.map((item, index) => (
-              <Paper key={index} sx={{ p: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
-                  <Typography variant="subtitle2">Item {index + 1}</Typography>
-                  {items.length > 1 && (
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleRemoveItem(index)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  )}
+              <Paper key={index} sx={{ p: 2, mb: 2, position: 'relative' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label={`#${index + 1}`} size="small" color="primary" variant="outlined" sx={{ fontWeight: 600 }} />
+                    {item.category && <Chip label={item.category.split('(')[0].trim()} size="small" variant="outlined" color="info" />}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title="Move up">
+                      <span>
+                        <IconButton size="small" onClick={() => handleMoveItem(index, -1)} disabled={index === 0}>
+                          <KeyboardArrowUpIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Move down">
+                      <span>
+                        <IconButton size="small" onClick={() => handleMoveItem(index, 1)} disabled={index === items.length - 1}>
+                          <KeyboardArrowDownIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Duplicate item">
+                      <IconButton size="small" color="primary" onClick={() => handleDuplicateItem(index)}>
+                        <ContentCopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    {items.length > 1 && (
+                      <Tooltip title="Remove item">
+                        <IconButton size="small" color="error" onClick={() => handleRemoveItem(index)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
                 </Box>
                 <TextField
                   fullWidth
@@ -1182,14 +1286,21 @@ const Checklists = () => {
                 />
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Category"
-                      value={item.category}
-                      onChange={(e) => handleItemChange(index, 'category', e.target.value)}
-                      margin="dense"
-                      placeholder="e.g. QUALITY, SERVICE, HYGIENE"
-                      helperText="Main category (e.g. Quality, Service, Safety)"
+                    <Autocomplete
+                      freeSolo
+                      options={existingCategories}
+                      value={item.category || ''}
+                      onInputChange={(e, newValue) => handleItemChange(index, 'category', newValue)}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          fullWidth
+                          label="Category"
+                          margin="dense"
+                          placeholder="e.g. QUALITY, SERVICE, HYGIENE"
+                          helperText="Type or select from existing categories"
+                        />
+                      )}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -1204,15 +1315,22 @@ const Checklists = () => {
                     />
                   </Grid>
                 </Grid>
-                <TextField
-                  fullWidth
-                  label="Section"
+                <Autocomplete
+                  freeSolo
+                  options={existingSections}
                   value={item.section || ''}
-                  onChange={(e) => handleItemChange(index, 'section', e.target.value)}
-                  margin="dense"
-                  size="small"
-                  placeholder="e.g. Kitchen, Trnx-1, Dining Area"
-                  helperText="Section within category (e.g. Kitchen, Trnx-1 to Trnx-4, Avg for Speed of Service)"
+                  onInputChange={(e, newValue) => handleItemChange(index, 'section', newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      fullWidth
+                      label="Section"
+                      margin="dense"
+                      size="small"
+                      placeholder="e.g. Kitchen, Trnx-1, Dining Area"
+                      helperText="Type or select from existing sections"
+                    />
+                  )}
                 />
                 <Grid container spacing={2} sx={{ mt: 0 }}>
                   <Grid item xs={12} sm={4}>
@@ -1653,34 +1771,53 @@ const Checklists = () => {
               multiline
               rows={2}
             />
-            <Box sx={{ mt: 2, mb: 2 }}>
+            {/* Drag-and-Drop Upload Zone */}
+            <Box
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              sx={{
+                mt: 2, mb: 2, p: 3,
+                border: '2px dashed',
+                borderColor: isDragging ? 'primary.main' : 'grey.400',
+                borderRadius: 2,
+                bgcolor: isDragging ? 'primary.light' : 'grey.50',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' }
+              }}
+              onClick={() => document.getElementById('csv-upload')?.click()}
+            >
               <input
                 accept=".csv"
                 style={{ display: 'none' }}
                 id="csv-upload"
                 type="file"
-                onChange={handleFileUpload}
+                onChange={(e) => handleFileUpload(e)}
               />
-              <label htmlFor="csv-upload">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  startIcon={<UploadFileIcon />}
-                  fullWidth
-                >
-                  Upload CSV File
-                </Button>
-              </label>
+              <UploadFileIcon sx={{ fontSize: 40, color: isDragging ? 'primary.main' : 'grey.500', mb: 1 }} />
+              <Typography variant="body1" sx={{ fontWeight: 500, color: isDragging ? 'primary.main' : 'text.primary' }}>
+                {isDragging ? 'Drop your CSV file here' : 'Drag & drop a CSV file here, or click to browse'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Supports .csv files
+              </Typography>
+              {csvData && (
+                <Chip label="File loaded" color="success" size="small" sx={{ mt: 1 }} onDelete={() => { setCsvData(''); setParsedItems([]); setValidationSummary(null); }} />
+              )}
             </Box>
-            <Button
-              variant="outlined"
-              color="info"
-              onClick={handleDownloadSampleCsv}
-              startIcon={<DownloadIcon />}
-              sx={{ mb: 2 }}
-            >
-              Download Import Template (Sample CSV)
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <Button
+                variant="outlined"
+                color="info"
+                onClick={handleDownloadSampleCsv}
+                startIcon={<DownloadIcon />}
+                size="small"
+              >
+                Download Sample CSV
+              </Button>
+            </Box>
             <TextField
               fullWidth
               label="Paste CSV Data or Edit Below"
@@ -1697,6 +1834,25 @@ const Checklists = () => {
               <Alert severity="error" sx={{ mt: 2 }}>
                 {parseError}
               </Alert>
+            )}
+
+            {/* Validation Summary */}
+            {validationSummary && !parseError && (
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip icon={<ChecklistIcon />} label={`${validationSummary.total} items`} color="primary" size="small" />
+                <Chip label={`${validationSummary.categories.length} categories`} color="info" size="small" variant="outlined" />
+                {validationSummary.duplicates > 0 && (
+                  <Tooltip title={`Duplicate titles: ${validationSummary.duplicateNames.join(', ')}`}>
+                    <Chip icon={<WarningAmberIcon />} label={`${validationSummary.duplicates} duplicates`} color="warning" size="small" />
+                  </Tooltip>
+                )}
+                {validationSummary.missingCategory > 0 && (
+                  <Chip label={`${validationSummary.missingCategory} without category`} color="default" size="small" variant="outlined" />
+                )}
+                {validationSummary.missingOptions > 0 && (
+                  <Chip label={`${validationSummary.missingOptions} will get default options`} color="default" size="small" variant="outlined" />
+                )}
+              </Box>
             )}
 
             {parsedItems.length > 0 && (

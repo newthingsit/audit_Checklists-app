@@ -192,6 +192,11 @@ const AuditForm = () => {
   const [categoryCompletionStatus, setCategoryCompletionStatus] = useState({}); // Track category completion
   const [expandedSections, setExpandedSections] = useState({}); // Track which sections are expanded (e.g., Trnx-1, Trnx-2)
 
+  // Auto-save state
+  const [lastAutoSaved, setLastAutoSaved] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const autoSaveTimerRef = useRef(null);
+
   // groupCategories and groupedCategories removed - category selection step removed
 
   const getNormalizedInputType = useCallback((item) => {
@@ -881,6 +886,132 @@ const AuditForm = () => {
       setCategoryCompletionStatus(status);
     }
   }, [categories, items, responses, selectedOptions, calculateCategoryCompletion]);
+
+  // Mark form as dirty when user changes responses
+  useEffect(() => {
+    if (items.length > 0 && activeStep === 1) {
+      setIsDirty(true);
+    }
+  }, [responses, selectedOptions, multipleSelections, inputValues, comments, photos, items.length, activeStep]);
+
+  // Auto-save every 60 seconds when form is dirty and user has a location selected
+  useEffect(() => {
+    if (autoSaveTimerRef.current) {
+      clearInterval(autoSaveTimerRef.current);
+    }
+    if (isDirty && locationId && activeStep === 1 && !saving && auditStatus !== 'completed') {
+      autoSaveTimerRef.current = setInterval(async () => {
+        if (saveInFlightRef.current || saving) return;
+        try {
+          await handleSubmitSilent();
+          setIsDirty(false);
+          setLastAutoSaved(new Date());
+        } catch (e) {
+          // Silent fail — user can still save manually
+          if (process.env.NODE_ENV !== 'production') console.warn('Auto-save failed:', e);
+        }
+      }, 60000);
+    }
+    return () => {
+      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, locationId, activeStep, saving, auditStatus]);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty && activeStep === 1) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty, activeStep]);
+
+  // Silent auto-save helper (no navigation, no toast)
+  const handleSubmitSilent = async () => {
+    if (saveInFlightRef.current || saving || !locationId) return;
+    saveInFlightRef.current = true;
+    try {
+      const selectedStore = locations.find(l => l.id === parseInt(locationId));
+      if (!selectedStore) return;
+      let activeAuditId = currentAuditId || (auditId ? parseInt(auditId, 10) : null);
+      if (!activeAuditId) {
+        if (!clientAuditUuidRef.current) {
+          clientAuditUuidRef.current = `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        }
+        const auditData = {
+          template_id: parseInt(templateId),
+          restaurant_name: selectedStore.name,
+          location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+          location_id: parseInt(locationId),
+          notes,
+          client_audit_uuid: clientAuditUuidRef.current,
+          ...(scheduledId && { scheduled_audit_id: parseInt(scheduledId, 10) }),
+          ...(selectedCategory && { audit_category: selectedCategory })
+        };
+        const auditResponse = await axios.post('/api/audits', auditData);
+        activeAuditId = auditResponse.data.id;
+        setCurrentAuditId(activeAuditId);
+        localStorage.setItem(
+          `audit_draft:${templateId || 'unknown'}:${scheduledId || 'none'}:${locationId || 'none'}`,
+          JSON.stringify({ auditId: activeAuditId, clientAuditUuid: clientAuditUuidRef.current })
+        );
+      }
+      const categoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
+      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments, inputValues);
+      const visibleItemIds = new Set(visibleItems.map(item => item.id));
+      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      const hasLocalResponse = (item) => {
+        const status = responses[item.id];
+        return (status && status !== 'pending' && status !== '') || selectedOptions[item.id] != null || (multipleSelections[item.id] || []).length > 0 || (comments[item.id] && String(comments[item.id]).trim() !== '') || !!photos[item.id] || (inputValues[item.id] && String(inputValues[item.id]).trim() !== '');
+      };
+      const batchItems = visibleItems.filter(item => item && item.id).map((item) => {
+        const inputType = getNormalizedInputType(item);
+        const isMultiSelect = isMultiSelectInputType(inputType);
+        let status = responses[item.id] || 'pending';
+        if (status === 'pending') {
+          if (selectedOptions[item.id] || (isMultiSelect && (multipleSelections[item.id] || []).length > 0) || (inputValues[item.id] && String(inputValues[item.id]).trim() !== '') || photos[item.id]) {
+            status = 'completed';
+          }
+        }
+        const itemData = { itemId: item.id, status };
+        if (selectedOptions[item.id]) {
+          itemData.selected_option_id = parseInt(selectedOptions[item.id]);
+          const selectedOpt = item.options?.find(o => o.id === parseInt(selectedOptions[item.id]));
+          if (selectedOpt) itemData.mark = selectedOpt.mark;
+        }
+        if (inputValues[item.id] !== undefined && inputValues[item.id] !== '') {
+          itemData.input_value = inputValues[item.id];
+          itemData.mark = inputValues[item.id].toString();
+          if (['short_answer', 'long_answer', 'open_ended', 'description', 'time'].includes(inputType)) {
+            itemData.comment = inputValues[item.id].toString();
+          }
+        }
+        if (comments[item.id] && !isMultiSelect) itemData.comment = comments[item.id];
+        if (isMultiSelect) {
+          const selections = multipleSelections[item.id] || [];
+          const commentText = comments[item.id] || '';
+          if (selections.length > 0 || commentText) itemData.comment = buildMultiSelectionComment(commentText, selections);
+          if (selections.length > 0) itemData.mark = 'NA';
+        }
+        if (photos[item.id]) {
+          const photoUrl = photos[item.id];
+          itemData.photo_url = photoUrl.startsWith('http') ? photoUrl.replace(/^https?:\/\/[^/]+/, '') : photoUrl;
+        }
+        return itemData;
+      });
+      const hiddenBatchItems = hiddenItems.filter(item => !hasLocalResponse(item)).map(item => ({ itemId: item.id, status: 'completed', mark: 'NA' }));
+      const allBatchItems = [...batchItems, ...hiddenBatchItems];
+      if (allBatchItems.length > 0) {
+        await axios.put(`/api/audits/${activeAuditId}/items/batch`, { items: allBatchItems, audit_category: selectedCategory || null });
+      }
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  };
 
   // Unused - kept for future submit functionality
   // eslint-disable-next-line no-unused-vars
@@ -2424,6 +2555,16 @@ const AuditForm = () => {
                         />
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                           {totalCompleted} / {totalItems} items • {completedCategories} / {categories.length} categories complete
+                          {lastAutoSaved && (
+                            <span style={{ marginLeft: 8, color: '#4caf50' }}>
+                              • Auto-saved {lastAutoSaved.toLocaleTimeString()}
+                            </span>
+                          )}
+                          {isDirty && !lastAutoSaved && (
+                            <span style={{ marginLeft: 8, color: '#ff9800' }}>
+                              • Unsaved changes
+                            </span>
+                          )}
                         </Typography>
                         {(() => {
                           // Calculate detailed breakdown

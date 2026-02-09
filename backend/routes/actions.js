@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Create action plan from audit item or standalone
 router.post('/', authenticate, requirePermission('manage_actions', 'create_actions'), (req, res) => {
-  const { audit_id, item_id, title, description, assigned_to, due_date, priority } = req.body;
+  const { audit_id, item_id, title, description, assigned_to, due_date, priority, root_cause, corrective_action } = req.body;
   const dbInstance = db.getDb();
 
   // Title is required, but audit_id and item_id are optional (for standalone action items)
@@ -18,9 +18,9 @@ router.post('/', authenticate, requirePermission('manage_actions', 'create_actio
   }
 
   dbInstance.run(
-    `INSERT INTO action_items (audit_id, item_id, title, description, assigned_to, due_date, priority, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-    [audit_id || null, item_id || null, title, description || '', assigned_to || null, due_date || null, priority || 'medium'],
+    `INSERT INTO action_items (audit_id, item_id, title, description, assigned_to, due_date, priority, status, root_cause, corrective_action)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    [audit_id || null, item_id || null, title, description || '', assigned_to || null, due_date || null, priority || 'medium', root_cause || null, corrective_action || null],
     async function(err, result) {
       if (err) {
         logger.error('Error creating action item:', err);

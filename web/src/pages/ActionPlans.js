@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -18,7 +18,10 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  IconButton
+  IconButton,
+  Autocomplete,
+  LinearProgress,
+  Paper
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -43,13 +46,16 @@ const ActionPlans = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [editingAction, setEditingAction] = useState(null);
   const [audits, setAudits] = useState([]);
+  const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     priority: 'medium',
     due_date: '',
     assigned_to: '',
-    audit_id: ''
+    audit_id: '',
+    root_cause: '',
+    corrective_action: ''
   });
   // Escalation history state
   const [showEscalationHistory, setShowEscalationHistory] = useState(false);
@@ -60,7 +66,36 @@ const ActionPlans = () => {
   useEffect(() => {
     fetchActions();
     fetchAudits();
+    fetchUsers();
   }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('/api/users');
+      setUsers(response.data.users || response.data || []);
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') console.error('Error fetching users:', error);
+    }
+  };
+
+  // Status summary counts
+  const statusSummary = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return {
+      total: actions.length,
+      pending: actions.filter(a => a.status === 'pending').length,
+      in_progress: actions.filter(a => a.status === 'in_progress').length,
+      completed: actions.filter(a => a.status === 'completed').length,
+      overdue: actions.filter(a => {
+        if (a.status === 'completed' || !a.due_date) return false;
+        const due = new Date(a.due_date);
+        due.setHours(0, 0, 0, 0);
+        return due < now;
+      }).length,
+      high_priority: actions.filter(a => a.priority === 'high' && a.status !== 'completed').length
+    };
+  }, [actions]);
 
   const fetchAudits = async () => {
     try {
@@ -127,7 +162,9 @@ const ActionPlans = () => {
         priority: action.priority,
         due_date: action.due_date ? action.due_date.split('T')[0] : '',
         assigned_to: action.assigned_to || '',
-        audit_id: action.audit_id || ''
+        audit_id: action.audit_id || '',
+        root_cause: action.root_cause || '',
+        corrective_action: action.corrective_action || ''
       });
     } else {
       setEditingAction(null);
@@ -137,7 +174,9 @@ const ActionPlans = () => {
         priority: 'medium',
         due_date: '',
         assigned_to: '',
-        audit_id: ''
+        audit_id: '',
+        root_cause: '',
+        corrective_action: ''
       });
     }
     setOpenDialog(true);
@@ -164,7 +203,9 @@ const ActionPlans = () => {
           description: formData.description,
           priority: formData.priority,
           due_date: formData.due_date || null,
-          assigned_to: formData.assigned_to || null
+          assigned_to: formData.assigned_to || null,
+          root_cause: formData.root_cause || null,
+          corrective_action: formData.corrective_action || null
         };
         
         // Only include audit_id if provided
@@ -258,6 +299,58 @@ const ActionPlans = () => {
             New Action
           </Button>
         </Box>
+
+        {/* Status Summary Bar */}
+        <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary' }}>{statusSummary.total}</Typography>
+                <Typography variant="caption" color="text.secondary">Total</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'grey.500' }}>{statusSummary.pending}</Typography>
+                <Typography variant="caption" color="text.secondary">Pending</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'warning.main' }}>{statusSummary.in_progress}</Typography>
+                <Typography variant="caption" color="text.secondary">In Progress</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{statusSummary.completed}</Typography>
+                <Typography variant="caption" color="text.secondary">Completed</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'error.main' }}>{statusSummary.overdue}</Typography>
+                <Typography variant="caption" color="text.secondary">Overdue</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'error.dark' }}>{statusSummary.high_priority}</Typography>
+                <Typography variant="caption" color="text.secondary">High Priority</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12}>
+              <LinearProgress
+                variant="determinate"
+                value={statusSummary.total > 0 ? (statusSummary.completed / statusSummary.total) * 100 : 0}
+                sx={{ height: 6, borderRadius: 3, bgcolor: 'grey.200', '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: 'success.main' } }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {statusSummary.total > 0 ? Math.round((statusSummary.completed / statusSummary.total) * 100) : 0}% completion rate
+              </Typography>
+            </Grid>
+          </Grid>
+        </Paper>
 
         <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
           <FormControl sx={{ minWidth: 150 }}>
@@ -432,8 +525,30 @@ const ActionPlans = () => {
                     </Box>
 
                     {action.due_date && (
-                      <Typography variant="caption" color="text.secondary">
-                        Due: {new Date(action.due_date).toLocaleDateString()}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Due: {new Date(action.due_date).toLocaleDateString()}
+                        </Typography>
+                        {action.status !== 'completed' && (() => {
+                          const due = new Date(action.due_date);
+                          due.setHours(0, 0, 0, 0);
+                          const now = new Date();
+                          now.setHours(0, 0, 0, 0);
+                          if (due < now) return <Chip label="OVERDUE" size="small" color="error" sx={{ fontWeight: 700, fontSize: '0.65rem', height: 20 }} />;
+                          const daysLeft = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+                          if (daysLeft <= 3) return <Chip label={`${daysLeft}d left`} size="small" color="warning" sx={{ fontSize: '0.65rem', height: 20 }} />;
+                          return null;
+                        })()}
+                      </Box>
+                    )}
+                    {action.root_cause && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        <strong>Root Cause:</strong> {action.root_cause.length > 80 ? action.root_cause.substring(0, 80) + '...' : action.root_cause}
+                      </Typography>
+                    )}
+                    {action.corrective_action && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        <strong>Corrective Action:</strong> {action.corrective_action.length > 80 ? action.corrective_action.substring(0, 80) + '...' : action.corrective_action}
                       </Typography>
                     )}
                   </CardContent>
@@ -481,26 +596,53 @@ const ActionPlans = () => {
               multiline
               rows={3}
             />
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Priority</InputLabel>
-              <Select
-                value={formData.priority}
-                label="Priority"
-                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-              >
-                <MenuItem value="low">Low</MenuItem>
-                <MenuItem value="medium">Medium</MenuItem>
-                <MenuItem value="high">High</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="Due Date"
-              type="date"
-              value={formData.due_date}
-              onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-              margin="normal"
-              InputLabelProps={{ shrink: true }}
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth margin="normal">
+                  <InputLabel>Priority</InputLabel>
+                  <Select
+                    value={formData.priority}
+                    label="Priority"
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                  >
+                    <MenuItem value="low">Low</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
+                    <MenuItem value="high">High</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Due Date"
+                  type="date"
+                  value={formData.due_date}
+                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                  margin="normal"
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+            </Grid>
+            <Autocomplete
+              options={users}
+              getOptionLabel={(option) => {
+                if (typeof option === 'string') return option;
+                return option.name || option.username || option.email || '';
+              }}
+              value={users.find(u => String(u.id) === String(formData.assigned_to)) || null}
+              onChange={(e, newValue) => setFormData({ ...formData, assigned_to: newValue ? newValue.id : '' })}
+              renderInput={(params) => (
+                <TextField {...params} fullWidth label="Assign To" margin="normal" placeholder="Search user..." />
+              )}
+              isOptionEqualToValue={(option, value) => String(option.id) === String(value?.id)}
+              renderOption={(props, option) => (
+                <li {...props} key={option.id}>
+                  <Box>
+                    <Typography variant="body2">{option.name || option.username}</Typography>
+                    {option.role && <Typography variant="caption" color="text.secondary">{option.role}</Typography>}
+                  </Box>
+                </li>
+              )}
             />
             {!editingAction && (
               <FormControl fullWidth margin="normal">
@@ -519,6 +661,31 @@ const ActionPlans = () => {
                 </Select>
               </FormControl>
             )}
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 600, color: 'text.secondary' }}>
+              Root Cause & Corrective Action
+            </Typography>
+            <TextField
+              fullWidth
+              label="Root Cause Analysis"
+              value={formData.root_cause}
+              onChange={(e) => setFormData({ ...formData, root_cause: e.target.value })}
+              margin="dense"
+              multiline
+              rows={2}
+              placeholder="What caused this issue? (e.g., lack of training, equipment failure, process gap)"
+              helperText="Identify the underlying cause to prevent recurrence"
+            />
+            <TextField
+              fullWidth
+              label="Corrective Action"
+              value={formData.corrective_action}
+              onChange={(e) => setFormData({ ...formData, corrective_action: e.target.value })}
+              margin="dense"
+              multiline
+              rows={2}
+              placeholder="What steps will be taken to fix and prevent this? (e.g., retraining, SOP update)"
+              helperText="Describe the specific corrective measures to implement"
+            />
           </DialogContent>
           <DialogActions sx={{ 
             px: 3, 

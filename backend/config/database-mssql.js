@@ -372,6 +372,12 @@ const createTables = async () => {
       )
       ALTER TABLE [dbo].[action_items] ALTER COLUMN [audit_id] INT NULL`,
 
+    // Add root_cause and corrective_action columns to action_items if missing
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_items]') AND name = 'root_cause')
+     ALTER TABLE [dbo].[action_items] ADD [root_cause] NTEXT`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[action_items]') AND name = 'corrective_action')
+     ALTER TABLE [dbo].[action_items] ADD [corrective_action] NTEXT`,
+
     // Action Plan table (auto-generated Top-3 deviations)
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[action_plan]') AND type in (N'U'))
     CREATE TABLE [dbo].[action_plan] (
