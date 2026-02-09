@@ -541,6 +541,10 @@ router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_tem
     );
 
     if (Array.isArray(items)) {
+      // Delete options first to avoid FK violations if CASCADE is missing
+      await runDb(dbInstance, 
+        'DELETE FROM checklist_item_options WHERE item_id IN (SELECT id FROM checklist_items WHERE template_id = ?)', 
+        [templateId]);
       await runDb(dbInstance, 'DELETE FROM checklist_items WHERE template_id = ?', [templateId]);
       if (items.length > 0) {
         await insertItemsWithOptions(dbInstance, templateId, items, category || '');

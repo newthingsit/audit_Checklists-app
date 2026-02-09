@@ -1475,7 +1475,15 @@ const getDb = () => {
   // Helper to prepare query and parameters
   const prepareQuery = (query, params, request) => {
     params.forEach((param, index) => {
-      request.input(`param${index}`, param);
+      if (param === null || param === undefined) {
+        request.input(`param${index}`, sql.NVarChar, null);
+      } else if (typeof param === 'number' && Number.isInteger(param)) {
+        request.input(`param${index}`, sql.Int, param);
+      } else if (typeof param === 'number') {
+        request.input(`param${index}`, sql.Float, param);
+      } else {
+        request.input(`param${index}`, param);
+      }
     });
     
     let paramIndex = 0;
