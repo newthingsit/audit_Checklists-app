@@ -960,15 +960,22 @@ const AuditForm = () => {
           JSON.stringify({ auditId: activeAuditId, clientAuditUuid: clientAuditUuidRef.current })
         );
       }
-      const categoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
-      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments, inputValues);
+      // CRITICAL FIX: Save ALL items across ALL categories that have responses,
+      // not just the currently selected category. This ensures multi-category audit work is persisted.
+      const allItemsToSave = items;
+      const visibleItems = filterItemsByCondition(allItemsToSave, items, responses, selectedOptions, comments, inputValues);
       const visibleItemIds = new Set(visibleItems.map(item => item.id));
-      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      // Hidden items auto-completion only applies to the current category (conditional logic items)
+      const currentCategoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
+      const currentCategoryItemIds = new Set(currentCategoryItems.map(item => item.id));
+      const hiddenItems = allItemsToSave.filter(item => !visibleItemIds.has(item.id) && currentCategoryItemIds.has(item.id));
       const hasLocalResponse = (item) => {
         const status = responses[item.id];
         return (status && status !== 'pending' && status !== '') || selectedOptions[item.id] != null || (multipleSelections[item.id] || []).length > 0 || (comments[item.id] && String(comments[item.id]).trim() !== '') || !!photos[item.id] || (inputValues[item.id] && String(inputValues[item.id]).trim() !== '');
       };
-      const batchItems = visibleItems.filter(item => item && item.id).map((item) => {
+      const batchItems = visibleItems
+        .filter(item => item && item.id && (hasLocalResponse(item) || currentCategoryItemIds.has(item.id)))
+        .map((item) => {
         const inputType = getNormalizedInputType(item);
         const isMultiSelect = isMultiSelectInputType(inputType);
         let status = responses[item.id] || 'pending';
@@ -1090,13 +1097,15 @@ const AuditForm = () => {
         );
       }
 
-      // Update all items in a single batch request (much faster!)
-      // IMPORTANT: For category-wise audits, only save items for the selected category.
-      // Otherwise, saving would create/update "pending" rows for other categories and can flip status back to in_progress.
-      const categoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
-      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments, inputValues);
+      // CRITICAL FIX: Save ALL items across ALL categories that have responses,
+      // not just the currently selected category. This ensures multi-category audit work is persisted.
+      const allItemsToSave = items;
+      const visibleItems = filterItemsByCondition(allItemsToSave, items, responses, selectedOptions, comments, inputValues);
       const visibleItemIds = new Set(visibleItems.map(item => item.id));
-      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      // Hidden items auto-completion only applies to the current category (conditional logic items)
+      const currentCategoryItems = selectedCategory ? items.filter(item => normalizeCategoryName(item.category) === selectedCategory) : items;
+      const currentCategoryItemIds = new Set(currentCategoryItems.map(item => item.id));
+      const hiddenItems = allItemsToSave.filter(item => !visibleItemIds.has(item.id) && currentCategoryItemIds.has(item.id));
       const hasLocalResponse = (item) => {
         const status = responses[item.id];
         const hasStatus = status && status !== 'pending' && status !== '';
@@ -1109,7 +1118,7 @@ const AuditForm = () => {
       };
 
       const batchItems = visibleItems
-        .filter(item => item && item.id) // Filter out any items without valid IDs
+        .filter(item => item && item.id && (hasLocalResponse(item) || currentCategoryItemIds.has(item.id)))
         .map((item) => {
           const inputType = getNormalizedInputType(item);
           const isMultiSelect = isMultiSelectInputType(inputType);

@@ -786,6 +786,127 @@ const AuditFormScreen = () => {
       setMultipleSelections(multipleSelectionsData);
       setPhotos(photosData);
 
+      // DRAFT MERGE: Try to recover local draft data that wasn't saved to the server
+      // This handles the case where the previous save only included current category items
+      try {
+        // Try multiple possible draft keys since locationId might vary
+        const possibleKeys = [
+          `audit_draft:${templateId}:${scheduledAuditId || 'none'}:${auditLocationId || 'none'}`,
+          `audit_draft:${templateId}:none:${auditLocationId || 'none'}`,
+          `audit_draft:${audit.template_id}:none:${auditLocationId || 'none'}`,
+          draftStorageKey,
+        ];
+        
+        let draftData = null;
+        for (const key of [...new Set(possibleKeys)]) {
+          try {
+            const stored = await AsyncStorage.getItem(key);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              // Verify the draft belongs to this audit
+              if (parsed && (parsed.auditId === id || parsed.template_id === audit.template_id)) {
+                draftData = parsed;
+                console.log('[AuditForm] Found local draft for recovery, key:', key, 'savedAt:', parsed.savedAt);
+                break;
+              }
+            }
+          } catch (e) { /* skip invalid drafts */ }
+        }
+
+        if (draftData && draftData.responses) {
+          let mergedCount = 0;
+          // Merge draft responses that are NOT already in the server data
+          Object.keys(draftData.responses).forEach(itemId => {
+            const draftResponse = draftData.responses[itemId];
+            const serverResponse = responsesData[itemId];
+            // Only merge if draft has a response and server doesn't
+            if (draftResponse && draftResponse !== 'pending' && (!serverResponse || serverResponse === 'pending')) {
+              responsesData[itemId] = draftResponse;
+              mergedCount++;
+            }
+          });
+          if (draftData.selectedOptions) {
+            Object.keys(draftData.selectedOptions).forEach(itemId => {
+              if (draftData.selectedOptions[itemId] != null && optionsData[itemId] == null) {
+                optionsData[itemId] = draftData.selectedOptions[itemId];
+              }
+            });
+          }
+          if (draftData.comments) {
+            Object.keys(draftData.comments).forEach(itemId => {
+              if (draftData.comments[itemId] && !commentsData[itemId]) {
+                commentsData[itemId] = draftData.comments[itemId];
+              }
+            });
+          }
+          if (draftData.multipleSelections) {
+            Object.keys(draftData.multipleSelections).forEach(itemId => {
+              if ((draftData.multipleSelections[itemId] || []).length > 0 && !(multipleSelectionsData[itemId] || []).length) {
+                multipleSelectionsData[itemId] = draftData.multipleSelections[itemId];
+              }
+            });
+          }
+          if (draftData.photos) {
+            Object.keys(draftData.photos).forEach(itemId => {
+              if (draftData.photos[itemId] && !photosData[itemId]) {
+                photosData[itemId] = draftData.photos[itemId];
+              }
+            });
+          }
+          
+          if (mergedCount > 0) {
+            console.log('[AuditForm] Merged', mergedCount, 'responses from local draft');
+            // Update state with merged data
+            setResponses({ ...responsesData });
+            setSelectedOptions({ ...optionsData });
+            setComments({ ...commentsData });
+            setMultipleSelections({ ...multipleSelectionsData });
+            setPhotos({ ...photosData });
+
+            // Recalculate category completion with merged data
+            categoryMap.forEach((data, cat) => {
+              let completedCount = 0;
+              data.items.forEach(item => {
+                const response = responsesData[item.id];
+                const option = optionsData[item.id];
+                const hasResponse = response && response !== 'pending' && response !== '';
+                const hasOption = option != null;
+                if (hasResponse || hasOption) {
+                  completedCount++;
+                }
+              });
+              data.completed = completedCount;
+            });
+
+            // Update category status
+            const updatedCategoryStatus = {};
+            categoryMap.forEach((data, cat) => {
+              updatedCategoryStatus[cat] = {
+                completed: data.completed,
+                total: data.items.length,
+                isComplete: data.completed === data.items.length && data.items.length > 0
+              };
+            });
+            setCategoryCompletionStatus(updatedCategoryStatus);
+
+            // Re-evaluate category selection with updated data
+            const incompleteCategories = uniqueCategories.filter(cat => {
+              const status = updatedCategoryStatus[cat];
+              return !status.isComplete;
+            });
+            if (incompleteCategories.length > 0) {
+              const newCategoryToSelect = incompleteCategories[0];
+              console.log('[AuditForm] After draft merge, auto-selecting category:', newCategoryToSelect, 'Incomplete:', incompleteCategories.length);
+              setSelectedCategory(newCategoryToSelect);
+              const filtered = filteredItems.filter(item => item.category === newCategoryToSelect);
+              setFilteredItems(filtered);
+            }
+          }
+        }
+      } catch (draftError) {
+        console.warn('[AuditForm] Draft merge failed (non-critical):', draftError.message);
+      }
+
       // Start at appropriate step
       // Skip category selection and go directly to checklist when continuing audit
       // User can switch categories using the tabs at the top of the checklist
@@ -2762,13 +2883,20 @@ const AuditFormScreen = () => {
         return;
       }
 
-      // Use batch update for faster saves - prepare all items
-      const categoryItems = selectedCategory
+      // CRITICAL FIX: Save ALL items across ALL categories that have responses,
+      // not just the currently selected category. This ensures that when users fill in
+      // multiple categories and click "Submit and Save", ALL their work is persisted.
+      const allItemsToSave = items; // Use ALL template items, not just current category
+      const visibleItems = filterItemsByCondition(allItemsToSave, items, responses, selectedOptions, comments);
+      const visibleItemIds = new Set(visibleItems.map(item => item.id));
+      // Hidden items auto-completion should ONLY apply to the current category
+      // (these are items hidden by conditional logic within the category the user is viewing).
+      // Items from other categories that the user hasn't interacted with should NOT be auto-completed.
+      const currentCategoryItems = selectedCategory
         ? getCategoryItems(selectedCategory, selectedSection)
         : items;
-      const visibleItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments);
-      const visibleItemIds = new Set(visibleItems.map(item => item.id));
-      const hiddenItems = categoryItems.filter(item => !visibleItemIds.has(item.id));
+      const currentCategoryItemIds = new Set(currentCategoryItems.map(item => item.id));
+      const hiddenItems = allItemsToSave.filter(item => !visibleItemIds.has(item.id) && currentCategoryItemIds.has(item.id));
       const hasLocalResponse = (item) => {
         const status = responses[item.id];
         const hasStatus = status && status !== 'pending' && status !== '';
@@ -2779,7 +2907,11 @@ const AuditFormScreen = () => {
         return hasStatus || hasOption || hasMulti || hasComment || hasPhoto;
       };
 
-      const batchItems = visibleItems.map((item) => {
+      const batchItems = visibleItems
+        // CRITICAL FIX: Only include items that have actual responses OR are in the current category.
+        // Items from other categories that the user hasn't interacted with should not be sent as 'pending'.
+        .filter(item => hasLocalResponse(item) || currentCategoryItemIds.has(item.id))
+        .map((item) => {
         const fieldType = getEffectiveItemFieldType(item);
         const isOptionType = isOptionFieldType(fieldType);
         const isAnswerType = isAnswerFieldType(fieldType);
@@ -2882,6 +3014,11 @@ const AuditFormScreen = () => {
         }));
 
       const allBatchItems = [...batchItems, ...hiddenBatchItems];
+
+      console.log('[AuditForm] Saving ALL items across categories - total:', allBatchItems.length,
+        'visible with responses:', batchItems.length,
+        'hidden (conditional):', hiddenBatchItems.length,
+        'current category:', selectedCategory);
 
       // Send batch update request
       // Clear audit_category to allow multiple categories in the same audit
