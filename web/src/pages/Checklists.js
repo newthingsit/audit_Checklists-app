@@ -543,6 +543,7 @@ const Checklists = () => {
       category: '', // Category removed from template level
       description: templateForm.description,
       items: validItems.map((item, index) => ({
+        id: item.id || undefined,
         title: item.title,
         description: item.description || '',
         category: item.category || '',

@@ -541,22 +541,122 @@ router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_tem
     );
 
     if (Array.isArray(items)) {
-      // Delete options first to avoid FK violations if CASCADE is missing
-      await runDb(dbInstance, 
-        'DELETE FROM checklist_item_options WHERE item_id IN (SELECT id FROM checklist_items WHERE template_id = ?)', 
-        [templateId]);
-      await runDb(dbInstance, 'DELETE FROM checklist_items WHERE template_id = ?', [templateId]);
-      if (items.length > 0) {
-        await insertItemsWithOptions(dbInstance, templateId, items, category || '');
+      // Smart update: update existing items in-place, insert new ones, remove deleted ones
+      // This avoids FK constraint violations from audit_items, action_items, action_plan
+      const existingItems = await getAllRows(dbInstance,
+        'SELECT id FROM checklist_items WHERE template_id = ?', [templateId]);
+      const existingItemIds = new Set(existingItems.map(i => i.id));
+
+      const payloadItemIds = new Set(
+        items.filter(i => i.id && existingItemIds.has(i.id)).map(i => i.id)
+      );
+      const itemsToRemove = [...existingItemIds].filter(id => !payloadItemIds.has(id));
+
+      // 1. Update existing items in-place and recreate their options
+      for (const item of items) {
+        const index = items.indexOf(item);
+        if (item.id && existingItemIds.has(item.id)) {
+          // Clear selected_option_id references in audit_items before deleting options
+          try {
+            await runDb(dbInstance,
+              'UPDATE audit_items SET selected_option_id = NULL WHERE selected_option_id IN (SELECT id FROM checklist_item_options WHERE item_id = ?)',
+              [item.id]);
+          } catch (e) { /* ignore if table/column missing */ }
+          // Delete old options for this item
+          await runDb(dbInstance,
+            'DELETE FROM checklist_item_options WHERE item_id = ?', [item.id]);
+
+          const inputType = item.input_type || item.inputType || 'auto';
+          // Update item fields
+          await runDb(dbInstance,
+            `UPDATE checklist_items SET title=?, description=?, category=?, subcategory=?, required=?, order_index=?, input_type=?, weight=?, is_critical=?, is_time_based=?, target_time_minutes=?, min_time_minutes=?, max_time_minutes=?, section=?, conditional_item_id=?, conditional_value=?, conditional_operator=? WHERE id=?`,
+            [
+              item.title || '',
+              item.description || '',
+              item.category || category || '',
+              item.subcategory || null,
+              item.required !== false ? 1 : 0,
+              item.order_index !== undefined ? item.order_index : index,
+              inputType,
+              item.weight || 1,
+              item.is_critical ? 1 : 0,
+              item.is_time_based ? 1 : 0,
+              item.target_time_minutes || null,
+              item.min_time_minutes || null,
+              item.max_time_minutes || null,
+              item.section || null,
+              item.conditional_item_id || null,
+              item.conditional_value || null,
+              item.conditional_operator || 'equals',
+              item.id
+            ]);
+
+          // Re-insert options
+          if (item.options && Array.isArray(item.options) && item.options.length > 0) {
+            await insertItemOptions(dbInstance, item.id, item.options);
+          }
+        } else {
+          // New item — insert it
+          if (item.title && item.title.trim()) {
+            const inputType = item.input_type || item.inputType || 'auto';
+            const { lastID: newItemId } = await runDb(dbInstance,
+              'INSERT INTO checklist_items (template_id, title, description, category, subcategory, required, order_index, input_type, weight, is_critical, is_time_based, target_time_minutes, min_time_minutes, max_time_minutes, section, conditional_item_id, conditional_value, conditional_operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                templateId,
+                item.title,
+                item.description || '',
+                item.category || category || '',
+                item.subcategory || null,
+                item.required !== false ? 1 : 0,
+                item.order_index !== undefined ? item.order_index : index,
+                inputType,
+                item.weight || 1,
+                item.is_critical ? 1 : 0,
+                item.is_time_based ? 1 : 0,
+                item.target_time_minutes || null,
+                item.min_time_minutes || null,
+                item.max_time_minutes || null,
+                item.section || null,
+                item.conditional_item_id || null,
+                item.conditional_value || null,
+                item.conditional_operator || 'equals'
+              ]);
+
+            if (item.options && Array.isArray(item.options) && item.options.length > 0) {
+              await insertItemOptions(dbInstance, newItemId, item.options);
+            }
+          }
+        }
+      }
+
+      // 2. Remove items that were deleted from the template
+      for (const itemId of itemsToRemove) {
+        // Clear selected_option_id references in audit_items
+        try {
+          await runDb(dbInstance,
+            'UPDATE audit_items SET selected_option_id = NULL WHERE selected_option_id IN (SELECT id FROM checklist_item_options WHERE item_id = ?)',
+            [itemId]);
+        } catch (e) { /* ignore */ }
+        // Delete options
+        await runDb(dbInstance, 'DELETE FROM checklist_item_options WHERE item_id = ?', [itemId]);
+        // Try to delete the item — if FK constraints prevent it, leave it (preserves audit history)
+        try {
+          try { await runDb(dbInstance, 'UPDATE action_items SET item_id = NULL WHERE item_id = ?', [itemId]); } catch (e) { /* ignore */ }
+          try { await runDb(dbInstance, 'UPDATE action_plan SET item_id = NULL WHERE item_id = ?', [itemId]); } catch (e) { /* ignore */ }
+          await runDb(dbInstance, 'DELETE FROM checklist_items WHERE id = ?', [itemId]);
+        } catch (e) {
+          // Item still referenced by audit_items (item_id NOT NULL) — leave it to preserve audit data
+          logger.warn(`Could not delete checklist item ${itemId} — still referenced by audits`);
+        }
       }
     }
 
     res.json({ message: 'Template updated successfully' });
   } catch (error) {
     logger.error('Error updating checklist template:', error);
-    if (error && error.message && error.message.includes('FOREIGN KEY')) {
+    if (error && error.message && (error.message.includes('FOREIGN KEY') || error.message.includes('REFERENCE constraint'))) {
       return res.status(400).json({
-        error: 'Cannot update template because it is referenced by existing audits'
+        error: 'Cannot update template because it is referenced by existing audits. Please try again.'
       });
     }
     logger.error('Error updating template:', error);
