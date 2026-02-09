@@ -31,23 +31,24 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          npm install
+          npm install --production
 
       - name: Create deployment package
         run: |
           cd backend
-          zip -r ../backend.zip . -x "*.git*"
+          zip -r ../backend.zip . -x "*.git*" -x "web.config" -x "*.md"
 
       - name: 'Azure Login'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 'Wait for any in-progress deployments'
+      - name: 'Configure App Settings for deployment'
         run: |
-          echo "Checking for in-progress deployments..."
-          sleep 30
-          echo "Proceeding with deployment..."
+          az webapp config appsettings set \
+            --resource-group audit-app-rg \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -57,13 +58,13 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: backend.zip
           slot-name: production
+          clean: true
 
-      - name: 'Retry deployment if failed (409 conflict)'
+      - name: 'Retry deployment if failed'
         if: steps.deploy.outcome == 'failure'
         run: |
           echo "First deployment failed, waiting 60 seconds before retry..."
           sleep 60
-        continue-on-error: false
 
       - name: 'Retry deployment'
         if: steps.deploy.outcome == 'failure'
@@ -72,4 +73,12 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: backend.zip
           slot-name: production
+          clean: true
+
+      - name: 'Restart App'
+        if: always()
+        run: |
+          az webapp restart \
+            --resource-group audit-app-rg \
+            --name ${{ env.AZURE_WEBAPP_NAME }}
 
