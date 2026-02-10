@@ -13,7 +13,7 @@ on:
 
 env:
   AZURE_WEBAPP_NAME: 'audit-app-backend-2221'
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '22.x'
 
 jobs:
   build_and_deploy:
@@ -28,15 +28,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies
-        run: |
-          cd backend
-          npm install --production
-
       - name: Create deployment package
         run: |
           cd backend
-          zip -r ../backend.zip . -x "*.git*" -x "web.config" -x "*.md"
+          zip -r ../backend.zip . -x "*.git*" -x "web.config" -x "*.md" -x "node_modules/*"
 
       - name: 'Azure Login'
         uses: azure/login@v2
@@ -48,7 +43,7 @@ jobs:
           az webapp config appsettings set \
             --resource-group audit-app-rg \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3

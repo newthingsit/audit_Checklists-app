@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
   RefreshControl,
   Dimensions
 } from 'react-native';
@@ -34,6 +35,21 @@ const DashboardScreen = () => {
   const { isOnline } = useNetwork();
   const userPermissions = user?.permissions || [];
   const lastRefreshRef = useRef(0);
+  const lastStatsRef = useRef(stats);
+  const lastRecentAuditsRef = useRef(recentAudits);
+  const lastAnalyticsRef = useRef(analytics);
+
+  useEffect(() => {
+    lastStatsRef.current = stats;
+  }, [stats]);
+
+  useEffect(() => {
+    lastRecentAuditsRef.current = recentAudits;
+  }, [recentAudits]);
+
+  useEffect(() => {
+    lastAnalyticsRef.current = analytics;
+  }, [analytics]);
 
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
                          hasPermission(userPermissions, 'manage_audits') ||
@@ -91,41 +107,64 @@ const DashboardScreen = () => {
         headers: { 'Cache-Control': 'no-cache' }
       };
 
+      const safeGet = async (url) => {
+        try {
+          const response = await axios.get(url, requestConfig);
+          return { ok: true, data: response.data };
+        } catch (error) {
+          return { ok: false, data: null, error };
+        }
+      };
+
       const fetchPromises = [
         canViewTemplatesNow
-          ? axios.get(`${API_BASE_URL}/templates`, requestConfig).catch(() => ({ data: { templates: [] } }))
-          : Promise.resolve({ data: { templates: [] } }),
+          ? safeGet(`${API_BASE_URL}/templates`)
+          : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewAuditsNow
-          ? axios.get(`${API_BASE_URL}/audits`, requestConfig).catch(() => ({ data: { audits: [] } }))
-          : Promise.resolve({ data: { audits: [] } }),
+          ? safeGet(`${API_BASE_URL}/audits`)
+          : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewActionsNow 
-          ? axios.get(`${API_BASE_URL}/actions`, requestConfig).catch(() => ({ data: { actions: [] } }))
-          : Promise.resolve({ data: { actions: [] } }),
+          ? safeGet(`${API_BASE_URL}/actions`)
+          : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewAnalyticsNow
-          ? axios.get(`${API_BASE_URL}/analytics/dashboard`, requestConfig).catch(() => ({ data: null }))
-          : Promise.resolve({ data: null })
+          ? safeGet(`${API_BASE_URL}/analytics/dashboard`)
+          : Promise.resolve({ ok: false, data: null, skipped: true })
       ];
 
       const [templatesRes, auditsRes, actionsRes, analyticsRes] = await Promise.all(fetchPromises);
 
-      const audits = auditsRes.data.audits || [];
-      const sortedAudits = [...audits].sort((a, b) => {
-        const aTime = new Date(a.updated_at || a.completed_at || a.created_at).getTime();
-        const bTime = new Date(b.updated_at || b.completed_at || b.created_at).getTime();
-        return bTime - aTime;
-      });
-      const completed = audits.filter(a => a.status === 'completed').length;
-      const pendingActions = (actionsRes.data.actions || []).filter(a => a.status === 'pending').length;
+      const nextStats = { ...lastStatsRef.current };
 
-      setStats({
-        templates: templatesRes.data.templates?.length || 0,
-        audits: audits.length,
-        completed,
-        pendingActions
-      });
+      if (templatesRes.ok) {
+        nextStats.templates = templatesRes.data?.templates?.length || 0;
+      }
 
-      setRecentAudits(sortedAudits.slice(0, 5));
-      setAnalytics(analyticsRes.data);
+      if (auditsRes.ok) {
+        const audits = auditsRes.data?.audits || [];
+        const sortedAudits = [...audits].sort((a, b) => {
+          const aTime = new Date(a.updated_at || a.completed_at || a.created_at).getTime();
+          const bTime = new Date(b.updated_at || b.completed_at || b.created_at).getTime();
+          return bTime - aTime;
+        });
+        const completed = audits.filter(a => a.status === 'completed').length;
+
+        nextStats.audits = audits.length;
+        nextStats.completed = completed;
+        setRecentAudits(sortedAudits.slice(0, 5));
+      }
+
+      if (actionsRes.ok) {
+        const pendingActions = (actionsRes.data?.actions || []).filter(a => a.status === 'pending').length;
+        nextStats.pendingActions = pendingActions;
+      }
+
+      if (analyticsRes.ok) {
+        setAnalytics(analyticsRes.data);
+      } else if (lastAnalyticsRef.current) {
+        setAnalytics(lastAnalyticsRef.current);
+      }
+
+      setStats(nextStats);
       lastRefreshRef.current = Date.now();
     } catch (error) {
       console.error('Error fetching data:', error);

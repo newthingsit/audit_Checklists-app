@@ -45,15 +45,25 @@ const getAutoDevApiUrl = () => {
   }
   
   // Check if running in tunnel mode (exp.direct domain)
-  // Tunnel URLs can't reach local backend, use production API instead
+  // Tunnel URLs can't reach local backend, prefer explicit tunnel/staging API
   if (host.includes('exp.direct') || host.includes('.exp.direct')) {
-    console.log('[API] Tunnel mode detected, using production API');
     const appConfig = Constants.expoConfig?.extra?.apiUrl;
-    if (appConfig?.production) {
+    const tunnelApiUrl = process.env.EXPO_PUBLIC_TUNNEL_API_URL || appConfig?.tunnel;
+    const allowTunnelProd = String(process.env.EXPO_PUBLIC_ALLOW_TUNNEL_PROD || '').toLowerCase() === 'true';
+
+    if (tunnelApiUrl) {
+      console.log('[API] Tunnel mode detected, using tunnel API URL');
+      return tunnelApiUrl;
+    }
+
+    if (allowTunnelProd && appConfig?.production) {
+      console.log('[API] Tunnel mode detected, using production API');
       return appConfig.production;
     }
+
+    console.warn('[API] Tunnel mode detected without tunnel API configured; using production fallback');
     // Fallback to Azure backend
-    return 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api';
+    return appConfig?.production || 'https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api';
   }
   
   return `http://${host}:5000/api`;

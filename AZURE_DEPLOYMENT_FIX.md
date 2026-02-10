@@ -72,11 +72,12 @@ If GitHub Actions keeps failing, deploy manually:
 
 **Step 1: Create ZIP File**
 ```powershell
-# Navigate to backend folder
-cd D:\audit_Checklists-app\backend
+# Navigate to project root
+cd D:\audit_Checklists-app
 
 # Create ZIP (exclude node_modules and other unnecessary files)
-Compress-Archive -Path * -DestinationPath ..\backend-deploy.zip -Force
+# Prefer tar to ensure exclusions are applied
+tar -a -c -f backend-deploy.zip --exclude=node_modules --exclude=.git --exclude=*.zip --exclude=*.log --exclude=.env.local --exclude=.env.development -C backend .
 ```
 
 **Step 2: Deploy via Azure Portal**
@@ -85,6 +86,14 @@ Compress-Archive -Path * -DestinationPath ..\backend-deploy.zip -Force
 3. Upload `backend-deploy.zip`
 4. Click **Deploy**
 5. Wait for completion (~2-5 minutes)
+
+**Important:** Ensure build-on-deploy is enabled so dependencies are installed on the App Service:
+```bash
+az webapp config appsettings set \
+  --resource-group audit-app-rg \
+  --name audit-app-backend-2221 \
+  --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+```
 
 **Step 3: Restart App Service**
 1. Click **Restart** button

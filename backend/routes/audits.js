@@ -732,44 +732,8 @@ router.post('/', authenticate, (req, res) => {
             return callback({ status: 400, message: 'Scheduled audit is already completed' });
           }
           
-          // Validate that scheduled audit can only be opened on or after the scheduled date
-          // This allows pre-poning (rescheduling to earlier date) and opening on scheduled date
-          if (schedule.scheduled_date) {
-            const scheduledDate = new Date(schedule.scheduled_date);
-            scheduledDate.setHours(0, 0, 0, 0);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            // Requirement: "Audit template should open on the same day of audit and not other days"
-            // Only allow opening on the exact scheduled date (same day), not before or after
-            if (scheduledDate.getTime() !== today.getTime()) {
-              // Check if it was rescheduled to today
-              dbInstance.get(
-                `SELECT new_date FROM reschedule_tracking 
-                 WHERE scheduled_audit_id = ? 
-                 ORDER BY created_at DESC LIMIT 1`,
-                [schedule.id],
-                (rescheduleErr, reschedule) => {
-                  if (!rescheduleErr && reschedule && reschedule.new_date) {
-                    const rescheduledDate = new Date(reschedule.new_date);
-                    rescheduledDate.setHours(0, 0, 0, 0);
-                    if (rescheduledDate.getTime() <= today.getTime()) {
-                      // Was rescheduled to today or earlier, allow opening
-                      return callback(null, schedule);
-                    }
-                  }
-                  // Not rescheduled to today, prevent opening
-                  const scheduledDateStr = scheduledDate.toLocaleDateString();
-                  return callback({ 
-                    status: 400, 
-                    message: `This audit is scheduled for ${scheduledDateStr}. Please open it on the scheduled date or reschedule it first.` 
-                  });
-                }
-              );
-              return; // Exit early, callback will be called above
-            }
-            // Scheduled date is today, allow opening
-          }
+          // Allow starting scheduled audits on any date (including future).
+          // This keeps mobile and backend aligned for scheduled audits.
           
           callback(null, schedule);
         }

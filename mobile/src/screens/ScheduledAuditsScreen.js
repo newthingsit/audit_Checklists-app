@@ -200,21 +200,6 @@ const ScheduledAuditsScreen = () => {
 
   const handleStartAudit = (schedule) => {
     if (!canStartSchedule(schedule)) {
-      // Check if it's a date issue
-      if (schedule.scheduled_date) {
-        const scheduledDate = new Date(schedule.scheduled_date);
-        scheduledDate.setHours(0, 0, 0, 0);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (scheduledDate.getTime() !== today.getTime()) {
-          const scheduledDateStr = scheduledDate.toLocaleDateString();
-          Alert.alert(
-            'Cannot Start Audit',
-            `This audit is scheduled for ${scheduledDateStr}. Scheduled audits can only be opened on the scheduled date.`
-          );
-          return;
-        }
-      }
       Alert.alert('Cannot Start', 'You cannot start this scheduled audit.');
       return;
     }

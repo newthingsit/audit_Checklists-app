@@ -1166,6 +1166,57 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
 
+  const sendRescheduleNotification = (scheduledAudit, oldDate, newDate) => {
+    if (!scheduledAudit) return;
+
+    const recipients = new Set();
+    if (scheduledAudit.assigned_to) recipients.add(Number(scheduledAudit.assigned_to));
+    if (scheduledAudit.created_by) recipients.add(Number(scheduledAudit.created_by));
+
+    if (recipients.size === 0) return;
+
+    dbInstance.get(
+      `SELECT ct.name as template_name, l.name as location_name
+       FROM checklist_templates ct
+       LEFT JOIN locations l ON l.id = ?
+       WHERE ct.id = ?`,
+      [scheduledAudit.location_id || null, scheduledAudit.template_id],
+      async (metaErr, meta) => {
+        if (metaErr) {
+          logger.error('Error loading schedule metadata for reschedule notification:', metaErr);
+          return;
+        }
+
+        const { createNotification } = require('./notifications');
+        const appUrl = process.env.APP_URL || 'https://app.litebitefoods.com';
+        const scheduledAuditUrl = appUrl.includes('litebitefoods.com')
+          ? `${appUrl}/scheduled`
+          : 'https://app.litebitefoods.com/scheduled';
+
+        const templateName = meta?.template_name || 'Scheduled Audit';
+        const locationName = meta?.location_name || 'Not specified';
+
+        for (const recipientId of recipients) {
+          try {
+            await createNotification(
+              recipientId,
+              'scheduled_audit',
+              'Scheduled Audit Rescheduled',
+              `Scheduled audit "${templateName}" was rescheduled from ${new Date(oldDate).toLocaleDateString()} to ${new Date(newDate).toLocaleDateString()}.`,
+              scheduledAuditUrl,
+              {
+                template: 'scheduledAuditRescheduled',
+                data: [templateName, oldDate, newDate, locationName]
+              }
+            );
+          } catch (notifyErr) {
+            logger.error('Error sending reschedule notification:', notifyErr);
+          }
+        }
+      }
+    );
+  };
+
   if (!new_date) {
     return res.status(400).json({ error: 'New date is required' });
   }
@@ -1296,6 +1347,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                     // Don't fail the request if tracking fails
                   }
 
+                  sendRescheduleNotification(scheduledAudit, oldDate, new_date);
                   res.json({ 
                     message: 'Audit rescheduled successfully',
                     rescheduleCount: rescheduleCount + 1,
@@ -1329,6 +1381,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                     // Don't fail the request if tracking fails
                   }
 
+                  sendRescheduleNotification(scheduledAudit, oldDate, new_date);
                   res.json({ 
                     message: 'Audit rescheduled successfully',
                     rescheduleCount: rescheduleCount + 1,
@@ -1376,6 +1429,7 @@ router.post('/:id/reschedule', authenticate, requirePermission('reschedule_sched
                     // Don't fail the request if tracking fails
                   }
 
+                  sendRescheduleNotification(scheduledAudit, oldDate, new_date);
                   res.json({ 
                     message: 'Audit rescheduled successfully',
                     rescheduleCount: rescheduleCount + 1,

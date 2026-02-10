@@ -233,6 +233,50 @@ const emailTemplates = {
   },
 
   /**
+   * Scheduled audit rescheduled notification
+   */
+  scheduledAuditRescheduled: (userName, auditTitle, oldDate, newDate, location) => {
+    const subject = `Scheduled Audit Rescheduled: ${auditTitle}`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%); color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }
+          .button { display: inline-block; padding: 12px 24px; background: #0ea5e9; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>Scheduled Audit Rescheduled</h2>
+          </div>
+          <div class="content">
+            <p>Hello ${userName},</p>
+            <p>Your scheduled audit has been rescheduled:</p>
+            <ul>
+              <li><strong>Audit:</strong> ${auditTitle}</li>
+              <li><strong>Location:</strong> ${location || 'Not specified'}</li>
+              <li><strong>Old Date:</strong> ${oldDate ? new Date(oldDate).toLocaleDateString() : 'Not specified'}</li>
+              <li><strong>New Date:</strong> ${newDate ? new Date(newDate).toLocaleDateString() : 'Not specified'}</li>
+            </ul>
+            <a href="${process.env.APP_URL || 'http://localhost:3000'}/scheduled" class="button">View Scheduled Audits</a>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification from the Audit Checklist System.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    return { subject, html };
+  },
+
+  /**
    * Action item assigned
    */
   actionItemAssigned: (userName, actionTitle, dueDate, priority) => {

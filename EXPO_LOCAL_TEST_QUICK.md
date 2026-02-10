@@ -65,6 +65,27 @@ Add this to the `extra` section:
 
 **Then the code will automatically use the development URL!**
 
+### Option C: Tunnel Mode (Explicit API)
+
+When running Expo with `--tunnel`, set a dedicated API URL instead of using production by default.
+
+**Option 1: app.json**
+```json
+"apiUrl": {
+  "tunnel": "https://your-staging-or-prod-api.com/api"
+}
+```
+
+**Option 2: Environment variable**
+```powershell
+$env:EXPO_PUBLIC_TUNNEL_API_URL="https://your-staging-or-prod-api.com/api"
+```
+
+To allow tunnel mode to use production explicitly, set:
+```powershell
+$env:EXPO_PUBLIC_ALLOW_TUNNEL_PROD="true"
+```
+
 ---
 
 ## 📱 Step 3: Find Your Local IP Address

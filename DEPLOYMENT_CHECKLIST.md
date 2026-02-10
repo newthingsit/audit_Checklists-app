@@ -46,6 +46,8 @@ az group create --name audit-app-rg --location eastus
 ### Step 4: Deploy Backend
 - [ ] Create App Service (B1 plan)
 - [ ] Configure environment variables
+- [ ] Enable build during deploy (`SCM_DO_BUILD_DURING_DEPLOYMENT=true`)
+- [ ] Ensure ZIP deploy excludes `node_modules`
 - [ ] Deploy code via GitHub Actions or ZIP
 - [ ] Test API endpoints
 
@@ -106,6 +108,8 @@ eas submit --platform ios
 - [ ] Set up Application Insights (Azure)
 - [ ] Configure error tracking (Sentry)
 - [ ] Set up uptime monitoring
+- [ ] Verify backend health check returns 200 (`/api/health`)
+- [ ] Review App Service log stream after deploy
 
 ### Backup
 - [ ] Enable Azure SQL automated backups
