@@ -70,6 +70,7 @@ jobs:
         run: npm test -- --watchAll=false --passWithNoTests
         working-directory: web
       - name: Run web E2E tests
+        if: ${{ secrets.E2E_EMAIL != '' && secrets.E2E_PASSWORD != '' }}
         run: npm run test:e2e
         working-directory: web
         env:
