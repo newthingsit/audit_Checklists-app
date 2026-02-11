@@ -28,7 +28,8 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./web
-        run: npm ci
+        run: |
+          npm ci || { echo "::error::Lockfile out of sync in ./web. Run 'npm install' in ./web and commit package-lock.json."; exit 1; }
 
       - name: Build React App
         working-directory: ./web
