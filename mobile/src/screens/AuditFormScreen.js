@@ -49,7 +49,9 @@ const AuditFormScreen = () => {
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const isCvr = isCvrTemplate(template?.name);
+  // PERMANENT FIX: Use database ui_version field instead of checking template name
+  // This ensures all checklists render with correct UI version regardless of their name
+  const isCvr = template && template.ui_version === 2;
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -4494,8 +4496,9 @@ const AuditFormScreen = () => {
                   </View>
                 )}
 
-                {/* Photo: for image_upload always; for CVR also on Yes/No/NA (option) items */}
-                {(fieldType === 'image_upload' || (isCvr && isOptionFieldType(fieldType))) && (
+                {/* Photo: always shown for image_upload; shown on option items when allow_photo=true */}
+                {/* PERMANENT FIX: Use database allow_photo field instead of hardcoding UI rules */}
+                {(fieldType === 'image_upload' || (template?.allow_photo && isOptionFieldType(fieldType))) && (
                 <View style={styles.actionsContainer}>
                   <TouchableOpacity
                       style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
@@ -4514,7 +4517,7 @@ const AuditFormScreen = () => {
                 </View>
                 )}
 
-                {photos[item.id] && (fieldType === 'image_upload' || (isCvr && isOptionFieldType(fieldType))) && (
+                {photos[item.id] && (fieldType === 'image_upload' || (template?.allow_photo && isOptionFieldType(fieldType))) && (
                   <View style={styles.photoContainer}>
                     <Image source={{ uri: photos[item.id] }} style={styles.photo} />
                     {auditStatus !== 'completed' && (

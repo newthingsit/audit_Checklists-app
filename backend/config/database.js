@@ -55,6 +55,14 @@ const createTables = () => {
         FOREIGN KEY (created_by) REFERENCES users(id)
       )`);
 
+      // Add UI configuration columns to checklist_templates (v2.0+ migration)
+      // ui_version: 1 = legacy UI (no photo on options), 2 = modern UI (photo on options + comments)
+      // allow_photo: default true for all templates unless explicitly disabled (e.g., legacy audits)
+      // ROOT CAUSE FIX: Replaced hard-coded isCvrTemplate name-checking with database-driven configuration
+      // This ensures ALL checklists, regardless of name, can use V2 UI and photo support consistently
+      db.run(`ALTER TABLE checklist_templates ADD COLUMN ui_version INTEGER DEFAULT 2`, () => {});
+      db.run(`ALTER TABLE checklist_templates ADD COLUMN allow_photo BOOLEAN DEFAULT 1`, () => {});
+
       // Checklist Items table
       db.run(`CREATE TABLE IF NOT EXISTS checklist_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

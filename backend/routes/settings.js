@@ -538,8 +538,8 @@ router.post('/seed-rgr-checklist', authenticate, requireRole('admin'), async (re
     // Create template
     const templateResult = await new Promise((resolve, reject) => {
       database.run(
-        'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-        [RGR_CHECKLIST.name, RGR_CHECKLIST.category, RGR_CHECKLIST.description, userId],
+        'INSERT INTO checklist_templates (name, category, description, created_by, ui_version, allow_photo) VALUES (?, ?, ?, ?, ?, ?)',
+        [RGR_CHECKLIST.name, RGR_CHECKLIST.category, RGR_CHECKLIST.description, userId, 2, 1],
         function(err, result) {
           if (err) reject(err);
           else resolve({ lastID: result?.lastID || this?.lastID });

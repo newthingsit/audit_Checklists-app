@@ -265,8 +265,8 @@ router.post('/', authenticate, requirePermission('manage_templates', 'create_tem
   try {
     const { lastID: templateId } = await runDb(
       dbInstance,
-      'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-      [name, category || '', description || '', req.user.id]
+      'INSERT INTO checklist_templates (name, category, description, created_by, ui_version, allow_photo) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, category || '', description || '', req.user.id, 2, 1]
     );
 
     if (Array.isArray(items) && items.length > 0) {
@@ -456,10 +456,12 @@ router.post('/import', authenticate, requirePermission('manage_templates', 'crea
     }
 
     // Create template using runDb helper for cross-database compatibility
+    // PERMANENT FIX: Set ui_version=2 and allow_photo=1 by default for all new imports
+    // This ensures all checklists render with V2 UI (Yes/No/NA + photo) regardless of CSV name
     runDb(
       dbInstance,
-      'INSERT INTO checklist_templates (name, category, description, created_by) VALUES (?, ?, ?, ?)',
-      [templateName, category || '', description || '', req.user.id]
+      'INSERT INTO checklist_templates (name, category, description, created_by, ui_version, allow_photo) VALUES (?, ?, ?, ?, ?, ?)',
+      [templateName, category || '', description || '', req.user.id, 2, 1]
     ).then(async ({ lastID: templateId }) => {
       if (!templateId || templateId === 0) {
         return res.status(500).json({ error: 'Failed to create template - no ID returned' });

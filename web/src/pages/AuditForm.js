@@ -93,7 +93,9 @@ const AuditForm = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [template, setTemplate] = useState(null);
-  const isCvr = isCvrTemplate(template?.name);
+  // PERMANENT FIX: Use database ui_version field instead of checking template name
+  // This ensures all checklists render with correct UI version regardless of their name
+  const isCvr = template && template.ui_version === 2;
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2148,8 +2150,9 @@ const AuditForm = () => {
             disabled={auditStatus === 'completed'}
           />
 
-          {/* Photo: for image_upload always; for CVR also on Yes/No/NA (option) items */}
-          {(inputType === 'image_upload' || (isCvr && item.options && item.options.length > 0)) && (
+          {/* Photo: always shown for image_upload; shown on option items when allow_photo=true */}
+          {/* PERMANENT FIX: Use database allow_photo field instead of hardcoding UI rules */}
+          {(inputType === 'image_upload' || (template?.allow_photo && item.options && item.options.length > 0)) && (
             <Box sx={{
               display: 'flex',
               alignItems: 'center',
