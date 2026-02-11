@@ -1,0 +1,166 @@
+title,description,category,subcategory,section,input_type,required,weight,is_critical,options
+Designated hand wash sink with all necessary amenities available at back entrance,Designated hand wash sink with all necessary amenities available at back entrance,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Personal Hygiene of staff  maintained/personal hygiene checklist maintained,Personal Hygiene of staff  maintained/personal hygiene checklist maintained,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+People are cleanly shaven and nails are short & clean. Beard Mask worn by staff with beard,People are cleanly shaven and nails are short & clean. Beard Mask worn by staff with beard,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"No eating, drinking, chewing tobacco and smoking in the production / restaurant area.","No eating, drinking, chewing tobacco and smoking in the production / restaurant area.",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No open cuts and wounds,No open cuts and wounds,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"No wrist band, rings, necklace, watches or jewelery worn in production/restaurant area","No wrist band, rings, necklace, watches or jewelery worn in production/restaurant area",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Hands are washed hourly and sanitized with soft care Des E Spray, Tissue paper/ air dryer available","Hands are washed hourly and sanitized with soft care Des E Spray, Tissue paper/ air dryer available",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Uniform of the staff is clean, not torn .","Uniform of the staff is clean, not torn .",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Staff not touching mouth, nose, eyes, hairs in the production area","Staff not touching mouth, nose, eyes, hairs in the production area",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Lockers & changing area are available for staff,Lockers & changing area are available for staff,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Staff washing and sanitizing hands after clearance, handling money, coughing, sneezing  etc.","Staff washing and sanitizing hands after clearance, handling money, coughing, sneezing  etc.",Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Staff wearing proper hairnets in the production area,Staff wearing proper hairnets in the production area,Hygiene & Cleanliness,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+FSSAI licence is available and displayed.,FSSAI licence is available and displayed.,Regulatory Requirement,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+"Stamping certificate for weighing scales/Peg Measurment available, displayed near the machine","Stamping certificate for weighing scales/Peg Measurment available, displayed near the machine",Regulatory Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Colour coded cutting boards used as per norms and in good condition,Colour coded cutting boards used as per norms and in good condition,Regulatory Requirement,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Hard Copies of MSDS for all cleaning chemicals available, staff aware of it","Hard Copies of MSDS for all cleaning chemicals available, staff aware of it",Regulatory Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Hard Copies of MSDS for Pest Control Chemicals is available, staff aware of it","Hard Copies of MSDS for Pest Control Chemicals is available, staff aware of it",Regulatory Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"FoSTaC Trainer available, certificate displayed","FoSTaC Trainer available, certificate displayed",Regulatory Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Copies of medical records of the staff available,Copies of medical records of the staff available,Regulatory Requirement,,,option_select,yes,1,no,Yes:0|No:0|NA:NA
+Nutrtion information is available in the File/Menu/Digital Menu,Nutrtion information is available in the File/Menu/Digital Menu,Regulatory Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No Running water and electricity at the outlets,No Running water and electricity at the outlets,Regulatory Requirement,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+Warranty stamped on challans by food vendors as per Form E of FSSAI,Warranty stamped on challans by food vendors as per Form E of FSSAI,Regulatory Requirement,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Tinning of Copper vesels done and records maintained where applicable,Tinning of Copper vesels done and records maintained where applicable,Regulatory Requirement,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"QA and cleaning chemicals SOPs available, staff aware about it","QA and cleaning chemicals SOPs available, staff aware about it",QA Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Training done by Fostac certified trainers and training records available,Training done by Fostac certified trainers and training records available,QA Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Proper CA taken and shared of previous audit report,Proper CA taken and shared of previous audit report,QA Requirement,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Agency staff not changing once trained and working as per Cleaning SOPs,Agency staff not changing once trained and working as per Cleaning SOPs,QA Requirement,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Cleaning schedule displayed and cleaning done as per schedule,Cleaning schedule displayed and cleaning done as per schedule,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Is the Garbage bins Foot operatated, clean/bins as per biodegradable & recyclable basis (colour coded-green, blue, black [hazardous]) and without offensive odor/garbage disposal","Is the Garbage bins Foot operatated, clean/bins as per biodegradable & recyclable basis (colour coded-green, blue, black [hazardous]) and without offensive odor/garbage disposal",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All chemicals are properly labelled & Measuring Cylinder available,All chemicals are properly labelled & Measuring Cylinder available,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Recommended chemicals, Mops & tools used for cleaning & sanitizing","Recommended chemicals, Mops & tools used for cleaning & sanitizing",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Sanitizer in proper strength in fogging jars/spray bottles available,Sanitizer in proper strength in fogging jars/spray bottles available,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Chlorine test strips and fogging jar available.,Chlorine test strips and fogging jar available.,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Production, store area are cleaned and properly maintained","Production, store area are cleaned and properly maintained",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Drain, drain covers and grease traps are clean with proper alignment of drain cover","Drain, drain covers and grease traps are clean with proper alignment of drain cover",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Wall tiles and floor are clean,Wall tiles and floor are clean,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Area at the back and underneath kitchen equipments clean,Area at the back and underneath kitchen equipments clean,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Baskets, working counters, sink maintained clean","Baskets, working counters, sink maintained clean",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All equipments maintained clean (hoods, filters, range, oven, M/W, D/W, fridges)","All equipments maintained clean (hoods, filters, range, oven, M/W, D/W, fridges)",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No blackened pans /patilas & No old tags on cleaned utensils.,No blackened pans /patilas & No old tags on cleaned utensils.,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All gaskets on refrigeration/ freezer units, ice machines, water cooler and hot holding units are properly cleaned","All gaskets on refrigeration/ freezer units, ice machines, water cooler and hot holding units are properly cleaned",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All crockery and cutlery are free of foul smell,All crockery and cutlery are free of foul smell,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Aprons, gloves, shoes are available for KST Staff.","Aprons, gloves, shoes are available for KST Staff.",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Detergent used as per norms at the dish wash area,Detergent used as per norms at the dish wash area,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Adequate stock of cleaning chemicals, sanitisers available","Adequate stock of cleaning chemicals, sanitisers available",Cleaning & Sanitation,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Cleaning chemicals are kept securely and away from the food area. It should be kept in a lower rack/level,Cleaning chemicals are kept securely and away from the food area. It should be kept in a lower rack/level,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All drain covers are in place.,All drain covers are in place.,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Covid Precaution - All high touch points are sanitized frequently,Covid Precaution - All high touch points are sanitized frequently,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Thinning records area available,Thinning records area available,Cleaning & Sanitation,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Pest Control Service Schedule displayed and followed,Pest Control Service Schedule displayed and followed,Pest Control,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Pest sighting noted and informed to PC agency. If pest infestation is severe, then the outlet to be shut as it will be classified as a Zero tolerance Point","Pest sighting noted and informed to PC agency. If pest infestation is severe, then the outlet to be shut as it will be classified as a Zero tolerance Point",Pest Control,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+No pest droppings,No pest droppings,Pest Control,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No damage was caused due to pest problem,No damage was caused due to pest problem,Pest Control,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All Fly Catchers and air curtains working, all doors of production area were closed","All Fly Catchers and air curtains working, all doors of production area were closed",Pest Control,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All lockers, changing room area, L4 emptied before pest control on deep pest control day","All lockers, changing room area, L4 emptied before pest control on deep pest control day",Pest Control,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+PC Service Schedule duly filled with remarks from the Ops team,PC Service Schedule duly filled with remarks from the Ops team,Pest Control,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All working counters cleaned, sanitized before starting the work","All working counters cleaned, sanitized before starting the work",Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Clean trays /containers /utensils are used,Clean trays /containers /utensils are used,Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Vegetables are sanitzed as per recommended procedure, procedure displayed at BOH","Vegetables are sanitzed as per recommended procedure, procedure displayed at BOH",Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All equipments to be used are sanitized in the morning and as per SOP(Cutting boards/knives, tools)","All equipments to be used are sanitized in the morning and as per SOP(Cutting boards/knives, tools)",Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"No expired and spoilt food found in kitchen, chillers or u/c","No expired and spoilt food found in kitchen, chillers or u/c",Production,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+"All Foods are covered, bear date tag with product name (DOM, DOE)","All Foods are covered, bear date tag with product name (DOM, DOE)",Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No Misbranding/old tag observed,No Misbranding/old tag observed,Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Veg and Non veg ; raw and cooked food segregated,Veg and Non veg ; raw and cooked food segregated,Production,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+All perishable food items are stored as per the designated temperature,All perishable food items are stored as per the designated temperature,Production,,,option_select,yes,1,no,Yes:3|No:0|NA:NA
+"Colour coded clean kitchen dusters used and dipped in sanitizer-Red for butchery and green for kitchen, blue for general cleaning","Colour coded clean kitchen dusters used and dipped in sanitizer-Red for butchery and green for kitchen, blue for general cleaning",Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No material kept on floor,No material kept on floor,Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Cooking / holding  done at right temperature,Cooking / holding  done at right temperature,Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Product Quality (after doing sensory of cooked food/chutney etc)  good,Product Quality (after doing sensory of cooked food/chutney etc)  good,Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Only food handlers handling the food stuff,Only food handlers handling the food stuff,Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Thermometer was available and calibration record maintained,Thermometer was available and calibration record maintained,Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Cutting boards are clean, free from cuts and scratches","Cutting boards are clean, free from cuts and scratches",Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All temperature records maintained for deep freezer & chillers,All temperature records maintained for deep freezer & chillers,Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Hot and Cold Bain marie temperature in conformity,Hot and Cold Bain marie temperature in conformity,Production,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Used oil not used in cooking further if it is already dark brown and not to be discarded in drain too,Used oil not used in cooking further if it is already dark brown and not to be discarded in drain too,Production,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Equipment well maintained,Equipment well maintained,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+All lights covered with clean light covers,All lights covered with clean light covers,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Light fixtures, cabinet, switch boards, wires and electrical points in good condition","Light fixtures, cabinet, switch boards, wires and electrical points in good condition",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Display temperature gauges of chillers/freezers available and working,Display temperature gauges of chillers/freezers available and working,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All chillers/freezers conforming to required temperatures, no variation between internal and display temperature","All chillers/freezers conforming to required temperatures, no variation between internal and display temperature",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All chillers, freezers and under counters are numbered","All chillers, freezers and under counters are numbered",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All gaskets on refrigeration/ freezer units, ice machines and hot holding units are well maintained","All gaskets on refrigeration/ freezer units, ice machines and hot holding units are well maintained",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+All fly catchers are clean and UV tubes carry date of beginning of shelf life,All fly catchers are clean and UV tubes carry date of beginning of shelf life,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Blowers of all chillers are clean,Blowers of all chillers are clean,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All kitchen exhausts/ Air curtains working. Air ducts, fresh air vents are cleaned and sanitized on regular basis","All kitchen exhausts/ Air curtains working. Air ducts, fresh air vents are cleaned and sanitized on regular basis",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"All gas pipes rust free and in good condition. Flame of gas bluish in colour, Servicing done.","All gas pipes rust free and in good condition. Flame of gas bluish in colour, Servicing done.",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No rusty/damaged racks,No rusty/damaged racks,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All cracks, gaps and cervices checked for and closed","All cracks, gaps and cervices checked for and closed",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Trolleys in good condition,Trolleys in good condition,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Dishwashing machine working properly and at the right temperature,Dishwashing machine working properly and at the right temperature,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"RO cleaning/service schedule available, displayed.","RO cleaning/service schedule available, displayed.",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Hot water facililty available in pot wash and jet spray area,Hot water facililty available in pot wash and jet spray area,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Preventive maintenance checklist available.,Preventive maintenance checklist available.,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"No safety hazard present in resturant like open wire, improperly aligned drain grating.","No safety hazard present in resturant like open wire, improperly aligned drain grating.",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"All equipments are working properly, no broken/damaged or missing parts.","All equipments are working properly, no broken/damaged or missing parts.",Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No Paint peeling off from ceiling or wall.,No Paint peeling off from ceiling or wall.,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No leakage from taps and with proper tap covers.,No leakage from taps and with proper tap covers.,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Ceilings and shaft door not kept open.,Ceilings and shaft door not kept open.,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Hood ducts cleans and Duct cleaning done by an external agency.Records available,Hood ducts cleans and Duct cleaning done by an external agency.Records available,Equipment Condition & Maintenance,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Log/challans maintained for incoming material,Log/challans maintained for incoming material,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Store maintained clean and organized, gunnysacks/thermacol, news paper not used","Store maintained clean and organized, gunnysacks/thermacol, news paper not used",Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"No expired, infested material","No expired, infested material",Receiving & Storage,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"FIFO/FEFO being followed properly, no overstock","FIFO/FEFO being followed properly, no overstock",Receiving & Storage,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Materials are kept in organised manner,Materials are kept in organised manner,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Food items properly sealed/Containers are labelled and date tag not be pasted on original date tag.,Food items properly sealed/Containers are labelled and date tag not be pasted on original date tag.,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Food and non food items are kept separately,Food and non food items are kept separately,Receiving & Storage,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Chemicals and toxic materials are kept separately,Chemicals and toxic materials are kept separately,Receiving & Storage,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Materials not directly kept on floor (6"" off the floor)","Materials not directly kept on floor (6"" off the floor)",Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All disposables/Bento boxes/delivery bags were kept covered,All disposables/Bento boxes/delivery bags were kept covered,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Commissary baskets not being used at the restaurant,Commissary baskets not being used at the restaurant,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Glass Policy followed,Glass Policy followed,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Black bin is available for hazardous material disposal.,Black bin is available for hazardous material disposal.,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Freezer/Chiller doors not damaged due to overstuffing/wrong handling.,Freezer/Chiller doors not damaged due to overstuffing/wrong handling.,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Temperature checked for perishable items (milk, chicken.etc)","Temperature checked for perishable items (milk, chicken.etc)",Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All material ar+A7:E116 sealed and no loose packet in the store,All material are sealed and no loose packet in the store,Receiving & Storage,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Expired items are identified and kept separately,Expired items are identified and kept separately,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Food containers are made of stainless steel or food grade plastic,Food containers are made of stainless steel or food grade plastic,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Stored food/ gloves not exposed to splash, dust or other contamination","Stored food/ gloves not exposed to splash, dust or other contamination",Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Chipped trays /containers not used,Chipped trays /containers not used,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Gloves are worn while handling ready to eat foods and butchery items,Gloves are worn while handling ready to eat foods and butchery items,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Potable water is used in production,Potable water is used in production,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Thawing done as per procedure and date and time when thawing started is mentioned,Thawing done as per procedure and date and time when thawing started is mentioned,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Separate cutting boards & Knifes for veg and non veg items available,Separate cutting boards & Knifes for veg and non veg items available,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Food is not exposed to danger zone - not left outside the chiller,Food is not exposed to danger zone - not left outside the chiller,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Approved food ingredients being used,Approved food ingredients being used,Product Safety,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Right temperature maintained in storage area/Hot Bain Marie/Cold Bain Marie,Right temperature maintained in storage area/Hot Bain Marie/Cold Bain Marie,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Food items kept at recommended temperature as per manufacturer's guidelines,Food items kept at recommended temperature as per manufacturer's guidelines,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Recommended shelf life followed for all the items and secondary shelf life given after opening. Shelf life chart displayed,Recommended shelf life followed for all the items and secondary shelf life given after opening. Shelf life chart displayed,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Only one packet of food ingredient opened at a time,Only one packet of food ingredient opened at a time,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No vendors allowed access to the production area,No vendors allowed access to the production area,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Canned foods stored as per norms,Canned foods stored as per norms,Product Safety,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"No expired , fermented, spoilt items found.","No expired , fermented, spoilt items found.",Service,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Digital menus and cashless facility available for the guests,Digital menus and cashless facility available for the guests,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Guest tables and chairs are cleaned & sanitised properly after each use,Guest tables and chairs are cleaned & sanitised properly after each use,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Sanitizer for ice cube scoop and table top available and  being used,Sanitizer for ice cube scoop and table top available and  being used,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Beverage system, drink machines, ice machines are clean","Beverage system, drink machines, ice machines are clean",Service,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Proper serving temperature is maintained (Chutney,Beverages,Salad)","Proper serving temperature is maintained (Chutney,Beverages,Salad)",Service,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Sugar syrup, lemon juice kept in designated bottles and all items tagged","Sugar syrup, lemon juice kept in designated bottles and all items tagged",Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+No cut fruits/food were kept uncovered in bar or at ambient temperature,No cut fruits/food were kept uncovered in bar or at ambient temperature,Service,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Food & beverage in conformity.,Food & beverage in conformity.,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Secondary shelf life of Juice/ beverages and beer is  mentioned, once they are opened.","Secondary shelf life of Juice/ beverages and beer is  mentioned, once they are opened.",Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Ice cube supplies are from approved vendor if taken from outside,Ice cube supplies are from approved vendor if taken from outside,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All disposable covered,All disposable covered,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"No scaling observed in Bain Marie, chaffing dishes, Dish wash machine","No scaling observed in Bain Marie, chaffing dishes, Dish wash machine",Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+"Dish washing machine working properly, Suma Dime tablet being used/dish wash area free from bad odour","Dish washing machine working properly, Suma Dime tablet being used/dish wash area free from bad odour",Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Personal belongings not kept with the food material,Personal belongings not kept with the food material,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Allergen information is mentioned in the Menu,Allergen information is mentioned in the Menu,Service,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Wiping cloths are clean, without any smell and stitched properly (No loose threads).","Wiping cloths are clean, without any smell and stitched properly (No loose threads).",Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Soiled linen kept in a proper manner,Soiled linen kept in a proper manner,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Gloves are covered and not exposed to dust/splash,Gloves are covered and not exposed to dust/splash,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Bar properly cleaned and well maintained,Bar properly cleaned and well maintained,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Empty bottles/tins/cartons not being overstocked in restaurant,Empty bottles/tins/cartons not being overstocked in restaurant,Service,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+All Food / Food Ingredients & Packing Materials provided are as per FSSAI,All Food / Food Ingredients & Packing Materials provided are as per FSSAI,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Cleaning Chemicals & Cleaning tools are provided,Cleaning Chemicals & Cleaning tools are provided,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Food is being transported in clean & temperature controlled vehicle.,Food is being transported in clean & temperature controlled vehicle.,SCM,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Proper Segregation of Veg & Non veg is maintained while transporting food.,Proper Segregation of Veg & Non veg is maintained while transporting food.,SCM,,,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Food is being transported without any pilfirage or damage,Food is being transported without any pilfirage or damage,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Food grade certificate for all food contact packing material is available at Warehouse,Food grade certificate for all food contact packing material is available at Warehouse,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Warranty stamped on challans by food vendors as per Form E of FSSAI,Warranty stamped on challans by food vendors as per Form E of FSSAI,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Vehicle is cleaned and sanitized after each delivery with 100 ppm Suma Sink San,Vehicle is cleaned and sanitized after each delivery with 100 ppm Suma Sink San,SCM,,,option_select,yes,1,no,Yes:1|No:0|NA:NA
+Manager Name,Enter the name of manager on duty,SIGN - OFF,Manager Details,Sign-Off,short_answer,yes,1,no,
+Manager Remarks,Any additional comments or observations from manager,SIGN - OFF,Manager Details,Sign-Off,long_answer,no,1,no,
+Manager Photo,Take photo of manager for verification,SIGN - OFF,Manager Details,Sign-Off,image_upload,yes,1,no,
+Manager Signature,Manager acknowledges and approves this audit,SIGN - OFF,Manager Details,Sign-Off,signature,yes,1,no,
+Auditor Signature,Auditor confirms audit completion and accuracy,SIGN - OFF,Auditor Details,Sign-Off,signature,yes,1,no,

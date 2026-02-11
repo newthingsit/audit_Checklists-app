@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2026-02-02T07:55:29.385" instance="f4c069" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-02-02_07-54-59Z" method="GET" type="request" pid="833,1,64" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=f4c06971145d0d0ebcb7f3489285b28cbf186b279804820d07f9fea67c8e2cfe;Path=/;HttpOnly;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net; ARRAffinitySameSite=f4c06971145d0d0ebcb7f3489285b28cbf186b279804820d07f9fea67c8e2cfe;Path=/;HttpOnly;SameSite=None;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="1bb26785-64ba-48cc-8e30-8694740ad17a" CLIENT-IP="172.182.224.113:24576" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-02-02_07-54-59Z" X-Client-IP="172.182.224.113" X-Client-Port="24576" >
+  <step title="Cleanup Xml Logs" date="2026-02-02T07:55:29.405" >
+    <step title="Cleanup Infos" date="2026-02-02T07:55:31.424" totalFiles="5219" totalCleanup="5059" /><!-- duration: 188ms -->
+  </step><!-- duration: 2333ms -->
+  <step title="DeploymentService.GetResult" date="2026-02-02T07:55:31.926" >
+    <step title="DeploymentService.GetLatestDeployment" date="2026-02-02T07:55:32.005" >
+      <step title="DeploymentManager.GetResults" date="2026-02-02T07:55:32.376" /><!-- duration: 4484ms -->
+    </step><!-- duration: 4894ms -->
+  </step><!-- duration: 5089ms -->
+  <step title="Outgoing response" date="2026-02-02T07:55:37.081" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 67ms -->
+</step><!-- duration: 7968ms -->

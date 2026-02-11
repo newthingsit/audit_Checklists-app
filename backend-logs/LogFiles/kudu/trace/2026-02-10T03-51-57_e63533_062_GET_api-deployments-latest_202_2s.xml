@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2026-02-10T03:51:57.891" instance="e63533" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-02-10_03-49-43Z" method="GET" type="request" pid="845,1,45" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=e63533f6a44a4979064455a0b3f074067304f9039d583430bf6d71c185ad0040;Path=/;HttpOnly;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net; ARRAffinitySameSite=e63533f6a44a4979064455a0b3f074067304f9039d583430bf6d71c185ad0040;Path=/;HttpOnly;SameSite=None;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="b15aa0e6-7ea6-4558-a2aa-9163d93fc0a6" CLIENT-IP="20.98.18.67:26650" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-02-10_03-49-43Z" X-Client-IP="20.98.18.67" X-Client-Port="26650" >
+  <step title="Cleanup Xml Logs" date="2026-02-10T03:51:57.897" >
+    <step title="Cleanup Infos" date="2026-02-10T03:51:58.311" totalFiles="6397" totalCleanup="6237" /><!-- duration: 139ms -->
+  </step><!-- duration: 580ms -->
+  <step title="DeploymentService.GetResult" date="2026-02-10T03:51:58.484" >
+    <step title="DeploymentService.GetLatestDeployment" date="2026-02-10T03:51:58.504" >
+      <step title="DeploymentManager.GetResults" date="2026-02-10T03:51:58.521" /><!-- duration: 1052ms -->
+    </step><!-- duration: 1079ms -->
+  </step><!-- duration: 1105ms -->
+  <step title="Outgoing response" date="2026-02-10T03:51:59.627" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 18ms -->
+</step><!-- duration: 1773ms -->

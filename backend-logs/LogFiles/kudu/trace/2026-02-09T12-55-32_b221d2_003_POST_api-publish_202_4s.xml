@@ -1,0 +1,19 @@
+<step title="Incoming Request" date="2026-02-09T12:55:32.833" instance="b221d2" url="/api/publish?type=zip&amp;async=True" method="POST" type="request" pid="833,1,18" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bas..." Cache-Control="no-cache" Content-Type="application/octet-stream" Cookie="ARRAffinity=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c; ARRAffinitySameSite=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c" Content-Length="6344965" x-ms-client-request-id="9c3a4deb-05b6-11f1-8bff-e88088cf9695" x-ms-artifact-checksum="b16bfcf3feead9bd7d6b6e8a0033c521df25b69e2627a1cdfa8fa56a536d55fa" X-ARR-LOG-ID="9c3a4deb-05b6-11f1-8bff-e88088cf9695" CLIENT-IP="180.151.76.170:52521" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?type=zip&amp;async=True" X-Client-IP="180.151.76.170" X-Client-Port="52521" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T12:55:32.842" >
+    <step title="Cleanup Infos" date="2026-02-09T12:55:33.668" totalFiles="6185" totalCleanup="6025" /><!-- duration: 95ms -->
+  </step><!-- duration: 942ms -->
+  <step title="OneDeploy" date="2026-02-09T12:55:34.112" >
+    <step title="None repository commit" date="2026-02-09T12:55:34.186" >
+      <step title="Commit id: 648a48a3-ed66-473d-b4f2-4bfad1c773f4" date="2026-02-09T12:55:34.216" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 16ms -->
+    </step><!-- duration: 59ms -->
+    <step title="Starting PushDeployAsync" date="2026-02-09T12:55:34.262" /><!-- duration: 3ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/ac7549cd-00e0-4764-9aa8-f8e6a1c8b493.zip" date="2026-02-09T12:55:34.489" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/ac7549cd-00e0-4764-9aa8-f8e6a1c8b493.zip" date="2026-02-09T12:55:34.550" /><!-- duration: 10ms -->
+    </step><!-- duration: 919ms -->
+    <step title="Start deployment in the background" date="2026-02-09T12:55:35.504" >
+      <step title="Acquiring Deployment Lock" date="2026-02-09T12:55:35.626" /><!-- duration: 20ms -->
+      <step title="Acquired Deployment Lock" date="2026-02-09T12:55:35.854" /><!-- duration: 12ms -->
+    </step><!-- duration: 749ms -->
+  </step><!-- duration: 2176ms -->
+  <step title="Outgoing response" date="2026-02-09T12:55:36.357" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 22ms -->
+</step><!-- duration: 3554ms -->

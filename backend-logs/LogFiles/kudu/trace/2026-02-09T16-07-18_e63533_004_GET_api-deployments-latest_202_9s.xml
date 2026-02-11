@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2026-02-09T16:07:18.355" instance="e63533" url="/api/deployments/latest" method="GET" type="request" pid="833,1,7" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bas..." x-ms-client-request-id="6317e9a4-05d1-11f1-8c70-e88088cf9695" X-ARR-LOG-ID="6317e9a4-05d1-11f1-8c70-e88088cf9695" CLIENT-IP="103.103.58.77:60434" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest" X-Client-IP="103.103.58.77" X-Client-Port="60434" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T16:07:18.422" >
+    <step title="Cleanup Infos" date="2026-02-09T16:07:21.228" totalFiles="6275" totalCleanup="6115" /><!-- duration: 498ms -->
+  </step><!-- duration: 3334ms -->
+  <step title="DeploymentService.GetResult" date="2026-02-09T16:07:22.959" >
+    <step title="DeploymentService.GetLatestDeployment" date="2026-02-09T16:07:22.991" >
+      <step title="DeploymentManager.GetResults" date="2026-02-09T16:07:23.082" /><!-- duration: 3171ms -->
+    </step><!-- duration: 3411ms -->
+  </step><!-- duration: 3492ms -->
+  <step title="Outgoing response" date="2026-02-09T16:07:27.093" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 12ms -->
+</step><!-- duration: 8761ms -->

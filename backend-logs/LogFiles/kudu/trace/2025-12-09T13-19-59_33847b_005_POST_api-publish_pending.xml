@@ -1,0 +1,18 @@
+<step title="Incoming Request" date="2025-12-09T13:19:59.481" instance="33847b" url="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%22f0f84e436d4266b240d77fb36a52cd7e62d841c1%22%2C%22repoName%22%3A%22newthingsit%2Faudit_Checklists-app%22%2C%22actor%22%3A%22newthingsit%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22fix%3A%20Fix%20rate%20limiter%20IPv6%20validation%20error%20and%20missing%20authenticate%20import%20in%20test-email%20endpoint%22%7D" method="POST" type="request" pid="833,1,18" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/octet-stream" Cookie="ARRAffinity=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net; ARRAffinitySameSite=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;SameSite=None;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" Transfer-Encoding="chunked" X-ARR-LOG-ID="b755ee3d-0ae8-43e0-889b-a3e7cd712ca7" CLIENT-IP="40.76.119.211:10264" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%22f0f84e436d4266b240d77fb36a52cd7e62d841c1%22%2C%22repoName%22%3A%22newthingsit%2Faudit_Checklists-app%22%2C%22actor%22%3A%22newthingsit%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22fix%3A%20Fix%20rate%20limiter%20IPv6%20validation%20error%20and%20missing%20authenticate%20import%20in%20test-email%20endpoint%22%7D" X-Client-IP="40.76.119.211" X-Client-Port="10264" >
+  <step title="OneDeploy" date="2025-12-09T13:19:59.638" >
+    <step title="None repository commit" date="2025-12-09T13:19:59.914" >
+      <step title="Commit id: bb9aa1fc-2146-4143-8fdc-d276ffb75209" date="2025-12-09T13:19:59.962" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 38ms -->
+    </step><!-- duration: 114ms -->
+    <step title="Starting PushDeployAsync" date="2025-12-09T13:20:00.064" /><!-- duration: 28ms -->
+    <step title="Removing node_modules symlink" date="2025-12-09T13:20:00.434" >
+      <step title="Removing _del_node_modules symlink" date="2025-12-09T13:20:01.153" >
+        <step title="Writing artifact to /tmp/zipdeploy/0dc8cf0a-2efb-4745-88f8-fc45f947d5f2.zip" date="2025-12-09T13:20:02.714" >
+          <step title="Writing multipart request body to /tmp/zipdeploy/0dc8cf0a-2efb-4745-88f8-fc45f947d5f2.zip" date="2025-12-09T13:20:03.195" /><!-- duration: 39ms -->
+        </step><!-- duration: 7127ms -->
+        <step title="Start deployment in the background" date="2025-12-09T13:20:09.988" >
+          <step title="Acquiring Deployment Lock" date="2025-12-09T13:20:11.171" /><!-- duration: 98ms -->
+          <step title="Acquired Deployment Lock" date="2025-12-09T13:20:11.600" /><!-- duration: 58ms -->
+        </step><!-- duration: 2325ms -->
+      </step><!-- duration: 11311ms -->
+      <step title="Outgoing response" date="2025-12-09T13:20:12.544" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 38ms -->
+    </step><!-- duration: 12158ms -->

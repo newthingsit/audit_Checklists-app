@@ -5,11 +5,35 @@
 
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, API_TIMEOUT, RETRY_CONFIG } from '../config/api';
 
 // In-memory cache for frequently accessed data
 const memoryCache = new Map();
 const pendingRequests = new Map();
+const REFRESH_TOKEN_KEY = 'refresh_token';
+
+let refreshPromise = null;
+const refreshAccessToken = async () => {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    if (!refreshToken) return null;
+    const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken }, { timeout: 15000 });
+    const { token: newToken, refreshToken: newRefresh } = response.data || {};
+    if (!newToken) return null;
+    await SecureStore.setItemAsync('auth_token', newToken);
+    if (newRefresh) {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefresh);
+    }
+    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    return newToken;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+};
 
 // Cache durations (in milliseconds)
 // Note: Templates/checklists have short cache to ensure immediate reflection of changes
@@ -66,7 +90,22 @@ apiClient.interceptors.response.use(
     
     // Handle 401 Unauthorized - token expired or invalid
     if (error.response?.status === 401) {
-      // Emit auth error event to trigger logout/re-login
+      if (!config?._retry && !config?.url?.includes('/auth/refresh') && !config?.url?.includes('/auth/login')) {
+        config._retry = true;
+        try {
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            config.headers = {
+              ...config.headers,
+              Authorization: `Bearer ${newToken}`
+            };
+            return apiClient(config);
+          }
+        } catch (refreshError) {
+          // fall through to auth error
+        }
+      }
+
       if (authEventListener) {
         authEventListener({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
       }

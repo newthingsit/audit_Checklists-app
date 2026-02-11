@@ -1,0 +1,9 @@
+<step title="Incoming Request" date="2025-12-02T08:59:41.231" instance="33847b" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-02_08-58-44Z" method="GET" type="request" pid="833,1,7" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net; ARRAffinitySameSite=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;SameSite=None;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="c1323c26-3838-47d7-b3f8-03715ad6895c" CLIENT-IP="9.234.151.85:38913" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-02_08-58-44Z" X-Client-IP="9.234.151.85" X-Client-Port="38913" >
+  <step title="Cleanup Xml Logs" date="2025-12-02T08:59:41.240" /><!-- duration: 35ms -->
+  <step title="DeploymentService.GetResult" date="2025-12-02T08:59:41.334" >
+    <step title="DeploymentService.GetLatestDeployment" date="2025-12-02T08:59:41.343" >
+      <step title="DeploymentManager.GetResults" date="2025-12-02T08:59:41.353" /><!-- duration: 976ms -->
+    </step><!-- duration: 998ms -->
+  </step><!-- duration: 1011ms -->
+  <step title="Outgoing response" date="2025-12-02T08:59:42.351" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 18ms -->
+</step><!-- duration: 1145ms -->

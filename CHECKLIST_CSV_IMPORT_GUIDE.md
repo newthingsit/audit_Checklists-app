@@ -8,12 +8,14 @@
 ## Quick Start
 
 ### Basic Import
+
 ```bash
 cd backend
 node scripts/import-csv-checklist.js --file ../CVR_CDR_Checklist_checklist.csv --name "CVR - CDR Checklist"
 ```
 
 ### Import with Description
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file ../CVR_CDR_Checklist_checklist.csv \
@@ -23,6 +25,7 @@ node scripts/import-csv-checklist.js \
 ```
 
 ### Overwrite Existing Template
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file ../my-checklist.csv \
@@ -37,11 +40,13 @@ node scripts/import-csv-checklist.js \
 ### Column Requirements
 
 #### Required Columns
+
 - **title** - Item title or description (primary column)
 
 #### Optional Columns
+
 | Column | Alternative Names | Values | Purpose |
-|--------|-------------------|--------|---------|
+| --- | --- | --- | --- |
 | description | desc, detail | Free text | Detailed explanation of the item |
 | category | cat, group | Text (e.g., QUALITY, SERVICE, HYGIENE) | Main category grouping |
 | subcategory | subcat, sub_category | Text | Secondary grouping |
@@ -53,7 +58,8 @@ node scripts/import-csv-checklist.js \
 | options | choices, answers | Formatted string | Answer options |
 
 ### Input Types
-```
+
+```text
 - option_select      (Yes/No/NA dropdown)
 - short_answer       (Text input, ~50 chars)
 - long_answer        (Text area, multiline)
@@ -74,7 +80,8 @@ node scripts/import-csv-checklist.js \
 Options define the possible answers and their scores. Format: `Label:Score|Label:Score`
 
 **Examples:**
-```
+
+```text
 Yes:3|No:0|NA:NA           (Pass/Fail with N/A)
 Pass:100|Fail:0            (Numeric scoring)
 Excellent:3|Good:2|Poor:0  (3-level rating)
@@ -87,6 +94,7 @@ Excellent:3|Good:2|Poor:0  (3-level rating)
 ### Example 1: Basic Checklist
 
 **my-checklist.csv:**
+
 ```csv
 title,category,input_type,required,options
 Is the food fresh?,QUALITY,option_select,yes,Yes:3|No:0|NA:NA
@@ -95,6 +103,7 @@ Floor is clean,HYGIENE,option_select,yes,Yes:1|No:0|NA:NA
 ```
 
 **Import Command:**
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file my-checklist.csv \
@@ -106,6 +115,7 @@ node scripts/import-csv-checklist.js \
 ### Example 2: Detailed Checklist with All Fields
 
 **detailed-checklist.csv:**
+
 ```csv
 title,description,category,subcategory,input_type,required,weight,is_critical,options
 Food served at the right temperature,Verify hot food is above 65°C and cold food below 5°C,QUALITY,Temperature,option_select,yes,3,yes,Yes:3|No:0|NA:NA
@@ -116,6 +126,7 @@ Special instructions,Any special notes or observations,SERVICE,General,long_answ
 ```
 
 **Import Command:**
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file detailed-checklist.csv \
@@ -129,6 +140,7 @@ node scripts/import-csv-checklist.js \
 ### Example 3: Speed of Service Audit
 
 **speed-of-service.csv:**
+
 ```csv
 title,description,category,subcategory,section,input_type,required,weight
 Table Number,Enter the table number,SERVICE,Speed of Service,Trnx-1,short_answer,yes,1
@@ -141,6 +153,7 @@ Time - Attempt 5,Time in minutes (5th measurement),SERVICE,Speed of Service,Trnx
 ```
 
 **Import Command:**
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file speed-of-service.csv \
@@ -155,18 +168,24 @@ node scripts/import-csv-checklist.js \
 The script uses **flexible column name matching** to find columns:
 
 ### Title Column Detection
+
 Searches for: `title`, `item_name`, `item`, `description`
+
 - Uses first match found
 - Required for import to work
 
 ### Category Column Detection
+
 Searches for: `category`, `cat`, `group`
 
 ### Input Type Column Detection
+
 Searches for: `input_type`, `type`, `field_type`, `input`
+
 - Defaults to `option_select` if not found
 
 ### Example - Alternative Column Names
+
 This CSV will work the same as standard format:
 
 ```csv
@@ -180,12 +199,14 @@ Staff Greeting,Warm welcome provided,SERVICE,Entrance,option_select,yes,2,Yes:3|
 ## Command Line Options
 
 ### Required Arguments
+
 ```bash
 --file <path>        Path to CSV file
 --name <name>        Template name to create
 ```
 
 ### Optional Arguments
+
 ```bash
 --description <text>  Template description
 --category <cat>      Template category (defaults to "General")
@@ -193,6 +214,7 @@ Staff Greeting,Warm welcome provided,SERVICE,Entrance,option_select,yes,2,Yes:3|
 ```
 
 ### Environment Variables (Alternative)
+
 ```bash
 CSV_FILE="path/to/file.csv"
 TEMPLATE_NAME="My Checklist"
@@ -202,6 +224,7 @@ OVERWRITE=1
 ```
 
 **Environment Variable Example:**
+
 ```bash
 CSV_FILE=../CVR_CDR_Checklist_checklist.csv \
 TEMPLATE_NAME="CVR - CDR Checklist" \
@@ -215,12 +238,14 @@ node scripts/import-csv-checklist.js
 ## Best Practices
 
 ### 1. CSV Formatting
+
 - ✅ Use proper comma separation
 - ✅ Quote fields containing commas: `"Field with, comma"`
 - ✅ Consistent value types (yes/no, not yes/false mix)
 - ✅ No extra whitespace in headers
 
 ### 2. Data Quality
+
 - ✅ Unique item titles (within category)
 - ✅ Proper input_type selection
 - ✅ Valid options format: `Label:Score|Label:Score`
@@ -228,12 +253,14 @@ node scripts/import-csv-checklist.js
 - ✅ Category consistency (use same category names throughout)
 
 ### 3. Item Organization
+
 - ✅ Group related items in same category/subcategory
 - ✅ Use section field for further organization
 - ✅ Mark critical items (food safety, compliance)
 - ✅ Set weight appropriate to importance
 
 ### 4. Testing
+
 - ✅ Start with small pilot CSV (5-10 items)
 - ✅ Test with CLI args first: `--file`, `--name`
 - ✅ Verify in mobile app before full deployment
@@ -244,14 +271,16 @@ node scripts/import-csv-checklist.js
 ## Troubleshooting
 
 ### Error: "CSV file not found"
-```
+
+```text
 Solution: Verify file path is correct
 - Use absolute path: C:\path\to\file.csv
 - Or relative path from backend/: ../path/to/file.csv
 ```
 
 ### Error: "CSV must have a 'title' column"
-```
+
+```text
 Solution: Ensure CSV has a column named:
   - "title" (recommended)
   - "item_name" (alternative)
@@ -260,7 +289,8 @@ Solution: Ensure CSV has a column named:
 ```
 
 ### Error: "Template already exists"
-```
+
+```text
 Solution 1: Use different template name
 Solution 2: Add --overwrite flag to replace
   node scripts/import-csv-checklist.js \
@@ -270,7 +300,8 @@ Solution 2: Add --overwrite flag to replace
 ```
 
 ### Items Not Appearing in App
-```
+
+```text
 Checklist:
 1. Verify import completed with "✅ IMPORT COMPLETE"
 2. Check template count in results
@@ -280,7 +311,8 @@ Checklist:
 ```
 
 ### Wrong Number of Items Imported
-```
+
+```text
 Causes:
 - Empty rows in CSV (skipped automatically)
 - Rows with missing title (skipped)
@@ -300,6 +332,7 @@ Solution:
 ### Batch Import Multiple Checklists
 
 Create a shell script (`import-all.sh`):
+
 ```bash
 #!/bin/bash
 
@@ -319,6 +352,7 @@ echo "✅ All checklists imported!"
 ```
 
 Run with:
+
 ```bash
 chmod +x import-all.sh
 ./import-all.sh
@@ -328,14 +362,16 @@ chmod +x import-all.sh
 
 ### Creating CSV from Spreadsheet
 
-#### From Excel/Google Sheets:
+#### From Excel/Google Sheets
+
 1. Open your spreadsheet
 2. Click File → Download → CSV (Comma Separated Values)
 3. Save the file
 4. Use with import script
 
-#### From Google Sheets Online:
-```
+#### From Google Sheets Online
+
+```text
 File → Download → Comma Separated Values (.csv)
 ```
 
@@ -348,6 +384,7 @@ To create variations of existing template:
 1. Export existing template items to CSV (using SQL query)
 2. Modify CSV as needed
 3. Import with new name:
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file modified-template.csv \
@@ -376,6 +413,7 @@ Then copy to Excel and save as CSV.
 ## Support
 
 For issues or questions:
+
 1. Check troubleshooting section above
 2. Review CSV format requirements
 3. Verify column names are recognized
@@ -386,7 +424,7 @@ For issues or questions:
 ## Version History
 
 | Version | Date | Changes |
-|---------|------|---------|
+| --- | --- | --- |
 | 2.0 | 2026-01-30 | Enhanced script with better documentation, flexible column detection, improved error handling |
 | 1.0 | 2026-01-20 | Initial import script |
 
@@ -395,6 +433,7 @@ For issues or questions:
 ## Examples Directory
 
 CSV examples available in:
+
 - `CVR_CDR_Checklist_checklist.csv` - Full CVR-CDR checklist (252 items)
 - `CVR_QSR_checklist.csv` - QSR variant (174 items)
 - `comprehensive-checklist-template.csv` - Template example

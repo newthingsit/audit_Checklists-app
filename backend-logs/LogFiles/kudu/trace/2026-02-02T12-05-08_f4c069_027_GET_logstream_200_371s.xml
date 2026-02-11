@@ -1,0 +1,8 @@
+<step title="Incoming Request" date="2026-02-02T12:05:08.543" instance="f4c069" url="/logstream" method="GET" type="request" pid="836,1,15" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="identity" Authorization="Bea..." x-ms-client-request-id="66991b1b-002f-11f1-9928-e88088cf9695" X-ARR-LOG-ID="66991b1b-002f-11f1-9928-e88088cf9695" CLIENT-IP="180.151.76.170:55277" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/logstream" X-Client-IP="180.151.76.170" X-Client-Port="55277" >
+  <step title="Cleanup Xml Logs" date="2026-02-02T12:05:08.547" >
+    <step title="Cleanup Infos" date="2026-02-02T12:05:08.647" totalFiles="5493" totalCleanup="5333" /><!-- duration: 24ms -->
+  </step><!-- duration: 131ms -->
+  <step title="LogStreamHandlerMiddleware.Invoke" date="2026-02-02T12:05:08.702" /><!-- duration: 10111ms -->
+  <step title="Error occurred" date="2026-02-02T12:11:19.148" type="error" text="LogStreamManager: ProcessRequest end" /><!-- duration: 68ms -->
+  <step title="Outgoing response" date="2026-02-02T12:11:19.484" type="response" statusCode="200" statusText="OK" /><!-- duration: 10ms -->
+</step><!-- duration: 370971ms -->

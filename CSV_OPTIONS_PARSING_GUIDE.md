@@ -13,6 +13,7 @@ The CSV import supports **flexible options parsing** with multiple formats and s
 **Format:** `Label:Score|Label:Score|Label:Score`
 
 **Examples:**
+
 ```csv
 Yes:3|No:0|NA:NA
 Pass:1|Fail:0
@@ -24,6 +25,7 @@ Working:1|Broken:0|Pending:2
 **Use Case:** When you want both a display label AND a numeric/text score
 
 **Result in App:**
+
 - Displays: "Yes", "No", "NA"
 - Stores: 3, 0, "NA"
 
@@ -34,6 +36,7 @@ Working:1|Broken:0|Pending:2
 **Format:** `Label|Label|Label`
 
 **Examples:**
+
 ```csv
 Yes|No|NA
 Pass|Fail|Pending
@@ -45,6 +48,7 @@ Working|Broken|Maintenance
 **Use Case:** When you only need display labels, no scoring
 
 **Result in App:**
+
 - Displays: "Yes", "No", "NA"
 - Stores: "" (empty marks)
 
@@ -55,6 +59,7 @@ Working|Broken|Maintenance
 **Format:** `5|4|3|2|1|0`
 
 **Examples:**
+
 ```csv
 5|4|3|2|1|0
 10|8|6|4|2|0
@@ -65,6 +70,7 @@ Working|Broken|Maintenance
 **Use Case:** When scores are self-explanatory
 
 **Result in App:**
+
 - Displays: "5", "4", "3", "2", "1", "0"
 - Stores: (same values)
 
@@ -75,6 +81,7 @@ Working|Broken|Maintenance
 **Format:** `Label:Score|Label|Score:Value`
 
 **Examples:**
+
 ```csv
 Excellent:5|Good:4|Fair|Poor:0
 Pass:1|Fail
@@ -84,6 +91,7 @@ Available:100|NotAvailable:0|Pending
 **Use Case:** When some options need scores but others don't
 
 **Result in App:**
+
 - Displays: Mix of labels with/without scores
 - Stores: Corresponding values
 
@@ -125,6 +133,7 @@ Equipment,Maintenance,option_select,Yes:3|No:0|NA:NA
 ```
 
 **Parsing:**
+
 - Label: Yes, Score: 3
 - Label: No, Score: 0
 - Label: NA, Score: NA
@@ -141,6 +150,7 @@ Food Temperature,Food Safety,option_select,Excellent:5|Good:4|Fair:2|Poor:0
 ```
 
 **Parsing:**
+
 - Each option gets both display label and numeric score
 - Scores 0-5 for rating scale
 
@@ -155,6 +165,7 @@ Approval,Management,option_select,Approved:YES|Rejected:NO|Pending:WAIT
 ```
 
 **Parsing:**
+
 - Labels: Pass, Fail, Pending
 - Scores: PASS, FAIL, PENDING (text)
 
@@ -170,6 +181,7 @@ Availability,Supplies,option_select,InStock|LowStock|OutOfStock
 ```
 
 **Parsing:**
+
 - Only labels, no scores
 - Useful for descriptive options
 
@@ -185,6 +197,7 @@ Compliance,Legal,option_select,Full|Partial:0.5|None:0
 ```
 
 **Parsing:**
+
 - Some options with scores: "Excellent:5", "Poor:0"
 - Some without: "Fair", "Closed"
 - Mixed result: Best of both approaches
@@ -194,30 +207,35 @@ Compliance,Legal,option_select,Full|Partial:0.5|None:0
 ## 🔍 How Parsing Works
 
 ### Step 1: Detect Separator
+
 - If CSV contains `|` → Use pipe separator
 - Else if CSV contains `;` → Use semicolon separator
 - Else → Single option only
 
 ### Step 2: Split by Separator
-```
+
+```text
 "Yes:3|No:0|NA:NA" → ["Yes:3", "No:0", "NA:NA"]
 ```
 
 ### Step 3: Split Each Option by Colon
-```
+
+```text
 "Yes:3" → ["Yes", "3"]
 "No:0" → ["No", "0"]
 "NA:NA" → ["NA", "NA"]
 ```
 
 ### Step 4: Extract Label and Score
-```
+
+```text
 Label: Yes, Score: 3
 Label: No, Score: 0
 Label: NA, Score: NA
 ```
 
 ### Step 5: Create Option Objects
+
 ```javascript
 {
   option_text: "Yes",
@@ -231,6 +249,7 @@ Label: NA, Score: NA
 ## ⚠️ Important Notes
 
 ### Quotes and Whitespace
+
 ```csv
 WORKS:     "Yes:3|No:0|NA:NA"
 WORKS:     Yes:3|No:0|NA:NA
@@ -239,6 +258,7 @@ NOT NEEDED: \"Yes:3\" (extra quotes removed)
 ```
 
 ### Empty or Missing Scores
+
 ```csv
 Yes:|No:0    → Yes with empty score, No with 0
 Yes|No       → Both with empty scores
@@ -246,6 +266,7 @@ Yes|No       → Both with empty scores
 ```
 
 ### Special Characters
+
 ```csv
 WORKS:     Label:Value (colon allowed in text)
 WORKS:     A&B:3|C/D:0 (special chars allowed)
@@ -254,6 +275,7 @@ CAUTION:   Use quotes if option contains pipe: "Yes|No:3|Maybe:0|Actually|:This"
 ```
 
 ### Length Limits
+
 - **Label:** Up to 100 characters
 - **Score:** Up to 50 characters
 - **Total Options:** Up to 100 per item
@@ -266,6 +288,7 @@ CAUTION:   Use quotes if option contains pipe: "Yes|No:3|Maybe:0|Actually|:This"
 Options can be in any column, but naming matters:
 
 **Works (Auto-Detected):**
+
 ```csv
 options,title,category          ← "options" column found
 answers,title,category          ← "answers" column found
@@ -273,6 +296,7 @@ choices,title,category          ← "choices" column found
 ```
 
 **Columns Checked For:**
+
 - `options`
 - `choices`
 - `answers`
@@ -339,12 +363,14 @@ Speed of Service,Timing,option_select,Fast:1|OnTime:2|Slow:3
 ### Issue: Options not showing in app
 
 **Check:**
+
 1. Column named `options`, `choices`, or `answers`?
 2. Separator is `|` or `;`?
 3. Format correct: `Label:Score|Label:Score`?
 4. No extra quotes around entire options string?
 
 **Fix:**
+
 ```csv
 WRONG:  "Yes:3|No:0"  (quotes included in data)
 RIGHT:  Yes:3|No:0
@@ -355,11 +381,13 @@ RIGHT:  Yes:3|No:0
 ### Issue: Scores not appearing
 
 **Check:**
+
 1. Using colon `:` between label and score?
 2. Score after label, not before?
 3. No spaces around colon?
 
 **Fix:**
+
 ```csv
 WRONG:  Yes : 3
 RIGHT:  Yes:3
@@ -373,11 +401,13 @@ RIGHT:  Yes:3
 ### Issue: Only first option appears
 
 **Check:**
+
 1. Using separator? (`|` or `;`)
 2. Separator present between all options?
 3. No extra quotes around individual options?
 
 **Fix:**
+
 ```csv
 WRONG:  Yes:3 No:0 NA:NA
 RIGHT:  Yes:3|No:0|NA:NA
@@ -388,10 +418,12 @@ RIGHT:  Yes:3|No:0|NA:NA
 ### Issue: Special characters corrupted
 
 **Check:**
+
 1. CSV file encoding (UTF-8 recommended)
 2. Quotes around options if special chars present
 
 **Fix:**
+
 ```csv
 WORKS:   Café:5|Naïve:3
 WORKS:   "Café:5|Naïve:3" (if file encoding supports UTF-8)
@@ -419,24 +451,28 @@ Before importing, verify:
 ## 📚 Complete Examples by Input Type
 
 ### option_select (Dropdown)
+
 ```csv
 title,input_type,options
 Question,option_select,Yes:3|No:0|NA:NA
 ```
 
 ### multiple_answer (Checkboxes)
+
 ```csv
 title,input_type,options
 Select All,multiple_answer,Option1|Option2|Option3|Option4
 ```
 
 ### radio_button (Radio Buttons)
+
 ```csv
 title,input_type,options
 Choose One,radio_button,Choice1:1|Choice2:2|Choice3:3
 ```
 
 ### grid (Matrix)
+
 ```csv
 title,input_type,options
 Rate Each,grid,Poor:1|Fair:2|Good:3|Excellent:5
@@ -471,11 +507,11 @@ Rate Each,grid,Poor:1|Fair:2|Good:3|Excellent:5
 ## Summary
 
 | Format | Separator | Example |
-|--------|-----------|---------|
+| --- | --- | --- |
 | Label:Score | Pipe `\|` | `Yes:3\|No:0` |
 | Label Only | Pipe `\|` | `Yes\|No\|NA` |
 | Score Only | Pipe `\|` | `5\|4\|3\|2\|1\|0` |
 | Mixed | Pipe `\|` | `Yes:3\|No\|NA:NA` |
 | Alt Sep | Semicolon `;` | `Yes:3;No:0;NA:NA` |
 
-**All formats are supported and will be correctly parsed into the app! 🚀**
+All formats are supported and will be correctly parsed into the app.

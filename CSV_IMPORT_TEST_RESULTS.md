@@ -11,6 +11,7 @@
 ### Import Test #1: CVR - CDR Full Test
 
 **Command:**
+
 ```bash
 node scripts/import-csv-checklist.js \
   --file ../CVR_CDR_Checklist_checklist.csv \
@@ -20,6 +21,7 @@ node scripts/import-csv-checklist.js \
 ```
 
 **Results:**
+
 - ✅ CSV parsed successfully
 - ✅ 10 columns detected: title, description, category, subcategory, section, input_type, required, weight, is_critical, options
 - ✅ Template created (ID: 85)
@@ -28,6 +30,7 @@ node scripts/import-csv-checklist.js \
 - ⏱️ Import completed in ~2 seconds
 
 **Column Mapping:**
+
 - Title: ✅ title
 - Description: ✅ description
 - Category: ✅ category
@@ -44,6 +47,7 @@ node scripts/import-csv-checklist.js \
 **Solution:** Modified to insert options into `checklist_item_options` table
 
 **Changes Made:**
+
 ```javascript
 // Before (INCORRECT):
 INSERT INTO checklist_items (..., options, ...) VALUES (..., @options, ...)
@@ -59,11 +63,13 @@ INSERT INTO checklist_items (..., options, ...) VALUES (..., @options, ...)
 ```
 
 **File Modified:**
+
 - `/backend/scripts/import-csv-checklist.js` (lines ~295-320)
 
 ## Database Verification
 
 **Query used:**
+
 ```sql
 SELECT COUNT(*) FROM checklist_items WHERE template_id = 85;
 -- Result: 252 rows
@@ -72,31 +78,37 @@ SELECT COUNT(*) FROM checklist_items WHERE template_id = 85;
 ## Features Validated
 
 ✅ **CSV Parsing**
+
 - Comma-separated values
 - Quoted fields handling
 - Newline handling
 
 ✅ **Column Detection**
+
 - Flexible column name matching
 - Multiple aliases for each column
 - Partial matching support
 
 ✅ **Data Type Conversion**
+
 - Boolean conversion (YES/NO → 1/0)
 - Number parsing with validation
 - Text trimming and normalization
 
 ✅ **Template Creation**
+
 - Template with name, description, category
 - Proper ID assignment
 - Auto-increment handling
 
 ✅ **Item Import**
+
 - 252 items imported
 - All fields mapped correctly
 - Order index maintained
 
 ✅ **Option Handling**
+
 - Options string parsed correctly
 - Format: "Label:Score|Label:Score"
 - Proper insertion into checklist_item_options table
@@ -104,7 +116,7 @@ SELECT COUNT(*) FROM checklist_items WHERE template_id = 85;
 ## Performance Metrics
 
 | Metric | Value |
-|--------|-------|
+| --- | --- |
 | CSV File Size | ~50KB |
 | Total Items | 252 |
 | Import Time | ~2 seconds |
@@ -125,6 +137,7 @@ SELECT COUNT(*) FROM checklist_items WHERE template_id = 85;
 ## Environment Variable Support
 
 All command-line arguments can also be set via environment variables:
+
 - `CSV_FILE`
 - `TEMPLATE_NAME`
 - `TEMPLATE_DESC`

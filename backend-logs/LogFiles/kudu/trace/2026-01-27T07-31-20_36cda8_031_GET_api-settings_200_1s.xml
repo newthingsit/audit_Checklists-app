@@ -1,0 +1,6 @@
+<step title="Incoming Request" date="2026-01-27T07:31:20.819" instance="36cda8" url="/api/settings" method="GET" type="request" pid="833,1,88" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Content-Length="0" X-ARR-LOG-ID="9214095b-c5e3-4ab9-9a0b-51d9f02c5a25" CLIENT-IP="172.184.220.203:59432" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/settings" X-Client-IP="172.184.220.203" X-Client-Port="59432" >
+  <step title="Cleanup Xml Logs" date="2026-01-27T07:31:20.827" >
+    <step title="Cleanup Infos" date="2026-01-27T07:31:21.024" totalFiles="4121" totalCleanup="3961" /><!-- duration: 36ms -->
+  </step><!-- duration: 238ms -->
+  <step title="Outgoing response" date="2026-01-27T07:31:21.391" type="response" statusCode="200" statusText="OK" /><!-- duration: 8ms -->
+</step><!-- duration: 582ms -->

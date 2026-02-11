@@ -1,0 +1,21 @@
+<step title="BackgroundTrace" date="2026-02-09T12:26:13.055" instance="b221d2" url="/api/zipdeploy" method="POST" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T12:26:13.066" >
+    <step title="Cleanup Infos" date="2026-02-09T12:26:13.193" totalFiles="6155" totalCleanup="5995" /><!-- duration: 36ms -->
+  </step><!-- duration: 171ms -->
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2026-02-09T12:26:13.286" /><!-- duration: 2ms -->
+  <step title="Creating temporary deployment" date="2026-02-09T12:26:13.291" /><!-- duration: 136ms -->
+  <step title="Performing fetch based deployment" date="2026-02-09T12:26:13.452" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/6e9f4001-24ca-4338-958f-91ef5314a546.zip (6.02 MB) to /tmp/zipdeploy/extracted" date="2026-02-09T12:26:14.669" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 105" date="2026-02-09T12:26:15.581" /><!-- duration: 9ms -->
+    </step><!-- duration: 943ms -->
+    <step title="Deployment timer started" date="2026-02-09T12:26:17.644" >
+      <step title="DeploymentManager.Deploy(id:2900186a-41b0-466b-8b64-659ae0e6ca54)" date="2026-02-09T12:26:17.655" >
+        <step title="Collecting changeset information" date="2026-02-09T12:26:17.664" /><!-- duration: 135ms -->
+        <step title="Updating submodules" date="2026-02-09T12:26:17.805" /><!-- duration: 1154ms -->
+        <step title="Determining deployment builder" date="2026-02-09T12:26:19.215" >
+          <step title="Builder is OryxBuilder" date="2026-02-09T12:26:19.219" /><!-- duration: 14ms -->
+        </step><!-- duration: 28ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2026-02-09T12:26:19.327" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2026-02-09T12:26:19.490" >
+            <step title="Building" date="2026-02-09T12:26:19.704" >
+              <step title="Executing external process" date="2026-02-09T12:26:20.117" type="process" path="bash" arguments="-c &quot;oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform nodejs --platform-version 22 -p virtualenv_name= --log-file /tmp/build-debug.log  -i /tmp/8de67d66d982bcc -p compress_node_modules=tar-gz | tee /tmp/oryx-build.log ; exit $PIPESTATUS &quot;" 

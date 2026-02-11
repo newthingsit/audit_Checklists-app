@@ -1,0 +1,18 @@
+<step title="Incoming Request" date="2026-02-09T10:15:55.144" instance="e63533" url="/deploy?scmType=ExternalGit&amp;isAsync=true" method="POST" type="request" pid="833,1,25" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="Azure-WebSites-Controller/106.0.7.121" Authorization="Bas..." Expect="100-continue" Content-Length="91" x-ms-request-id="314f4b1d-9e65-4742-a200-74e0161b4ff6" X-ARR-LOG-ID="314f4b1d-9e65-4742-a200-74e0161b4ff6" CLIENT-IP="20.192.170.128:7744" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-MS-PLATFORM-INTERNAL="True" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/deploy?scmType=ExternalGit&amp;isAsync=true" X-Client-IP="20.192.170.128" X-Client-Port="7744" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T10:15:55.164" >
+    <step title="Cleanup Infos" date="2026-02-09T10:15:55.959" totalFiles="5938" totalCleanup="5778" /><!-- duration: 128ms -->
+  </step><!-- duration: 965ms -->
+  <step title="FetchHandler" date="2026-02-09T10:15:56.325" >
+    <step title="Executing external process" date="2026-02-09T10:15:56.977" type="process" path="git" arguments="rev-parse --git-dir" /><!-- duration: 1207ms -->
+    <step title="Executing external process" date="2026-02-09T10:15:58.237" type="process" path="git" arguments="rev-parse --git-dir" /><!-- duration: 139ms -->
+    <step title="Executing external process" date="2026-02-09T10:15:58.417" type="process" path="git" arguments="log -n 1 master --" /><!-- duration: 782ms -->
+    <step title="Start deployment in the background" date="2026-02-09T10:15:59.319" >
+      <step title="Executing external process" date="2026-02-09T10:16:03.004" type="process" path="git" arguments="rev-parse --git-dir" /><!-- duration: 1141ms -->
+      <step title="Executing external process" date="2026-02-09T10:16:04.539" type="process" path="git" arguments="rev-parse --git-dir" /><!-- duration: 312ms -->
+      <step title="Executing external process" date="2026-02-09T10:16:05.042" type="process" path="git" arguments="log -n 1 master --" /><!-- duration: 1197ms -->
+      <step title="Acquiring Deployment Lock" date="2026-02-09T10:16:06.631" /><!-- duration: 109ms -->
+      <step title="Acquired Deployment Lock" date="2026-02-09T10:16:07.323" /><!-- duration: 198ms -->
+    </step><!-- duration: 8988ms -->
+  </step><!-- duration: 12021ms -->
+  <step title="Outgoing response" date="2026-02-09T10:16:08.376" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 61ms -->
+</step><!-- duration: 13352ms -->

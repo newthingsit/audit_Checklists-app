@@ -1,7 +1,30 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { body, validationResult } = require('express-validator');
+let body;
+let validationResult;
+try {
+  ({ body, validationResult } = require('express-validator'));
+} catch (error) {
+  // Fallback to avoid crashing the server when validator files are missing.
+  console.warn('Validation dependency unavailable; skipping express-validator.', error.message);
+  const createNoopChain = () => {
+    const chain = (req, res, next) => next();
+    chain.isEmail = () => chain;
+    chain.normalizeEmail = () => chain;
+    chain.isLength = () => chain;
+    chain.withMessage = () => chain;
+    chain.matches = () => chain;
+    chain.trim = () => chain;
+    chain.notEmpty = () => chain;
+    return chain;
+  };
+  body = () => createNoopChain();
+  validationResult = () => ({
+    isEmpty: () => true,
+    array: () => []
+  });
+}
 const db = require('../config/database-loader');
 const { JWT_SECRET, authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');

@@ -2585,7 +2585,12 @@ const AuditFormScreen = () => {
                   }
                 }
               } catch (syncError) {
-                console.warn('[AppState] Failed to sync to server (will retry later):', syncError.message);
+                const syncStatus = syncError?.response?.status;
+                if (syncStatus === 401 || syncStatus === 403) {
+                  console.warn('[AppState] Auth error during background sync; skipping retry.');
+                } else {
+                  console.warn('[AppState] Failed to sync to server (will retry later):', syncError.message);
+                }
                 // Don't block - local save is more important
               }
             }
@@ -3098,6 +3103,10 @@ const AuditFormScreen = () => {
         // Check if it's a critical error that shouldn't be retried
         const batchStatus = batchError?.response?.status;
         const batchMessage = batchError?.response?.data?.error || batchError?.response?.data?.message || batchError?.message || 'Unknown error';
+
+        if (batchStatus === 401) {
+          throw batchError;
+        }
         
         // If it's a 400/404/403 error, don't retry - show error immediately
         if (batchStatus === 400 || batchStatus === 404 || batchStatus === 403) {
@@ -3127,6 +3136,10 @@ const AuditFormScreen = () => {
               const waitMs = retryAfterMs ?? Math.min(750 * attempt, 4000);
 
               console.warn(`Failed to update item ${itemId} (attempt ${attempt}/${maxItemRetries}):`, itemError?.message || itemError);
+
+              if (status === 401) {
+                throw itemError;
+              }
 
               // Don't retry on 400/404/403 errors
               if (status === 400 || status === 404 || status === 403) {

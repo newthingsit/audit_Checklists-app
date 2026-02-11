@@ -9,6 +9,7 @@ This guide explains how to run the `fix-cvr-cdr-checklist.sql` script to clean u
 The SQL script performs these optimizations:
 
 1. ✅ **Fixes Template Name** - Ensures consistent naming: "CVR - CDR Checklist"
+
 2. ✅ **Removes Duplicates** - Deletes 3 duplicate items
 3. ✅ **Optimizes Speed of Service** - Makes transactions 2-4 optional (Trnx 1 remains required)
 4. ✅ **Fixes Descriptions** - Corrects ambiguous or unclear item descriptions
@@ -17,11 +18,13 @@ The SQL script performs these optimizations:
 ### Expected Results
 
 **Before:**
+
 - Total items: 252 (with 3 duplicates)
 - Speed of Service required items: 28
 - Audit time: ~87 minutes
 
 **After:**
+
 - Total items: 249 (3 duplicates removed)
 - Speed of Service required items: 8
 - Audit time: ~74 minutes (13 min savings)
@@ -32,14 +35,16 @@ The SQL script performs these optimizations:
 
 **ALWAYS backup before running SQL scripts!**
 
-**Option A: SQL Server Management Studio (SSMS)**
+#### Option A: SQL Server Management Studio (SSMS)
+
 ```sql
 BACKUP DATABASE [audit_checklists] 
 TO DISK = 'C:\Backup\audit_checklists_backup_20260130.bak'
 WITH COMPRESSION;
 ```
 
-**Option B: PowerShell**
+#### Option B: PowerShell
+
 ```powershell
 $BackupPath = "D:\audit_Checklists-app\Backups"
 $BackupFile = "$BackupPath\audit_checklists_$(Get-Date -Format 'yyyyMMdd_HHmmss').bak"
@@ -52,7 +57,8 @@ sqlcmd -S $SqlServer -Q "BACKUP DATABASE [$Database] TO DISK = '$BackupFile' WIT
 echo "Backup created: $BackupFile"
 ```
 
-**Option C: Azure Data Studio**
+#### Option C: Azure Data Studio
+
 1. Right-click database "audit_checklists"
 2. Select "Backup"
 3. Choose backup location
@@ -61,13 +67,14 @@ echo "Backup created: $BackupFile"
 ### Step 2: Open the SQL Script
 
 The script is located at:
-```
+
+```text
 d:\audit_Checklists-app\backend\scripts\fix-cvr-cdr-checklist.sql
 ```
 
 ### Step 3: Execute Using SQL Server Management Studio (SSMS)
 
-**Method 1: Direct Execution**
+#### Method 1: Direct Execution
 
 1. Open SQL Server Management Studio
 2. Connect to your server (KAPILCHAUHAN-IT\SQLEXPRESS)
@@ -76,7 +83,7 @@ d:\audit_Checklists-app\backend\scripts\fix-cvr-cdr-checklist.sql
 5. Click "Execute" or press `F5`
 6. Review the results
 
-**Method 2: Copy-Paste**
+#### Method 2: Copy-Paste
 
 1. Open the SQL file in a text editor
 2. Copy all content
@@ -95,7 +102,8 @@ d:\audit_Checklists-app\backend\scripts\fix-cvr-cdr-checklist.sql
 
 ### Step 5: Execute Using Command Line (sqlcmd)
 
-**PowerShell:**
+#### PowerShell
+
 ```powershell
 $SqlServer = "KAPILCHAUHAN-IT\SQLEXPRESS"
 $Database = "audit_checklists"
@@ -104,12 +112,14 @@ $ScriptPath = "d:\audit_Checklists-app\backend\scripts\fix-cvr-cdr-checklist.sql
 sqlcmd -S $SqlServer -d $Database -i $ScriptPath -U sa -P <your_password>
 ```
 
-**Command Prompt:**
+#### Command Prompt
+
 ```cmd
 sqlcmd -S "KAPILCHAUHAN-IT\SQLEXPRESS" -d "audit_checklists" -i "d:\audit_Checklists-app\backend\scripts\fix-cvr-cdr-checklist.sql" -U sa -P <your_password>
 ```
 
-**Bash (WSL):**
+#### Bash (WSL)
+
 ```bash
 /opt/mssql-tools/bin/sqlcmd -S "KAPILCHAUHAN-IT\SQLEXPRESS" \
   -d "audit_checklists" \
@@ -138,18 +148,23 @@ node scripts/execute-sql.js backend/scripts/fix-cvr-cdr-checklist.sql --log
 Run these queries to verify the changes:
 
 **1. Check template name:**
+
 ```sql
 SELECT id, name FROM checklist_templates WHERE name LIKE 'CVR - CDR%';
 ```
+
 Expected: One row with name "CVR - CDR Checklist"
 
 **2. Check item count:**
+
 ```sql
 SELECT COUNT(*) as total_items FROM checklist_items WHERE template_id = 43;
 ```
+
 Expected: 249 items (was 252)
 
 **3. Check Speed of Service items:**
+
 ```sql
 SELECT COUNT(*) as sos_required 
 FROM checklist_items 
@@ -157,9 +172,11 @@ WHERE template_id = 43
 AND category LIKE 'Service (Speed of Service)%'
 AND required = 1;
 ```
+
 Expected: 8 items (was 28)
 
 **4. Check for duplicates:**
+
 ```sql
 SELECT title, COUNT(*) as count
 FROM checklist_items
@@ -167,6 +184,7 @@ WHERE template_id = 43
 GROUP BY title
 HAVING COUNT(*) > 1;
 ```
+
 Expected: No rows (duplicates removed)
 
 ### Comprehensive Verification Script
@@ -236,13 +254,15 @@ PRINT '=================================';
 
 ### Option 1: Restore from Backup
 
-**SQL Server Management Studio:**
+#### SQL Server Management Studio
+
 1. Right-click database "audit_checklists"
 2. Select "Restore Database"
 3. Choose the backup file from before script execution
 4. Click "Restore"
 
-**PowerShell:**
+#### PowerShell (Restore)
+
 ```powershell
 $SqlServer = "KAPILCHAUHAN-IT\SQLEXPRESS"
 $Database = "audit_checklists"
@@ -261,7 +281,8 @@ echo "Database restored from backup"
 
 If you only want to undo specific changes:
 
-**Restore deleted items (if backup available):**
+#### Restore deleted items (if backup available)
+
 ```sql
 -- Restore the 3 deleted items
 INSERT INTO checklist_items (template_id, title, description, category, subcategory, section, input_type, required, weight, is_critical, order_index)
@@ -271,7 +292,8 @@ VALUES
   (43, 'Ice machines', 'Check ice machines', 'SECTION', 'SUBSECTION', 'Area', 'option_select', 1, 1, 0, 102);
 ```
 
-**Restore Speed of Service requirements:**
+#### Restore Speed of Service requirements
+
 ```sql
 -- Make Speed of Service Trnx 2-4 required again
 UPDATE checklist_items
@@ -286,6 +308,7 @@ AND order_index BETWEEN 100 AND 200; -- Adjust range as needed
 ### Issue: "Access Denied" Error
 
 **Solution:** Run with proper permissions
+
 ```sql
 -- Check current user permissions
 SELECT * FROM sys.databases WHERE database_id = DB_ID();
@@ -295,6 +318,7 @@ SELECT SUSER_NAME();
 ### Issue: "Template not found" Error
 
 **Solution:** Verify template exists and ID is correct
+
 ```sql
 SELECT id, name FROM checklist_templates WHERE name LIKE 'CVR - CDR%';
 ```
@@ -302,11 +326,13 @@ SELECT id, name FROM checklist_templates WHERE name LIKE 'CVR - CDR%';
 ### Issue: "Script execution timeout"
 
 **Solution:** Increase timeout in SQL Server Management Studio
+
 - Tools → Options → Query Execution → Execution Time-out → Set to 300 (seconds)
 
 ### Issue: "Changes not visible in app"
 
 **Solution:** Restart backend server to refresh template cache
+
 ```bash
 cd d:\audit_Checklists-app\backend
 npm restart
@@ -332,7 +358,7 @@ Before deploying to production:
 **Expected improvements:**
 
 | Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
+| --- | --- | --- | --- |
 | Total Items | 252 | 249 | -3 items |
 | Audit Time | ~87 min | ~74 min | -13 min |
 | SOS Required | 28 items | 8 items | -70% |
@@ -357,6 +383,7 @@ After successful execution:
 3. Check application logs in `/backend/logs/`
 
 **For serious issues:**
+
 - Stop backend: `pm2 stop backend`
 - Restore from backup
 - Check backup verification scripts

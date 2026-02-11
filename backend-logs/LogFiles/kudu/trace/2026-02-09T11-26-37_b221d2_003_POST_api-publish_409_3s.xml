@@ -1,0 +1,19 @@
+<step title="Incoming Request" date="2026-02-09T11:26:37.857" instance="b221d2" url="/api/publish?type=zip&amp;restart=True&amp;clean=True" method="POST" type="request" pid="834,1,15" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bas..." Cache-Control="no-cache" Content-Type="application/octet-stream" Cookie="ARRAffinity=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c; ARRAffinitySameSite=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c" Content-Length="6374419" x-ms-client-request-id="2ea45a62-05aa-11f1-a229-e88088cf9695" x-ms-artifact-checksum="00bf62370717e3e7f6490391bb318e3d1130be5c4292c6bb4169da5916a23790" X-ARR-LOG-ID="2ea45a62-05aa-11f1-a229-e88088cf9695" CLIENT-IP="180.151.76.170:51500" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?type=zip&amp;restart=True&amp;clean=True" X-Client-IP="180.151.76.170" X-Client-Port="51500" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T11:26:37.878" >
+    <step title="Cleanup Infos" date="2026-02-09T11:26:38.723" totalFiles="6058" totalCleanup="5898" /><!-- duration: 85ms -->
+  </step><!-- duration: 957ms -->
+  <step title="OneDeploy" date="2026-02-09T11:26:39.013" >
+    <step title="None repository commit" date="2026-02-09T11:26:39.049" >
+      <step title="Commit id: 326bdb9c-d18d-437b-9ccd-abd46610055e" date="2026-02-09T11:26:39.052" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 8ms -->
+    </step><!-- duration: 20ms -->
+    <step title="Starting PushDeployAsync" date="2026-02-09T11:26:39.091" /><!-- duration: 12ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/058cef3b-6c9e-4b11-a6f3-7d8509aac933.zip" date="2026-02-09T11:26:39.159" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/058cef3b-6c9e-4b11-a6f3-7d8509aac933.zip" date="2026-02-09T11:26:39.179" /><!-- duration: 39ms -->
+    </step><!-- duration: 1620ms -->
+    <step title="Attempting to fetch target branch HEAD" date="2026-02-09T11:26:40.815" /><!-- duration: 17ms -->
+    <step title="Acquiring Deployment Lock" date="2026-02-09T11:26:40.863" /><!-- duration: 28ms -->
+    <step title="Cannot Acquire Deployment Lock already held" date="2026-02-09T11:26:40.910" /><!-- duration: 11ms -->
+    <step title="There is a deployment currently in progress. Please try again when it completes." date="2026-02-09T11:26:40.955" /><!-- duration: 5ms -->
+  </step><!-- duration: 1958ms -->
+  <step title="Outgoing response" date="2026-02-09T11:26:41.027" type="response" statusCode="409" statusText="Conflict" /><!-- duration: 9ms -->
+</step><!-- duration: 3189ms -->

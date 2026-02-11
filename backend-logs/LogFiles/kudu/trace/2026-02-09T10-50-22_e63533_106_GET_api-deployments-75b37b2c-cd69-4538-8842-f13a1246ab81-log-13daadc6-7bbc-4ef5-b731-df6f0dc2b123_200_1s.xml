@@ -1,0 +1,9 @@
+<step title="Incoming Request" date="2026-02-09T10:50:22.409" instance="e63533" url="/api/deployments/75b37b2c-cd69-4538-8842-f13a1246ab81/log/13daadc6-7bbc-4ef5-b731-df6f0dc2b123" method="GET" type="request" pid="833,1,24" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="python/3.13.9 (Windows-11-10.0.26200-SP0) AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bea..." x-ms-client-request-id="f3a3b777-4e8c-4d27-82b4-72e29fc4c87d" CommandName="rest" ParameterSetName="--method --url --resource" X-ARR-LOG-ID="f3a3b777-4e8c-4d27-82b4-72e29fc4c87d" CLIENT-IP="180.151.76.170:49356" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/75b37b2c-cd69-4538-8842-f13a1246ab81/log/13daadc6-7bbc-4ef5-b731-df6f0dc2b123" X-Client-IP="180.151.76.170" X-Client-Port="49356" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T10:50:22.435" >
+    <step title="Cleanup Infos" date="2026-02-09T10:50:22.975" totalFiles="6024" totalCleanup="5864" /><!-- duration: 108ms -->
+  </step><!-- duration: 661ms -->
+  <step title="DeploymentService.GetLogEntryDetails" date="2026-02-09T10:50:23.126" >
+    <step title="DeploymentManager.GetLogEntryDetails(id:75b37b2c-cd69-4538-8842-f13a1246ab81, entryId:13daadc6-7bbc-4ef5-b731-df6f0dc2b123" date="2026-02-09T10:50:23.144" /><!-- duration: 29ms -->
+  </step><!-- duration: 55ms -->
+  <step title="Outgoing response" date="2026-02-09T10:50:23.194" type="response" statusCode="200" statusText="OK" /><!-- duration: 18ms -->
+</step><!-- duration: 814ms -->

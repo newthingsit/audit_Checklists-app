@@ -9,6 +9,7 @@ const AuthContext = createContext();
 
 // Token storage key
 const TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
 const TOKEN_EXPIRY_KEY = 'auth_token_expiry';
 const TOKEN_BASE_URL_KEY = 'auth_token_base_url';
 
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const refreshTokenRef = useRef(null);
 
   const appState = useRef(AppState.currentState);
   const isHandlingAuthError = useRef(false);
@@ -53,6 +55,41 @@ export const AuthProvider = ({ children }) => {
       }
       throw error;
     }
+  }, []);
+
+  const refreshPromiseRef = useRef(null);
+  const silentRefresh = useCallback(async () => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    const currentRefreshToken = refreshTokenRef.current || await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    if (!currentRefreshToken) return null;
+
+    refreshPromiseRef.current = axios
+      .post(`${API_BASE_URL}/auth/refresh`, { refreshToken: currentRefreshToken }, { timeout: 15000 })
+      .then(async (res) => {
+        const { token: newToken, refreshToken: newRefresh } = res.data || {};
+        if (!newToken) return null;
+        await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+        if (newRefresh) {
+          await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefresh);
+          refreshTokenRef.current = newRefresh;
+        }
+        setToken(newToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+        return newToken;
+      })
+      .catch(async () => {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['Authorization'];
+        return null;
+      })
+      .finally(() => {
+        refreshPromiseRef.current = null;
+      });
+
+    return refreshPromiseRef.current;
   }, []);
 
   // Track last refresh time to prevent excessive API calls
@@ -91,16 +128,21 @@ export const AuthProvider = ({ children }) => {
     try {
       // Use SecureStore for encrypted token storage
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
       const storedBaseUrl = await SecureStore.getItemAsync(TOKEN_BASE_URL_KEY);
       
       if (storedToken && storedBaseUrl && storedBaseUrl !== API_BASE_URL) {
         // Token belongs to a different backend - force re-login to avoid 401s
         await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
         await SecureStore.deleteItemAsync(TOKEN_BASE_URL_KEY);
         setToken(null);
         setUser(null);
         delete axios.defaults.headers.common['Authorization'];
         return;
+      }
+      if (storedRefreshToken) {
+        refreshTokenRef.current = storedRefreshToken;
       }
       if (storedToken) {
         setToken(storedToken);
@@ -147,6 +189,36 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Set up auth event listener for 401 errors
     setAuthEventListener(handleAuthError);
+
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        const originalRequest = error.config;
+        const status = error.response?.status;
+
+        if (
+          status === 401 &&
+          !originalRequest?._retry &&
+          !originalRequest?.url?.includes('/auth/refresh') &&
+          !originalRequest?.url?.includes('/auth/login')
+        ) {
+          originalRequest._retry = true;
+          const newToken = await silentRefresh();
+          if (newToken) {
+            originalRequest.headers = {
+              ...originalRequest.headers,
+              Authorization: `Bearer ${newToken}`,
+            };
+            return axios(originalRequest);
+          }
+        }
+
+        if (status === 401 || status === 403) {
+          handleAuthError({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
+        }
+        return Promise.reject(error);
+      }
+    );
     
     loadStoredAuth();
 
@@ -165,6 +237,7 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       subscription?.remove();
+      axios.interceptors.response.eject(interceptorId);
       setAuthEventListener(null);
     };
   }, [token, loadStoredAuth, refreshUser, handleAuthError]);
@@ -179,9 +252,13 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid response from server');
       }
       
-      const { token: newToken, user: userData } = response.data;
+      const { token: newToken, refreshToken: newRefresh, user: userData } = response.data;
       // Use SecureStore for encrypted token storage
       await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+      if (newRefresh) {
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefresh);
+        refreshTokenRef.current = newRefresh;
+      }
       await SecureStore.setItemAsync(TOKEN_BASE_URL_KEY, API_BASE_URL);
       setToken(newToken);
       setUser(userData);
@@ -201,9 +278,13 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password, name) => {
     const response = await axios.post(`${API_BASE_URL}/auth/register`, { email, password, name });
-    const { token: newToken, user: userData } = response.data;
+    const { token: newToken, refreshToken: newRefresh, user: userData } = response.data;
     // Use SecureStore for encrypted token storage
     await SecureStore.setItemAsync(TOKEN_KEY, newToken);
+    if (newRefresh) {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefresh);
+      refreshTokenRef.current = newRefresh;
+    }
     await SecureStore.setItemAsync(TOKEN_BASE_URL_KEY, API_BASE_URL);
     setToken(newToken);
     setUser(userData);
@@ -214,9 +295,11 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     // Use SecureStore for token removal
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
     await SecureStore.deleteItemAsync(TOKEN_BASE_URL_KEY);
     setToken(null);
     setUser(null);
+    refreshTokenRef.current = null;
     delete axios.defaults.headers.common['Authorization'];
   };
 

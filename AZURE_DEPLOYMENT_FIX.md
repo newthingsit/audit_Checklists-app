@@ -169,5 +169,33 @@ timeout /t 30
 
 ---
 
+## 🧩 Fix "Cannot find module 'express'" (or other missing modules)
+
+If the App Service logs show missing Node modules (for example `express` or `@opentelemetry/sdk-trace-node`), the deployment likely skipped the build step.
+
+### ✅ Fix (Recommended)
+
+1. **Enable build-on-deploy** so Azure runs `npm ci` during deployment:
+  ```bash
+  az webapp config appsettings set \
+    --resource-group audit-app-rg \
+    --name audit-app-backend-2221 \
+    --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+  ```
+2. **Redeploy** your backend ZIP (created from the `backend` folder).
+3. **Restart** the App Service.
+
+### ✅ Alternative Fix (If build-on-deploy is blocked)
+
+1. Install dependencies locally:
+  ```bash
+  cd backend
+  npm ci --omit=dev
+  ```
+2. Create a ZIP **including** `node_modules`.
+3. Deploy the ZIP and restart the App Service.
+
+---
+
 **Most Common Fix:** Wait 2-3 minutes and retry the deployment. The 409 error usually resolves itself once any in-progress deployment completes.
 

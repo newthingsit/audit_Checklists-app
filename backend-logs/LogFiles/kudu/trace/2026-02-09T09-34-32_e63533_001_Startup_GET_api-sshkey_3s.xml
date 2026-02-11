@@ -1,0 +1,5 @@
+<step title="Startup Request" date="2026-02-09T09:34:32.438" instance="e63533" url="/api/sshkey?ensurePublicKey=True" method="GET" type="request" pid="839,1,19" ScmType="None" SCM_DO_BUILD_DURING_DEPLOYMENT="true" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T09:34:32.497" >
+    <step title="Cleanup Infos" date="2026-02-09T09:34:34.803" totalFiles="5908" totalCleanup="5748" /><!-- duration: 815ms -->
+  </step><!-- duration: 3160ms -->
+</step><!-- duration: 3231ms -->

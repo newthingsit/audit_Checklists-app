@@ -1,0 +1,18 @@
+<step title="BackgroundTrace" date="2026-02-09T12:55:35.578" instance="b221d2" url="/api/publish" method="POST" >
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2026-02-09T12:55:35.913" /><!-- duration: 9ms -->
+  <step title="Creating temporary deployment" date="2026-02-09T12:55:36.014" /><!-- duration: 225ms -->
+  <step title="Performing fetch based deployment" date="2026-02-09T12:55:36.463" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/ac7549cd-00e0-4764-9aa8-f8e6a1c8b493.zip (6.05 MB) to /tmp/zipdeploy/extracted" date="2026-02-09T12:55:38.522" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 144" date="2026-02-09T12:55:41.122" /><!-- duration: 20ms -->
+    </step><!-- duration: 2631ms -->
+    <step title="Deployment timer started" date="2026-02-09T12:55:43.219" >
+      <step title="DeploymentManager.Deploy(id:648a48a3-ed66-473d-b4f2-4bfad1c773f4)" date="2026-02-09T12:55:43.248" >
+        <step title="Collecting changeset information" date="2026-02-09T12:55:43.362" /><!-- duration: 323ms -->
+        <step title="Updating submodules" date="2026-02-09T12:55:43.731" /><!-- duration: 1274ms -->
+        <step title="Determining deployment builder" date="2026-02-09T12:55:45.745" >
+          <step title="Builder is OneDeployBuilder" date="2026-02-09T12:55:45.784" /><!-- duration: 68ms -->
+        </step><!-- duration: 138ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2026-02-09T12:55:46.068" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2026-02-09T12:55:46.385" >
+            <step title="Building" date="2026-02-09T12:55:46.790" >
+              <step title="Executing external process" date="2026-02-09T12:55:47.882" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/parallel_rsync.sh /tmp/zipdeploy/extracted /home/site/wwwroot 8 /tmp/ False False  " 

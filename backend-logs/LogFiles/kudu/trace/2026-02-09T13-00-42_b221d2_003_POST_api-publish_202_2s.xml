@@ -1,0 +1,19 @@
+<step title="Incoming Request" date="2026-02-09T13:00:42.261" instance="b221d2" url="/api/publish?type=zip&amp;async=True&amp;clean=True" method="POST" type="request" pid="839,1,16" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bas..." Cache-Control="no-cache" Content-Type="application/octet-stream" Cookie="ARRAffinity=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c; ARRAffinitySameSite=b221d2bf0dbbaf2d2f98fe57e1fedd5a08bfd249c074ab266ffa197db13e332c" Content-Length="6344965" x-ms-client-request-id="52fb7f5a-05b7-11f1-bc9c-e88088cf9695" x-ms-artifact-checksum="376fe562448e0fc334d8b61c372eb9ce0bcbe11968baa0aa9de613f04659e232" X-ARR-LOG-ID="52fb7f5a-05b7-11f1-bc9c-e88088cf9695" CLIENT-IP="180.151.76.170:60349" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?type=zip&amp;async=True&amp;clean=True" X-Client-IP="180.151.76.170" X-Client-Port="60349" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T13:00:42.263" >
+    <step title="Cleanup Infos" date="2026-02-09T13:00:43.081" totalFiles="6201" totalCleanup="6041" /><!-- duration: 52ms -->
+  </step><!-- duration: 872ms -->
+  <step title="OneDeploy" date="2026-02-09T13:00:43.266" >
+    <step title="None repository commit" date="2026-02-09T13:00:43.367" >
+      <step title="Commit id: aa4aafe3-9455-4ff7-9c7c-44475665f9fb" date="2026-02-09T13:00:43.403" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 3ms -->
+    </step><!-- duration: 47ms -->
+    <step title="Starting PushDeployAsync" date="2026-02-09T13:00:43.422" /><!-- duration: 4ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/f4fefb46-7b8c-45b2-aaa1-3e1db3c2a14b.zip" date="2026-02-09T13:00:43.474" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/f4fefb46-7b8c-45b2-aaa1-3e1db3c2a14b.zip" date="2026-02-09T13:00:43.492" /><!-- duration: 10ms -->
+    </step><!-- duration: 681ms -->
+    <step title="Start deployment in the background" date="2026-02-09T13:00:44.175" >
+      <step title="Acquiring Deployment Lock" date="2026-02-09T13:00:44.210" /><!-- duration: 18ms -->
+      <step title="Acquired Deployment Lock" date="2026-02-09T13:00:44.281" /><!-- duration: 8ms -->
+    </step><!-- duration: 374ms -->
+  </step><!-- duration: 1320ms -->
+  <step title="Outgoing response" date="2026-02-09T13:00:44.627" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 8ms -->
+</step><!-- duration: 2377ms -->

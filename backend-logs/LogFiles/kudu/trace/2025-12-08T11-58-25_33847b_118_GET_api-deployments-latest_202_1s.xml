@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2025-12-08T11:58:25.302" instance="33847b" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-08_11-57-30Z" method="GET" type="request" pid="835,1,47" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c96bb74b67676929b8fa52d523a4a19a0303a3e2ae20483f1689325f6651fabd" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net; ARRAffinitySameSite=33847b79e587e8df55f8922385f15b26f9612d20f5d9c93987e37e920c791d38;Path=/;HttpOnly;SameSite=None;Secure;Domain=audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="2ef9f0ea-00eb-4d90-8c62-f6ec694874da" CLIENT-IP="20.102.223.192:21517" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-08_11-57-30Z" X-Client-IP="20.102.223.192" X-Client-Port="21517" >
+  <step title="Cleanup Xml Logs" date="2025-12-08T11:58:25.305" >
+    <step title="Cleanup Infos" date="2025-12-08T11:58:25.349" totalFiles="747" totalCleanup="587" /><!-- duration: 17ms -->
+  </step><!-- duration: 71ms -->
+  <step title="DeploymentService.GetResult" date="2025-12-08T11:58:25.422" >
+    <step title="DeploymentService.GetLatestDeployment" date="2025-12-08T11:58:25.426" >
+      <step title="DeploymentManager.GetResults" date="2025-12-08T11:58:25.435" /><!-- duration: 910ms -->
+    </step><!-- duration: 930ms -->
+  </step><!-- duration: 943ms -->
+  <step title="Outgoing response" date="2025-12-08T11:58:26.374" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 9ms -->
+</step><!-- duration: 1097ms -->

@@ -1,0 +1,39 @@
+<step title="BackgroundTrace" date="2026-02-09T11:37:47.355" instance="e63533" url="/api/zipdeploy" method="POST" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T11:37:47.465" >
+    <step title="Cleanup Infos" date="2026-02-09T11:37:49.244" totalFiles="6107" totalCleanup="5947" /><!-- duration: 146ms -->
+  </step><!-- duration: 2013ms -->
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2026-02-09T11:37:49.944" /><!-- duration: 80ms -->
+  <step title="Creating temporary deployment" date="2026-02-09T11:37:50.052" /><!-- duration: 413ms -->
+  <step title="Performing fetch based deployment" date="2026-02-09T11:37:50.904" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/53da89a3-fee9-45ca-a596-182e0de4f345.zip (18.37 MB) to /tmp/zipdeploy/extracted" date="2026-02-09T11:37:52.687" /><!-- duration: 347ms -->
+    <step title="Deployment timer started" date="2026-02-09T11:37:55.222" >
+      <step title="DeploymentManager.Deploy(id:96fa08f4-b88d-42a3-8021-870051f63f25)" date="2026-02-09T11:37:55.322" >
+        <step title="Collecting changeset information" date="2026-02-09T11:37:55.452" /><!-- duration: 686ms -->
+        <step title="Updating submodules" date="2026-02-09T11:37:56.197" /><!-- duration: 1681ms -->
+        <step title="Determining deployment builder" date="2026-02-09T11:37:59.809" >
+          <step title="Builder is BasicBuilder" date="2026-02-09T11:38:00.371" /><!-- duration: 91ms -->
+        </step><!-- duration: 741ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2026-02-09T11:38:01.559" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2026-02-09T11:38:04.141" >
+            <step title="Building" date="2026-02-09T11:38:05.706" >
+              <step title="Executing external process" date="2026-02-09T11:38:10.109" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/parallel_rsync.sh /tmp/zipdeploy/extracted /home/site/wwwroot 8 /tmp/ False True  " /><!-- duration: 3204ms -->
+              <step title="Triggering recycle (preview mode disabled)." date="2026-02-09T11:38:14.823" /><!-- duration: 61ms -->
+              <step title="Modified file to trigger a restart of the app container." date="2026-02-09T11:38:15.143" /><!-- duration: 68ms -->
+              <step title="Skip function trigger and logicapp sync because function is not enabled." date="2026-02-09T11:38:15.302" /><!-- duration: 29ms -->
+              <step title="Purge deployment items" date="2026-02-09T11:38:19.251" >
+                <step title="Remove 85c7af0f-, Failed, received at 02/09/2026 11:32:28" date="2026-02-09T11:38:19.485" /><!-- duration: 28ms -->
+                <step title="Remove temp-8e09, Failed, received at 02/09/2026 11:29:30" date="2026-02-09T11:38:19.694" /><!-- duration: 41ms -->
+                <step title="Remove 3768e1dc-, Failed, received at 02/09/2026 11:24:46" date="2026-02-09T11:38:19.925" /><!-- duration: 16ms -->
+                <step title="Remove temp-1b72, Failed, received at 02/09/2026 11:24:10" date="2026-02-09T11:38:20.139" /><!-- duration: 11ms -->
+                <step title="Remove 8ac7ab50-, Success, received at 02/08/2026 16:18:16" date="2026-02-09T11:38:20.417" /><!-- duration: 38ms -->
+              </step><!-- duration: 1225ms -->
+            </step><!-- duration: 14963ms -->
+          </step><!-- duration: 16596ms -->
+          <step title="Cleaning up temp files" date="2026-02-09T11:38:20.772" /><!-- duration: 52ms -->
+          <step title="Cleaning up temp files" date="2026-02-09T11:38:20.873" /><!-- duration: 541ms -->
+          <step title="Reloading status file with latest updates" date="2026-02-09T11:38:21.544" >
+            <step title="WebHooksManager.PublishEventAsync: PostDeployment" date="2026-02-09T11:38:21.594" /><!-- duration: 592ms -->
+          </step><!-- duration: 677ms -->
+          <step title="Cleaning up temporary deployment - fetch deployment was successful" date="2026-02-09T11:38:22.270" /><!-- duration: 21ms -->
+        </step><!-- duration: 21028ms -->
+      </step><!-- duration: 27424ms -->

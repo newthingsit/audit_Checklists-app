@@ -1,42 +1,47 @@
 # CSV Import from Web App Guide
 
-## ✅ Good News!
+## ✅ Good News
 
-The CSV import feature **is already built into the web app** and is production-ready! 
+The CSV import feature **is already built into the web app** and is production-ready.
 
-You can download a CSV file locally and import it directly from the browser at: https://app.litebitefoods.com/checklists
+You can download a CSV file locally and import it directly from the browser at: [https://app.litebitefoods.com/checklists](https://app.litebitefoods.com/checklists)
 
 ---
 
 ## 🚀 How to Use
 
 ### Step 1: Go to Checklists Page
-1. Navigate to https://app.litebitefoods.com/checklists
+
+1. Navigate to [https://app.litebitefoods.com/checklists](https://app.litebitefoods.com/checklists)
 2. Look for the **"Import CSV"** button (top right, next to "Add Template")
 
 ### Step 2: Open Import Dialog
+
 Click the "Import CSV" button to open the import dialog.
 
 ### Step 3: Upload Your CSV File
 
-**Option A: Upload File**
+#### Option A: Upload File
+
 1. Click "Upload CSV File"
 2. Select your CSV file from your computer (e.g., CVR_CDR_Checklist_checklist.csv)
 3. File content automatically loads into the preview area
 
-**Option B: Paste CSV Data**
+#### Option B: Paste CSV Data
+
 - Paste CSV content directly into the "Paste CSV Data" text field
 
 ### Step 4: Enter Template Details
 
 | Field | Required | Example |
-|-------|----------|---------|
+| --- | --- | --- |
 | **Template Name** | ✅ YES | "CVR - CDR Checklist" |
 | **Description** | ❌ Optional | "Complete audit template for CVR" |
 
 ### Step 5: Review Preview
 
 The dialog shows:
+
 - ✓ Number of items detected (e.g., "Preview: 252 item(s) found")
 - ✓ Column mapping (Title, Category, Type, etc.)
 - ✓ Any parsing errors
@@ -50,9 +55,11 @@ Click **"Import Template"** button to create the template with all items.
 ## 📋 CSV Format Requirements
 
 ### Required Columns
+
 - **title** (or item_name, item, name)
 
 ### Optional Columns
+
 - description (or desc)
 - category (or cat)
 - **subcategory** (or subcat, sub_category) - for grouping
@@ -68,6 +75,7 @@ Click **"Import Template"** button to create the template with all items.
 Format: `Label:Score|Label:Score|Label:Score`
 
 Examples:
+
 - `Yes:3|No:0|NA:NA`
 - `Excellent:5|Good:4|Fair:2|Poor:0`
 - `Pass|Fail|Pending`
@@ -78,7 +86,7 @@ Examples:
 
 Ready-to-use CSV files in your project:
 
-```
+```text
 d:\audit_Checklists-app\
 ├── CVR_CDR_Checklist_checklist.csv         ✅ Full CVR-CDR (252 items)
 ├── CVR_QSR_checklist.csv                   ✅ QSR template (174 items)
@@ -90,7 +98,7 @@ d:\audit_Checklists-app\
 ### How to Use Sample Files
 
 1. Download any CSV file from the workspace
-2. Go to https://app.litebitefoods.com/checklists
+2. Go to [https://app.litebitefoods.com/checklists](https://app.litebitefoods.com/checklists)
 3. Click "Import CSV"
 4. Upload the file
 5. Give it a name
@@ -100,31 +108,37 @@ d:\audit_Checklists-app\
 
 ## ✨ Features Included
 
-✅ **File Upload**
+### File Upload
+
 - Select CSV from your computer
 - Drag-and-drop support
 
-✅ **Data Preview**
+### Data Preview
+
 - Live preview of items before import
 - Shows: Title, Category, Subcategory, Section, Type, Required status
 - Error highlighting
 
-✅ **Flexible Column Detection**
+### Flexible Column Detection
+
 - Automatically finds title, category, input_type, etc.
 - Handles multiple column name variants
 - Smart category normalization
 
-✅ **Options Parsing**
+### Options Parsing
+
 - Automatically parses "Yes:3|No:0|NA:NA" format
 - Creates option selections
 - Maintains score/mark values
 
-✅ **Real-time Validation**
+### Real-time Validation
+
 - Checks CSV format
 - Validates required columns
 - Shows parse errors immediately
 
-✅ **Progress Tracking**
+### Progress Tracking
+
 - Shows item count
 - Displays import status
 - Success/error messages
@@ -134,6 +148,7 @@ d:\audit_Checklists-app\
 ## 🔒 Permissions
 
 This feature requires:
+
 - ✅ Admin role, OR
 - ✅ User with "manage_templates" permission
 
@@ -148,6 +163,7 @@ The feature uses the existing backend API:
 **Endpoint:** `POST /api/checklists/import/csv`
 
 **Request:**
+
 ```javascript
 {
   templateName: "CVR - CDR Checklist",
@@ -158,6 +174,7 @@ The feature uses the existing backend API:
 ```
 
 **Response:**
+
 ```javascript
 {
   success: true,
@@ -176,6 +193,7 @@ The feature uses the existing backend API:
 ### Issue: "Import CSV" button not visible
 
 **Solutions:**
+
 1. Check you're logged in as Admin
 2. Verify user has "manage_templates" permission
 3. Refresh the page (Ctrl+F5)
@@ -184,6 +202,7 @@ The feature uses the existing backend API:
 ### Issue: CSV Upload not working
 
 **Solutions:**
+
 1. Verify file is in .csv format
 2. Check file size (<10MB recommended)
 3. Ensure file has proper headers
@@ -192,6 +211,7 @@ The feature uses the existing backend API:
 ### Issue: "Template name and CSV data are required"
 
 **Solutions:**
+
 1. Enter a template name
 2. Paste or upload CSV data
 3. Check CSV has at least 2 rows (header + 1 item)
@@ -199,6 +219,7 @@ The feature uses the existing backend API:
 ### Issue: "CSV must have a title column"
 
 **Solutions:**
+
 1. Rename your column to: `title`, `item`, `item_name`, or `name`
 2. Check for typos in header
 3. Verify first row contains headers
@@ -206,6 +227,7 @@ The feature uses the existing backend API:
 ### Issue: "Please fix CSV errors before importing"
 
 **Solutions:**
+
 1. Review error message in dialog
 2. Check for:
    - Unmatched quotes
@@ -216,6 +238,7 @@ The feature uses the existing backend API:
 ### Issue: Items not importing with options
 
 **Solutions:**
+
 1. Check options format: `Yes:3|No:0|NA:NA` (pipe-separated)
 2. Use `|` not `,` between options
 3. Use `:` to separate label from score
@@ -230,28 +253,19 @@ The feature uses the existing backend API:
 
 ### Import CVR-CDR Checklist from Local CSV
 
-1. **Locate file:**
-   - `d:\audit_Checklists-app\CVR_CDR_Checklist_checklist.csv`
-
-2. **Go to web app:**
-   - https://app.litebitefoods.com/checklists
-
+1. **Locate file:** `d:\audit_Checklists-app\CVR_CDR_Checklist_checklist.csv`
+2. **Go to web app:** [https://app.litebitefoods.com/checklists](https://app.litebitefoods.com/checklists)
 3. **Click "Import CSV"**
-
 4. **Upload file:**
    - Click "Upload CSV File"
    - Select `CVR_CDR_Checklist_checklist.csv`
-
 5. **Enter details:**
    - Template Name: "CVR - CDR Production"
    - Description: "Production copy of CVR-CDR audit"
-
 6. **Review preview:**
    - Confirms 252 items will be imported
    - Shows category distribution
-
 7. **Click "Import Template"**
-
 8. **Done!**
    - Template appears in checklist list
    - Ready to create audits
@@ -290,7 +304,7 @@ After importing, verify:
 
 ### Workflow 1: Import CVR-CDR (Local to Production Web App)
 
-```
+```text
 Local File (CVR_CDR_Checklist_checklist.csv)
   ↓
 Download CSV
@@ -312,20 +326,20 @@ Template appears in web app ✅
 
 ### Workflow 2: Import Multiple Checklists
 
-```
+```text
 For each CSV file:
   1. Go to Checklists page
   2. Click "Import CSV"
   3. Upload file
   4. Enter name
   5. Click "Import"
-  
+
 Result: All templates imported to web app
 ```
 
 ### Workflow 3: Test Before Production
 
-```
+```text
 1. Import with test name: "CVR - Test"
 2. Verify in web app
 3. Create test audit
@@ -352,4 +366,4 @@ Result: All templates imported to web app
 
 ---
 
-**Ready to use!** Start importing your CSV files at: https://app.litebitefoods.com/checklists
+**Ready to use.** Start importing your CSV files at: [https://app.litebitefoods.com/checklists](https://app.litebitefoods.com/checklists)

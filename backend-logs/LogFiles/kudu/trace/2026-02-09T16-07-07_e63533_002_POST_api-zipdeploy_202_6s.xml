@@ -1,0 +1,17 @@
+<step title="Incoming Request" date="2026-02-09T16:07:07.934" instance="e63533" url="/api/zipdeploy?isAsync=true" method="POST" type="request" pid="833,1,5" Accept="*/*" Host="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" User-Agent="AZURECLI/2.80.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bas..." Cache-Control="no-cache" Content-Type="application/octet-stream" Content-Length="12605303" x-ms-client-request-id="6317e9a4-05d1-11f1-8c70-e88088cf9695" x-ms-artifact-checksum="fff240213ee437935a2b89ef7ca18d20fab3a1f71df69ef2a6e2fbbf02e70526" X-ARR-LOG-ID="6317e9a4-05d1-11f1-8c70-e88088cf9695" CLIENT-IP="103.103.58.77:55913" X-SITE-DEPLOYMENT-ID="audit-app-backend-2221" WAS-DEFAULT-HOSTNAME="audit-app-backend-2221-g9cna3ath2b4h8br.scm.centralindia-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/zipdeploy?isAsync=true" X-Client-IP="103.103.58.77" X-Client-Port="55913" >
+  <step title="ZipPushDeploy" date="2026-02-09T16:07:09.786" >
+    <step title="ZipDeploy. Extract zip. Remote build." date="2026-02-09T16:07:09.792" /><!-- duration: 4ms -->
+    <step title="None repository commit" date="2026-02-09T16:07:09.802" >
+      <step title="Commit id: 2c153dc0-75e2-4023-aba7-f00111857f40" date="2026-02-09T16:07:09.807" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 4ms -->
+    </step><!-- duration: 13ms -->
+    <step title="Starting PushDeployAsync" date="2026-02-09T16:07:09.819" /><!-- duration: 4ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/6b6ddbb6-e00f-41c9-98e7-fc2656de0f69.zip" date="2026-02-09T16:07:09.860" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/6b6ddbb6-e00f-41c9-98e7-fc2656de0f69.zip" date="2026-02-09T16:07:09.867" /><!-- duration: 12ms -->
+    </step><!-- duration: 1761ms -->
+    <step title="Start deployment in the background" date="2026-02-09T16:07:11.710" >
+      <step title="Acquiring Deployment Lock" date="2026-02-09T16:07:12.673" /><!-- duration: 50ms -->
+      <step title="Acquired Deployment Lock" date="2026-02-09T16:07:12.939" /><!-- duration: 11ms -->
+    </step><!-- duration: 1773ms -->
+  </step><!-- duration: 3789ms -->
+  <step title="Outgoing response" date="2026-02-09T16:07:13.750" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 53ms -->
+</step><!-- duration: 5908ms -->

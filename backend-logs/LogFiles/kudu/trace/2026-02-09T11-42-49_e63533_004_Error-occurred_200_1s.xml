@@ -1,0 +1,5 @@
+<step title="Error occurred" date="2026-02-09T11:42:49.976" instance="e63533" type="error" text="LogStreamManager: Inside Reset" >
+  <step title="Cleanup Xml Logs" date="2026-02-09T11:42:50.005" >
+    <step title="Cleanup Infos" date="2026-02-09T11:42:51.079" totalFiles="6112" totalCleanup="5952" /><!-- duration: 142ms -->
+  </step><!-- duration: 1255ms -->
+</step><!-- duration: 1314ms -->

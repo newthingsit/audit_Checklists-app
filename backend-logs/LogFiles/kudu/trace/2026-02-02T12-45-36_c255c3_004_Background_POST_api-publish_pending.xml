@@ -1,0 +1,99 @@
+<step title="BackgroundTrace" date="2026-02-02T12:45:36.403" instance="c255c3" url="/api/publish" method="POST" >
+  <step title="Cleanup Xml Logs" date="2026-02-02T12:45:36.414" >
+    <step title="Cleanup Infos" date="2026-02-02T12:45:36.549" totalFiles="5553" totalCleanup="5393" /><!-- duration: 62ms -->
+  </step><!-- duration: 215ms -->
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2026-02-02T12:45:36.840" /><!-- duration: 2ms -->
+  <step title="Creating temporary deployment" date="2026-02-02T12:45:36.844" /><!-- duration: 95ms -->
+  <step title="Performing fetch based deployment" date="2026-02-02T12:45:36.989" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/e2b5add0-6787-4860-b534-199c77bf7026.zip (62.19 MB) to /tmp/zipdeploy/extracted" date="2026-02-02T12:45:38.162" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 300" date="2026-02-02T12:46:10.650" /><!-- duration: 2ms -->
+    </step><!-- duration: 32497ms -->
+    <step title="Deployment timer started" date="2026-02-02T12:46:12.696" >
+      <step title="DeploymentManager.Deploy(id:89b2df70-04c1-4c62-818e-1c011ec7da67)" date="2026-02-02T12:46:12.705" >
+        <step title="Collecting changeset information" date="2026-02-02T12:46:12.753" /><!-- duration: 133ms -->
+        <step title="Updating submodules" date="2026-02-02T12:46:12.888" /><!-- duration: 1136ms -->
+        <step title="Determining deployment builder" date="2026-02-02T12:46:14.287" >
+          <step title="Builder is OneDeployBuilder" date="2026-02-02T12:46:14.316" /><!-- duration: 10ms -->
+        </step><!-- duration: 40ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2026-02-02T12:46:14.390" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2026-02-02T12:46:14.545" >
+            <step title="Building" date="2026-02-02T12:46:14.688" >
+              <step title="Executing external process" date="2026-02-02T12:46:15.552" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/absoluteTar.sh /tmp/zipdeploy/extracted/node_modules /tmp/zipdeploy/extracted/node_modules.tar.gz" >
+                <step title="Error occurred" date="2026-02-02T12:47:16.787" type="error" text="GetParentProcessLinux (1110) failed.: Could not find a part of the path &apos;/proc/1110/stat&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadLines(String path)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetParentProcessLinux(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 155" /><!-- duration: 28ms -->
+                <step title="Error occurred" date="2026-02-02T12:47:16.836" type="error" text="GetParentProcessLinux (1111) failed.: Could not find a part of the path &apos;/proc/1111/stat&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadLines(String path)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetParentProcessLinux(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 155" /><!-- duration: 58ms -->
+                <step title="Error occurred" date="2026-02-02T12:47:16.934" type="error" text="GetParentProcessLinux (1112) failed.: Could not find a part of the path &apos;/proc/1112/stat&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadLines(String path)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetParentProcessLinux(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 155" /><!-- duration: 59ms -->
+                <step title="Error occurred" date="2026-02-02T12:47:17.041" type="error" text="GetParentProcessLinux (1113) failed.: Could not find a part of the path &apos;/proc/1113/stat&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadLines(String path)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetParentProcessLinux(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 155" /><!-- duration: 40ms -->
+                <step title="Error occurred" date="2026-02-02T12:47:17.285" type="error" text="Cannot process request because the process (1110) has exited." stackTrace="   at System.Diagnostics.Process.ThrowIfExited(Boolean refresh)
+   at System.Diagnostics.Process.EnsureState(State state)
+   at System.Diagnostics.Process.EnsureState(State state)
+   at System.Diagnostics.Process.get_ProcessName()
+   at Kudu.Core.Infrastructure.ProcessExtensions.&lt;&gt;c.&lt;GetTotalProcessorTime&gt;b__7_0(Process p) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 95
+   at System.Linq.Enumerable.SelectEnumerableIterator`2.MoveNext()
+   at System.Linq.Enumerable.Sum[TSource,TResult,TAccumulator](IEnumerable`1 source, Func`2 selector)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetTotalProcessorTime(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 96" /><!-- duration: 31ms -->
+              </step><!-- duration: 61812ms -->
+              <step title="Error occurred" date="2026-02-02T12:47:17.904" type="error" text="One or more errors occurred. (Cannot process request because the process (1110) has exited.)" stackTrace="   at System.Threading.Tasks.Task`1.GetResultCore(Boolean waitCompletionNotification)
+   at Kudu.Core.Infrastructure.Executable.ExecuteInternal(ITracer tracer, Func`2 onWriteOutput, Func`2 onWriteError, CancellationToken token, Encoding encoding, String arguments, Object[] args) in /tmp/KuduLite/Kudu.Core/Infrastructure/Executable.cs:line 212
+   at Kudu.Core.Infrastructure.Executable.ExecuteWithProgressWriter(ILogger logger, ITracer tracer, CancellationToken token, String arguments, Object[] args) in /tmp/KuduLite/Kudu.Core/Infrastructure/Executable.cs:line 118
+   at Kudu.Core.Deployment.Generator.ExternalCommandBuilder.RunCommand(DeploymentContext context, String command, Boolean ignoreManifest, CancellationToken token, String message) in /tmp/KuduLite/Kudu.Core/Deployment/Generator/ExternalCommandBuilder.cs:line 122" innerText="Cannot process request because the process (1110) has exited." innerStackTrace="   at System.Diagnostics.Process.ThrowIfExited(Boolean refresh)
+   at System.Diagnostics.Process.EnsureState(State state)
+   at System.Diagnostics.Process.GetStat()
+   at System.Diagnostics.Process.get_TotalProcessorTime()
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetTotalProcessorTime(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 106
+   at Kudu.Core.Infrastructure.IdleManager.WaitForExit(IProcess process) in /tmp/KuduLite/Kudu.Core/Infrastructure/IdleManager.cs:line 77
+   at Kudu.Core.Infrastructure.ProcessExtensions.Start(IProcess process, ITracer tracer, Stream output, Stream error, Stream input, IdleManager idleManager) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 212
+   at Kudu.Core.Infrastructure.Executable.ExecuteAsync(ITracer tracer, String arguments, Stream output, Stream error, CancellationToken token, Stream input, IdleManager idleManager) in /tmp/KuduLite/Kudu.Core/Infrastructure/Executable.cs:line 261" /><!-- duration: 39ms -->
+              <step title="Executing external process" date="2026-02-02T12:47:19.943" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/parallel_rsync.sh /tmp/zipdeploy/extracted /home/site/wwwroot 8 /tmp/ False False  " >
+                <step title="Cpu: rsync(1178,0.680s)+rsync(1156,0.900s)+rsync(1147,2.020s)+bash(1145,0.000s)+rsync(1179,0.190s)+rsync(1155,0.910s)+rsync(1148,1.520s)+bash(1146,0.000s)+rsync(1177,0.240s)+rsync(1157,0.680s)+rsync(1152,1.420s)+bash(1149,0.000s)+rsync(1172,0.680s)+rsync(1159,0.770s)+rsync(1151,3.870s)+bash(1150,0.000s)+rsync(1173,0.260s)+rsync(1163,0.910s)+rsync(1160,1.090s)+bash(1153,0.010s)+rsync(1176,0.230s)+rsync(1165,0.760s)+rsync(1162,1.350s)+bash(1154,0.010s)+rsync(1175,0.260s)+rsync(1167,0.730s)+rsync(1164,1.230s)+bash(1158,0.000s)+rsync(1174,0.230s)+rsync(1168,0.480s)+rsync(1166,1.040s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(22.510s)" date="2026-02-02T12:48:34.510" /><!-- duration: 14ms -->
+                <step title="starter.sh: no io activity for 61s, prev-cpu=-1.000s, current-cpu=22.510s" date="2026-02-02T12:48:34.551" /><!-- duration: 21ms -->
+                <step title="Cpu: rsync(1178,0.920s)+rsync(1156,0.900s)+rsync(1147,2.030s)+bash(1145,0.000s)+rsync(1179,0.400s)+rsync(1155,0.910s)+rsync(1148,1.540s)+bash(1146,0.000s)+rsync(1177,0.420s)+rsync(1157,0.680s)+rsync(1152,1.440s)+bash(1149,0.000s)+rsync(1172,0.880s)+rsync(1159,0.770s)+rsync(1151,3.960s)+bash(1150,0.000s)+rsync(1173,0.530s)+rsync(1163,0.910s)+rsync(1160,1.350s)+bash(1153,0.010s)+rsync(1176,0.440s)+rsync(1165,0.760s)+rsync(1162,1.350s)+bash(1154,0.010s)+rsync(1175,0.520s)+rsync(1167,0.730s)+rsync(1164,1.420s)+bash(1158,0.000s)+rsync(1174,0.440s)+rsync(1168,0.480s)+rsync(1166,1.160s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(25.000s)" date="2026-02-02T12:49:34.792" /><!-- duration: 10ms -->
+                <step title="starter.sh: no io activity for 121s, prev-cpu=22.510s, current-cpu=25.000s" date="2026-02-02T12:49:34.829" /><!-- duration: 25ms -->
+                <step title="Cpu: rsync(1178,1.210s)+rsync(1156,0.900s)+rsync(1147,2.110s)+bash(1145,0.000s)+rsync(1179,0.670s)+rsync(1155,0.910s)+rsync(1148,1.560s)+bash(1146,0.000s)+rsync(1177,0.650s)+rsync(1157,0.680s)+rsync(1152,1.540s)+bash(1149,0.000s)+rsync(1172,1.330s)+rsync(1159,0.770s)+rsync(1151,4.910s)+bash(1150,0.000s)+rsync(1173,0.790s)+rsync(1163,0.910s)+rsync(1160,1.630s)+bash(1153,0.010s)+rsync(1176,0.670s)+rsync(1165,0.760s)+rsync(1162,1.420s)+bash(1154,0.010s)+rsync(1175,0.790s)+rsync(1167,0.730s)+rsync(1164,1.440s)+bash(1158,0.000s)+rsync(1174,0.710s)+rsync(1168,0.480s)+rsync(1166,1.170s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(28.800s)" date="2026-02-02T12:50:35.001" /><!-- duration: 23ms -->
+                <step title="starter.sh: no io activity for 181s, prev-cpu=25.000s, current-cpu=28.800s" date="2026-02-02T12:50:35.052" /><!-- duration: 24ms -->
+                <step title="Cpu: rsync(1178,1.410s)+rsync(1156,0.900s)+rsync(1147,2.150s)+bash(1145,0.000s)+rsync(1179,0.890s)+rsync(1155,0.910s)+rsync(1148,1.610s)+bash(1146,0.000s)+rsync(1177,0.900s)+rsync(1157,0.680s)+rsync(1152,1.550s)+bash(1149,0.000s)+rsync(1172,1.550s)+rsync(1159,0.770s)+rsync(1151,5.050s)+bash(1150,0.000s)+rsync(1173,0.980s)+rsync(1163,0.910s)+rsync(1160,1.740s)+bash(1153,0.010s)+rsync(1176,0.900s)+rsync(1165,0.760s)+rsync(1162,1.510s)+bash(1154,0.010s)+rsync(1175,0.990s)+rsync(1167,0.730s)+rsync(1164,1.480s)+bash(1158,0.000s)+rsync(1174,0.900s)+rsync(1168,0.480s)+rsync(1166,1.180s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(30.990s)" date="2026-02-02T12:51:35.150" /><!-- duration: 32ms -->
+                <step title="starter.sh: no io activity for 241s, prev-cpu=28.800s, current-cpu=30.990s" date="2026-02-02T12:51:35.186" /><!-- duration: 5ms -->
+                <step title="Cpu: rsync(1178,1.690s)+rsync(1156,0.900s)+rsync(1147,2.170s)+bash(1145,0.000s)+rsync(1179,1.330s)+rsync(1155,0.910s)+rsync(1148,1.850s)+bash(1146,0.000s)+rsync(1177,1.240s)+rsync(1157,0.680s)+rsync(1152,1.600s)+bash(1149,0.000s)+rsync(1172,1.850s)+rsync(1159,0.770s)+rsync(1151,5.260s)+bash(1150,0.000s)+rsync(1173,1.250s)+rsync(1163,0.910s)+rsync(1160,1.820s)+bash(1153,0.010s)+rsync(1176,1.220s)+rsync(1165,0.760s)+rsync(1162,1.540s)+bash(1154,0.010s)+rsync(1175,1.300s)+rsync(1167,0.730s)+rsync(1164,1.570s)+bash(1158,0.000s)+rsync(1174,1.160s)+rsync(1168,0.480s)+rsync(1166,1.400s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(34.450s)" date="2026-02-02T12:52:36.268" /><!-- duration: 22ms -->
+                <step title="starter.sh: no io activity for 302s, prev-cpu=30.990s, current-cpu=34.450s" date="2026-02-02T12:52:36.318" /><!-- duration: 22ms -->
+                <step title="Cpu: rsync(1178,1.980s)+rsync(1156,0.900s)+rsync(1147,2.260s)+bash(1145,0.000s)+rsync(1179,1.610s)+rsync(1155,0.910s)+rsync(1148,1.880s)+bash(1146,0.000s)+rsync(1177,1.550s)+rsync(1157,0.680s)+rsync(1152,1.710s)+bash(1149,0.000s)+rsync(1172,2.140s)+rsync(1159,0.770s)+rsync(1151,5.440s)+bash(1150,0.000s)+rsync(1173,1.600s)+rsync(1163,0.910s)+rsync(1160,2.090s)+bash(1153,0.010s)+rsync(1176,1.530s)+rsync(1165,0.760s)+rsync(1162,1.590s)+bash(1154,0.010s)+rsync(1175,1.610s)+rsync(1167,0.730s)+rsync(1164,1.620s)+bash(1158,0.000s)+rsync(1174,1.450s)+rsync(1168,0.480s)+rsync(1166,1.440s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(37.690s)" date="2026-02-02T12:53:36.821" /><!-- duration: 68ms -->
+                <step title="starter.sh: no io activity for 363s, prev-cpu=34.450s, current-cpu=37.690s" date="2026-02-02T12:53:36.919" /><!-- duration: 29ms -->
+                <step title="Cpu: rsync(1178,2.180s)+rsync(1156,0.900s)+rsync(1147,2.360s)+bash(1145,0.000s)+rsync(1179,1.880s)+rsync(1155,0.910s)+rsync(1148,1.910s)+bash(1146,0.000s)+rsync(1177,1.800s)+rsync(1157,0.680s)+rsync(1152,1.720s)+bash(1149,0.000s)+rsync(1172,2.410s)+rsync(1159,0.770s)+rsync(1151,5.620s)+bash(1150,0.000s)+rsync(1173,1.870s)+rsync(1163,0.910s)+rsync(1160,2.330s)+bash(1153,0.010s)+rsync(1176,1.760s)+rsync(1165,0.760s)+rsync(1162,1.820s)+bash(1154,0.010s)+rsync(1175,1.850s)+rsync(1167,0.730s)+rsync(1164,1.640s)+bash(1158,0.000s)+rsync(1174,1.650s)+rsync(1168,0.480s)+rsync(1166,1.550s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(40.550s)" date="2026-02-02T12:54:37.111" /><!-- duration: 17ms -->
+                <step title="starter.sh: no io activity for 423s, prev-cpu=37.690s, current-cpu=40.550s" date="2026-02-02T12:54:37.131" /><!-- duration: 9ms -->
+                <step title="Cpu: rsync(1178,2.420s)+rsync(1156,0.900s)+rsync(1147,2.530s)+bash(1145,0.000s)+rsync(1179,2.100s)+rsync(1155,0.910s)+rsync(1148,1.980s)+bash(1146,0.000s)+rsync(1177,2.050s)+rsync(1157,0.680s)+rsync(1152,1.830s)+bash(1149,0.000s)+rsync(1172,2.650s)+rsync(1159,0.770s)+rsync(1151,5.780s)+bash(1150,0.000s)+rsync(1173,2.090s)+rsync(1163,0.910s)+rsync(1160,2.400s)+bash(1153,0.010s)+rsync(1176,2.000s)+rsync(1165,0.760s)+rsync(1162,1.840s)+bash(1154,0.010s)+rsync(1175,2.130s)+rsync(1167,0.730s)+rsync(1164,1.820s)+bash(1158,0.000s)+rsync(1174,1.820s)+rsync(1168,0.480s)+rsync(1166,1.550s)+bash(1161,0.000s)+xargs(1144,0.000s)+parallel_rsync.sh(1134,0.040s)=total(43.190s)" date="2026-02-02T12:55:37.258" /><!-- duration: 9ms -->
+                <step title="starter.sh: no io activity for 483s, prev-cpu=40.550s, current-cpu=43.190s" date="2026-02-02T12:55:37.281" /><!-- duration: 25ms -->
+              </step><!-- duration: 528529ms -->
+              <step title="Modified file to trigger a restart of the app container." date="2026-02-02T12:56:09.068" /><!-- duration: 1ms -->
+              <step title="Skip function trigger and logicapp sync because function is not enabled." date="2026-02-02T12:56:09.076" /><!-- duration: 2ms -->
+              <step title="Purge deployment items" date="2026-02-02T12:56:10.390" >
+                <step title="Remove temp-de8a, Failed, received at 02/02/2026 12:32:15" date="2026-02-02T12:56:10.443" /><!-- duration: 2ms -->
+                <step title="Remove e9a0141e-, Success, received at 02/02/2026 09:04:52" date="2026-02-02T12:56:10.492" /><!-- duration: 1ms -->
+              </step><!-- duration: 105ms -->
+            </step><!-- duration: 595877ms -->
+          </step><!-- duration: 596033ms -->
+          <step title="Cleaning up temp files" date="2026-02-02T12:56:10.580" /><!-- duration: 4ms -->
+          <step title="Cleaning up temp files" date="2026-02-02T12:56:10.585" /><!-- duration: 506ms -->
+          <step title="Reloading status file with latest updates" date="2026-02-02T12:56:11.141" >
+            <step title="WebHooksManager.PublishEventAsync: PostDeployment" date="2026-02-02T12:56:11.144" /><!-- duration: 94ms -->
+          </step><!-- duration: 99ms -->
+          <step title="Cleaning up temporary deployment - fetch deployment was successful" date="2026-02-02T12:56:11.247" /><!-- duration: 2ms -->
+        </step><!-- duration: 596947ms -->
+      </step><!-- duration: 598655ms -->
