@@ -1,0 +1,449 @@
+name: Mobile Maestro
+
+on:
+  schedule:
+    - cron: "30 20 * * *"
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      checklist_name:
+        description: "Checklist name"
+        required: true
+        default: "New QA – CDR"
+      run_mode:
+        description: "Run mode"
+        required: true
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - full
+      platform:
+        description: "Platform"
+        required: true
+        default: "android"
+        type: choice
+        options:
+          - android
+          - ios
+      store_id:
+        description: "Store ID (optional)"
+        required: false
+      store_name:
+        description: "Store name (optional)"
+        required: false
+
+concurrency:
+  group: mobile-maestro-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+env:
+  NODE_VERSION: '20'
+  ANDROID_API_LEVEL: '33'
+  ANDROID_TARGET: 'google_apis'
+  ANDROID_ARCH: 'x86_64'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_STORE_ID: ${{ github.event.inputs.store_id || secrets.TEST_STORE_ID }}
+      TEST_STORE_NAME: ${{ github.event.inputs.store_name || secrets.TEST_STORE_NAME }}
+      CHECKLIST_NAME: ${{ (github.event_name == 'schedule' || github.event_name == 'pull_request') && 'New QA – CDR' || github.event.inputs.checklist_name }}
+      RUN_MODE: ${{ (github.event_name == 'schedule' || github.event_name == 'pull_request') && 'smoke' || github.event.inputs.run_mode }}
+    outputs:
+      checklist_name: ${{ steps.vars.outputs.checklist_name }}
+      run_mode: ${{ steps.vars.outputs.run_mode }}
+      preflight_status: ${{ steps.preflight_out.outputs.status }}
+      preflight_reason: ${{ steps.preflight_out.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Skip fork preflight (PR)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
+        run: |
+          echo "Skipping preflight for forked PR." >> $GITHUB_STEP_SUMMARY
+          exit 0
+      - name: Resolve run inputs
+        id: vars
+        run: |
+          echo "checklist_name=${CHECKLIST_NAME}" >> $GITHUB_OUTPUT
+          echo "run_mode=${RUN_MODE}" >> $GITHUB_OUTPUT
+      - name: Preflight checks
+        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true) }}
+        continue-on-error: true
+        run: |
+          node scripts/e2e/preflight.js --api "$API_URL" --checklist "$CHECKLIST_NAME" --mode "$RUN_MODE" --output preflight.json
+      - name: Read preflight output
+        id: preflight_out
+        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true) }}
+        run: |
+          if [ ! -f preflight.json ]; then
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            echo "reason=Preflight did not produce output" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('preflight.json','utf8'));console.log('status='+data.status);console.log('reason='+data.reason.replace(/\n/g,' '));" >> $GITHUB_OUTPUT
+      - name: Fail on preflight error
+        if: ${{ steps.preflight_out.outputs.status == 'FAIL' }}
+        run: |
+          echo "Preflight failed: ${{ steps.preflight_out.outputs.reason }}" >&2
+          exit 1
+
+  android-smoke:
+    needs: preflight
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'android') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    outputs:
+      duration_seconds: ${{ steps.run_outputs.outputs.duration_seconds }}
+      phase: ${{ steps.run_outputs.outputs.phase }}
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_STORE_ID: ${{ github.event.inputs.store_id || secrets.TEST_STORE_ID }}
+      TEST_STORE_NAME: ${{ github.event.inputs.store_name || secrets.TEST_STORE_NAME }}
+      APP_ID: ${{ secrets.MAESTRO_APP_ID || 'host.exp.exponent' }}
+      CHECKLIST_NAME: ${{ needs.preflight.outputs.checklist_name }}
+      RUN_MODE: ${{ needs.preflight.outputs.run_mode }}
+      EXPO_PUBLIC_E2E: "true"
+      EXPO_PUBLIC_E2E_MODE: "true"
+      EXPO_PUBLIC_API_URL: ${{ secrets.API_URL }}
+      E2E_EMAIL: ${{ secrets.TEST_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      ARTIFACT_DIR: artifacts/${{ github.run_id }}/android/${{ needs.preflight.outputs.run_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Set default phase
+        run: |
+          echo "PHASE=preflight" >> $GITHUB_ENV
+      - name: Record start time
+        id: start_time
+        run: |
+          echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - name: Install dependencies (timeout)
+        run: |
+          cd mobile
+          timeout 12m npm install
+      - name: Run Android emulator + Maestro
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+          profile: pixel_5
+          disable-animations: true
+          emulator-options: -no-window -no-audio -gpu swiftshader_indirect -no-snapshot
+          script: |
+            set -e
+            mkdir -p "$ARTIFACT_DIR"
+            echo "PHASE=emulator_boot" >> $GITHUB_ENV
+
+            adb wait-for-device
+            boot_completed=""
+            for i in $(seq 1 60); do
+              boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              if [ "$boot_completed" = "1" ]; then
+                echo "Emulator booted."
+                break
+              fi
+              sleep 2
+            done
+            if [ "$boot_completed" != "1" ]; then
+              echo "Emulator failed to boot in time." >&2
+              exit 1
+            fi
+
+            cd mobile
+            EXPO_PUBLIC_E2E=true EXPO_PUBLIC_E2E_MODE=true EXPO_PUBLIC_API_URL=$API_URL \
+              timeout 10m npx expo start --android --non-interactive --no-dev --minify > expo.log 2>&1 &
+            sleep 25
+
+            run_maestro() {
+              local attempt=$1
+              echo "Maestro attempt ${attempt}..."
+              if [ "$RUN_MODE" = "full" ] && [ "$CHECKLIST_NAME" = "NEW CVR – CDR Checklist" ]; then
+                echo "PHASE=upload" >> $GITHUB_ENV
+                cd ..
+                timeout 25m npm run test:full-checklists
+                cd mobile
+                echo "PHASE=history" >> $GITHUB_ENV
+                timeout 20m maestro test .maestro/flows/audit-verify.yaml
+              elif [ "$RUN_MODE" = "full" ]; then
+                echo "PHASE=maestro_flow" >> $GITHUB_ENV
+                timeout 25m maestro test .maestro/flows/audit-full.yaml
+              else
+                echo "PHASE=save-resume" >> $GITHUB_ENV
+                timeout 20m maestro test .maestro/flows/audit-save-resume.yaml
+              fi
+            }
+
+            set +e
+            run_maestro 1
+            status=$?
+            if [ $status -ne 0 ]; then
+              echo "Retrying Maestro after failure..."
+              run_maestro 2
+              status=$?
+            fi
+            set -e
+            if [ $status -ne 0 ]; then
+              exit $status
+            fi
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p "$ARTIFACT_DIR"
+          cp -r ~/.maestro "$ARTIFACT_DIR/maestro" 2>/dev/null || true
+          cp mobile/expo.log "$ARTIFACT_DIR/expo.log" 2>/dev/null || true
+          adb logcat -d > "$ARTIFACT_DIR/logcat.txt" 2>/dev/null || true
+      - name: Record end time
+        if: always()
+        id: end_time
+        run: |
+          end=$(date +%s)
+          start=${{ steps.start_time.outputs.start }}
+          duration=$((end - start))
+          echo "duration_seconds=$duration" >> $GITHUB_OUTPUT
+      - name: Upload Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-android-${{ github.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+      - name: Export run outputs
+        if: always()
+        id: run_outputs
+        run: |
+          echo "phase=${PHASE:-unknown}" >> $GITHUB_OUTPUT
+          echo "duration_seconds=${{ steps.end_time.outputs.duration_seconds }}" >> $GITHUB_OUTPUT
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Maestro Android Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Checklist: $CHECKLIST_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- Run mode: $RUN_MODE" >> $GITHUB_STEP_SUMMARY
+          echo "- Platform: android" >> $GITHUB_STEP_SUMMARY
+          echo "- API_URL: $API_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- Artifacts: maestro-android-${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "- PR: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+              echo "- PR Comment: skipped (fork)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- PR Comment: handled in pr-comment job" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+  pr-comment:
+    needs: [preflight, android-smoke]
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    env:
+      CHECKLIST_NAME: ${{ needs.preflight.outputs.checklist_name }}
+      RUN_MODE: ${{ needs.preflight.outputs.run_mode }}
+      PREFLIGHT_STATUS: ${{ needs.preflight.outputs.preflight_status }}
+      PREFLIGHT_REASON: ${{ needs.preflight.outputs.preflight_reason }}
+      DURATION_SECONDS: ${{ needs.android-smoke.outputs.duration_seconds }}
+      PHASE: ${{ needs.android-smoke.outputs.phase }}
+    steps:
+      - name: Comment on PR
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const prNumber = context.payload.pull_request?.number;
+            const isFork = context.payload.pull_request?.head?.repo?.fork === true;
+            let commentStatus = 'skipped';
+            let commentReason = 'not a PR event';
+
+            try {
+              if (!context.payload.pull_request) {
+                commentStatus = 'skipped';
+                commentReason = 'not a PR event';
+              } else if (isFork) {
+                commentStatus = 'skipped';
+                commentReason = 'fork PR';
+              } else {
+                let artifacts = [];
+                try {
+                  const res = await github.rest.actions.listWorkflowRunArtifacts({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: context.runId
+                  });
+                  artifacts = res.data.artifacts || [];
+                } catch (error) {
+                  // fallback to empty list
+                }
+
+                const artifactLines = artifacts.length
+                  ? artifacts.map(a => `- ${a.name}: ${a.archive_download_url}`).join('\n')
+                  : `- maestro-android-${context.runId} (see ${runUrl})`;
+
+                const status = (process.env.PREFLIGHT_STATUS === 'FAIL' || '${{ needs.android-smoke.result }}' !== 'success')
+                  ? 'FAIL'
+                  : 'PASS';
+
+                const phase = process.env.PREFLIGHT_STATUS === 'FAIL'
+                  ? 'preflight'
+                  : process.env.PHASE || 'maestro flow';
+
+                const duration = process.env.DURATION_SECONDS
+                  ? `${process.env.DURATION_SECONDS}s`
+                  : 'n/a';
+
+                const shortSha = context.sha ? context.sha.slice(0, 7) : 'n/a';
+
+                let body = '';
+                if (status === 'PASS') {
+                  body = [
+                    '## Maestro Smoke Report',
+                    `- Status: PASS`,
+                    `- Checklist: ${process.env.CHECKLIST_NAME}`,
+                    `- Run mode: ${process.env.RUN_MODE}`,
+                    `- Platform: android`,
+                    `- Duration: ${duration}`,
+                    `- Run: ${runUrl}`,
+                    `- Artifacts:\n${artifactLines}`
+                  ].join('\n');
+                } else {
+                  const preflightReason = process.env.PREFLIGHT_STATUS === 'FAIL'
+                    ? process.env.PREFLIGHT_REASON || 'Preflight failed'
+                    : '';
+                  body = [
+                    '## Maestro Smoke Report',
+                    `- Status: FAIL`,
+                    `- Phase: ${phase}`,
+                    `- Checklist: ${process.env.CHECKLIST_NAME}`,
+                    `- Run mode: ${process.env.RUN_MODE}`,
+                    `- Platform: android`,
+                    `- Commit: ${shortSha}`,
+                    `- Run: ${runUrl}`,
+                    preflightReason ? `- Preflight: ${preflightReason}` : null,
+                    `- Artifacts:\n${artifactLines}`
+                  ].filter(Boolean).join('\n');
+                }
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body
+                });
+
+                commentStatus = 'posted';
+                commentReason = '';
+              }
+            } catch (error) {
+              commentStatus = 'failed';
+              commentReason = error?.message || 'comment failed';
+              console.log(`PR comment failed: ${commentReason}`);
+            } finally {
+              if (summaryPath) {
+                const icon = commentStatus === 'posted'
+                  ? '✅'
+                  : commentStatus === 'skipped'
+                    ? '⏭️'
+                    : '⚠️';
+                const reasonText = commentReason ? ` (${commentReason})` : '';
+                const prText = prNumber ? `#${prNumber}` : 'n/a';
+                const line = `PR Comment: ${icon} ${commentStatus}${reasonText} | PR ${prText} | Run: ${runUrl}`;
+                fs.appendFileSync(summaryPath, `${line}\n`);
+              }
+            }
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Maestro PR Comment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Comment: attempted" >> $GITHUB_STEP_SUMMARY
+          echo "- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+
+  ios-manual:
+    needs: preflight
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'ios' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      API_URL: ${{ secrets.API_URL }}
+      TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_STORE_ID: ${{ github.event.inputs.store_id || secrets.TEST_STORE_ID }}
+      TEST_STORE_NAME: ${{ github.event.inputs.store_name || secrets.TEST_STORE_NAME }}
+      APP_ID: ${{ secrets.MAESTRO_APP_ID || '' }}
+      CHECKLIST_NAME: ${{ github.event.inputs.checklist_name }}
+      RUN_MODE: ${{ github.event.inputs.run_mode }}
+      EXPO_PUBLIC_E2E: "true"
+      EXPO_PUBLIC_E2E_MODE: "true"
+      EXPO_PUBLIC_API_URL: ${{ secrets.API_URL }}
+      E2E_EMAIL: ${{ secrets.TEST_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      ARTIFACT_DIR: artifacts/${{ github.run_id }}/ios/${{ github.event.inputs.run_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - name: Run Maestro flow
+        run: |
+          mkdir -p "$ARTIFACT_DIR"
+          if [ "$RUN_MODE" = "full" ] && [ "$CHECKLIST_NAME" = "NEW CVR – CDR Checklist" ]; then
+            timeout 25m npm run test:full-checklists
+            timeout 20m maestro test mobile/.maestro/flows/audit-verify.yaml
+          elif [ "$RUN_MODE" = "full" ]; then
+            timeout 25m maestro test mobile/.maestro/flows/audit-full.yaml
+          else
+            timeout 20m maestro test mobile/.maestro/flows/audit-save-resume.yaml
+          fi
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p "$ARTIFACT_DIR"
+          cp -r ~/.maestro "$ARTIFACT_DIR/maestro" 2>/dev/null || true
+      - name: Upload Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-ios-${{ github.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+      - name: Write step summary
+        if: always()
+        run: |
+          echo "## Maestro iOS Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Checklist: $CHECKLIST_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- Run mode: $RUN_MODE" >> $GITHUB_STEP_SUMMARY
+          echo "- Platform: ios" >> $GITHUB_STEP_SUMMARY
+          echo "- API_URL: $API_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- Artifacts: maestro-ios-${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY

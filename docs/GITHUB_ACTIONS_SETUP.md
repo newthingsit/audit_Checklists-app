@@ -47,6 +47,7 @@ The workflow files are already created in `.github/workflows/`:
 
 - ✅ `azure-static-web-apps.yml` - Frontend deployment
 - ✅ `azure-app-service.yml` - Backend deployment
+- ✅ `mobile-maestro.yml` - Mobile Maestro smoke/manual runs
 
 **Update the backend app name** if needed:
 - File: `.github/workflows/azure-app-service.yml`
@@ -73,6 +74,18 @@ git push origin main
 1. Go to GitHub → Your repo → **"Actions"** tab
 2. Select **"Azure App Service CI/CD - Backend"** workflow
 3. Click **"Run workflow"** → **"Run workflow"**
+
+---
+
+## ✅ Step 4B: Confirm Workflows Visible in Actions
+
+1. Go to GitHub → **"Actions"** tab.
+2. Verify **"Mobile Maestro"** appears in the workflow list.
+3. Open the workflow and check triggers:
+   - `workflow_dispatch` (manual)
+   - `schedule` (nightly)
+   - `pull_request` (lightweight smoke)
+   - `concurrency` group configured
 
 ---
 
@@ -106,6 +119,31 @@ git push origin main
 **Error: "Build failed"**
 - Check `REACT_APP_API_URL` secret is set
 - Verify it includes `/api` at the end
+
+### Mobile Maestro Preflight Fails
+
+**Error: "API unreachable"**
+- Confirm `API_URL` is reachable from GitHub Actions
+- Check backend health endpoint or `/api/templates` is returning 200
+
+**Error: "Checklist not found"**
+- Verify checklist name exists in the API
+- Check for Unicode dash mismatch in checklist name
+
+### Emulator Boot Failures
+
+**Error: "Emulator failed to boot"**
+- Check GitHub Actions logs for `sys.boot_completed` status
+- Re-run workflow (transient) or lower API level if persistent
+
+### PR Runs and Forks
+
+- PR runs only execute lightweight smoke.
+- Forked PRs skip emulator runs and PR comments to avoid permissions issues.
+- The workflow uses `pull-requests: write` permissions for comments.
+- On PASS, the PR comment is compact; on FAIL, it includes phase, reason (if preflight), and artifact links.
+- The PR comment step writes a one-line status to the GitHub Actions Step Summary.
+- It always includes the PR number and run URL, and marks posted, skipped, or failed.
 
 ---
 
