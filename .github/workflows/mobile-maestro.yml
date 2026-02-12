@@ -90,18 +90,32 @@ jobs:
           set +e
           CHECKLIST="$CHECKLIST_NAME"
           API_HOST="${API_URL%%/*}"
-          PRE_SCRIPT="scripts/e2e/preflight.js"
           LOG=preflight.log
           OUT=preflight.json
-          # Check script exists
-          if [ ! -f "$PRE_SCRIPT" ]; then
+          # Auto-detect preflight.js
+          CANDIDATES=(
+            scripts/e2e/preflight.js
+            scripts/preflight.js
+            preflight.js
+            mobile/scripts/e2e/preflight.js
+            web/scripts/e2e/preflight.js
+          )
+          PRE_SCRIPT=""
+          for f in "${CANDIDATES[@]}"; do
+            if [ -f "$f" ]; then
+              PRE_SCRIPT="$f"
+              break
+            fi
+          done
+          if [ -z "$PRE_SCRIPT" ]; then
+            SEARCHED=$(IFS=,; echo "${CANDIDATES[*]}")
             echo "status=FAIL" >> $GITHUB_OUTPUT
-            echo "reason=missing preflight.js at $PRE_SCRIPT" >> $GITHUB_OUTPUT
+            echo "reason=missing preflight.js, searched: $SEARCHED" >> $GITHUB_OUTPUT
             echo "## Preflight Summary" >> $GITHUB_STEP_SUMMARY
             echo "- Checklist: $CHECKLIST" >> $GITHUB_STEP_SUMMARY
             echo "- API_URL: [masked]" >> $GITHUB_STEP_SUMMARY
             echo "- Status: FAIL" >> $GITHUB_STEP_SUMMARY
-            echo "- Reason: missing preflight.js at $PRE_SCRIPT" >> $GITHUB_STEP_SUMMARY
+            echo "- Reason: missing preflight.js, searched: $SEARCHED" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
           # Run preflight
