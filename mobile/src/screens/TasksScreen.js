@@ -90,8 +90,6 @@ const TasksScreen = () => {
         console.error('Error response status:', error.response.status);
         console.error('Error response data:', error.response.data);
       }
-      setTasks([]);
-      setFilteredTasks([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

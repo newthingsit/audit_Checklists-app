@@ -129,6 +129,8 @@ const SignaturePad = ({ onSave, onClear, onChange, style }) => {
       <View style={styles.canvasContainer}>
         <View 
           style={styles.canvas}
+          testID="signature-canvas"
+          accessibilityLabel="signature-canvas"
           {...panResponder.panHandlers}
         >
           <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
@@ -265,6 +267,8 @@ export const SignatureModal = ({
               onPress={handleSave}
               disabled={!signatureData || !signatureData.paths || signatureData.paths.length === 0}
               activeOpacity={0.7}
+              testID="signature-save"
+              accessibilityLabel="signature-save"
             >
               <LinearGradient
                 colors={(signatureData && signatureData.paths && signatureData.paths.length > 0)

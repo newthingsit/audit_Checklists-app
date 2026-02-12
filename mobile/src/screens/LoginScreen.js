@@ -160,6 +160,8 @@ const LoginScreen = () => {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoComplete="email"
+                  testID="login-email"
+                  accessibilityLabel="login-email"
                   onFocus={() => setFocusedInput('email')}
                   onBlur={() => setFocusedInput(null)}
                 />
@@ -184,6 +186,8 @@ const LoginScreen = () => {
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
+                  testID="login-password"
+                  accessibilityLabel="login-password"
                   onFocus={() => setFocusedInput('password')}
                   onBlur={() => setFocusedInput(null)}
                 />
@@ -202,6 +206,8 @@ const LoginScreen = () => {
                 onPress={handleLogin}
                 disabled={loading}
                 activeOpacity={0.8}
+                testID="login-submit"
+                accessibilityLabel="login-submit"
               >
                 <LinearGradient
                   colors={themeConfig.dashboardCards.card1}

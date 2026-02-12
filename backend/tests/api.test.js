@@ -39,6 +39,13 @@ const colors = {
   cyan: '\x1b[36m'
 };
 
+function isAdminLoginResponse(data) {
+  const role = String(data?.user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'superadmin') return true;
+  const permissions = data?.user?.permissions || [];
+  return Array.isArray(permissions) && permissions.includes('*');
+}
+
 // Helper: Make HTTP request
 function makeRequest(method, path, body = null, token = null) {
   return new Promise((resolve, reject) => {
@@ -142,7 +149,7 @@ async function testAuthEndpoints() {
     try {
       const loginRes = await makeRequest('POST', '/api/auth/login', creds);
       
-      if (loginRes.status === 200 && loginRes.data.token) {
+      if (loginRes.status === 200 && loginRes.data.token && isAdminLoginResponse(loginRes.data)) {
         test(`POST /api/auth/login returns 200 (${creds.email})`, true, true);
         test('Login returns token', !!loginRes.data.token, true);
         adminToken = loginRes.data.token;

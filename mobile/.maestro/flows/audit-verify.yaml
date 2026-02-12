@@ -1,0 +1,25 @@
+appId: ${APP_ID}
+env:
+  E2E_EMAIL: ${admin@lbf.co.in}
+  E2E_PASSWORD: ${Admin@123}
+  CHECKLIST_NAME: ${NEW CVR - CDR Checklist}
+---
+- launchApp
+- runFlow:
+    when:
+      visible:
+        id: "login-email"
+    file: login.yaml
+- tapOn:
+    text: "History"
+- tapOn:
+    text: "Search audits..."
+- inputText: ${NEW CVR - CDR Checklist}
+- tapOn:
+    text: ${NEW CVR - CDR Checklist}
+- assertVisible:
+    id: "report-view"
+- assertVisible:
+    id: "audit-status"
+- assertVisible:
+    text: "Completed"

@@ -1388,6 +1388,7 @@ const AuditForm = () => {
                 value={inputValues[item.id] || ''}
                 onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                 size="small"
+                inputProps={{ 'data-testid': 'number-input' }}
                 disabled={auditStatus === 'completed'}
               />
             );
@@ -1402,6 +1403,7 @@ const AuditForm = () => {
                 onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                 size="small"
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ 'data-testid': 'short-answer-input' }}
                 disabled={auditStatus === 'completed'}
               />
             );
@@ -1420,10 +1422,15 @@ const AuditForm = () => {
     const isMissingRequiredPhoto = item.required && inputType === 'image_upload' && !photos[item.id];
     const failureInfo = previousFailures.find(f => f.item_id === item.id);
     const isItemAnswered = selectedOptions[item.id] || (inputValues[item.id] && inputValues[item.id].trim());
+    const getOptionTestId = (optionText) => {
+      const normalized = String(optionText || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return normalized || 'option';
+    };
     
     return (
       <Card 
         key={item.id} 
+        data-testid="question-card"
         className={`audit-item-card ${isPreviousFailure ? 'previous-failure' : ''} ${isMissingRequiredPhoto ? 'missing-photo' : ''}`}
         sx={{ 
           mb: isMobile ? 2.5 : 2,
@@ -1615,7 +1622,7 @@ const AuditForm = () => {
                   sx={{ mt: 2, mb: 1 }}
                   InputProps={{
                     readOnly: isAverageAuto,
-                    inputProps: { min: 0 }
+                    inputProps: { min: 0, 'data-testid': 'number-input' }
                   }}
                   disabled={auditStatus === 'completed' || isAverageAuto}
                   helperText={isAverageAuto ? 'Calculated from Time Attempts 1–5' : null}
@@ -1635,6 +1642,7 @@ const AuditForm = () => {
                   size="small"
                   sx={{ mt: 2, mb: 1 }}
                   InputLabelProps={{ shrink: true }}
+                  inputProps={{ 'data-testid': 'short-answer-input' }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1653,6 +1661,7 @@ const AuditForm = () => {
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
                   sx={{ mt: 2, mb: 1 }}
+                  inputProps={{ 'data-testid': 'long-answer-input' }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1669,6 +1678,7 @@ const AuditForm = () => {
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
                   sx={{ mt: 2, mb: 1 }}
+                  inputProps={{ 'data-testid': 'short-answer-input' }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1690,6 +1700,7 @@ const AuditForm = () => {
                       startIcon={<DrawOutlinedIcon />}
                       onClick={() => openSignatureModal(item.id)}
                       disabled={auditStatus === 'completed'}
+                      data-testid="signature-button"
                     >
                       {photos[item.id] ? 'Edit Signature' : 'Add Signature'}
                     </Button>
@@ -1713,6 +1724,7 @@ const AuditForm = () => {
                       <img
                         src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
                         alt="Signature"
+                        data-testid="signature-preview"
                         style={{ maxWidth: '100%', height: 120, border: '1px solid #e0e0e0', borderRadius: 6 }}
                       />
                     </Box>
@@ -1814,6 +1826,7 @@ const AuditForm = () => {
                       }
                     }) 
                   }}
+                  inputProps={{ 'data-testid': 'short-answer-input' }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1832,6 +1845,7 @@ const AuditForm = () => {
                   onChange={(e) => handleInputValueChange(item.id, e.target.value)}
                   size="small"
                   sx={{ mt: 2, mb: 1 }}
+                  inputProps={{ 'data-testid': 'long-answer-input' }}
                   disabled={auditStatus === 'completed'}
                 />
               );
@@ -1999,6 +2013,7 @@ const AuditForm = () => {
                           variant={selected ? 'contained' : 'outlined'}
                           onClick={() => handleOptionChange(item.id, option.id)}
                           disabled={auditStatus === 'completed'}
+                          data-testid={`option-${getOptionTestId(option.option_text)}`}
                           sx={{
                             py: isCvr ? 1 : (isMobile ? 2 : 1.5),
                             px: isCvr ? 3 : (isMobile ? 2 : 2),
@@ -2124,6 +2139,7 @@ const AuditForm = () => {
             multiline
             rows={2}
             size="small"
+            inputProps={{ 'data-testid': 'comment-input' }}
             sx={{ 
               mb: 2, 
               mt: 2, 
@@ -2166,6 +2182,7 @@ const AuditForm = () => {
                 style={{ display: 'none' }}
                 id={`photo-upload-${item.id}`}
                 type="file"
+                data-testid="photo-upload-input"
                 onChange={(e) => {
                   const file = e.target.files[0];
                   if (file) handlePhotoUpload(item.id, file);
@@ -2180,6 +2197,7 @@ const AuditForm = () => {
                     startIcon={<PhotoCameraIcon sx={isCvr ? { color: cvrTheme.accent.purple } : {}} />}
                     size={isMobile ? "medium" : "small"}
                     disabled={uploading[item.id] || auditStatus === 'completed'}
+                    data-testid="photo-button"
                     className="photo-upload-btn"
                     sx={{
                       width: isMobile ? '100%' : 'auto',
@@ -2203,6 +2221,7 @@ const AuditForm = () => {
                   <img
                     src={photos[item.id].startsWith('http') ? photos[item.id] : photos[item.id]}
                     alt="Uploaded"
+                    data-testid="photo-preview"
                     style={{
                       width: isMobile ? 60 : 50,
                       height: isMobile ? 60 : 50,
@@ -2408,6 +2427,7 @@ const AuditForm = () => {
                   onClick={handleSubmit}
                   disabled={saving || isBeforeScheduledDate}
                   variant="text"
+                  data-testid="save-button"
                   sx={{ color: cvrTheme.accent.purple }}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
@@ -2629,6 +2649,7 @@ const AuditForm = () => {
                 <LinearProgress 
                   variant="determinate" 
                   value={(completedItems / itemsToDisplay.length) * 100} 
+                  data-testid="progress-bar"
                   sx={{ 
                     height: 6, 
                     borderRadius: 3,
@@ -2654,6 +2675,7 @@ const AuditForm = () => {
                         {missingRequired.length > 0 && (
                           <Typography 
                             variant="caption" 
+                            data-testid="pending-required-count"
                             sx={{ 
                               color: isCvr ? cvrTheme.accent.orange : 'error.main', 
                               fontSize: '0.75rem',
@@ -2875,6 +2897,7 @@ const AuditForm = () => {
                                 {Object.entries(groupedPairs).map(([baseName, pair], pairIndex) => (
                                   <Card 
                                     key={`pair-${baseName}-${pairIndex}`} 
+                                    data-testid="question-card"
                                     sx={{ 
                                       mb: 2, 
                                       p: 2, 
@@ -2953,6 +2976,7 @@ const AuditForm = () => {
                   onClick={handleSubmit}
                   variant={isCvr ? 'text' : 'outlined'}
                   disabled={saving}
+                  data-testid="save-button"
                   sx={isCvr ? { color: cvrTheme.accent.purple } : {}}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
@@ -2961,6 +2985,7 @@ const AuditForm = () => {
                   onClick={handleSubmit}
                   variant="contained"
                   disabled={saving}
+                  data-testid="submit-button"
                   sx={{
                     ...(isCvr && {
                       background: cvrTheme.button.next,
@@ -2984,7 +3009,7 @@ const AuditForm = () => {
               <SignatureCanvas
                 ref={signatureRef}
                 penColor='black'
-                canvasProps={{ width: 500, height: 200, className: 'sigCanvas' }}
+                canvasProps={{ width: 500, height: 200, className: 'sigCanvas', 'data-testid': 'signature-canvas' }}
                 backgroundColor='white'
               />
             </Box>

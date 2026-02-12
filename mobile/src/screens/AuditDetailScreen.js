@@ -179,6 +179,8 @@ const AuditDetailScreen = () => {
     <ScrollView 
       style={styles.container} 
       contentContainerStyle={styles.content}
+      testID="report-view"
+      accessibilityLabel="report-view"
     >
       <View style={styles.header}>
         <Text style={styles.restaurantName}>{audit.restaurant_name}</Text>
@@ -188,7 +190,11 @@ const AuditDetailScreen = () => {
 
       <View style={styles.statusContainer}>
         <View style={styles.statusRow}>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(audit.status) }]}>
+          <View
+            style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(audit.status) }]}
+            testID="audit-status"
+            accessibilityLabel="audit-status"
+          >
             <Text style={styles.statusText}>
               {audit.status === 'in_progress' ? 'In Progress' : audit.status.charAt(0).toUpperCase() + audit.status.slice(1)}
             </Text>
@@ -294,6 +300,8 @@ const AuditDetailScreen = () => {
                 templateId: audit.template_id 
               });
             }}
+            testID="continue-audit"
+            accessibilityLabel="continue-audit"
           >
             <Icon name="edit" size={20} color="#fff" style={styles.buttonIcon} />
             <Text style={styles.continueButtonText}>Continue Audit</Text>

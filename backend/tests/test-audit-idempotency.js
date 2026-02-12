@@ -16,6 +16,13 @@ const adminCredentials = [
   { email: 'admin@admin.com', password: 'admin123' }
 ];
 
+function isAdminLoginResponse(data) {
+  const role = String(data?.user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'superadmin') return true;
+  const permissions = data?.user?.permissions || [];
+  return Array.isArray(permissions) && permissions.includes('*');
+}
+
 function makeRequest(method, path, body = null, token = null) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, BASE_URL);
@@ -62,7 +69,7 @@ async function login() {
   for (const creds of adminCredentials) {
     try {
       const res = await makeRequest('POST', '/api/auth/login', creds);
-      if (res.status === 200 && res.data.token) {
+      if (res.status === 200 && res.data.token && isAdminLoginResponse(res.data)) {
         return res.data.token;
       }
     } catch {

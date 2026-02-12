@@ -275,6 +275,8 @@ const AuditHistoryScreen = () => {
         ]}
         onPress={() => navigation.navigate('AuditDetail', { id: item.id })}
         activeOpacity={0.7}
+        testID={`history-item-${item.id}`}
+        accessibilityLabel={`history-item-${item.id}`}
       >
         {/* Green tick badge for completed audits */}
         {isCompleted && (
@@ -316,7 +318,11 @@ const AuditHistoryScreen = () => {
           </View>
         </View>
         <View style={styles.auditCardRight}>
-          <View style={[styles.statusBadge, { backgroundColor: statusStyles.bg }]}>
+          <View
+            style={[styles.statusBadge, { backgroundColor: statusStyles.bg }]}
+            testID={`audit-status-${item.id}`}
+            accessibilityLabel={`audit-status-${item.id}`}
+          >
             <Text style={[styles.statusText, { color: statusStyles.color }]}>
               {statusStyles.text}
             </Text>

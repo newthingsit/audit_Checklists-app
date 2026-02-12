@@ -32,12 +32,19 @@ function logTest(name, passed, message = '') {
   else results.failed += 1;
 }
 
+function isAdminLoginResponse(data) {
+  const role = String(data?.user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'superadmin') return true;
+  const permissions = data?.user?.permissions || [];
+  return Array.isArray(permissions) && permissions.includes('*');
+}
+
 async function login() {
   if (authToken) return true;
   for (const creds of adminCredentials) {
     try {
       const res = await axios.post(`${API_BASE_URL}/auth/login`, creds);
-      if (res.data?.token) {
+      if (res.data?.token && isAdminLoginResponse(res.data)) {
         authToken = res.data.token;
         logTest('Login', true, creds.email);
         return true;

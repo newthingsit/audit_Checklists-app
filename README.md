@@ -115,6 +115,12 @@ See the [`docs/`](./docs/) directory for comprehensive documentation:
 - [Deployment Guides](./docs/deployment/)
 - [API Documentation](./docs/technical/)
 
+## CI Notes
+
+- Nightly Android Maestro smoke runs on schedule (02:00 IST / 20:30 UTC).
+- Manual Maestro runs can be triggered from GitHub Actions.
+- Secrets required for CI are documented in [docs/CI_SECRETS.md](docs/CI_SECRETS.md).
+
 ## License
 
 This project is proprietary software for Lite Bite Foods.

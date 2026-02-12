@@ -17,8 +17,6 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
@@ -39,7 +37,6 @@ import StepIndicator from '../components/StepIndicator';
 import LocationCapture from '../components/LocationCapture';
 import PhotoUpload from '../components/PhotoUpload';
 import SignatureCapture from '../components/SignatureCapture';
-import { buildSignatureData } from '../components/SignatureCapture';
 
 // Import Phase 1 hooks
 import { useCategoryNavigation } from '../hooks/useCategoryNavigation';
@@ -55,10 +52,6 @@ const AuditFormScreen = () => {
   // PERMANENT FIX: Use database ui_version field instead of checking template name
   // This ensures all checklists render with correct UI version regardless of their name
   const isCvr = template && template.ui_version === 2;
-  const isE2E =
-    __DEV__ &&
-    String(process.env.EXPO_PUBLIC_E2E || '').toLowerCase() === 'true' &&
-    String(process.env.EXPO_PUBLIC_E2E_MODE || '').toLowerCase() === 'true';
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -122,8 +115,8 @@ const AuditFormScreen = () => {
   const hasInitialLoadedRef = useRef(false); // Track if initial load has completed
   const lastLoadParamsRef = useRef(null); // Track last loaded params to prevent duplicates
   const autoSaveTimeoutRef = useRef(null);
-  const e2ePhotoUriRef = useRef(null);
-  const e2ePhotoInFlightRef = useRef(new Set());
+  const skipNextFocusRefreshRef = useRef(false);
+  const auditStatusRef = useRef(auditStatus);
   
   // Refs to track current values for focus effect (avoid dependency issues)
   const auditIdRef = useRef(auditId);
@@ -135,7 +128,6 @@ const AuditFormScreen = () => {
   const wasFocusedRef = useRef(false);
   const lastRefreshAuditIdRef = useRef(null);
   const lastRefreshTimeRef = useRef(0);
-  const skipNextFocusRefreshRef = useRef(false);
   
   // Update refs when values change
   useEffect(() => {
@@ -150,6 +142,14 @@ const AuditFormScreen = () => {
   useEffect(() => {
     templateIdRef.current = templateId;
   }, [templateId]);
+
+  useEffect(() => {
+    auditStatusRef.current = auditStatus;
+    if (auditStatus === 'completed' && autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+  }, [auditStatus]);
   
 
   const draftStorageKey = useMemo(() => {
@@ -158,6 +158,8 @@ const AuditFormScreen = () => {
     const locationKey = locationId ? String(locationId) : 'none';
     return `audit_draft:${templateKey}:${scheduleKey}:${locationKey}`;
   }, [templateId, scheduledAuditId, locationId]);
+
+  const apiBaseUrl = useMemo(() => API_BASE_URL.replace('/api', ''), []);
 
   const clearDraftStorage = useCallback(async () => {
     try {
@@ -238,6 +240,68 @@ const AuditFormScreen = () => {
     
     return hasTimeKeyword || hasTimeCategory;
   }, [isCvr]);
+
+  const isLocalFilePath = useCallback((value) => {
+    if (!value) return false;
+    const lower = String(value).toLowerCase();
+    return lower.startsWith('file://') ||
+      lower.startsWith('content://') ||
+      lower.startsWith('ph://') ||
+      lower.startsWith('assets-library://') ||
+      lower.startsWith('/var/') ||
+      lower.startsWith('/private/') ||
+      lower.startsWith('/data/') ||
+      lower.startsWith('/storage/');
+  }, []);
+
+  const resolveImageUri = useCallback((photoValue) => {
+    if (!photoValue) return '';
+    let uri = '';
+    if (typeof photoValue === 'string') {
+      uri = photoValue;
+    } else if (typeof photoValue === 'object') {
+      uri = photoValue.photoUrl || photoValue.photoLocalUri || '';
+    }
+    if (!uri) return '';
+    if (isLocalFilePath(uri)) return uri;
+    if (uri.startsWith('http')) return uri;
+    if (uri.startsWith('/')) return `${apiBaseUrl}${uri}`;
+    return `${apiBaseUrl}/${uri}`;
+  }, [apiBaseUrl, isLocalFilePath]);
+
+  const normalizePhotoValue = useCallback((photoUrl, baseUrl) => {
+    if (!photoUrl) return null;
+    const urlString = String(photoUrl);
+    if (isLocalFilePath(urlString)) {
+      return { photoLocalUri: urlString };
+    }
+    if (urlString.startsWith('http')) {
+      return { photoUrl: urlString };
+    }
+    if (urlString.startsWith('/')) {
+      return { photoUrl: `${baseUrl}${urlString}` };
+    }
+    return { photoUrl: `${baseUrl}/${urlString}` };
+  }, [isLocalFilePath]);
+
+  const getPhotoUriForItem = useCallback((itemId) => {
+    return resolveImageUri(photos[itemId]);
+  }, [photos, resolveImageUri]);
+
+  const hasPhotoForItem = useCallback((itemId) => {
+    return !!getPhotoUriForItem(itemId);
+  }, [getPhotoUriForItem]);
+
+  const getServerPhotoUrl = useCallback((photoValue) => {
+    if (!photoValue) return '';
+    if (typeof photoValue === 'string') {
+      return isLocalFilePath(photoValue) ? '' : photoValue;
+    }
+    if (typeof photoValue === 'object' && photoValue.photoUrl && !isLocalFilePath(photoValue.photoUrl)) {
+      return photoValue.photoUrl;
+    }
+    return '';
+  }, [isLocalFilePath]);
 
   // Fetch previous audit failures when location and template are available
   // This works for both regular audits and scheduled audits (same location + same checklist)
@@ -357,7 +421,7 @@ const AuditFormScreen = () => {
       }
 
       if (skipNextFocusRefreshRef.current) {
-        console.log('[AuditForm] Skipping focus refresh after external activity');
+        console.log('[AuditForm] Skipping focus refresh after camera');
         skipNextFocusRefreshRef.current = false;
         wasFocusedRef.current = true;
         return;
@@ -790,16 +854,10 @@ const AuditFormScreen = () => {
           }
         }
         if (auditItem.photo_url) {
-          // Construct full URL if needed - handle both full URLs and paths
-          let photoUrl = auditItem.photo_url;
-          if (!photoUrl.startsWith('http')) {
-            if (photoUrl.startsWith('/')) {
-              photoUrl = `${baseUrl}${photoUrl}`;
-            } else {
-              photoUrl = `${baseUrl}/${photoUrl}`;
-            }
+          const normalizedPhoto = normalizePhotoValue(auditItem.photo_url, baseUrl);
+          if (normalizedPhoto) {
+            photosData[itemId] = normalizedPhoto;
           }
-          photosData[itemId] = photoUrl;
         }
       });
 
@@ -1107,7 +1165,10 @@ const AuditFormScreen = () => {
     const parsedLocId = parseInt(locId, 10);
     
     if (!parsedTemplateId || !parsedLocId || parsedTemplateId <= 0 || parsedLocId <= 0) {
-      // Silently skip if we don't have valid IDs yet
+      console.log('[AuditForm] Skipping previous failures fetch - missing IDs', {
+        templateId,
+        locationId: locId
+      });
       return;
     }
     
@@ -1405,33 +1466,6 @@ const AuditFormScreen = () => {
     );
   }, []);
 
-  const normalizeOptionLabel = useCallback((option) => {
-    return String(option?.text || option?.option_text || option?.title || option?.label || '')
-      .trim()
-      .toLowerCase();
-  }, []);
-
-  const getOptionTestId = useCallback((itemId, option) => {
-    const label = normalizeOptionLabel(option);
-    if (label === 'yes' || label === 'y') return `option-yes-${itemId}`;
-    if (label === 'no' || label === 'n') return `option-no-${itemId}`;
-    if (label === 'na' || label === 'n/a' || label === 'not applicable') return `option-na-${itemId}`;
-    return `option-${itemId}-${option?.id}`;
-  }, [normalizeOptionLabel]);
-
-  const findOptionIdByLabel = useCallback((options, labels) => {
-    const match = (options || []).find(opt => labels.includes(normalizeOptionLabel(opt)));
-    return match ? match.id : null;
-  }, [normalizeOptionLabel]);
-
-  const getShortAnswerForTitle = useCallback((title) => {
-    const normalized = String(title || '').toLowerCase();
-    if (normalized.includes('dish')) return 'Test Dish';
-    if (normalized.includes('manager')) return 'Test Manager';
-    if (normalized.includes('table') || normalized.includes('tbl')) return 'T12';
-    return 'T12';
-  }, []);
-
   const isItemComplete = useCallback((item) => {
     const fieldType = getEffectiveItemFieldType(item);
     const itemStatus = item?.status;
@@ -1443,6 +1477,7 @@ const AuditFormScreen = () => {
     const hasItemStatus = itemStatus && itemStatus !== 'pending' && itemStatus !== '';
     const hasItemComment = itemComment !== null && itemComment !== undefined && String(itemComment).trim() !== '';
     const hasItemPhoto = !!itemPhotoUrl;
+    const hasLocalPhoto = hasPhotoForItem(item.id);
     if (fieldType === 'multiple_answer' || fieldType === 'grid') {
       return (multipleSelections[item.id] || []).length > 0 || hasItemMark || hasItemStatus || hasItemComment;
     }
@@ -1450,7 +1485,7 @@ const AuditFormScreen = () => {
       return !!selectedOptions[item.id] || !!itemSelectedOptionId || hasItemMark || hasItemStatus;
     }
     if (fieldType === 'image_upload') {
-      return !!photos[item.id] || hasItemPhoto || hasItemMark || hasItemStatus;
+      return hasLocalPhoto || hasItemPhoto || hasItemMark || hasItemStatus;
     }
     if (isAnswerFieldType(fieldType)) {
       const value = comments[item.id];
@@ -1458,205 +1493,7 @@ const AuditFormScreen = () => {
     }
     const status = responses[item.id];
     return (status && status !== 'pending') || hasItemStatus || hasItemMark;
-  }, [comments, photos, responses, selectedOptions, multipleSelections, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
-
-  const E2E_NUMBER_SEQUENCE = [12, 15, 18, 20, 22];
-  const E2E_LONG_ANSWER = 'All points completed for full checklist testing.';
-
-  const getE2EPhotoFileUri = useCallback(async () => {
-    if (e2ePhotoUriRef.current) return e2ePhotoUriRef.current;
-
-    const base64Png =
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
-    const fileUri = `${FileSystem.cacheDirectory}e2e-photo.png`;
-    await FileSystem.writeAsStringAsync(fileUri, base64Png, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    e2ePhotoUriRef.current = fileUri;
-    return fileUri;
-  }, []);
-
-  const uploadE2EPhoto = useCallback(async (itemId) => {
-    if (photos[itemId] || uploading[itemId]) return;
-    if (e2ePhotoInFlightRef.current.has(itemId)) return;
-    e2ePhotoInFlightRef.current.add(itemId);
-    setUploading(prev => ({ ...prev, [itemId]: true }));
-
-    try {
-      const authToken = await SecureStore.getItemAsync('auth_token');
-      if (!authToken) {
-        return;
-      }
-
-      const fileUri = await getE2EPhotoFileUri();
-      const formData = new FormData();
-      formData.append('photo', {
-        uri: fileUri,
-        type: 'image/png',
-        name: `e2e-photo-${itemId}.png`,
-      });
-
-      const responseData = await uploadPhotoWithRetry(formData, authToken);
-      const photoUrl = responseData?.photo_url;
-      if (!photoUrl) return;
-
-      const baseUrl = API_BASE_URL.replace('/api', '');
-      const fullPhotoUrl = photoUrl.startsWith('http')
-        ? photoUrl
-        : photoUrl.startsWith('/')
-          ? `${baseUrl}${photoUrl}`
-          : `${baseUrl}/${photoUrl}`;
-
-      setPhotos(prev => ({ ...prev, [itemId]: fullPhotoUrl }));
-    } catch (error) {
-      console.warn('E2E photo upload failed:', error?.message || error);
-    } finally {
-      setUploading(prev => ({ ...prev, [itemId]: false }));
-      e2ePhotoInFlightRef.current.delete(itemId);
-    }
-  }, [photos, uploading, getE2EPhotoFileUri, uploadPhotoWithRetry]);
-
-  const runE2EAutoFill = useCallback(async ({ submit = false, limit = null } = {}) => {
-    if (!items || items.length === 0) return;
-
-    const orderedItems = [...items].sort((a, b) => {
-      const orderA = Number.isFinite(a.order_index) ? a.order_index : 0;
-      const orderB = Number.isFinite(b.order_index) ? b.order_index : 0;
-      if (orderA !== orderB) return orderA - orderB;
-      return (a.id || 0) - (b.id || 0);
-    });
-
-    let numberIndex = 0;
-    const nextResponses = { ...responses };
-    const nextSelectedOptions = { ...selectedOptions };
-    const nextMultipleSelections = { ...multipleSelections };
-    const nextComments = { ...comments };
-
-    const targetItems = Number.isFinite(limit) ? orderedItems.slice(0, limit) : orderedItems;
-
-    targetItems.forEach((item, idx) => {
-      const questionIndex = idx + 1;
-      const fieldType = getEffectiveItemFieldType(item);
-      const isOptionType = isOptionFieldType(fieldType);
-      const isMultiSelect = isMultiSelectFieldType(fieldType);
-      const hasOptions = Array.isArray(item.options) && item.options.length > 0;
-
-      if (isOptionType && hasOptions && !isMultiSelect) {
-        const naOptionId = findOptionIdByLabel(item.options, ['na', 'n/a', 'not applicable']);
-        const yesOptionId = findOptionIdByLabel(item.options, ['yes', 'y', 'pass']);
-        const noOptionId = findOptionIdByLabel(item.options, ['no', 'n', 'fail']);
-
-        let selectedId = yesOptionId || item.options[0]?.id;
-        if (questionIndex % 25 === 0 && naOptionId) {
-          selectedId = naOptionId;
-        } else if (questionIndex % 10 === 0 && noOptionId) {
-          selectedId = noOptionId;
-        }
-
-        if (selectedId) {
-          nextSelectedOptions[item.id] = selectedId;
-        }
-
-        if (questionIndex % 7 === 0) {
-          nextComments[item.id] = 'Completed in automated test';
-        }
-        return;
-      }
-
-      if (isMultiSelect && hasOptions) {
-        const firstOptionId = item.options[0]?.id;
-        if (firstOptionId) {
-          nextMultipleSelections[item.id] = [firstOptionId];
-          nextComments[item.id] = 'Completed in automated test';
-        }
-        return;
-      }
-
-      if (fieldType === 'number') {
-        const value = E2E_NUMBER_SEQUENCE[numberIndex % E2E_NUMBER_SEQUENCE.length];
-        nextComments[item.id] = String(value);
-        numberIndex += 1;
-        return;
-      }
-
-      if (fieldType === 'short_answer') {
-        nextComments[item.id] = getShortAnswerForTitle(item.title);
-        return;
-      }
-
-      if (fieldType === 'long_answer' || fieldType === 'open_ended' || fieldType === 'description') {
-        nextComments[item.id] = E2E_LONG_ANSWER;
-        return;
-      }
-
-      if (fieldType === 'signature') {
-        const signatureData = buildSignatureData(['M10,60 L200,60']);
-        nextComments[item.id] = JSON.stringify(signatureData);
-        return;
-      }
-
-      if (fieldType === 'date') {
-        nextComments[item.id] = '2026-02-11';
-        return;
-      }
-
-      if (fieldType === 'time') {
-        nextComments[item.id] = '12:00';
-        return;
-      }
-
-      if (fieldType === 'task') {
-        nextResponses[item.id] = 'completed';
-        if (questionIndex % 7 === 0) {
-          nextComments[item.id] = 'Completed in automated test';
-        }
-        return;
-      }
-    });
-
-    setResponses(nextResponses);
-    setSelectedOptions(nextSelectedOptions);
-    setMultipleSelections(nextMultipleSelections);
-    setComments(nextComments);
-
-    // Ensure signature is captured even if outside targetItems (smoke runs).
-    const signatureItem = orderedItems.find(item => getEffectiveItemFieldType(item) === 'signature');
-    if (signatureItem && !nextComments[signatureItem.id]) {
-      const signatureData = buildSignatureData(['M10,60 L200,60']);
-      setComments(prev => ({ ...prev, [signatureItem.id]: JSON.stringify(signatureData) }));
-    }
-
-    let photoSlots = 0;
-    for (const item of orderedItems) {
-      if (photoSlots >= 3) break;
-      const fieldType = getEffectiveItemFieldType(item);
-      const isPhotoEligible =
-        fieldType === 'image_upload' ||
-        (template?.allow_photo && isOptionFieldType(fieldType));
-      if (isPhotoEligible && !photos[item.id]) {
-        await uploadE2EPhoto(item.id);
-        photoSlots += 1;
-      }
-    }
-
-    if (submit) {
-      await handleSubmit();
-    }
-  }, [
-    items,
-    responses,
-    selectedOptions,
-    multipleSelections,
-    comments,
-    photos,
-    template?.allow_photo,
-    getEffectiveItemFieldType,
-    isOptionFieldType,
-    isMultiSelectFieldType,
-    findOptionIdByLabel,
-    getShortAnswerForTitle,
-    uploadE2EPhoto,
-  ]);
+  }, [comments, photos, responses, selectedOptions, multipleSelections, hasPhotoForItem, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
 
   const queueSilentDraftSave = useCallback(() => {
     if (auditStatus === 'completed') return;
@@ -1678,6 +1515,9 @@ const AuditFormScreen = () => {
 
     autoSaveTimeoutRef.current = setTimeout(async () => {
       try {
+        if (auditStatusRef.current === 'completed') {
+          return;
+        }
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
@@ -1931,6 +1771,7 @@ const AuditFormScreen = () => {
       }
 
       skipNextFocusRefreshRef.current = true;
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: false, // Skip crop option for faster photo capture
@@ -1946,7 +1787,7 @@ const AuditFormScreen = () => {
         let imageUri = result.assets[0].uri;
         
         // Optimistic update - show local image immediately while uploading
-        setPhotos(prev => ({ ...prev, [itemId]: imageUri }));
+        setPhotos(prev => ({ ...prev, [itemId]: { photoLocalUri: imageUri } }));
         
         const formData = new FormData();
         formData.append('photo', {
@@ -1975,8 +1816,15 @@ const AuditFormScreen = () => {
         }
         
         console.log('Photo uploaded successfully:', fullPhotoUrl);
-        // Update with server URL (replaces local URI)
-        setPhotos(prev => ({ ...prev, [itemId]: fullPhotoUrl }));
+        // Update with server URL (keep local URI as fallback)
+        setPhotos(prev => ({
+          ...prev,
+          [itemId]: {
+            ...(prev[itemId] || {}),
+            photoLocalUri: imageUri,
+            photoUrl: fullPhotoUrl
+          }
+        }));
         setUploading(prev => ({ ...prev, [itemId]: false }));
         
         // Mark item as completed when photo is uploaded
@@ -2504,6 +2352,10 @@ const AuditFormScreen = () => {
 
   // Save draft locally and on server (works offline and online)
   const handleSaveDraft = useCallback(async () => {
+    if (auditStatus === 'completed') {
+      Alert.alert('Error', 'Cannot modify a completed audit');
+      return;
+    }
     if (!selectedLocation) {
       Alert.alert('Error', 'Please select an outlet');
       return;
@@ -3157,7 +3009,7 @@ const AuditFormScreen = () => {
         // Check for missing photos specifically
         const missingPhotos = missingRequired.filter(item => {
           const fieldType = getEffectiveItemFieldType(item);
-          return fieldType === 'image_upload' && !photos[item.id];
+          return fieldType === 'image_upload' && !hasPhotoForItem(item.id);
         });
         
         let errorMessage = `Please complete all required items (${missingRequired.length} remaining).`;
@@ -3195,7 +3047,7 @@ const AuditFormScreen = () => {
         const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
         const hasMulti = (multipleSelections[item.id] || []).length > 0;
         const hasComment = comments[item.id] && String(comments[item.id]).trim() !== '';
-        const hasPhoto = !!photos[item.id];
+        const hasPhoto = hasPhotoForItem(item.id);
         return hasStatus || hasOption || hasMulti || hasComment || hasPhoto;
       };
 
@@ -3209,7 +3061,7 @@ const AuditFormScreen = () => {
         const isAnswerType = isAnswerFieldType(fieldType);
         const isMultiSelectType = isMultiSelectFieldType(fieldType);
         const hasAnswer = !!(comments[item.id] && String(comments[item.id]).trim());
-        const hasPhoto = !!photos[item.id];
+        const hasPhoto = hasPhotoForItem(item.id);
         const statusFromState = responses[item.id] || 'pending';
 
         let effectiveStatus = statusFromState;
@@ -3271,26 +3123,21 @@ const AuditFormScreen = () => {
           }
         }
         
-        if (photos[item.id]) {
+        const photoUrlForSave = getServerPhotoUrl(photos[item.id]);
+        if (photoUrlForSave) {
           // Extract just the path if it's a full URL
-          const photoUrl = photos[item.id];
-          // Ensure we save the path correctly - backend expects path starting with /
-          if (photoUrl.startsWith('http')) {
-            // Extract path from full URL
+          if (photoUrlForSave.startsWith('http')) {
             try {
-              const urlObj = new URL(photoUrl);
+              const urlObj = new URL(photoUrlForSave);
               updateData.photo_url = urlObj.pathname;
             } catch (e) {
-              // If URL parsing fails, try to extract path manually
-              const pathMatch = photoUrl.match(/\/uploads\/[^?]+/);
-              updateData.photo_url = pathMatch ? pathMatch[0] : photoUrl.replace(/^https?:\/\/[^\/]+/, '');
+              const pathMatch = photoUrlForSave.match(/\/uploads\/[^?]+/);
+              updateData.photo_url = pathMatch ? pathMatch[0] : photoUrlForSave.replace(/^https?:\/\/[^\/]+/, '');
             }
-          } else if (photoUrl.startsWith('/')) {
-            // Already a path starting with /, use as is
-            updateData.photo_url = photoUrl;
+          } else if (photoUrlForSave.startsWith('/')) {
+            updateData.photo_url = photoUrlForSave;
           } else {
-            // Path without /, add it
-            updateData.photo_url = `/${photoUrl}`;
+            updateData.photo_url = `/${photoUrlForSave}`;
           }
         }
 
@@ -3532,15 +3379,10 @@ const AuditFormScreen = () => {
           }
           // Update photos
           if (auditItem.photo_url) {
-            let photoUrl = auditItem.photo_url;
-            if (!photoUrl.startsWith('http')) {
-              if (photoUrl.startsWith('/')) {
-                photoUrl = `${baseUrl}${photoUrl}`;
-              } else {
-                photoUrl = `${baseUrl}/${photoUrl}`;
-              }
+            const normalizedPhoto = normalizePhotoValue(auditItem.photo_url, baseUrl);
+            if (normalizedPhoto) {
+              updatedPhotos[itemId] = normalizedPhoto;
             }
-            updatedPhotos[itemId] = photoUrl;
           }
         });
         
@@ -3905,26 +3747,9 @@ const AuditFormScreen = () => {
                 style={[styles.searchInputContainer, auditStatus === 'completed' && styles.disabledInput, isCvr && { backgroundColor: cvrTheme.input.bg, borderColor: cvrTheme.input.border }]}
                 onPress={() => auditStatus !== 'completed' && setShowStorePicker(true)}
                 disabled={auditStatus === 'completed'}
-                testID="store-selector"
-                accessibilityLabel="store-selector"
               >
                 <Icon name="search" size={20} color={isCvr ? cvrTheme.text.placeholder : themeConfig.text.disabled} style={styles.searchIcon} />
                 <Text style={[styles.searchPlaceholder, isCvr && { color: cvrTheme.text.placeholder }]}>Search</Text>
-              </TouchableOpacity>
-            )}
-            {isE2E && !selectedLocation && locations.length > 0 && (
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary, { marginTop: 10 }]}
-                onPress={() => {
-                  const first = locations[0];
-                  if (!first) return;
-                  setSelectedLocation(first);
-                  setLocationId(first.id.toString());
-                }}
-                testID="e2e-select-store"
-                accessibilityLabel="e2e-select-store"
-              >
-                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>E2E: Use First Store</Text>
               </TouchableOpacity>
             )}
             {scheduledAuditId && initialLocationId && selectedLocation && (
@@ -4004,8 +3829,6 @@ const AuditFormScreen = () => {
                 style={[styles.button, styles.buttonSecondary, savingDraft && styles.buttonDisabled, isCvr && { borderColor: cvrTheme.accent.purple }]}
                 onPress={handleSaveDraft}
                 disabled={savingDraft}
-                testID="save-button"
-                accessibilityLabel="save-button"
               >
                 {savingDraft ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -4040,8 +3863,6 @@ const AuditFormScreen = () => {
                 style={[styles.button, !selectedLocation && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={handleNext}
                 disabled={!selectedLocation}
-                testID="next-button"
-                accessibilityLabel="next-button"
               >
                 {isCvr ? (
                   <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
@@ -4080,8 +3901,6 @@ const AuditFormScreen = () => {
               value={storeSearchText}
               onChangeText={setStoreSearchText}
                 placeholderTextColor={themeConfig.text.disabled}
-                testID="store-search"
-                accessibilityLabel="store-search"
             />
             </View>
             
@@ -4106,8 +3925,6 @@ const AuditFormScreen = () => {
                     setShowStorePicker(false);
                     setStoreSearchText('');
                   }}
-                  testID={`store-item-${item.id}`}
-                  accessibilityLabel={`store-item-${item.id}`}
                 >
                   <Text style={styles.storeOptionText}>
                     {item.store_number ? `${item.name} (${item.store_number})` : item.name}
@@ -4268,44 +4085,10 @@ const AuditFormScreen = () => {
             
             {/* Current Category Progress */}
             <View style={styles.currentCategoryProgress}>
-            <Text
-              style={[styles.progressText, isCvr && { color: cvrTheme.text.primary }]}
-              testID="required-remaining"
-              accessibilityLabel="required-remaining"
-            >
+            <Text style={[styles.progressText, isCvr && { color: cvrTheme.text.primary }]}>
               Progress: {completedItems} / {filteredItems.length} items
               {selectedCategory && !isCvr && ` (${selectedCategory})`}
             </Text>
-            {isE2E && (
-              <View style={styles.e2eButtonRow}>
-                <TouchableOpacity
-                  style={styles.e2eButton}
-                  onPress={() => runE2EAutoFill({ limit: 10 })}
-                  testID="e2e-autofill-partial"
-                  accessibilityLabel="e2e-autofill-partial"
-                >
-                  <Text style={styles.e2eButtonText}>E2E: Partial Fill</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.e2eButton}
-                  onPress={() => runE2EAutoFill()}
-                  testID="e2e-autofill"
-                  accessibilityLabel="e2e-autofill"
-                >
-                  <Text style={styles.e2eButtonText}>E2E: Auto Fill</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.e2eButton, styles.e2eButtonPrimary]}
-                  onPress={() => runE2EAutoFill({ submit: true })}
-                  testID="e2e-autofill-submit"
-                  accessibilityLabel="e2e-autofill-submit"
-                >
-                  <Text style={[styles.e2eButtonText, styles.e2eButtonTextPrimary]}>
-                    E2E: Fill + Submit
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
               {(() => {
                 if (!filteredItems.length) return null;
 
@@ -4314,14 +4097,14 @@ const AuditFormScreen = () => {
                 const missingRequired = requiredItems.filter(item => !isItemComplete(item));
                 const itemsNeedingPhotos = filteredItems.filter(item => {
                   const fieldType = getEffectiveItemFieldType(item);
-                  return item.is_required && fieldType === 'image_upload' && !photos[item.id];
+                  return item.is_required && fieldType === 'image_upload' && !hasPhotoForItem(item.id);
                 });
                 
                 // Calculate real-time completion for current category
                 const currentCategoryCompleted = filteredItems.filter(item => {
                   const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
                   const hasComment = comments[item.id] && String(comments[item.id]).trim();
-                  const hasPhoto = !!photos[item.id];
+                  const hasPhoto = hasPhotoForItem(item.id);
                   const fieldType = getEffectiveItemFieldType(item);
                   const isAnswerType = isAnswerFieldType(fieldType);
                   const isImageType = fieldType === 'image_upload';
@@ -4423,7 +4206,7 @@ const AuditFormScreen = () => {
               const fieldType = getEffectiveItemFieldType(item);
               const optionType = isOptionFieldType(fieldType);
               const answerType = isAnswerFieldType(fieldType);
-              const isMissingRequiredPhoto = item.is_required && fieldType === 'image_upload' && !photos[item.id];
+              const isMissingRequiredPhoto = item.is_required && fieldType === 'image_upload' && !hasPhotoForItem(item.id);
               
               return (
               <View 
@@ -4433,8 +4216,6 @@ const AuditFormScreen = () => {
                   isPreviousFailure && styles.itemCardPreviousFailure,
                   isMissingRequiredPhoto && { borderLeftWidth: 4, borderLeftColor: '#d32f2f' }
                 ]}
-                testID={`question-card-${item.id}`}
-                accessibilityLabel={`question-card-${item.id}`}
               >
                 {/* Missing required photo warning */}
                 {isMissingRequiredPhoto && (
@@ -4489,8 +4270,6 @@ const AuditFormScreen = () => {
                         ]}
                         onPress={() => handleOptionChange(item.id, option.id)}
                         disabled={auditStatus === 'completed'}
-                        testID={getOptionTestId(item.id, option)}
-                        accessibilityLabel={getOptionTestId(item.id, option)}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                           <Text
@@ -4699,8 +4478,6 @@ const AuditFormScreen = () => {
                       style={[styles.photoButton, { marginTop: 8 }]}
                       onPress={() => setSignatureItemId(item.id)}
                       disabled={auditStatus === 'completed'}
-                      testID={`signature-button-${item.id}`}
-                      accessibilityLabel={`signature-button-${item.id}`}
                     >
                       <Icon name="gesture" size={20} color={themeConfig.primary.main} />
                       <Text style={styles.photoButtonText}>
@@ -4731,8 +4508,6 @@ const AuditFormScreen = () => {
                           placeholderTextColor={themeConfig.text.disabled}
                           keyboardType="decimal-pad"
                           editable={auditStatus !== 'completed' && !isAverageAuto}
-                          testID={`number-input-${item.id}`}
-                          accessibilityLabel={`number-input-${item.id}`}
                         />
                         {isAverageAuto && (
                           <Text style={{ fontSize: 12, color: themeConfig.text.secondary, marginTop: 4 }}>
@@ -4764,8 +4539,6 @@ const AuditFormScreen = () => {
                       placeholder="Type Here"
                       placeholderTextColor={isCvr ? cvrTheme.text.placeholder : themeConfig.text.disabled}
                       editable={auditStatus !== 'completed'}
-                      testID={`short-answer-input-${item.id}`}
-                      accessibilityLabel={`short-answer-input-${item.id}`}
                     />
                   </View>
                 ) : answerType ? (
@@ -4780,8 +4553,6 @@ const AuditFormScreen = () => {
                       multiline
                       numberOfLines={3}
                       editable={auditStatus !== 'completed'}
-                      testID={`long-answer-input-${item.id}`}
-                      accessibilityLabel={`long-answer-input-${item.id}`}
                     />
                   </View>
                 ) : (
@@ -4818,12 +4589,6 @@ const AuditFormScreen = () => {
                       style={[styles.photoButton, auditStatus === 'completed' && styles.disabledButton]}
                     onPress={() => handlePhotoUpload(item.id)}
                       disabled={uploading[item.id] || auditStatus === 'completed'}
-                      testID={`photo-button-${item.id}`}
-                      accessibilityLabel={
-                        fieldType === 'image_upload'
-                          ? `photo-button-${item.id} image-upload-input-${item.id}`
-                          : `photo-button-${item.id}`
-                      }
                   >
                     {uploading[item.id] ? (
                       <ActivityIndicator size="small" color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
@@ -4831,20 +4596,15 @@ const AuditFormScreen = () => {
                       <Icon name="photo-camera" size={20} color={isCvr ? cvrTheme.accent.purple : themeConfig.primary.main} />
                     )}
                     <Text style={[styles.photoButtonText, isCvr && { color: cvrTheme.accent.purple }]}>
-                      {photos[item.id] ? 'Change Photo' : 'Photo'}
+                      {hasPhotoForItem(item.id) ? 'Change Photo' : 'Photo'}
                     </Text>
                   </TouchableOpacity>
                 </View>
                 )}
 
-                {photos[item.id] && (fieldType === 'image_upload' || (template?.allow_photo && isOptionFieldType(fieldType))) && (
+                {getPhotoUriForItem(item.id) && (fieldType === 'image_upload' || (template?.allow_photo && isOptionFieldType(fieldType))) && (
                   <View style={styles.photoContainer}>
-                    <Image
-                      source={{ uri: photos[item.id] }}
-                      style={styles.photo}
-                      testID={`photo-preview-${item.id}`}
-                      accessibilityLabel={`photo-preview-${item.id}`}
-                    />
+                    <Image source={{ uri: getPhotoUriForItem(item.id) }} style={styles.photo} />
                     {auditStatus !== 'completed' && (
                     <TouchableOpacity
                       style={styles.removePhotoButton}
@@ -4873,8 +4633,6 @@ const AuditFormScreen = () => {
                       multiline
                       numberOfLines={2}
                       editable={auditStatus !== 'completed'}
-                      testID={`comment-input-${item.id}`}
-                      accessibilityLabel={`comment-input-${item.id}`}
                     />
                   </View>
                 )}
@@ -4972,8 +4730,6 @@ const AuditFormScreen = () => {
                   style={[styles.button, saving && styles.buttonDisabled, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={handleSubmit}
                   disabled={saving}
-                  testID="submit-button"
-                  accessibilityLabel="submit-button"
               >
                 {saving ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -5151,32 +4907,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1976d2',
     fontWeight: '600',
-  },
-  e2eButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    flexWrap: 'wrap',
-  },
-  e2eButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#1976d2',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  e2eButtonPrimary: {
-    backgroundColor: '#1976d2',
-  },
-  e2eButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1976d2',
-  },
-  e2eButtonTextPrimary: {
-    color: '#fff',
   },
   categorySwitcherContainer: {
     marginBottom: 15,

@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- waitForAnimationToEnd
+- assertVisible:
+    id: "login-email"
+- tapOn:
+    id: "login-email"
+- inputText: e2e.qa@lbf.co.in
+- tapOn:
+    id: "login-password"
+- inputText: Admin@123
+- tapOn:
+    id: "login-submit"
+- waitForAnimationToEnd

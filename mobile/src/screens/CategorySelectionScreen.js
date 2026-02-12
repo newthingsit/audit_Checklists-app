@@ -79,7 +79,6 @@ const CategorySelectionScreen = () => {
       }
     } catch (error) {
       console.error('Error fetching templates:', error);
-      setCategories([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

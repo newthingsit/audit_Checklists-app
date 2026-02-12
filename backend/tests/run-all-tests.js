@@ -114,6 +114,8 @@ async function main() {
   // Run tests
   const tests = [
     { name: 'API Endpoints', script: 'tests/api.test.js' },
+    { name: 'API Contract', script: 'tests/api-contract.test.js' },
+    { name: 'Full Checklist Completion', script: 'tests/full-checklist-completion.test.js' },
     { name: 'Required Validation', script: 'tests/required-validation.test.js' },
     { name: 'Audit Idempotency', script: 'tests/test-audit-idempotency.js' },
     { name: 'SOS Auto Average', script: 'tests/test-sos-auto-average.js' },

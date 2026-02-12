@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
+  TextInput,
   TouchableOpacity,
   RefreshControl,
   Alert
@@ -24,6 +25,7 @@ const ChecklistsScreen = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState('');
   
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -40,6 +42,14 @@ const ChecklistsScreen = () => {
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
 
+  const filteredTemplates = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return templates;
+    return templates.filter(template =>
+      String(template.name || '').toLowerCase().includes(query)
+    );
+  }, [templates, searchText]);
+
   // Fetch templates - real-time only, no offline fallback
   const fetchTemplates = useCallback(async () => {
     try {
@@ -50,7 +60,6 @@ const ChecklistsScreen = () => {
           'Please connect to the internet to load templates.',
           [{ text: 'OK' }]
         );
-        setTemplates([]);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -69,7 +78,6 @@ const ChecklistsScreen = () => {
         'Failed to load templates. Please check your internet connection and try again.',
         [{ text: 'OK' }]
       );
-      setTemplates([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -137,6 +145,8 @@ const ChecklistsScreen = () => {
       style={styles.templateCard}
       onPress={() => handleStartAudit(item)}
       activeOpacity={0.7}
+      testID={`checklist-item-${item.id}`}
+      accessibilityLabel={`start-audit-${item.id}`}
     >
       <View style={styles.templateHeader}>
         <View style={styles.templateIconContainer}>
@@ -205,12 +215,25 @@ const ChecklistsScreen = () => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search checklists..."
+          placeholderTextColor={themeConfig.text.disabled}
+          value={searchText}
+          onChangeText={setSearchText}
+          testID="checklist-search"
+          accessibilityLabel="checklist-search"
+        />
+      </View>
       <FlatList
-        data={templates}
+        data={filteredTemplates}
         renderItem={renderTemplate}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        testID="checklist-list"
+        accessibilityLabel="checklist-list"
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -225,7 +248,7 @@ const ChecklistsScreen = () => {
           />
         }
         ListHeaderComponent={
-          templates.length > 0 ? (
+          filteredTemplates.length > 0 ? (
             <View style={styles.listHeader}>
               <Text style={styles.listHeaderTitle}>
                 Checklist Templates
@@ -245,6 +268,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: themeConfig.background.default,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+    backgroundColor: themeConfig.background.default,
+  },
+  searchInput: {
+    height: 44,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    backgroundColor: themeConfig.background.paper,
+    borderWidth: 1,
+    borderColor: themeConfig.border.light,
+    color: themeConfig.text.primary,
   },
   centerContainer: {
     flex: 1,

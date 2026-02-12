@@ -104,8 +104,29 @@ New Files:
 ## Deployment Procedure
 
 ### Step 1: Pre-Deployment (Before Code Deploy)
+
+**SQL Server (production/staging):**
+- Columns are auto-ensured on backend startup via `database-mssql.js`.
+- Optional manual backfill (safe/idempotent):
+
+```sql
+IF COL_LENGTH('checklist_templates', 'ui_version') IS NULL
+  ALTER TABLE checklist_templates ADD ui_version INT NOT NULL CONSTRAINT DF_checklist_templates_ui_version DEFAULT 2;
+
+IF COL_LENGTH('checklist_templates', 'allow_photo') IS NULL
+  ALTER TABLE checklist_templates ADD allow_photo BIT NOT NULL CONSTRAINT DF_checklist_templates_allow_photo DEFAULT 1;
+
+UPDATE checklist_templates
+SET ui_version = 2
+WHERE ui_version IS NULL;
+
+UPDATE checklist_templates
+SET allow_photo = 1
+WHERE allow_photo IS NULL;
+```
+
+**SQLite (local/dev only):**
 ```bash
-# Run on PRODUCTION database only (not staging yet)
 cd /path/to/audit_Checklists-app/backend
 node migrations/02_add_ui_config_and_migrate_data.js
 ```
@@ -150,6 +171,9 @@ git pull origin master
 ## How to Verify Locally (Before Production)
 
 ### 1. Run Migration (Staging/Dev Database)
+**SQL Server:** auto on backend startup (or run the SQL above).
+
+**SQLite:**
 ```bash
 node backend/migrations/02_add_ui_config_and_migrate_data.js
 ```

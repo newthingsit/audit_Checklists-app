@@ -213,6 +213,8 @@ const createTables = async () => {
       [description] NTEXT,
       [created_by] INT,
       [created_at] DATETIME DEFAULT GETDATE(),
+      [ui_version] INT NOT NULL CONSTRAINT [DF_checklist_templates_ui_version] DEFAULT 2,
+      [allow_photo] BIT NOT NULL CONSTRAINT [DF_checklist_templates_allow_photo] DEFAULT 1,
       FOREIGN KEY ([created_by]) REFERENCES [users]([id])
     )`,
     
@@ -765,6 +767,7 @@ const createTables = async () => {
     
     // Add missing columns to existing tables (migration)
     await addMissingColumns();
+    await ensureUiConfigColumns();
     
     // Create performance indexes
     await createIndexes();
@@ -1467,6 +1470,96 @@ const addMissingColumns = async () => {
   } catch (error) {
     // Don't throw error for migration issues, just log them
     console.warn('Warning: Some column migrations may have failed:', error.message);
+  }
+};
+
+const ensureUiConfigColumns = async () => {
+  const request = pool.request();
+  const columnInfo = await request.query(`
+    SELECT COLUMN_NAME, IS_NULLABLE, DATA_TYPE
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'checklist_templates'
+      AND COLUMN_NAME IN ('ui_version', 'allow_photo')
+  `);
+
+  const columns = columnInfo.recordset || [];
+  const uiColumn = columns.find(col => col.COLUMN_NAME === 'ui_version');
+  const photoColumn = columns.find(col => col.COLUMN_NAME === 'allow_photo');
+
+  if (!uiColumn) {
+    console.log('Adding ui_version column to checklist_templates...');
+    await pool.request().query(`
+      ALTER TABLE [dbo].[checklist_templates]
+      ADD [ui_version] INT NOT NULL
+      CONSTRAINT [DF_checklist_templates_ui_version] DEFAULT 2
+    `);
+  }
+
+  if (!photoColumn) {
+    console.log('Adding allow_photo column to checklist_templates...');
+    await pool.request().query(`
+      ALTER TABLE [dbo].[checklist_templates]
+      ADD [allow_photo] BIT NOT NULL
+      CONSTRAINT [DF_checklist_templates_allow_photo] DEFAULT 1
+    `);
+  }
+
+  await pool.request().query(`
+    UPDATE [dbo].[checklist_templates]
+    SET ui_version = 2
+    WHERE ui_version IS NULL
+  `);
+  await pool.request().query(`
+    UPDATE [dbo].[checklist_templates]
+    SET allow_photo = 1
+    WHERE allow_photo IS NULL
+  `);
+
+  const ensureDefaults = async (columnName, constraintName, defaultValue) => {
+    const constraintCheck = await pool.request().query(`
+      SELECT dc.name
+      FROM sys.default_constraints dc
+      JOIN sys.columns c
+        ON dc.parent_object_id = c.object_id
+       AND dc.parent_column_id = c.column_id
+      WHERE OBJECT_NAME(dc.parent_object_id) = 'checklist_templates'
+        AND c.name = '${columnName}'
+    `);
+
+    if (!constraintCheck.recordset || constraintCheck.recordset.length === 0) {
+      await pool.request().query(`
+        ALTER TABLE [dbo].[checklist_templates]
+        ADD CONSTRAINT [${constraintName}] DEFAULT ${defaultValue} FOR [${columnName}]
+      `);
+    }
+
+    const nullabilityCheck = await pool.request().query(`
+      SELECT IS_NULLABLE
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'checklist_templates' AND COLUMN_NAME = '${columnName}'
+    `);
+
+    const isNullable = nullabilityCheck.recordset?.[0]?.IS_NULLABLE === 'YES';
+    if (isNullable) {
+      await pool.request().query(`
+        ALTER TABLE [dbo].[checklist_templates]
+        ALTER COLUMN [${columnName}] ${columnName === 'allow_photo' ? 'BIT' : 'INT'} NOT NULL
+      `);
+    }
+  };
+
+  await ensureDefaults('ui_version', 'DF_checklist_templates_ui_version', 2);
+  await ensureDefaults('allow_photo', 'DF_checklist_templates_allow_photo', 1);
+
+  const verify = await pool.request().query(`
+    SELECT COLUMN_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'checklist_templates'
+      AND COLUMN_NAME IN ('ui_version', 'allow_photo')
+  `);
+
+  if ((verify.recordset || []).length < 2) {
+    throw new Error('Missing ui_version/allow_photo columns on checklist_templates (SQL Server)');
   }
 };
 

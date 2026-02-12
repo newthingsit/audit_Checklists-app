@@ -480,13 +480,23 @@ const createTables = () => {
         FOREIGN KEY (updated_by) REFERENCES users(id)
       )`);
 
+      const createIndexIfColumnExists = (tableName, indexName, columnName) => {
+        db.all(`PRAGMA table_info(${tableName})`, (err, columns) => {
+          if (err || !columns) return;
+          const columnNames = columns.map(col => col.name);
+          if (columnNames.includes(columnName)) {
+            db.run(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${columnName})`);
+          }
+        });
+      };
+
       // Core audit indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_user ON audits(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_template ON audits(template_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_status ON audits(status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audits_created_at ON audits(created_at)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_location ON audits(location_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_audits_scheduled ON audits(scheduled_audit_id)`);
+      createIndexIfColumnExists('audits', 'idx_audits_location', 'location_id');
+      createIndexIfColumnExists('audits', 'idx_audits_scheduled', 'scheduled_audit_id');
       db.run(`CREATE INDEX IF NOT EXISTS idx_audit_items_audit ON audit_items(audit_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_audit_items_item ON audit_items(item_id)`);
       
@@ -500,7 +510,7 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_status ON scheduled_audits(status)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_assigned ON scheduled_audits(assigned_to)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_template ON scheduled_audits(template_id)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_location ON scheduled_audits(location_id)`);
+      createIndexIfColumnExists('scheduled_audits', 'idx_scheduled_audits_location', 'location_id');
       db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_audits_created_by ON scheduled_audits(created_by)`);
       
       // Reschedule tracking indexes
@@ -509,10 +519,10 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_reschedule_tracking_audit ON reschedule_tracking(scheduled_audit_id)`);
       
       // Location indexes
-      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_store_number ON locations(store_number)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_district ON locations(district)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_parent ON locations(parent_id)`);
+      createIndexIfColumnExists('locations', 'idx_locations_store_number', 'store_number');
+      createIndexIfColumnExists('locations', 'idx_locations_region', 'region');
+      createIndexIfColumnExists('locations', 'idx_locations_district', 'district');
+      createIndexIfColumnExists('locations', 'idx_locations_parent', 'parent_id');
       
       // Action items indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_action_items_audit ON action_items(audit_id)`);
@@ -528,7 +538,7 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_workflow ON tasks(workflow_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)`);
-      db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_location ON tasks(location_id)`);
+      createIndexIfColumnExists('tasks', 'idx_tasks_location', 'location_id');
       db.run(`CREATE INDEX IF NOT EXISTS idx_tasks_audit ON tasks(audit_id)`);
       
       // Team indexes
@@ -725,7 +735,7 @@ const createTables = () => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_user_checklist_permissions_user ON user_checklist_permissions(user_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_user_checklist_permissions_template ON user_checklist_permissions(template_id)`);
       
-      db.run(`CREATE INDEX IF NOT EXISTS idx_locations_group ON locations(group_id)`);
+      createIndexIfColumnExists('locations', 'idx_locations_group', 'group_id');
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_parent ON store_groups(parent_group_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_store_groups_type ON store_groups(type)`);
 

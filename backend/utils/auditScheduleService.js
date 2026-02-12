@@ -149,13 +149,14 @@ function sendAuditCompletionEmail(dbInstance, auditId, score) {
        WHERE a.id = ?`;
 
   const executeQuery = (cb) => {
-    if (isSqlServer) {
+    const canUseSqlServer = isSqlServer && dbInstance && typeof dbInstance.request === 'function';
+    if (canUseSqlServer) {
       const request = dbInstance.request();
       request.input('auditId', auditId);
       request.query(query, cb);
-    } else {
-      dbInstance.get(query, [auditId], cb);
+      return;
     }
+    dbInstance.get(query, [auditId], cb);
   };
 
   executeQuery((err, result) => {

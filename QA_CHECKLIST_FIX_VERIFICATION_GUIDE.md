@@ -17,7 +17,9 @@
 ## Technical Changes
 
 ### 1. Database Schema Changes
-**File:** `backend/config/database.js`
+**Files:**
+- `backend/config/database.js` (SQLite)
+- `backend/config/database-mssql.js` (SQL Server)
 
 ```javascript
 // Added to checklist_templates table:
@@ -89,17 +91,21 @@ const isCvr = template && template.ui_version === 2;
 **Impact:** Same as web - QA checklist now renders with photo support on mobile.
 
 ### 5. Migration Script
-**File:** `backend/migrations/02_add_ui_config_and_migrate_data.js`
+**File:** `backend/migrations/02_add_ui_config_and_migrate_data.js` (SQLite only)
 
 **Purpose:** 
 - Adds columns to existing databases
 - Updates all existing checklists to `ui_version=2, allow_photo=1`
 - Reports migration statistics
 
-**Run:**
+**Run (SQLite only):**
 ```bash
 node backend/migrations/02_add_ui_config_and_migrate_data.js
 ```
+
+**SQL Server:**
+- Columns are ensured on backend startup via `ensureUiConfigColumns()` in `database-mssql.js`.
+- You can also verify/backfill manually with the SQL below.
 
 ### 6. API Tests
 **File:** `backend/tests/ui-config-tests.js`
@@ -179,9 +185,27 @@ npm test -- backend/tests/ui-config-tests.js
 ## How to Verify Locally
 
 ### 1. Run Migration
+**SQLite:**
 ```bash
 cd backend
 node migrations/02_add_ui_config_and_migrate_data.js
+```
+
+**SQL Server (optional manual backfill):**
+```sql
+IF COL_LENGTH('checklist_templates', 'ui_version') IS NULL
+   ALTER TABLE checklist_templates ADD ui_version INT NOT NULL CONSTRAINT DF_checklist_templates_ui_version DEFAULT 2;
+
+IF COL_LENGTH('checklist_templates', 'allow_photo') IS NULL
+   ALTER TABLE checklist_templates ADD allow_photo BIT NOT NULL CONSTRAINT DF_checklist_templates_allow_photo DEFAULT 1;
+
+UPDATE checklist_templates
+SET ui_version = 2
+WHERE ui_version IS NULL;
+
+UPDATE checklist_templates
+SET allow_photo = 1
+WHERE allow_photo IS NULL;
 ```
 
 Expected output:

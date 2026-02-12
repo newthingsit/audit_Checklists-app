@@ -1,0 +1,48 @@
+appId: ${APP_ID}
+env:
+  E2E_EMAIL: ${E2E_EMAIL}
+  E2E_PASSWORD: ${E2E_PASSWORD}
+  CHECKLIST_NAME: ${CHECKLIST_NAME}
+---
+- launchApp
+- runFlow:
+    when:
+      visible:
+        id: "login-email"
+    file: login.yaml
+- tapOn:
+    text: "Checklists"
+- tapOn:
+    id: "checklist-search"
+- inputText: ${CHECKLIST_NAME}
+- tapOn:
+    text: ${CHECKLIST_NAME}
+- waitForAnimationToEnd
+- tapOn:
+    id: "e2e-select-store"
+- tapOn:
+    id: "next-button"
+- waitForAnimationToEnd
+- tapOn:
+    id: "e2e-autofill-partial"
+- tapOn:
+    id: "submit-button"
+- assertVisible:
+    text: "Success"
+- tapOn:
+    text: "Done"
+- stopApp
+- launchApp
+- runFlow:
+    when:
+      visible:
+        id: "login-email"
+    file: login.yaml
+- tapOn:
+    text: "History"
+- tapOn:
+    text: ${CHECKLIST_NAME}
+- tapOn:
+    id: "continue-audit"
+- assertVisible:
+    id: "required-remaining"
