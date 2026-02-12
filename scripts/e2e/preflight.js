@@ -93,6 +93,35 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 10000) => {
   }
 };
 
+const loginAndGetToken = async (apiBase) => {
+  const loginUrl = `${apiBase}/auth/login`;
+  const res = await fetchWithTimeout(
+    loginUrl,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: process.env.TEST_EMAIL,
+        password: process.env.TEST_PASSWORD
+      })
+    },
+    10000
+  );
+
+  if (!res.ok) {
+    fail(`Auth login failed with status ${res.status}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  const token = data.token || data.accessToken;
+  if (!token) {
+    fail('Auth login response missing token');
+  }
+
+  logSummary('- Auth login OK');
+  return token;
+};
+
 const run = async () => {
   logSummary('### Environment');
   logSummary(`- API_URL: ${apiUrlRaw || 'missing'}`);
@@ -150,7 +179,17 @@ const run = async () => {
   }
 
   logSummary('### Checklist Validation');
-  const templatesRes = await fetchWithTimeout(`${apiBase}/templates`, { method: 'GET' }, 10000);
+  const templatesUrl = `${apiBase}/templates`;
+  let templatesRes = await fetchWithTimeout(templatesUrl, { method: 'GET' }, 10000);
+  if (templatesRes.status === 401 || templatesRes.status === 403) {
+    logSummary('- Templates require auth, attempting login');
+    const token = await loginAndGetToken(apiBase);
+    templatesRes = await fetchWithTimeout(
+      templatesUrl,
+      { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+      10000
+    );
+  }
   if (!templatesRes.ok) {
     fail(`Templates fetch failed with status ${templatesRes.status}`);
   }
