@@ -36,6 +36,9 @@ jobs:
   web-tests:
     runs-on: ubuntu-latest
     needs: backend-tests
+    env:
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,12 +71,12 @@ jobs:
         run: npm test -- --watchAll=false --passWithNoTests
         working-directory: web
       - name: Run web E2E tests
-        if: secrets.E2E_EMAIL != '' && secrets.E2E_PASSWORD != ''
+        if: ${{ env.E2E_EMAIL != '' && env.E2E_PASSWORD != '' }}
         run: npm run test:e2e
         working-directory: web
         env:
-          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
-          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+          E2E_EMAIL: ${{ env.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ env.E2E_PASSWORD }}
           E2E_API_URL: http://localhost:5000
           E2E_BASE_URL: http://localhost:3000
       - name: Upload Playwright report
