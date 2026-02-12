@@ -15,6 +15,10 @@ env:
   AZURE_WEBAPP_NAME: 'audit-app-backend-2221'
   NODE_VERSION: '22.x'
 
+concurrency:
+  group: azure-app-service-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -45,9 +49,9 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
-      - name: 'Deploy to Azure Web App'
+      - name: 'Deploy to Azure Web App (attempt 1)'
         uses: azure/webapps-deploy@v3
-        id: deploy
+        id: deploy_1
         continue-on-error: true
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
@@ -55,15 +59,33 @@ jobs:
           slot-name: production
           clean: true
 
-      - name: 'Retry deployment if failed'
-        if: steps.deploy.outcome == 'failure'
+      - name: 'Wait before retry (60s)'
+        if: steps.deploy_1.outcome == 'failure'
         run: |
-          echo "First deployment failed, waiting 60 seconds before retry..."
+          echo "Deployment failed, waiting 60 seconds before retry..."
           sleep 60
 
-      - name: 'Retry deployment'
-        if: steps.deploy.outcome == 'failure'
+      - name: 'Deploy to Azure Web App (attempt 2)'
+        if: steps.deploy_1.outcome == 'failure'
         uses: azure/webapps-deploy@v3
+        id: deploy_2
+        continue-on-error: true
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: backend.zip
+          slot-name: production
+          clean: true
+
+      - name: 'Wait before retry (120s)'
+        if: steps.deploy_2.outcome == 'failure'
+        run: |
+          echo "Deployment failed again, waiting 120 seconds before final retry..."
+          sleep 120
+
+      - name: 'Deploy to Azure Web App (attempt 3)'
+        if: steps.deploy_2.outcome == 'failure'
+        uses: azure/webapps-deploy@v3
+        id: deploy_3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: backend.zip
