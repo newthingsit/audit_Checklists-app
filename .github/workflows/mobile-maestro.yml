@@ -83,20 +83,53 @@ jobs:
           echo "checklist_name=${CHECKLIST_NAME}" >> $GITHUB_OUTPUT
           echo "run_mode=${RUN_MODE}" >> $GITHUB_OUTPUT
       - name: Preflight checks
-        if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true) }}
-        continue-on-error: true
-        run: |
-          node scripts/e2e/preflight.js --api "$API_URL" --checklist "$CHECKLIST_NAME" --mode "$RUN_MODE" --output preflight.json
-      - name: Read preflight output
         id: preflight_out
         if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true) }}
+        shell: bash
         run: |
-          if [ ! -f preflight.json ]; then
+          set +e
+          CHECKLIST="$CHECKLIST_NAME"
+          API_HOST="${API_URL%%/*}"
+          PRE_SCRIPT="scripts/e2e/preflight.js"
+          LOG=preflight.log
+          OUT=preflight.json
+          # Check script exists
+          if [ ! -f "$PRE_SCRIPT" ]; then
             echo "status=FAIL" >> $GITHUB_OUTPUT
-            echo "reason=Preflight did not produce output" >> $GITHUB_OUTPUT
+            echo "reason=missing preflight.js at $PRE_SCRIPT" >> $GITHUB_OUTPUT
+            echo "## Preflight Summary" >> $GITHUB_STEP_SUMMARY
+            echo "- Checklist: $CHECKLIST" >> $GITHUB_STEP_SUMMARY
+            echo "- API_URL: [masked]" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: FAIL" >> $GITHUB_STEP_SUMMARY
+            echo "- Reason: missing preflight.js at $PRE_SCRIPT" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
-          node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('preflight.json','utf8'));console.log('status='+data.status);console.log('reason='+data.reason.replace(/\n/g,' '));" >> $GITHUB_OUTPUT
+          # Run preflight
+          node "$PRE_SCRIPT" --api "$API_URL" --checklist "$CHECKLIST" --mode "$RUN_MODE" --output "$OUT" 2>&1 | tee "$LOG"
+          RC=${PIPESTATUS[0]}
+          if [ $RC -eq 0 ] && [ -f "$OUT" ]; then
+            STATUS=$(node -e "const fs=require('fs');const d=JSON.parse(fs.readFileSync('$OUT','utf8'));console.log(d.status||'PASS')")
+            REASON=$(node -e "const fs=require('fs');const d=JSON.parse(fs.readFileSync('$OUT','utf8'));console.log((d.reason||'')?.replace(/\n/g,' '))")
+            echo "status=$STATUS" >> $GITHUB_OUTPUT
+            echo "reason=$REASON" >> $GITHUB_OUTPUT
+            echo "## Preflight Summary" >> $GITHUB_STEP_SUMMARY
+            echo "- Checklist: $CHECKLIST" >> $GITHUB_STEP_SUMMARY
+            echo "- API_URL: [masked]" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: $STATUS" >> $GITHUB_STEP_SUMMARY
+            if [ "$STATUS" = "FAIL" ]; then
+              echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "status=FAIL" >> $GITHUB_OUTPUT
+            REASON=$(tail -n 20 "$LOG" | tr '\n' ' ' | sed 's/"/'\''/g')
+            echo "reason=$REASON" >> $GITHUB_OUTPUT
+            echo "## Preflight Summary" >> $GITHUB_STEP_SUMMARY
+            echo "- Checklist: $CHECKLIST" >> $GITHUB_STEP_SUMMARY
+            echo "- API_URL: [masked]" >> $GITHUB_STEP_SUMMARY
+            echo "- Status: FAIL" >> $GITHUB_STEP_SUMMARY
+            echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
+          fi
+          exit 0
       - name: Fail on preflight error
         if: ${{ steps.preflight_out.outputs.status == 'FAIL' }}
         run: |
