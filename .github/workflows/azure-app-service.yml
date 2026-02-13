@@ -31,23 +31,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm ci --omit=dev
+          echo "✅ Dependencies installed for production"
+          ls -la node_modules | head -20
 
       - name: Create deployment package
         run: |
           cd backend
-          zip -r ../backend.zip . -x "*.git*" -x "web.config" -x "*.md" -x "node_modules/*"
+          zip -r ../backend.zip . -x "*.git*" -x "web.config" -x "*.md"
 
       - name: 'Azure Login'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: 'Configure App Settings for deployment'
-        run: |
-          az webapp config appsettings set \
-            --resource-group audit-app-rg \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
       - name: 'Deploy to Azure Web App (attempt 1)'
         uses: azure/webapps-deploy@v3
@@ -96,6 +98,6 @@ jobs:
         if: always()
         run: |
           az webapp restart \
-            --resource-group audit-app-rg \
+            --resource-group litebitefoods \
             --name ${{ env.AZURE_WEBAPP_NAME }}
 
