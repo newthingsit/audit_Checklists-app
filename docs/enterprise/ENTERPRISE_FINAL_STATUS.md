@@ -91,9 +91,11 @@
 | /api/audits | ✅ Secured (401) | < 50ms |
 | /api/locations | ✅ Secured (401) | < 50ms |
 
-**Uptime:** 3034+ seconds (stable)  
+**Uptime:** 231+ seconds (stable)  
 **Error Rate:** 0%  
 **Security:** All endpoints properly authenticated
+
+**Short Stability Check:** 2/2 health probes over 10 minutes (HTTP 200)
 
 ---
 
@@ -112,8 +114,8 @@
 
 3. **Azure App Service CI/CD - Backend** ✅
    - Trigger: Push to master
-   - Last Deploy: 2026-02-13T04:54:03Z
-   - Duration: 15m35s
+   - Last Deploy: 2026-02-13T06:39:40Z (Run 21977457954)
+   - Duration: ~17 minutes
    - Status: Success
 
 4. **Azure Static Web Apps CI/CD** ✅

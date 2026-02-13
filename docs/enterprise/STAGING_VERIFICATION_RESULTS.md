@@ -12,7 +12,7 @@ Environment:
 
 ## Health Checks - ✅ ALL PASSING
 - Web availability: PASS (HTTP 200)
-- API /api/health: PASS (HTTP 200, uptime: 3034s)
+- API /api/health: PASS (HTTP 200, uptime: 231s)
 - API /api/healthz: PASS (HTTP 200)
 - API /api/readyz: PASS (HTTP 200)
 
@@ -33,10 +33,13 @@ All routes properly enforce authentication (HTTP 401):
   - Can be enabled via Azure App Service settings if needed
 
 ## Deployment Status
-- Last successful deployment: 2026-02-13T04:54:03Z (master branch)
-- Commit: "chore: fix codeql perms and record staging results"
-- Duration: 15m35s
+- Last successful deployment: 2026-02-13T06:39:40Z (master branch)
+- Run: 21977457954
+- Commit: 235ce0e
 - Status: SUCCESS
+
+## Stability Check
+- Short run: 2/2 health probes over 10 minutes (HTTP 200)
 
 ## Enterprise Features Verified
 - ✅ Health/readiness/liveness checks functional
@@ -48,7 +51,7 @@ All routes properly enforce authentication (HTTP 401):
 
 ## Resolution Notes
 **Previous Issue:** API returned HTTP 503 on initial verification.
-**Resolution:** API recovered after Azure App Service auto-restart. No manual intervention required.
+**Resolution:** Deployment updated to Azure Oryx build path and succeeded.
 **Status:** All endpoints confirmed healthy on re-verification.
 
 ## Next Steps
