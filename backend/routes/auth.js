@@ -7,6 +7,10 @@ try {
   ({ body, validationResult } = require('express-validator'));
 } catch (error) {
   // Fallback to avoid crashing the server when validator files are missing.
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Validation dependency unavailable in production. Aborting startup.', error.message);
+    throw error;
+  }
   console.warn('Validation dependency unavailable; skipping express-validator.', error.message);
   const createNoopChain = () => {
     const chain = (req, res, next) => next();

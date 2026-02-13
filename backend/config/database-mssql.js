@@ -23,6 +23,13 @@ const init = () => {
       const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
                              !shouldEncrypt || 
                              isLocalServer;
+
+      const connectionTimeout = parseInt(process.env.MSSQL_CONNECTION_TIMEOUT_MS || '60000', 10);
+      const requestTimeout = parseInt(process.env.MSSQL_REQUEST_TIMEOUT_MS || '60000', 10);
+      const poolMax = parseInt(process.env.MSSQL_POOL_MAX || '10', 10);
+      const poolMin = parseInt(process.env.MSSQL_POOL_MIN || '2', 10);
+      const poolIdleTimeout = parseInt(process.env.MSSQL_POOL_IDLE_TIMEOUT_MS || '300000', 10);
+      const poolAcquireTimeout = parseInt(process.env.MSSQL_POOL_ACQUIRE_TIMEOUT_MS || '60000', 10);
       
       const config = {
         server: server,
@@ -34,14 +41,14 @@ const init = () => {
           encrypt: shouldEncrypt,
           trustServerCertificate: shouldTrustCert,
           enableArithAbort: true,
-          connectionTimeout: 60000, // Increased for Azure cold starts
-          requestTimeout: 60000
+          connectionTimeout: connectionTimeout, // Increased for Azure cold starts
+          requestTimeout: requestTimeout
         },
         pool: {
-          max: 10,
-          min: 2, // Keep minimum connections alive to prevent cold start issues
-          idleTimeoutMillis: 300000, // 5 minutes - keep connections alive longer for Azure
-          acquireTimeoutMillis: 60000, // Increased timeout for acquiring a connection
+          max: poolMax,
+          min: poolMin, // Keep minimum connections alive to prevent cold start issues
+          idleTimeoutMillis: poolIdleTimeout, // Keep connections alive longer for Azure
+          acquireTimeoutMillis: poolAcquireTimeout, // Increased timeout for acquiring a connection
           createTimeoutMillis: 60000,
           destroyTimeoutMillis: 5000,
           reapIntervalMillis: 1000,
@@ -130,6 +137,13 @@ const ensureConnection = async (forceReconnect = false) => {
         const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
                                !shouldEncrypt || 
                                isLocalServer;
+
+        const connectionTimeout = parseInt(process.env.MSSQL_CONNECTION_TIMEOUT_MS || '60000', 10);
+        const requestTimeout = parseInt(process.env.MSSQL_REQUEST_TIMEOUT_MS || '60000', 10);
+        const poolMax = parseInt(process.env.MSSQL_POOL_MAX || '10', 10);
+        const poolMin = parseInt(process.env.MSSQL_POOL_MIN || '2', 10);
+        const poolIdleTimeout = parseInt(process.env.MSSQL_POOL_IDLE_TIMEOUT_MS || '300000', 10);
+        const poolAcquireTimeout = parseInt(process.env.MSSQL_POOL_ACQUIRE_TIMEOUT_MS || '60000', 10);
         
         const config = {
           server: server,
@@ -141,14 +155,14 @@ const ensureConnection = async (forceReconnect = false) => {
             encrypt: shouldEncrypt,
             trustServerCertificate: shouldTrustCert,
             enableArithAbort: true,
-            connectionTimeout: 60000, // Increased for Azure cold starts
-            requestTimeout: 60000
+            connectionTimeout: connectionTimeout, // Increased for Azure cold starts
+            requestTimeout: requestTimeout
           },
           pool: {
-            max: 10,
-            min: 2,
-            idleTimeoutMillis: 300000, // 5 minutes - keep connections alive longer
-            acquireTimeoutMillis: 60000, // Increased timeout
+            max: poolMax,
+            min: poolMin,
+            idleTimeoutMillis: poolIdleTimeout, // Keep connections alive longer
+            acquireTimeoutMillis: poolAcquireTimeout, // Increased timeout
             createTimeoutMillis: 60000,
             destroyTimeoutMillis: 5000,
             reapIntervalMillis: 1000,

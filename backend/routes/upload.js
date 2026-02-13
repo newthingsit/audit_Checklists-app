@@ -17,12 +17,20 @@ if (!fs.existsSync(uploadsDir)) {
 // Configure multer for file uploads - store in memory for processing
 const storage = multer.memoryStorage();
 
+const allowedMimeTypes = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif'
+]);
+
 const fileFilter = (req, file, cb) => {
-  // Accept only images
-  if (file.mimetype.startsWith('image/')) {
+  if (allowedMimeTypes.has(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed'), false);
+    cb(new Error('Unsupported image type'), false);
   }
 };
 
@@ -47,6 +55,17 @@ const compressAndSaveImage = async (buffer, filename) => {
     
     // Get image metadata
     const metadata = await sharp(buffer).metadata();
+    const allowedFormats = new Set(['jpeg', 'jpg', 'png', 'webp', 'heic', 'heif']);
+    if (!metadata.format || !allowedFormats.has(metadata.format)) {
+      throw new Error('Unsupported image format');
+    }
+    if (!metadata.width || !metadata.height) {
+      throw new Error('Invalid image dimensions');
+    }
+    const maxPixels = 25_000_000; // Guard against decompression bombs
+    if (metadata.width * metadata.height > maxPixels) {
+      throw new Error('Image is too large');
+    }
     
     // Calculate resize dimensions (maintain aspect ratio)
     let width = metadata.width;

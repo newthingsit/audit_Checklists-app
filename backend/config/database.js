@@ -6,6 +6,23 @@ const dbPath = path.join(__dirname, '../data/audit.db');
 
 let db = null;
 
+const applySqlitePragmas = () => {
+  const journalMode = process.env.SQLITE_JOURNAL_MODE || 'WAL';
+  const synchronous = process.env.SQLITE_SYNCHRONOUS || 'NORMAL';
+  const tempStore = process.env.SQLITE_TEMP_STORE || 'MEMORY';
+  const cacheSize = process.env.SQLITE_CACHE_SIZE || '-20000'; // ~20MB
+  const busyTimeoutMs = process.env.SQLITE_BUSY_TIMEOUT_MS || '5000';
+
+  db.serialize(() => {
+    db.run('PRAGMA foreign_keys = ON');
+    db.run(`PRAGMA journal_mode = ${journalMode}`);
+    db.run(`PRAGMA synchronous = ${synchronous}`);
+    db.run(`PRAGMA temp_store = ${tempStore}`);
+    db.run(`PRAGMA cache_size = ${cacheSize}`);
+    db.run(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+  });
+};
+
 const init = () => {
   return new Promise((resolve, reject) => {
     db = new sqlite3.Database(dbPath, (err) => {
@@ -15,6 +32,7 @@ const init = () => {
         return;
       }
       console.log('Connected to SQLite database');
+      applySqlitePragmas();
       createTables().then(resolve).catch(reject);
     });
   });

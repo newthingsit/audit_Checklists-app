@@ -17,9 +17,36 @@ const path = require('path');
 require('dotenv').config();
 
 const logger = require('./utils/logger');
+const { validateEnvOrThrow } = require('./config/env');
+const requestContext = require('./middleware/request-context');
+const { metricsMiddleware, metricsHandler } = require('./utils/metrics');
 const app = express();
 
 const PORT = process.env.PORT || 5000;
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS || 15000);
+const SERVER_KEEPALIVE_MS = Number(process.env.SERVER_KEEPALIVE_MS || 65000);
+const SERVER_HEADERS_TIMEOUT_MS = Number(process.env.SERVER_HEADERS_TIMEOUT_MS || 70000);
+
+let server = null;
+const scheduledTasks = [];
+let isReady = false;
+
+app.disable('x-powered-by');
+
+try {
+  validateEnvOrThrow(logger);
+} catch (error) {
+  logger.error('Environment validation failed. Shutting down.', error);
+  process.exit(1);
+}
+
+// Attach request id + timing early for correlation
+app.use(requestContext);
+
+const metricsEnabled = String(process.env.METRICS_ENABLED || '').toLowerCase() === 'true';
+if (metricsEnabled) {
+  app.use(metricsMiddleware);
+}
 
 // ----------------------------------------------------------------------------
 // CORS SAFETY NET: Ensure ACAO is always present for browser requests
@@ -241,6 +268,19 @@ app.use(helmet({
       connectSrc: ["'self'", "https://app.litebitefoods.com", "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net"],
     },
   },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: process.env.NODE_ENV === 'production'
+    ? { maxAge: 15552000, includeSubDomains: true, preload: true }
+    : false,
+  permissionsPolicy: {
+    policy: {
+      camera: ['self'],
+      microphone: ['self'],
+      geolocation: ['self'],
+      fullscreen: ['self'],
+      payment: [],
+    }
+  },
   crossOriginEmbedderPolicy: false, // Allow images from external sources
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin requests
   // CRITICAL: Don't let Helmet interfere with CORS headers
@@ -291,6 +331,18 @@ app.use(cors({
 // Only enable in production or if explicitly set
 if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
+}
+
+// Optional HTTPS enforcement (recommended in production behind a proxy)
+if (process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS === 'true') {
+  app.use((req, res, next) => {
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const isSecure = req.secure || forwardedProto === 'https';
+    if (!isSecure) {
+      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    }
+    next();
+  });
 }
 
 // Rate Limiting - More lenient in development
@@ -557,8 +609,53 @@ app.use('/api', require('./routes/dynamic-audit-items')); // Dynamic item entry 
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+  res.json({
+    status: 'OK',
+    message: 'Server is running',
+    version: process.env.npm_package_version || 'unknown',
+    uptime: Math.round(process.uptime()),
+    requestId: req.requestId || null
+  });
 });
+
+// Liveness probe (process up)
+app.get('/api/healthz', (req, res) => {
+  res.status(200).json({ status: 'OK' });
+});
+
+// Readiness probe (DB ready)
+app.get('/api/readyz', (req, res) => {
+  if (!isReady) {
+    return res.status(503).json({ status: 'NOT_READY' });
+  }
+
+  try {
+    const dbInstance = db.getDb();
+    dbInstance.get('SELECT 1 as test', [], (err) => {
+      if (err) {
+        return res.status(503).json({ status: 'NOT_READY' });
+      }
+      res.status(200).json({ status: 'OK' });
+    });
+  } catch (error) {
+    res.status(503).json({ status: 'NOT_READY' });
+  }
+});
+
+if (metricsEnabled) {
+  app.get('/api/metrics', (req, res) => {
+    const token = process.env.METRICS_TOKEN;
+    if (token) {
+      const header = req.headers.authorization || '';
+      const bearer = header.startsWith('Bearer ') ? header.slice(7) : null;
+      const provided = bearer || req.headers['x-metrics-token'];
+      if (provided !== token) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+    return metricsHandler(req, res);
+  });
+}
 
 // Warmup endpoint - tests database connection (useful for Azure cold starts)
 app.get('/api/warmup', async (req, res) => {
@@ -638,7 +735,10 @@ app.use((err, req, res, next) => {
   // For other routes, use default error handling
   logger.error('Unhandled request error:', { path: reqPath, method: req.method, error: err.message });
   if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({
+      error: 'Internal server error',
+      requestId: req.requestId || null
+    });
   }
 });
 
@@ -660,29 +760,29 @@ db.init().then(async () => {
   const cron = require('node-cron');
 
   // Schedule job to process scheduled audits daily at 9 AM
-  cron.schedule('0 9 * * *', () => {
+  scheduledTasks.push(cron.schedule('0 9 * * *', () => {
     logger.info('[Cron] Running scheduled audits job...');
     jobs.processScheduledAudits();
-  });
+  }));
 
   // Schedule job to send reminders daily at 8 AM
-  cron.schedule('0 8 * * *', () => {
+  scheduledTasks.push(cron.schedule('0 8 * * *', () => {
     logger.info('[Cron] Running reminders job...');
     jobs.sendReminders();
-  });
+  }));
 
   // Schedule escalation job daily at 10 AM (after reminders and audits)
-  cron.schedule('0 10 * * *', () => {
+  scheduledTasks.push(cron.schedule('0 10 * * *', () => {
     logger.info('[Cron] Running escalation check job...');
     escalationJob.runEscalationCheck();
-  });
+  }));
 
   // Cleanup expired refresh tokens daily at midnight
   const tokenService = require('./utils/tokenService');
-  cron.schedule('0 0 * * *', () => {
+  scheduledTasks.push(cron.schedule('0 0 * * *', () => {
     logger.info('[Cron] Running refresh token cleanup...');
     tokenService.cleanup().catch(err => logger.error('[Cron] Token cleanup error:', err));
-  });
+  }));
 
   // Run jobs immediately on startup (for testing)
   if (process.env.RUN_JOBS_ON_STARTUP === 'true') {
@@ -694,7 +794,7 @@ db.init().then(async () => {
     escalationJob.runEscalationCheck();
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  server = app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Access from network: http://YOUR_IP:${PORT}`);
     logger.info(`Local access: http://localhost:${PORT}`);
@@ -702,7 +802,53 @@ db.init().then(async () => {
     logger.info('[Background Jobs] Reminders job: Daily at 8:00 AM');
     logger.info('[Background Jobs] Escalation check job: Daily at 10:00 AM');
   });
+
+  server.keepAliveTimeout = SERVER_KEEPALIVE_MS;
+  server.headersTimeout = SERVER_HEADERS_TIMEOUT_MS;
+  isReady = true;
 }).catch(err => {
   logger.error('Database initialization failed:', err);
   process.exit(1);
+});
+
+const shutdown = async (signal) => {
+  logger.warn(`[Shutdown] Received ${signal}, shutting down...`);
+  isReady = false;
+
+  try {
+    scheduledTasks.forEach(task => {
+      try {
+        task.stop();
+      } catch (stopErr) {
+        logger.warn('[Shutdown] Failed to stop cron task:', stopErr.message);
+      }
+    });
+
+    if (server) {
+      await new Promise((resolve) => server.close(() => resolve()));
+    }
+
+    await db.close();
+  } catch (error) {
+    logger.error('[Shutdown] Error during shutdown:', error);
+  }
+
+  setTimeout(() => {
+    logger.warn('[Shutdown] Forcing process exit after timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('[Process] Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('[Process] Uncaught exception:', error);
+  shutdown('uncaughtException');
 });
