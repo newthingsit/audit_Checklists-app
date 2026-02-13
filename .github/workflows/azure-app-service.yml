@@ -53,18 +53,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 'Configure Azure App Settings'
-        run: |
-          az webapp config appsettings set \
-            --resource-group litebitefoods \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
-              ENABLE_ORYX_BUILD=true \
-              NODE_ENV=production
-          
-          echo "✅ Azure configured to build on deployment"
-
       - name: 'Deploy to Azure Web App (attempt 1)'
         uses: azure/webapps-deploy@v3
         id: deploy_1
