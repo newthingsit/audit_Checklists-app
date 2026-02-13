@@ -41,6 +41,7 @@ This document tracks the enterprise-hardening phases for the audit platform.
 - Add CodeQL + dependency review workflows.
 - Add Dependabot for dependency updates.
 - CI caching + npm ci for deterministic builds.
+- Staging verification checklist and production validation plan.
 
 ## Notes
 - All phases support Azure, local dev, and on-prem deployments.
