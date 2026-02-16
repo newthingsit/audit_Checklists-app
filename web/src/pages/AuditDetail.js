@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -89,6 +89,8 @@ const normalizeAndMergeCategoryScores = (rawScores) => {
 const AuditDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const actionPlanRef = useRef(null);
   const [audit, setAudit] = useState(null);
   const [items, setItems] = useState([]);
   const [actions, setActions] = useState([]);
@@ -131,6 +133,12 @@ const AuditDetail = () => {
     fetchAudit();
     fetchUsers();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (location.hash !== '#action-plan') return;
+    if (!actionPlanRef.current) return;
+    actionPlanRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash, actionPlan]);
 
   const fetchUsers = async () => {
     try {
@@ -742,7 +750,7 @@ const AuditDetail = () => {
 
         {/* Top 3 Deviations Summary - Quick glance cards */}
         {audit.status === 'completed' && actionPlan && actionPlan.action_items && actionPlan.action_items.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+          <Paper ref={actionPlanRef} sx={{ p: 3, mb: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
               🚨 Top {actionPlan.action_items.length} Deviation{actionPlan.action_items.length > 1 ? 's' : ''} Identified
             </Typography>

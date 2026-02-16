@@ -45,6 +45,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import Pagination from '@mui/material/Pagination';
 import axios from 'axios';
 import Layout from '../components/Layout';
@@ -893,6 +894,20 @@ const AuditHistory = () => {
                             </Button>
                           </Tooltip>
                         </Box>
+                      )}
+                      {audit.status === 'completed' && (
+                        <Button
+                          size="small"
+                          startIcon={<AssignmentIcon />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/audit/${audit.id}#action-plan`);
+                          }}
+                          fullWidth
+                          sx={{ textTransform: 'none', borderRadius: 2 }}
+                        >
+                          Action Plan
+                        </Button>
                       )}
                       {/* Email button */}
                       <Button

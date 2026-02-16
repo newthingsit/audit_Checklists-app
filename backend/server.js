@@ -60,6 +60,9 @@ const normalizeOrigin = (value) => String(value || '').toLowerCase().replace(/\/
 // CORS Configuration - Include production domains by default
 const defaultOrigins = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
   'http://localhost:19006',
   'https://app.litebitefoods.com',
   'https://www.app.litebitefoods.com',

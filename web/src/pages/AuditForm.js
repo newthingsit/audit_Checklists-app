@@ -836,7 +836,7 @@ const AuditForm = () => {
     });
   }, [evaluateConditionalItem]);
 
-  const handleCategorySelect = (category, section = null) => {
+  const handleCategorySelect = useCallback((category, section = null) => {
     setSelectedCategory(category);
     // Filter items by category (using normalized names) and optionally by section
     const filtered = items.filter(item => {
@@ -845,7 +845,24 @@ const AuditForm = () => {
       return true;
     });
     setFilteredItems(filtered);
-  };
+  }, [items]);
+
+  const autoAdvanceRef = useRef({ category: null });
+  const autoAdvanceTriggerRef = useRef({
+    average: { id: null, complete: false },
+    signature: { id: null, complete: false }
+  });
+
+  const getNextIncompleteCategory = useCallback(() => {
+    if (!selectedCategory) return null;
+    const currentIndex = categories.indexOf(selectedCategory);
+    if (currentIndex < 0) return null;
+    for (let i = currentIndex + 1; i < categories.length; i += 1) {
+      const next = categories[i];
+      if (!categoryCompletionStatus[next]?.isComplete) return next;
+    }
+    return null;
+  }, [categories, selectedCategory, categoryCompletionStatus]);
 
   // Calculate category completion status
   const calculateCategoryCompletion = useCallback(() => {
@@ -855,7 +872,8 @@ const AuditForm = () => {
     categories.forEach(cat => {
       // Use normalized category name for matching
       const categoryItems = items.filter(item => normalizeCategoryName(item.category) === cat);
-      const completedInCategory = categoryItems.filter(item => {
+      const visibleCategoryItems = filterItemsByCondition(categoryItems, items, responses, selectedOptions, comments, inputValues);
+      const completedInCategory = visibleCategoryItems.filter(item => {
         const inputType = getNormalizedInputType(item);
         const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
         const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
@@ -874,12 +892,12 @@ const AuditForm = () => {
       
       status[cat] = {
         completed: completedInCategory,
-        total: categoryItems.length,
-        isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
+        total: visibleCategoryItems.length,
+        isComplete: completedInCategory === visibleCategoryItems.length && visibleCategoryItems.length > 0
       };
     });
     return status;
-  }, [categories, items, responses, selectedOptions, inputValues, photos, getNormalizedInputType]);
+  }, [categories, items, responses, selectedOptions, comments, inputValues, photos, getNormalizedInputType, filterItemsByCondition]);
 
   // Update category completion status when responses or options change
   useEffect(() => {
@@ -888,6 +906,148 @@ const AuditForm = () => {
       setCategoryCompletionStatus(status);
     }
   }, [categories, items, responses, selectedOptions, calculateCategoryCompletion]);
+
+  useEffect(() => {
+    const shouldDebugAutoAdvance = typeof window !== 'undefined'
+      && (window.location.search.includes('debugAutoAdvance=1')
+        || window.sessionStorage?.getItem('debugAutoAdvance') === '1'
+        || window.localStorage?.getItem('debugAutoAdvance') === '1');
+    if (shouldDebugAutoAdvance) {
+      const debugPayload = {
+        stage: 'start',
+        activeStep,
+        selectedCategory,
+        saving,
+        signatureModalOpen
+      };
+      window.__autoAdvanceDebug = debugPayload;
+      console.log('[auto-advance]', JSON.stringify(debugPayload));
+    }
+    if (activeStep !== 1 || !selectedCategory || saving) return;
+    if (signatureModalOpen) return;
+
+    const currentIndex = categories.indexOf(selectedCategory);
+    const nextCategory = currentIndex >= 0 ? categories[currentIndex + 1] : null;
+    if (shouldDebugAutoAdvance && (!nextCategory || nextCategory === selectedCategory)) {
+      const debugPayload = {
+        stage: 'no-next-category',
+        selectedCategory,
+        nextCategory
+      };
+      window.__autoAdvanceDebug = debugPayload;
+      console.log('[auto-advance]', JSON.stringify(debugPayload));
+    }
+    if (!nextCategory || nextCategory === selectedCategory) return;
+
+    const categoryItems = items.filter(item => normalizeCategoryName(item.category) === selectedCategory);
+    const averageItem = categoryItems.find(item => /^Average\s*\(Auto\)$/i.test((item.title || '').trim()));
+    const signatureItem = categoryItems.find(item => getNormalizedInputType(item) === 'signature');
+    const attemptItems = averageItem
+      ? categoryItems.filter(item => /^Time\s*[–-]\s*Attempt\s*[1-5]\b/i.test((item.title || '').trim()))
+      : [];
+
+    let averageCompleteNow = false;
+    if (averageItem) {
+      const allAttemptsComplete = attemptItems.length > 0
+        ? attemptItems.every(item => String(inputValues[item.id] || '').trim() !== '')
+        : true;
+      const averageValue = String(inputValues[averageItem.id] || '').trim() !== '';
+      averageCompleteNow = allAttemptsComplete && averageValue;
+    }
+
+    const signatureCompleteNow = signatureItem
+      ? (!!photos[signatureItem.id] || String(inputValues[signatureItem.id] || '').trim() !== '')
+      : false;
+
+    if (averageItem) {
+      if (autoAdvanceTriggerRef.current.average.id !== averageItem.id) {
+        autoAdvanceTriggerRef.current.average.complete = false;
+      }
+      autoAdvanceTriggerRef.current.average.id = averageItem.id;
+    }
+
+    if (signatureItem) {
+      if (autoAdvanceTriggerRef.current.signature.id !== signatureItem.id) {
+        autoAdvanceTriggerRef.current.signature.complete = false;
+      }
+      autoAdvanceTriggerRef.current.signature.id = signatureItem.id;
+    }
+
+    const averageTriggered = averageItem
+      && !autoAdvanceTriggerRef.current.average.complete
+      && averageCompleteNow;
+    const signatureTriggered = signatureItem
+      && !autoAdvanceTriggerRef.current.signature.complete
+      && signatureCompleteNow;
+
+    if (shouldDebugAutoAdvance) {
+      const debugPayload = {
+        selectedCategory,
+        nextCategory,
+        averageItemId: averageItem?.id || null,
+        signatureItemId: signatureItem?.id || null,
+        averageCompleteNow,
+        signatureCompleteNow,
+        averageTriggered,
+        signatureTriggered,
+        attemptsComplete: attemptItems.length > 0
+          ? attemptItems.every(item => String(inputValues[item.id] || '').trim() !== '')
+          : null,
+        averageValue: String(inputValues[averageItem?.id] || '').trim(),
+        signatureValue: String(inputValues[signatureItem?.id] || '').trim(),
+        signaturePhoto: !!photos[signatureItem?.id]
+      };
+      window.__autoAdvanceDebug = debugPayload;
+      console.log('[auto-advance]', JSON.stringify(debugPayload));
+    }
+
+    autoAdvanceTriggerRef.current.average.complete = averageCompleteNow;
+    autoAdvanceTriggerRef.current.signature.complete = signatureCompleteNow;
+
+    if (averageTriggered || signatureTriggered) {
+      autoAdvanceRef.current = { category: selectedCategory };
+      handleCategorySelect(nextCategory);
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  }, [
+    activeStep,
+    selectedCategory,
+    items,
+    inputValues,
+    photos,
+    categories,
+    getNormalizedInputType,
+    handleCategorySelect,
+    saving,
+    signatureModalOpen
+  ]);
+
+  useEffect(() => {
+    if (activeStep !== 1 || !selectedCategory || saving) return;
+    if (signatureModalOpen) return;
+    const currentStatus = categoryCompletionStatus[selectedCategory];
+    if (!currentStatus?.isComplete) return;
+
+    const nextCategory = getNextIncompleteCategory();
+    if (!nextCategory || nextCategory === selectedCategory) return;
+    if (autoAdvanceRef.current.category === selectedCategory) return;
+
+    autoAdvanceRef.current = { category: selectedCategory };
+    handleCategorySelect(nextCategory);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [
+    activeStep,
+    selectedCategory,
+    categoryCompletionStatus,
+    getNextIncompleteCategory,
+    handleCategorySelect,
+    saving,
+    signatureModalOpen
+  ]);
 
   // Mark form as dirty when user changes responses
   useEffect(() => {
