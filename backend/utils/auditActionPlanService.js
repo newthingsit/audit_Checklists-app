@@ -9,6 +9,7 @@ const {
   computeAverageMinutes,
   isAcknowledgementCategory: _isAcknowledgementCategory,
 } = require('./auditHelpers');
+const { identifyDeviations } = require('./enhancedPdfReport');
 
 // -----------------------------------------------------------------------
 // Severity configuration
@@ -160,7 +161,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       return callback(err);
     }
 
-    const deviationsWithScore = (allItems || []).map(item => {
+    let deviationsWithScore = (allItems || []).map(item => {
       if (isNonScoredInputType(item.input_type)) return null;
       const selectedMark      = item.selected_mark || item.mark || '';
       const selectedOptionText = item.selected_option_text || '';
@@ -230,6 +231,53 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
         weight: item.weight || 1,
       };
     }).filter(Boolean);
+
+    if (deviationsWithScore.length === 0) {
+      const fallbackTopDeviations = identifyDeviations(
+        (allItems || []).map(item => ({
+          ...item,
+          maxScore: parseFloat(item.max_mark) || 3
+        }))
+      );
+
+      deviationsWithScore = (fallbackTopDeviations || []).map(item => {
+        const severityLabel = String(item.severity || 'MINOR').toUpperCase();
+        const severity = severityLabel === 'CRITICAL'
+          ? SEVERITY_CONFIG.CRITICAL
+          : severityLabel === 'MAJOR'
+            ? SEVERITY_CONFIG.MAJOR
+            : SEVERITY_CONFIG.MINOR;
+        const selectedMark = item.selected_mark || item.mark || '';
+        const maxMark = Number(item.maxScore) || 3;
+
+        return {
+          item_id: item.item_id,
+          audit_item_id: item.audit_item_id,
+          title: item.title,
+          description: item.description,
+          category: item.category,
+          is_critical: item.is_critical === 1 || item.is_critical === true,
+          required: item.required === 1 || item.required === true,
+          deviation_flag: true,
+          severity: severity.label,
+          severity_level: severity.level,
+          priority: severity.priority,
+          deviation_score: severity.level,
+          deviation_reason: item.deviation_reason || 'Deviation detected',
+          selected_option: item.selected_option_text || '',
+          mark: selectedMark,
+          max_mark: maxMark,
+          score_loss: Number(item.score_loss) || computeScoreLoss(parseFloat(selectedMark), maxMark, false, null, null),
+          business_priority: Number(item.business_priority) || getBusinessPriorityWeight(item.category),
+          owner_role: determineOwnerRole(item.category),
+          root_cause: item.deviation_reason || `Process gap detected in ${item.category || 'General'}`,
+          preventive_action: `Implement daily checks and training for ${item.category || 'this category'}`,
+          comment: item.comment,
+          photo_url: item.photo_url,
+          weight: item.weight || 1,
+        };
+      });
+    }
 
     // Rank deviations
     deviationsWithScore.sort((a, b) => {
