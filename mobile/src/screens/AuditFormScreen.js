@@ -1646,7 +1646,7 @@ const AuditFormScreen = () => {
             const response = updated[i.id] || prev[i.id];
             return response && response !== 'pending' && response !== '';
           }).length;
-          return {
+          const nextStatus = {
             ...prevStatus,
             [item.category]: {
               completed: completedInCategory,
@@ -1654,11 +1654,15 @@ const AuditFormScreen = () => {
               isComplete: completedInCategory === categoryItems.length && categoryItems.length > 0
             }
           };
+          if (completedInCategory === categoryItems.length && categoryItems.length > 0 && item.category === selectedCategory) {
+            moveToNextCategory(item.category);
+          }
+          return nextStatus;
         });
       }
       return updated;
     });
-  }, [auditStatus, comments, getSosAverageItems, items]);
+  }, [auditStatus, comments, getSosAverageItems, items, moveToNextCategory, selectedCategory]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
