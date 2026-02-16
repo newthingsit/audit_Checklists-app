@@ -44,9 +44,10 @@ test.describe('Audit E2E Smoke', () => {
     await page.goto('/checklists');
     await page.getByRole('button', { name: /start audit/i }).first().click();
 
-    const storeInput = page.getByLabel(/Store \*/i);
+    const storeInput = page.locator('main input[aria-autocomplete="list"]').first();
     await storeInput.click();
     await storeInput.fill(location.name);
+    await page.getByRole('option', { name: new RegExp(location.name, 'i') }).first().waitFor({ state: 'visible' });
     await page.getByRole('option', { name: new RegExp(location.name, 'i') }).first().click();
 
     await page.getByRole('button', { name: /next/i }).click();

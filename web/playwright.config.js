@@ -1,5 +1,7 @@
 const { defineConfig } = require('@playwright/test');
 
+const useRemoteBaseUrl = Boolean(process.env.E2E_BASE_URL);
+
 module.exports = defineConfig({
   testDir: './tests/e2e',
   timeout: 120000,
@@ -12,7 +14,7 @@ module.exports = defineConfig({
     video: 'retain-on-failure'
   },
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
-  webServer: {
+  webServer: useRemoteBaseUrl ? undefined : {
     command: 'npm start',
     url: process.env.E2E_BASE_URL || 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
