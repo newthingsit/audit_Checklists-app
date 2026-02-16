@@ -945,11 +945,15 @@ const AuditForm = () => {
     const attemptItems = averageItem
       ? categoryItems.filter(item => /^Time\s*[–-]\s*Attempt\s*[1-5]\b/i.test((item.title || '').trim()))
       : [];
+    const sos = averageItem ? getSosAverageItems(items) : null;
 
     let averageCompleteNow = false;
     if (averageItem) {
-      const allAttemptsComplete = attemptItems.length > 0
-        ? attemptItems.every(item => String(inputValues[item.id] || '').trim() !== '')
+      const attemptIds = (sos && Array.isArray(sos.attemptIds) && sos.attemptIds.length > 0)
+        ? sos.attemptIds
+        : attemptItems.map(item => item.id);
+      const allAttemptsComplete = attemptIds.length > 0
+        ? attemptIds.every(id => String(inputValues[id] || '').trim() !== '')
         : true;
       const averageValue = String(inputValues[averageItem.id] || '').trim() !== '';
       averageCompleteNow = allAttemptsComplete && averageValue;
@@ -990,9 +994,11 @@ const AuditForm = () => {
         signatureCompleteNow,
         averageTriggered,
         signatureTriggered,
-        attemptsComplete: attemptItems.length > 0
-          ? attemptItems.every(item => String(inputValues[item.id] || '').trim() !== '')
-          : null,
+        attemptsComplete: (sos && Array.isArray(sos.attemptIds) && sos.attemptIds.length > 0)
+          ? sos.attemptIds.every(id => String(inputValues[id] || '').trim() !== '')
+          : (attemptItems.length > 0
+            ? attemptItems.every(item => String(inputValues[item.id] || '').trim() !== '')
+            : null),
         averageValue: String(inputValues[averageItem?.id] || '').trim(),
         signatureValue: String(inputValues[signatureItem?.id] || '').trim(),
         signaturePhoto: !!photos[signatureItem?.id]
@@ -1018,6 +1024,7 @@ const AuditForm = () => {
     inputValues,
     photos,
     categories,
+    getSosAverageItems,
     getNormalizedInputType,
     handleCategorySelect,
     saving,
