@@ -3783,6 +3783,31 @@ router.get('/email/status', authenticate, (req, res) => {
 
 const { generateEnhancedAuditPdf } = require('../utils/enhancedPdfReport');
 const { getAuditReportData } = require('../utils/auditReportService');
+const { generateActionPlanWithDeviations } = require('../utils/auditActionPlanService');
+
+const ensureActionPlanExists = (dbInstance, auditId) => new Promise((resolve, reject) => {
+  dbInstance.get(
+    'SELECT COUNT(*) as count FROM action_plan WHERE audit_id = ?',
+    [auditId],
+    (countErr, row) => {
+      if (countErr) return reject(countErr);
+      const existingCount = Number(row?.count || 0);
+      if (existingCount > 0) return resolve(existingCount);
+
+      return generateActionPlanWithDeviations(dbInstance, auditId, (genErr) => {
+        if (genErr) return reject(genErr);
+        dbInstance.get(
+          'SELECT COUNT(*) as count FROM action_plan WHERE audit_id = ?',
+          [auditId],
+          (verifyErr, verifyRow) => {
+            if (verifyErr) return reject(verifyErr);
+            resolve(Number(verifyRow?.count || 0));
+          }
+        );
+      });
+    }
+  );
+});
 
 /**
  * Generate Enhanced QA Audit PDF Report
@@ -3883,6 +3908,12 @@ router.get('/audit/:id/report', authenticate, async (req, res) => {
 
     if (audit.status !== 'completed') {
       return res.status(409).json({ error: 'Audit is not completed' });
+    }
+
+    try {
+      await ensureActionPlanExists(dbInstance, auditId);
+    } catch (actionPlanErr) {
+      logger.error('[Action Plan] Failed to ensure action plan before report:', actionPlanErr);
     }
 
     const reportData = await getAuditReportData(auditId, {

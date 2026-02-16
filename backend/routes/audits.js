@@ -2616,49 +2616,73 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Audit must be completed to generate action plan' });
     }
 
-    // Get action plan entries for this audit (with responsible user info)
-    dbInstance.all(
-      `SELECT ap.*, u.name as responsible_person_name, u.email as responsible_person_email
-       FROM action_plan ap
-       LEFT JOIN users u ON ap.responsible_person_id = u.id
-       WHERE ap.audit_id = ?
-       ORDER BY ap.id ASC`,
-      [auditId],
-      (itemsErr, actionPlanItems) => {
-        if (itemsErr) {
-          logger.error('Error fetching action plan:', itemsErr);
+    const fetchActionPlanItems = (done) => {
+      dbInstance.all(
+        `SELECT ap.*, u.name as responsible_person_name, u.email as responsible_person_email
+         FROM action_plan ap
+         LEFT JOIN users u ON ap.responsible_person_id = u.id
+         WHERE ap.audit_id = ?
+         ORDER BY ap.id ASC`,
+        [auditId],
+        done
+      );
+    };
+
+    const sendActionPlanResponse = (actionPlanItems) => {
+      const actionItems = (actionPlanItems || []).map(item => ({
+        id: item.id,
+        item_id: item.item_id,
+        category: item.checklist_category || '',
+        deviation: item.checklist_question,
+        deviation_reason: item.deviation_reason || '',
+        severity: item.severity || 'MINOR',
+        root_cause: item.root_cause || '',
+        corrective_action: item.corrective_action || '',
+        preventive_action: item.preventive_action || '',
+        owner_role: item.owner_role || '',
+        responsible_person: item.responsible_person || item.responsible_person_name || '',
+        responsible_person_id: item.responsible_person_id || null,
+        target_date: item.target_date,
+        status: item.status || 'OPEN',
+        created_at: item.created_at
+      }));
+
+      res.json({
+        audit_id: auditId,
+        restaurant_name: audit.restaurant_name,
+        completed_at: audit.completed_at,
+        score: audit.score,
+        deviations: [],
+        total_deviations: actionItems.length,
+        top3_count: actionItems.length,
+        action_items: actionItems
+      });
+    };
+
+    fetchActionPlanItems((itemsErr, actionPlanItems) => {
+      if (itemsErr) {
+        logger.error('Error fetching action plan:', itemsErr);
+        return res.status(500).json({ error: 'Error fetching action plan' });
+      }
+
+      if ((actionPlanItems || []).length > 0) {
+        return sendActionPlanResponse(actionPlanItems);
+      }
+
+      generateActionPlanWithDeviations(dbInstance, auditId, (genErr) => {
+        if (genErr) {
+          logger.error('[Action Plan] Error auto-generating from history view:', genErr);
         }
 
-        const actionItems = (actionPlanItems || []).map(item => ({
-          id: item.id,
-          item_id: item.item_id,
-          category: item.checklist_category || '',
-          deviation: item.checklist_question,
-          deviation_reason: item.deviation_reason || '',
-          severity: item.severity || 'MINOR',
-          root_cause: item.root_cause || '',
-          corrective_action: item.corrective_action || '',
-          preventive_action: item.preventive_action || '',
-          owner_role: item.owner_role || '',
-          responsible_person: item.responsible_person || item.responsible_person_name || '',
-          responsible_person_id: item.responsible_person_id || null,
-          target_date: item.target_date,
-          status: item.status || 'OPEN',
-          created_at: item.created_at
-        }));
-
-        res.json({
-          audit_id: auditId,
-          restaurant_name: audit.restaurant_name,
-          completed_at: audit.completed_at,
-          score: audit.score,
-          deviations: [],
-          total_deviations: actionItems.length,
-          top3_count: actionItems.length,
-          action_items: actionItems
+        fetchActionPlanItems((retryErr, retryItems) => {
+          if (retryErr) {
+            logger.error('Error fetching action plan after auto-generation:', retryErr);
+            return res.status(500).json({ error: 'Error fetching action plan' });
+          }
+          return sendActionPlanResponse(retryItems || []);
         });
-      }
-    );
+      });
+    });
   });
 });
 
