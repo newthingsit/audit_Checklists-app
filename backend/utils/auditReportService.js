@@ -10,9 +10,16 @@ const MAJOR_CATEGORIES = [
   { name: 'PROCESSES', match: ['process'] }
 ];
 
+const NON_SCORED_INPUT_TYPES = new Set(['text', 'textarea', 'comment', 'note']);
+
 const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 
 const normalizeCategoryKey = (value) => normalizeText(value).toLowerCase();
+
+const isNonScoredInputType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return NON_SCORED_INPUT_TYPES.has(normalized);
+};
 
 const parseMultiSelectionComment = (raw) => {
   if (!raw || typeof raw !== 'string') return null;
@@ -363,7 +370,10 @@ async function getAuditReportData(auditId, options = {}) {
   const itemsWithScores = items.map(item => ({
     ...item,
     comment: normalizeMultiSelectionComment(item),
-    maxScore: parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 3
+    nonScored: isNonScoredInputType(item.input_type),
+    maxScore: isNonScoredInputType(item.input_type)
+      ? 0
+      : parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 3
   }));
 
   let totalPerfect = 0;
@@ -375,8 +385,10 @@ async function getAuditReportData(auditId, options = {}) {
   itemsWithScores.forEach(item => {
     const maxScore = parseNumeric(item.maxScore) || 0;
     const actualScore = parseNumeric(item.mark) || 0;
-    totalPerfect += maxScore;
-    totalActual += actualScore;
+    if (!item.nonScored && maxScore > 0) {
+      totalPerfect += maxScore;
+      totalActual += actualScore;
+    }
 
     const majorCategory = mapToMajorCategory(item.category);
     if (!majorCategory) return;
@@ -384,8 +396,11 @@ async function getAuditReportData(auditId, options = {}) {
     if (!scoreByCategory[majorCategory]) {
       scoreByCategory[majorCategory] = { name: majorCategory, perfectScore: 0, actualScore: 0 };
     }
-    scoreByCategory[majorCategory].perfectScore += maxScore;
-    scoreByCategory[majorCategory].actualScore += actualScore;
+
+    if (!item.nonScored && maxScore > 0) {
+      scoreByCategory[majorCategory].perfectScore += maxScore;
+      scoreByCategory[majorCategory].actualScore += actualScore;
+    }
 
     if (!detailedCategories[majorCategory]) {
       detailedCategories[majorCategory] = {};
@@ -395,8 +410,10 @@ async function getAuditReportData(auditId, options = {}) {
       detailedCategories[majorCategory][subsection] = { items: [], perfectScore: 0, actualScore: 0 };
     }
     detailedCategories[majorCategory][subsection].items.push(item);
-    detailedCategories[majorCategory][subsection].perfectScore += maxScore;
-    detailedCategories[majorCategory][subsection].actualScore += actualScore;
+    if (!item.nonScored && maxScore > 0) {
+      detailedCategories[majorCategory][subsection].perfectScore += maxScore;
+      detailedCategories[majorCategory][subsection].actualScore += actualScore;
+    }
   });
 
   const scoreByCategoryList = Object.values(scoreByCategory).map(entry => ({
@@ -485,7 +502,29 @@ async function getAuditReportData(auditId, options = {}) {
     });
   }
 
-  const actionPlan = buildActionPlan(itemsWithScores, audit);
+  const { rows: actionPlanRows, error: actionPlanError } = await safeAll(
+    dbInstance,
+    'SELECT * FROM action_plan WHERE audit_id = ? ORDER BY id ASC',
+    [auditId]
+  );
+
+  if (actionPlanError) {
+    logger.debug('[Report] action_plan unavailable:', actionPlanError.message);
+  }
+
+  const actionPlan = (actionPlanRows || []).map(row => ({
+    question: row.checklist_question || '',
+    remarks: row.deviation_reason || '',
+    todo: row.corrective_action || '',
+    correctiveAction: row.corrective_action || '',
+    assignedTo: row.responsible_person || row.owner_role || 'Store Manager',
+    dueDate: row.target_date || '',
+    status: row.status || 'OPEN',
+    category: row.checklist_category || 'Quality',
+    severity: row.severity || 'MINOR',
+    deviationWeight: 0,
+    isCritical: String(row.severity || '').toUpperCase() === 'CRITICAL'
+  }));
 
   return {
     appName: APP_NAME,

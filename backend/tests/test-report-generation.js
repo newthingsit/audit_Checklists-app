@@ -10,11 +10,13 @@ const BASE_URL = process.env.API_URL || 'http://localhost:5000';
 const isHttps = BASE_URL.startsWith('https');
 
 const adminCredentials = [
-  { email: 'admin@lbf.co.in', password: 'Admin123@' },
   { email: 'testadmin@test.com', password: 'Test123!' },
+  { email: 'admin@lbf.co.in', password: 'Admin123@' },
   { email: 'admin@test.com', password: 'password123' },
   { email: 'admin@admin.com', password: 'admin123' }
 ];
+
+const NON_SCORED_INPUT_TYPES = new Set(['text', 'textarea', 'comment', 'note']);
 
 function makeRequest(method, path, body = null, token = null) {
   return new Promise((resolve, reject) => {
@@ -88,18 +90,68 @@ async function main() {
 
   let selectedTemplate = null;
   let templateItems = [];
+  let foundNonScored = false;
+  const maxItemsAllowed = 100;
+
   for (const template of templates) {
     const detail = await makeRequest('GET', `/api/checklists/${template.id}`, null, token);
     const items = detail.data.items || [];
-    if (items.length > 0 && items.length <= 25) {
+    const hasNonScored = items.some(item => NON_SCORED_INPUT_TYPES.has((item.input_type || '').toLowerCase()));
+    if (items.length > 0 && items.length <= maxItemsAllowed && hasNonScored) {
       selectedTemplate = template;
       templateItems = items;
+      foundNonScored = true;
       break;
     }
   }
 
   if (!selectedTemplate) {
-    console.log('SKIP: No template with <= 25 items found.');
+    console.log(`No template with <= ${maxItemsAllowed} items and text-only inputs found. Creating a temp template...`);
+
+    const templatePayload = {
+      name: `Report Test Template (Text Only) ${Date.now()}`,
+      category: 'QA',
+      description: 'Auto-generated for report regression test',
+      items: [
+        {
+          title: 'Text-only response (non-scored)',
+          description: 'Enter any comment',
+          category: 'QA',
+          input_type: 'text',
+          required: true,
+          order_index: 0
+        },
+        {
+          title: 'Scored response',
+          description: 'Select Yes/No',
+          category: 'QA',
+          input_type: 'single_select',
+          required: true,
+          order_index: 1,
+          options: [
+            { option_text: 'Yes', mark: '3', order_index: 0 },
+            { option_text: 'No', mark: '0', order_index: 1 }
+          ]
+        }
+      ]
+    };
+
+    const createTemplateRes = await makeRequest('POST', '/api/checklists', templatePayload, token);
+    if (!(createTemplateRes.status === 201 || createTemplateRes.status === 200)) {
+      console.error('Template creation failed:', createTemplateRes.status, createTemplateRes.data);
+    }
+    assert('Template created', createTemplateRes.status === 201 || createTemplateRes.status === 200);
+    const createdTemplateId = createTemplateRes.data.id;
+    assert('Template ID returned', !!createdTemplateId);
+
+    const detail = await makeRequest('GET', `/api/checklists/${createdTemplateId}`, null, token);
+    selectedTemplate = detail.data.template;
+    templateItems = detail.data.items || [];
+    foundNonScored = templateItems.some(item => NON_SCORED_INPUT_TYPES.has((item.input_type || '').toLowerCase()));
+  }
+
+  if (!foundNonScored) {
+    console.log('SKIP: No template with text-only inputs found after creation attempt.');
     process.exit(0);
   }
 
@@ -117,24 +169,37 @@ async function main() {
   const auditId = auditRes.data.id;
   assert('Audit ID returned', !!auditId);
 
+  let deviationUsed = false;
   const itemsPayload = templateItems.map(item => {
     const payload = { itemId: item.id, status: 'completed' };
+    const inputType = (item.input_type || '').toLowerCase();
+
+    if (NON_SCORED_INPUT_TYPES.has(inputType)) {
+      payload.comment = 'Report test answer (text-only)';
+      return payload;
+    }
+
     if (Array.isArray(item.options) && item.options.length > 0) {
       const numericOptions = item.options
         .filter(opt => opt.mark !== 'NA' && opt.mark !== 'N/A')
         .map(opt => ({ ...opt, markValue: Number(opt.mark) }))
         .filter(opt => Number.isFinite(opt.markValue));
-      const bestOption = numericOptions.length > 0
-        ? numericOptions.sort((a, b) => b.markValue - a.markValue)[0]
-        : item.options[0];
-      payload.selected_option_id = bestOption.id;
-      payload.mark = String(bestOption.mark);
+      if (numericOptions.length > 0) {
+        const sorted = numericOptions.sort((a, b) => a.markValue - b.markValue);
+        const chosen = (!deviationUsed && sorted.length > 1)
+          ? sorted[0]
+          : sorted[sorted.length - 1];
+        if (!deviationUsed && sorted.length > 1) deviationUsed = true;
+        payload.selected_option_id = chosen.id;
+        payload.mark = String(chosen.mark);
+      } else {
+        payload.selected_option_id = item.options[0].id;
+        payload.mark = String(item.options[0].mark || '');
+      }
     } else if (item.input_type === 'image_upload') {
       payload.photo_url = '/uploads/test.jpg';
-      payload.mark = '100';
     } else {
       payload.comment = 'Report test answer';
-      payload.mark = '100';
     }
     return payload;
   });
@@ -162,6 +227,19 @@ async function main() {
   assert('Report has summary', !!reportRes.data.summary);
   assert('Report has scoreByCategory', Array.isArray(reportRes.data.scoreByCategory));
   assert('Report has totals', Number(reportRes.data.summary.totalPerfect) > 0);
+
+  const reportItems = reportRes.data.items || [];
+  const computedPerfect = reportItems
+    .filter(item => !item.nonScored && Number(item.maxScore) > 0)
+    .reduce((sum, item) => sum + Number(item.maxScore || 0), 0);
+
+  assert('Non-scored items excluded from totals', Math.round(computedPerfect) === Math.round(reportRes.data.summary.totalPerfect));
+
+  const actionPlanRes = await makeRequest('GET', `/api/audits/${auditId}/action-plan`, null, token);
+  assert('Action Plan endpoint returns 200', actionPlanRes.status === 200);
+  const reportPlanCount = Array.isArray(reportRes.data.actionPlan) ? reportRes.data.actionPlan.length : 0;
+  const persistedPlanCount = Array.isArray(actionPlanRes.data.action_items) ? actionPlanRes.data.action_items.length : 0;
+  assert('Report Action Plan matches persisted plan', reportPlanCount === persistedPlanCount);
 
   console.log('Report generation smoke test passed.');
   process.exit(0);

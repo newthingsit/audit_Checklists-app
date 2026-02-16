@@ -23,6 +23,8 @@ const SEVERITY_CONFIG = {
 const MAJOR_SEVERITY_CATEGORIES = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
 const BUSINESS_PRIORITY_ORDER   = ['QUALITY', 'SERVICE', 'HYGIENE', 'SPEED OF SERVICE'];
 
+const NON_SCORED_INPUT_TYPES = new Set(['text', 'textarea', 'comment', 'note']);
+
 // -----------------------------------------------------------------------
 // Category / priority helpers
 // -----------------------------------------------------------------------
@@ -36,6 +38,11 @@ const normalizeCategoryForPriority = (value) => {
   if (normalized.includes('hygiene') || normalized.includes('cleanliness')) return 'HYGIENE';
   if (normalized.includes('acknowledg'))       return 'ACKNOWLEDGEMENT';
   return normalized.toUpperCase();
+};
+
+const isNonScoredInputType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return NON_SCORED_INPUT_TYPES.has(normalized);
 };
 
 const getBusinessPriorityWeight = (category) => {
@@ -133,6 +140,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
       ci.is_critical,
       ci.required,
       ci.weight,
+      ci.input_type,
       ci.is_time_based,
       ci.target_time_minutes,
       cio.option_text as selected_option_text,
@@ -153,6 +161,7 @@ function generateActionPlanWithDeviations(dbInstance, auditId, callback, autoCre
     }
 
     const deviationsWithScore = (allItems || []).map(item => {
+      if (isNonScoredInputType(item.input_type)) return null;
       const selectedMark      = item.selected_mark || item.mark || '';
       const selectedOptionText = item.selected_option_text || '';
       const parsedMark  = parseFloat(selectedMark);
