@@ -8,6 +8,13 @@
     "test": "tests"
   },
   "scripts": {
+    "hooks:install": "git config core.hooksPath .githooks",
+    "hooks:verify": "git config --get core.hooksPath",
+    "hooks:doctor": "node scripts/hooks-doctor.js",
+    "check:expo-config-parity": "node scripts/check-expo-config-parity.js",
+    "check:release-type": "node scripts/check-release-type.js",
+    "release:preflight": "npm run check:expo-config-parity",
+    "release:local-guard": "npm run check:expo-config-parity && npm run check:release-type --",
     "test": "node scripts/run-all-tests.js",
     "test:backend": "cd backend && npm test",
     "test:api": "cd backend && npm run test:api",

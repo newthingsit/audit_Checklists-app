@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "[pre-push] Running release safeguards..."
+
+# Allow explicit bypass when needed (e.g., emergency/debug push)
+if [ "${SKIP_RELEASE_GUARD:-}" = "1" ]; then
+  echo "[pre-push] SKIP_RELEASE_GUARD=1 set; skipping release guard checks."
+  exit 0
+fi
+
+# Always enforce Expo config parity
+echo "[pre-push] Checking Expo config parity..."
+node scripts/check-expo-config-parity.js
+
+# Enforce release type validation for changed files
+if [ -n "${RELEASE_TYPE:-}" ]; then
+  echo "[pre-push] Checking release type using RELEASE_TYPE=${RELEASE_TYPE}"
+  node scripts/check-release-type.js --type="${RELEASE_TYPE}"
+else
+  echo "[pre-push] RELEASE_TYPE not set; running release check to detect if declaration is required."
+  if ! node scripts/check-release-type.js; then
+    echo "[pre-push] Push blocked."
+    echo "[pre-push] Set RELEASE_TYPE to APK or OTA and push again."
+    echo "[pre-push] Example (PowerShell): $env:RELEASE_TYPE='APK'; git push"
+    echo "[pre-push] Example (bash): RELEASE_TYPE=APK git push"
+    exit 1
+  fi
+fi
+
+echo "[pre-push] Release safeguards passed."
+exit 0

@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.kapilchauhan.auditpro",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./mobile/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
