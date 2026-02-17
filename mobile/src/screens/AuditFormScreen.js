@@ -47,6 +47,20 @@ const AuditFormScreen = () => {
   const navigation = useNavigation();
   const { templateId, auditId, scheduledAuditId, locationId: initialLocationId } = route.params || {};
   
+  // Log route params on every render for diagnostics
+  useEffect(() => {
+    console.log('[AuditForm] Route params received:', {
+      templateId,
+      templateIdType: typeof templateId,
+      auditId,
+      auditIdType: typeof auditId,
+      scheduledAuditId,
+      locationId: initialLocationId,
+      hasAllParams: !!(templateId || auditId || scheduledAuditId),
+      routeParams: route.params
+    });
+  }, [route.params, templateId, auditId, scheduledAuditId, initialLocationId]);
+  
   // Validate primary parameters to catch errors early
   if (!templateId && !auditId && !scheduledAuditId) {
     console.error('[AuditForm] CRITICAL: No templateId, auditId, or scheduledAuditId in route params', { route_params: route.params });
@@ -371,13 +385,19 @@ const AuditFormScreen = () => {
       });
     } else if (templateId) {
       // Creating new audit
-      console.log('[AuditForm] Mode: Creating new audit from template');
-      Promise.resolve(fetchTemplate()).finally(() => {
+      console.log('[AuditForm] Mode: Creating new audit from template, templateId:', templateId, 'type:', typeof templateId);
+      Promise.resolve(fetchTemplate()).catch(err => {
+        console.error('[AuditForm] Error in fetchTemplate:', err);
+        setError('Failed to load template. Please try again.');
+        setLoading(false);
+      }).finally(() => {
         isInitialLoadInProgressRef.current = false;
       });
     } else {
-      console.error('[AuditForm] ERROR: No templateId, auditId, or scheduledAuditId provided!');
-      Alert.alert('Error', 'Missing required parameters. Please try again.');
+      const errorMsg = 'Missing required parameters. Please try again.';
+      console.error('[AuditForm] ERROR: No templateId, auditId, or scheduledAuditId provided!', { templateId, auditId, scheduledAuditId });
+      setError(errorMsg);
+      Alert.alert('Error', errorMsg);
       setLoading(false);
       isInitialLoadInProgressRef.current = false;
     }
@@ -1104,18 +1124,28 @@ const AuditFormScreen = () => {
         setLoading(true);
       }
       setError(null);
-      console.log('[AuditForm] Fetching template:', templateId, 'hasExistingData:', hasExistingData);
+      console.log('[AuditForm] Fetching template:', {
+        templateId,
+        type: typeof templateId,
+        hasExistingData,
+        apiUrl: API_BASE_URL
+      });
       
       // Validate templateId
       const parsedTemplateId = parseInt(templateId, 10);
-      if (!parsedTemplateId || parsedTemplateId <= 0) {
-        console.error('[AuditForm] Invalid templateId:', templateId);
-        throw new Error(`Invalid template ID: ${templateId}`);
+      if (!parsedTemplateId || parsedTemplateId <= 0 || isNaN(parsedTemplateId)) {
+        const errorMsg = `Invalid template ID: ${templateId} (parsed as: ${parsedTemplateId})`;
+        console.error('[AuditForm]', errorMsg);
+        setError(errorMsg);
+        setLoading(false);
+        Alert.alert('Error', errorMsg);
+        return;
       }
       
       // Check if online - require real-time connection
       if (!isOnline) {
         const offlineError = 'No Internet Connection\n\nPlease connect to the internet to load template.';
+        console.warn('[AuditForm] Offline - cannot fetch template');
         setError(offlineError);
         Alert.alert(
           'No Internet Connection',
@@ -1129,7 +1159,10 @@ const AuditFormScreen = () => {
       const startTime = Date.now();
       // Reduced timeout for faster failure detection
       const shouldBypassCache = isPhotoFixTemplate(templateId, template?.name);
-      const response = await axios.get(`${API_BASE_URL}/checklists/${parsedTemplateId}`, {
+      const apiUrl = `${API_BASE_URL}/checklists/${parsedTemplateId}`;
+      console.log('[AuditForm] Making API call to:', apiUrl);
+      
+      const response = await axios.get(apiUrl, {
         timeout: 20000, // Reduced from 60s to 20s
         headers: {
           'Accept': 'application/json'
@@ -1139,23 +1172,31 @@ const AuditFormScreen = () => {
       });
       
       const fetchTime = Date.now() - startTime;
-      console.log(`[AuditForm] Template fetch completed in ${fetchTime}ms`);
+      console.log(`[AuditForm] API response received in ${fetchTime}ms, status: ${response.status}`);
       
       console.log('[AuditForm] Template response received, has template:', !!response.data?.template);
       
       if (!response.data || !response.data.template) {
-        console.error('[AuditForm] Invalid template response structure:', { 
+        const errorMsg = `Invalid template response structure: ${JSON.stringify({ 
           hasData: !!response.data,
           hasTemplate: !!response.data?.template,
           keys: response.data ? Object.keys(response.data) : []
-        });
-        throw new Error('Invalid template response - no template data received');
+        })}`;
+        console.error('[AuditForm]', errorMsg);
+        setError('Invalid template response - no template data received');
+        setLoading(false);
+        Alert.alert('Error', 'Template data is invalid. Please try again.');
+        return;
       }
       
       if (response.data && response.data.template) {
         setTemplate(response.data.template);
         const allItems = response.data.items || [];
-        console.log('[AuditForm] Template loaded:', response.data.template.name, 'with', allItems.length, 'items');
+        console.log('[AuditForm] Template loaded successfully:', {
+          name: response.data.template.name,
+          itemCount: allItems.length,
+          templateId: response.data.template.id
+        });
         
         if (!Array.isArray(allItems)) {
           console.error('[AuditForm] Items is not an array:', { itemsType: typeof allItems });
@@ -1199,14 +1240,14 @@ const AuditFormScreen = () => {
         code: error.code,
         status: error.response?.status,
         url: `${API_BASE_URL}/checklists/${templateId}`,
-        fullError: error
+        stack: error.stack
       });
       
       let errorMessage = 'Failed to load template';
       let userMessage = errorMessage;
       
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        errorMessage = 'Template is too large. Please try again or contact support.';
+        errorMessage = 'Template is too large or server is slow. Please try again.';
         userMessage = errorMessage;
       } else if (error.response?.status === 500) {
         errorMessage = 'Server error loading template. Please try again.';
