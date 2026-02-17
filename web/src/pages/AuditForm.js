@@ -62,16 +62,10 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError } from '../utils/toast';
-import { cvrTheme, isCvrTemplate } from '../config/theme';
+import { cvrTheme } from '../config/theme';
 import SignatureCanvas from 'react-signature-canvas';
 
-// Import new Phase 1 components
-import AuditInfoForm from '../components/AuditInfoForm';
-import FormStepperHeader from '../components/FormStepperHeader';
-
-// Import new Phase 1 hooks
 import { useAuditFormState } from '../hooks/useAuditFormState';
-import { useCategoryCompletion } from '../hooks/useCategoryCompletion';
 import { useFormValidation } from '../hooks/useFormValidation';
 
 // Helper: normalize category name for consistent grouping and matching
@@ -119,22 +113,14 @@ const AuditForm = () => {
     setComments,
     photos,
     setPhotos,
-    updateResponse,
-    updateSelectedOption,
-    updateMultipleSelection,
-    updateInputValue,
-    updateComment,
-    updatePhoto,
-    clearItemResponses,
-    getFormData,
-    resetForm,
   } = formState;
-  const { errors, touched, validateField, validateForm, clearErrors, setErrors, setTouched } = useFormValidation();
+  const { errors, touched, setErrors, setTouched } = useFormValidation();
   const [uploading, setUploading] = useState({});
   const [error, setError] = useState('');
   const scheduledId = searchParams.get('scheduled_id');
   const auditId = searchParams.get('audit_id'); // Support resuming existing audit
   const [currentAuditId, setCurrentAuditId] = useState(auditId ? parseInt(auditId, 10) : null);
+  const currentAuditIdRef = useRef(auditId ? parseInt(auditId, 10) : null);
   const saveInFlightRef = useRef(false);
   const clientAuditUuidRef = useRef(
     searchParams.get('client_audit_uuid') || `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
@@ -283,6 +269,10 @@ const AuditForm = () => {
       setCurrentAuditId(parseInt(auditId, 10));
     }
   }, [auditId]);
+
+  useEffect(() => {
+    currentAuditIdRef.current = currentAuditId;
+  }, [currentAuditId]);
 
   useEffect(() => {
     if (auditId || !templateId || !locationId) return;
@@ -455,7 +445,17 @@ const AuditForm = () => {
     } finally {
       setLoading(false);
     }
-  }, [auditId, navigate]);
+  }, [
+    auditId,
+    navigate,
+    setComments,
+    setInputValues,
+    setMultipleSelections,
+    setNotes,
+    setPhotos,
+    setResponses,
+    setSelectedOptions,
+  ]);
 
   const fetchTemplate = useCallback(async () => {
     try {
@@ -1106,13 +1106,18 @@ const AuditForm = () => {
     try {
       const selectedStore = locations.find(l => l.id === parseInt(locationId));
       if (!selectedStore) return;
-      let activeAuditId = currentAuditId || (auditId ? parseInt(auditId, 10) : null);
+      const routeAuditId = auditId ? parseInt(auditId, 10) : null;
+      let activeAuditId = currentAuditIdRef.current || currentAuditId || routeAuditId;
       if (!activeAuditId) {
+        const parsedTemplateId = Number.parseInt(templateId, 10);
+        if (!Number.isInteger(parsedTemplateId) || parsedTemplateId <= 0) {
+          return;
+        }
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
         const auditData = {
-          template_id: parseInt(templateId),
+          template_id: parsedTemplateId,
           restaurant_name: selectedStore.name,
           location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
           location_id: parseInt(locationId),
@@ -1124,6 +1129,7 @@ const AuditForm = () => {
         const auditResponse = await axios.post('/api/audits', auditData);
         activeAuditId = auditResponse.data.id;
         setCurrentAuditId(activeAuditId);
+        currentAuditIdRef.current = activeAuditId;
         localStorage.setItem(
           `audit_draft:${templateId || 'unknown'}:${scheduledId || 'none'}:${locationId || 'none'}`,
           JSON.stringify({ auditId: activeAuditId, clientAuditUuid: clientAuditUuidRef.current })
@@ -1220,7 +1226,8 @@ const AuditForm = () => {
         return;
       }
 
-      let activeAuditId = currentAuditId || (auditId ? parseInt(auditId, 10) : null);
+      const routeAuditId = auditId ? parseInt(auditId, 10) : null;
+      let activeAuditId = currentAuditIdRef.current || currentAuditId || routeAuditId;
 
       // If editing existing audit, update it
       if (activeAuditId) {
@@ -1236,11 +1243,15 @@ const AuditForm = () => {
         }
       } else {
         // Create new audit
+        const parsedTemplateId = Number.parseInt(templateId, 10);
+        if (!Number.isInteger(parsedTemplateId) || parsedTemplateId <= 0) {
+          throw new Error('Missing or invalid template ID for audit creation');
+        }
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
         const auditData = {
-          template_id: parseInt(templateId),
+          template_id: parsedTemplateId,
           restaurant_name: selectedStore.name,
           location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
           location_id: parseInt(locationId),
@@ -1260,6 +1271,7 @@ const AuditForm = () => {
         const auditResponse = await axios.post('/api/audits', auditData);
         activeAuditId = auditResponse.data.id;
         setCurrentAuditId(activeAuditId);
+        currentAuditIdRef.current = activeAuditId;
         localStorage.setItem(
           `audit_draft:${templateId || 'unknown'}:${scheduledId || 'none'}:${locationId || 'none'}`,
           JSON.stringify({ auditId: activeAuditId, clientAuditUuid: clientAuditUuidRef.current })
@@ -1422,7 +1434,7 @@ const AuditForm = () => {
       }
       navigate(`/audit/${activeAuditId}`);
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Failed to save audit';
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to save audit';
       setError(errorMsg);
       showError(errorMsg);
     } finally {

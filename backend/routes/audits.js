@@ -623,8 +623,32 @@ router.post('/', authenticate, (req, res) => {
   const dbInstance = db.getDb();
   const { requirePermission, getUserPermissions, hasPermission } = require('../middleware/permissions');
 
+  const logCreateValidationFailure = (reason, extra = {}) => {
+    logger.warn('[Audit Create] Validation failed', {
+      reason,
+      requestId: req.requestId || req.id || null,
+      userId: req.user?.id || null,
+      templateId: template_id ?? null,
+      locationId: location_id ?? null,
+      scheduledAuditId: scheduled_audit_id ?? null,
+      auditCategory: audit_category ?? null,
+      ...extra,
+    });
+  };
+
+  const respondCreateBadRequest = (reason, payload) => {
+    const responsePayload = process.env.NODE_ENV === 'production'
+      ? payload
+      : { ...payload, reason };
+    return res.status(400).json(responsePayload);
+  };
+
   if (!template_id || !restaurant_name) {
-    return res.status(400).json({ error: 'Template ID and restaurant name are required' });
+    logCreateValidationFailure('missing_required_fields', {
+      hasTemplateId: !!template_id,
+      hasRestaurantName: !!restaurant_name,
+    });
+    return respondCreateBadRequest('missing_required_fields', { error: 'Template ID and restaurant name are required' });
   }
 
   // Geo-fencing validation: Check if GPS location is within allowed distance from store
@@ -647,7 +671,13 @@ router.post('/', authenticate, (req, res) => {
         const MAX_ALLOWED_DISTANCE = 1000; // 1000 meters = 1 km
 
         if (distance > MAX_ALLOWED_DISTANCE) {
-          return res.status(400).json({ 
+          logCreateValidationFailure('location_too_far_from_store', {
+            distance: Math.round(distance),
+            maxDistance: MAX_ALLOWED_DISTANCE,
+            gpsLatitude: gps_latitude,
+            gpsLongitude: gps_longitude,
+          });
+          return respondCreateBadRequest('location_too_far_from_store', {
             error: 'Location too far from store',
             message: `You are ${Math.round(distance)}m from the store location. Audits must be conducted within ${MAX_ALLOWED_DISTANCE}m.`,
             distance: Math.round(distance),
@@ -729,6 +759,9 @@ router.post('/', authenticate, (req, res) => {
             return callback({ status: 403, message: 'Scheduled audit not found or not assigned to you' });
           }
           if (schedule.status === 'completed') {
+            logCreateValidationFailure('scheduled_audit_already_completed', {
+              scheduledAuditId: scheduled_audit_id,
+            });
             return callback({ status: 400, message: 'Scheduled audit is already completed' });
           }
           
@@ -747,6 +780,11 @@ router.post('/', authenticate, (req, res) => {
     }
     validateScheduledAudit((scheduleErr, linkedSchedule) => {
     if (scheduleErr) {
+      if (scheduleErr.status === 400) {
+        logCreateValidationFailure('scheduled_audit_validation_failed', {
+          message: scheduleErr.message,
+        });
+      }
       return res.status(scheduleErr.status).json({ error: scheduleErr.message });
     }
 
@@ -832,12 +870,19 @@ router.post('/', authenticate, (req, res) => {
 
           const totalItems = items.length;
           if (normalizedAuditCategory && totalItems === 0) {
-            return res.status(400).json({ error: `No checklist items found for category: ${normalizedAuditCategory}` });
+            logCreateValidationFailure('no_items_for_category', {
+              normalizedAuditCategory,
+            });
+            return respondCreateBadRequest('no_items_for_category', { error: `No checklist items found for category: ${normalizedAuditCategory}` });
           }
 
       const infoValidation = validateInfoStepNotes(notes);
       if (infoValidation) {
-        return res.status(400).json(infoValidation);
+        logCreateValidationFailure('notes_validation_failed', {
+          validationError: infoValidation.error || null,
+          validationMessage: infoValidation.message || null,
+        });
+        return respondCreateBadRequest('notes_validation_failed', infoValidation);
       }
 
       // Create audit - use location_id if provided, otherwise use location text
@@ -859,58 +904,51 @@ router.post('/', authenticate, (req, res) => {
             insertColumns.push('audit_category');
             insertValues.push(normalizedAuditCategory);
           }
-          
-          const placeholders = insertColumns.map(() => '?').join(', ');
-          
-          dbInstance.run(
-            `INSERT INTO audits (${insertColumns.join(', ')}) VALUES (${placeholders})`,
-            insertValues,
-            function(err, result) {
-              if (err) {
-                // If error is about missing column, retry without optional columns
-                if (err.message && (err.message.includes('no such column') || err.message.includes('Invalid column name'))) {
-                  logger.warn('Some columns may not exist, retrying with basic columns only');
-                  const basicColumns = ['template_id', 'user_id', 'restaurant_name', 'location', 'location_id', 'team_id', 'notes', 'total_items', 'scheduled_audit_id'];
-                  const basicValues = [template_id, req.user.id, restaurant_name, location || '', location_id || null, team_id || null, notes || '', totalItems, linkedSchedule ? linkedSchedule.id : null];
-                  
-                  // IMPORTANT: Do NOT include audit_category in this retry insert.
-                  // If we are here, the DB likely doesn't have one of the optional columns (e.g. original_scheduled_date / audit_category).
-                  const basicPlaceholders = basicColumns.map(() => '?').join(', ');
-                  
-                  dbInstance.run(
-                    `INSERT INTO audits (${basicColumns.join(', ')}) VALUES (${basicPlaceholders})`,
-                    basicValues,
-                    function(retryErr, retryResult) {
-                      if (retryErr) {
-                        logger.error('Error creating audit (retry):', retryErr);
-                        return res.status(500).json({ error: 'Error creating audit', details: retryErr.message });
-                      }
-                      // Continue with audit items creation
-                      const auditId = (retryResult && retryResult.lastID) ? retryResult.lastID : (this.lastID || 0);
-                      if (!auditId || auditId === 0) {
-                        logger.error('Failed to get audit ID after insert (retry)');
-                        return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
-                      }
-                      createAuditItems(auditId, items, linkedSchedule);
-                    }
-                  );
-                  return;
+
+          const runInsertWithColumnFallback = (columns, values, attemptedDrops = new Set()) => {
+            const placeholders = columns.map(() => '?').join(', ');
+            dbInstance.run(
+              `INSERT INTO audits (${columns.join(', ')}) VALUES (${placeholders})`,
+              values,
+              function(err, result) {
+                if (err) {
+                  const errorMessage = String(err.message || '');
+                  const sqliteMatch = errorMessage.match(/no column named\s+([a-zA-Z0-9_]+)/i);
+                  const sqlServerMatch = errorMessage.match(/Invalid column name\s+'([^']+)'/i);
+                  const missingColumn = (sqliteMatch && sqliteMatch[1]) || (sqlServerMatch && sqlServerMatch[1]) || null;
+
+                  if (missingColumn && columns.includes(missingColumn) && !attemptedDrops.has(missingColumn)) {
+                    const dropIndex = columns.indexOf(missingColumn);
+                    const nextColumns = columns.filter((col) => col !== missingColumn);
+                    const nextValues = values.filter((_, idx) => idx !== dropIndex);
+                    attemptedDrops.add(missingColumn);
+
+                    logger.warn('[Audit Create] Missing DB column, retrying insert without column', {
+                      missingColumn,
+                      attemptedDrops: Array.from(attemptedDrops),
+                      userId: req.user.id,
+                      templateId: template_id,
+                    });
+
+                    return runInsertWithColumnFallback(nextColumns, nextValues, attemptedDrops);
+                  }
+
+                  logger.error('Error creating audit:', err);
+                  return res.status(500).json({ error: 'Error creating audit', details: err.message });
                 }
-                logger.error('Error creating audit:', err);
-                return res.status(500).json({ error: 'Error creating audit', details: err.message });
-              }
 
-              // Handle both SQL Server (result.lastID) and SQLite (this.lastID)
-              const auditId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
-              
-              if (!auditId || auditId === 0) {
-                logger.error('Failed to get audit ID after insert');
-                return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
-              }
+                const auditId = (result && result.lastID) ? result.lastID : (this.lastID || 0);
+                if (!auditId || auditId === 0) {
+                  logger.error('Failed to get audit ID after insert');
+                  return res.status(500).json({ error: 'Failed to create audit - no ID returned' });
+                }
 
-              createAuditItems(auditId, items, linkedSchedule);
-            }
-          );
+                createAuditItems(auditId, items, linkedSchedule);
+              }
+            );
+          };
+
+          runInsertWithColumnFallback(insertColumns, insertValues);
           
           // Helper function to create audit items
           function createAuditItems(auditId, items, linkedSchedule) {
