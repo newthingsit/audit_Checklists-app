@@ -204,8 +204,12 @@ const AuditFormScreen = () => {
   const [failedItemIds, setFailedItemIds] = useState(new Set());
   const [previousAuditInfo, setPreviousAuditInfo] = useState(null);
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false);
+  const [recurringNoticeVisible, setRecurringNoticeVisible] = useState(false);
+  const [recurringViewIndex, setRecurringViewIndex] = useState(0);
+  const [expandedPrevComments, setExpandedPrevComments] = useState({});
   const recurringAlertShownRef = useRef(new Set());
   const contentScrollViewRef = useRef(null);
+  const itemLayoutRef = useRef({});
   const categoryTabScrollViewRef = useRef(null);
   const categoryTabLayoutsRef = useRef({}); // Store layout info for each category tab
 
@@ -1197,21 +1201,16 @@ const AuditFormScreen = () => {
         // Create a Set of failed item IDs for quick lookup
         const failedIds = new Set(failures.map(item => item.item_id));
         setFailedItemIds(failedIds);
-        
-        // Show alert only once per location+template to avoid repeated popups
         const alertKey = `${templateId}-${locId}`;
         if (failures.length > 0 && !recurringAlertShownRef.current.has(alertKey)) {
           recurringAlertShownRef.current.add(alertKey);
-          Alert.alert(
-            '⚠️ Recurring Failures Detected',
-            `${failures.length} item(s) failed in the last audit for this location. These items are highlighted in red to help you focus on recurring issues.`,
-            [{ text: 'OK' }]
-          );
+          setRecurringNoticeVisible(true);
         }
       } else {
         setPreviousFailures([]);
         setFailedItemIds(new Set());
         setPreviousAuditInfo(null);
+        setRecurringNoticeVisible(false);
       }
     } catch (error) {
       console.error('Error fetching previous failures:', error);
@@ -1220,6 +1219,41 @@ const AuditFormScreen = () => {
       setLoadingPreviousFailures(false);
     }
   };
+
+  const scrollToItemId = useCallback((itemId) => {
+    const targetY = itemLayoutRef.current[itemId];
+    if (targetY === undefined || targetY === null) return false;
+    contentScrollViewRef.current?.scrollTo({ y: Math.max(targetY - 12, 0), animated: true });
+    return true;
+  }, []);
+
+  const jumpToRecurringByIndex = useCallback((index) => {
+    const targetId = recurringItemIds[index];
+    if (!targetId) return;
+    const failedItem = items.find(item => item.id === targetId);
+    if (failedItem?.category) setSelectedCategory(failedItem.category);
+    if (failedItem?.section) {
+      setSelectedSection(failedItem.section);
+      setExpandedSections(prev => ({ ...prev, [failedItem.section]: true }));
+    }
+    setRecurringViewIndex(index);
+    setTimeout(() => {
+      if (!scrollToItemId(targetId)) {
+        contentScrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }
+    }, 250);
+  }, [items, recurringItemIds, scrollToItemId]);
+
+  const jumpToFirstFailure = useCallback(() => {
+    if (!recurringItemIds.length) return;
+    jumpToRecurringByIndex(0);
+  }, [jumpToRecurringByIndex, recurringItemIds.length]);
+
+  const jumpToNextFailure = useCallback(() => {
+    if (!recurringItemIds.length) return;
+    const nextIndex = (recurringViewIndex + 1) % recurringItemIds.length;
+    jumpToRecurringByIndex(nextIndex);
+  }, [jumpToRecurringByIndex, recurringItemIds.length, recurringViewIndex]);
 
   // Re-evaluate conditional logic when responses change
   useEffect(() => {
@@ -1234,6 +1268,22 @@ const AuditFormScreen = () => {
       setFilteredItems(conditionallyFiltered);
     }
   }, [responses, selectedOptions, comments, selectedCategory, selectedSection, items, filterItemsByCondition]);
+
+  useEffect(() => {
+    itemLayoutRef.current = {};
+  }, [filteredItems, selectedCategory, selectedSection]);
+
+  const recurringItemIds = useMemo(() => (
+    previousFailures
+      .map(item => item.item_id)
+      .filter(id => id !== null && id !== undefined)
+  ), [previousFailures]);
+
+  useEffect(() => {
+    if (recurringItemIds.length > 0) {
+      setRecurringViewIndex(0);
+    }
+  }, [recurringItemIds.length]);
 
   // Auto-navigate to next category when current category is completed
   const moveToNextCategory = useCallback((currentCategory) => {
@@ -3697,6 +3747,15 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
+  const remainingCategoriesCount = categories.length > 0
+    ? categories.filter(cat => !categoryCompletionStatus[cat]?.isComplete).length
+    : 0;
+  const hasCategoryProgress = categories.length > 0;
+  const isReadyToSubmit = hasCategoryProgress
+    ? remainingCategoriesCount === 0
+    : (filteredItems.length > 0 && completedItems === filteredItems.length);
+  const submitButtonLabel = isReadyToSubmit ? 'Submit Audit' : 'Save Progress';
+
   const tabAccent = isCvr ? cvrTheme.accent.purple : (themeConfig?.primary?.main || '#B91C1C');
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : (themeConfig?.text?.primary || '#0C0A09');
   const tabTextSecondary = isCvr ? cvrTheme.text.secondary : (themeConfig?.text?.secondary || '#44403C');
@@ -3870,14 +3929,19 @@ const AuditFormScreen = () => {
               >
                 {isCvr ? (
                   <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
-                    <Text style={styles.buttonText}>Next</Text>
+                    <Text style={styles.buttonText}>Continue to Checklist</Text>
                   </LinearGradient>
                 ) : (
-                  <Text style={styles.buttonText}>Submit</Text>
+                  <Text style={styles.buttonText}>Continue to Checklist</Text>
                 )}
               </TouchableOpacity>
             )}
           </View>
+          {auditStatus !== 'completed' && (
+            <Text style={styles.stepHelperText}>
+              Location is verified before starting the checklist.
+            </Text>
+          )}
         </ScrollView>
       )}
 
@@ -4153,17 +4217,63 @@ const AuditFormScreen = () => {
                 );
               })()}
             </View>
+            {recurringItemIds.length > 0 && (
+              <View style={styles.recurringHeaderRow}>
+                <Text style={styles.recurringHeaderText}>
+                  Recurring: {resolvedRecurringCount}/{recurringItemIds.length} resolved
+                </Text>
+                <TouchableOpacity
+                  style={styles.recurringHeaderButton}
+                  onPress={jumpToNextFailure}
+                >
+                  <Text style={styles.recurringHeaderButtonText}>Next recurring</Text>
+                  <Icon name="arrow-forward" size={14} color={themeConfig.warning.main} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <ScrollView ref={contentScrollViewRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 
+            {loadingPreviousFailures && (
+              <View style={styles.previousFailuresLoading}>
+                <ActivityIndicator size="small" color={themeConfig.warning.main} />
+                <Text style={styles.previousFailuresLoadingText}>Checking previous audit...</Text>
+              </View>
+            )}
+
             {/* Previous failures summary banner */}
-            {previousAuditInfo && previousFailures.length > 0 && (
+            {previousAuditInfo && previousFailures.length > 0 && recurringNoticeVisible && (
               <View style={styles.previousFailuresBanner}>
                 <Icon name="history" size={18} color={themeConfig.warning.dark} />
                 <Text style={styles.previousFailuresBannerText}>
                   {previousFailures.length} item(s) failed in last audit ({new Date(previousAuditInfo.date).toLocaleDateString()})
                 </Text>
+                {recurringItemIds.length > 1 && (
+                  <Text style={styles.previousFailuresCountText}>
+                    {recurringViewIndex + 1}/{recurringItemIds.length}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  onPress={jumpToFirstFailure}
+                  style={styles.previousFailuresCta}
+                >
+                  <Text style={styles.previousFailuresCtaText}>View</Text>
+                </TouchableOpacity>
+                {recurringItemIds.length > 1 && (
+                  <TouchableOpacity
+                    onPress={jumpToNextFailure}
+                    style={styles.previousFailuresCtaSecondary}
+                  >
+                    <Text style={styles.previousFailuresCtaSecondaryText}>Next</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setRecurringNoticeVisible(false)}
+                  style={styles.previousFailuresDismiss}
+                >
+                  <Icon name="close" size={18} color={themeConfig.warning.dark} />
+                </TouchableOpacity>
               </View>
             )}
             
@@ -4205,7 +4315,9 @@ const AuditFormScreen = () => {
 
               const item = entry.item || entry;
               const itemIndex = itemIndexMap[item.id] ?? index;
-              const isPreviousFailure = failedItemIds.has(item.id) && !isItemComplete(item);
+              const isRecurring = failedItemIds.has(item.id);
+              const isPreviousFailure = isRecurring && !isItemComplete(item);
+              const isResolvedRecurring = isRecurring && isItemComplete(item);
               const failureInfo = previousFailures.find(f => f.item_id === item.id);
               const fieldType = getEffectiveItemFieldType(item);
               const optionType = isOptionFieldType(fieldType);
@@ -4220,6 +4332,9 @@ const AuditFormScreen = () => {
                   isPreviousFailure && styles.itemCardPreviousFailure,
                   isMissingRequiredPhoto && { borderLeftWidth: 4, borderLeftColor: '#d32f2f' }
                 ]}
+                onLayout={(event) => {
+                  itemLayoutRef.current[item.id] = event.nativeEvent.layout.y;
+                }}
               >
                 {/* Missing required photo warning */}
                 {isMissingRequiredPhoto && (
@@ -4242,7 +4357,7 @@ const AuditFormScreen = () => {
                 )}
                 
                 {/* Previous failure comment if available */}
-                {isPreviousFailure && failureInfo?.comment && (
+                {(failureInfo?.comment && (isPreviousFailure || expandedPrevComments[item.id])) && (
                   <View style={styles.previousCommentBox}>
                     <Text style={styles.previousCommentLabel}>Previous comment:</Text>
                     <Text style={styles.previousCommentText}>"{failureInfo.comment}"</Text>
@@ -4256,6 +4371,24 @@ const AuditFormScreen = () => {
                       {item.is_required && <Text style={styles.required}> *</Text>}
                     </Text>
                   </View>
+                  {isRecurring && (
+                    <TouchableOpacity
+                      style={styles.recurringBadge}
+                      onPress={() => {
+                        setExpandedPrevComments(prev => ({
+                          ...prev,
+                          [item.id]: !prev[item.id]
+                        }));
+                      }}
+                    >
+                      <Text style={styles.recurringBadgeText}>Recurring</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isResolvedRecurring && (
+                    <View style={styles.recurringResolvedBadge}>
+                      <Text style={styles.recurringResolvedBadgeText}>Resolved</Text>
+                    </View>
+                  )}
                   {getStatusIcon(responses[item.id])}
                 </View>
                 {item.description && (
@@ -4742,14 +4875,19 @@ const AuditFormScreen = () => {
                   </View>
                 ) : isCvr ? (
                   <LinearGradient colors={cvrTheme.button.next} style={{ paddingVertical: 15, paddingHorizontal: 20, alignItems: 'center', borderRadius: 10 }}>
-                    <Text style={styles.buttonText}>Submit</Text>
+                    <Text style={styles.buttonText}>{submitButtonLabel}</Text>
                   </LinearGradient>
                 ) : (
-                  <Text style={styles.buttonText}>Save Audit</Text>
+                  <Text style={styles.buttonText}>{submitButtonLabel}</Text>
                 )}
               </TouchableOpacity>
               )}
             </View>
+            {auditStatus !== 'completed' && (
+              <Text style={styles.buttonHelperText}>
+                You can save progress at any time.
+              </Text>
+            )}
           </ScrollView>
         </View>
       )}
@@ -4888,6 +5026,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 20,
     gap: 10,
+  },
+  buttonHelperText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    textAlign: 'center',
+  },
+  stepHelperText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: themeConfig.text.secondary,
+    textAlign: 'center',
   },
   progressBar: {
     backgroundColor: '#e3f2fd',
@@ -5101,6 +5251,57 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
   },
+  previousFailuresCountText: {
+    color: themeConfig.warning.dark,
+    fontSize: 12,
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  previousFailuresLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: themeConfig.borderRadius.medium,
+    backgroundColor: themeConfig.background.paper,
+    borderWidth: 1,
+    borderColor: themeConfig.border.default,
+    marginBottom: 12,
+  },
+  previousFailuresLoadingText: {
+    marginLeft: 8,
+  previousFailuresCtaSecondary: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: themeConfig.borderRadius.small,
+    borderWidth: 1,
+    borderColor: themeConfig.warning.main,
+    marginLeft: 6,
+  },
+  previousFailuresCtaSecondaryText: {
+    color: themeConfig.warning.main,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+    color: themeConfig.text.secondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  previousFailuresCta: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: themeConfig.borderRadius.small,
+    backgroundColor: themeConfig.warning.main,
+    marginLeft: 8,
+  },
+  previousFailuresCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previousFailuresDismiss: {
+    padding: 6,
+    marginLeft: 6,
+  },
   previousFailureWarning: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5121,8 +5322,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
+    marginRight: 6,
   },
   recurringBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  recurringResolvedBadge: {
+    backgroundColor: themeConfig.success.main,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginRight: 6,
+  },
+  recurringResolvedBadgeText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '700',
