@@ -3837,6 +3837,7 @@ const AuditFormScreen = () => {
         </TouchableOpacity>
       </View>
     );
+  }
   
   // Additional safety: If currentStep is not 0, 1, or 2, reset to a valid step
   if (currentStep !== 0 && currentStep !== 1 && currentStep !== 2) {
