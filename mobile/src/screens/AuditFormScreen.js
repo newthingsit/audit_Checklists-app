@@ -513,9 +513,35 @@ const AuditFormScreen = () => {
   const checkExistingAudit = async (scheduledId = scheduledAuditId) => {
     try {
       setLoading(true);
-      console.log('[AuditForm] Checking for existing audit for scheduled audit:', scheduledId);
+      setError(null);
+      
+      // Validate scheduledId
+      const parsedScheduledId = parseInt(scheduledId, 10);
+      if (!parsedScheduledId || parsedScheduledId <= 0) {
+        console.error('[AuditForm] Invalid scheduledAuditId:', scheduledId);
+        throw new Error(`Invalid scheduled audit ID: ${scheduledId}`);
+      }
+      
+      console.log('[AuditForm] Checking for existing audit for scheduled audit:', parsedScheduledId);
+      
+      // Check if online
+      if (!isOnline) {
+        const offlineError = 'No Internet Connection\n\nPlease connect to the internet to check for existing audit.';
+        setError(offlineError);
+        Alert.alert(
+          'No Internet Connection',
+          'Please connect to the internet to check for existing audit.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        setLoading(false);
+        return;
+      }
+      
       // Check if an audit already exists for this scheduled audit
-      const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${scheduledId}`);
+      const response = await axios.get(`${API_BASE_URL}/audits/by-scheduled/${parsedScheduledId}`, {
+        timeout: 20000
+      });
+      
       if (response.data.audit) {
         // Audit exists, switch to edit mode
         const existingAuditId = response.data.audit.id;
@@ -536,8 +562,14 @@ const AuditFormScreen = () => {
         console.log('[AuditForm] No existing audit (404), fetching template');
         await fetchTemplate();
       } else {
-        console.error('[AuditForm] Error checking existing audit:', error);
-        Alert.alert('Error', 'Failed to check for existing audit. Creating new audit.');
+        console.error('[AuditForm] Error checking existing audit:', {
+          message: error.message,
+          status: error.response?.status,
+          url: `${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`
+        });
+        const errorMsg = 'Failed to check for existing audit.';
+        setError(errorMsg);
+        Alert.alert('Error', errorMsg + ' Creating new audit.');
         await fetchTemplate();
       }
     }

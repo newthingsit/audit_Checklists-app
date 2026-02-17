@@ -199,31 +199,118 @@ const ScheduledAuditsScreen = () => {
   };
 
   const handleStartAudit = (schedule) => {
-    if (!canStartSchedule(schedule)) {
-      Alert.alert('Cannot Start', 'You cannot start this scheduled audit.');
-      return;
+    try {
+      if (!canStartSchedule(schedule)) {
+        Alert.alert('Cannot Start', 'You cannot start this scheduled audit.');
+        return;
+      }
+      
+      // Validate schedule has required fields
+      if (!schedule || !schedule.id) {
+        Alert.alert('Error', 'Invalid scheduled audit. Please try again.');
+        console.error('[ScheduledAuditsScreen] Invalid schedule:', schedule);
+        return;
+      }
+      
+      // Validate templateId
+      const templateId = parseInt(schedule.template_id, 10);
+      if (!templateId || templateId <= 0) {
+        Alert.alert('Error', 'Invalid template ID for this scheduled audit.');
+        console.error('[ScheduledAuditsScreen] Invalid templateId:', {
+          raw: schedule.template_id,
+          parsed: templateId
+        });
+        return;
+      }
+      
+      // Validate locationId if provided
+      const locationId = schedule.location_id ? parseInt(schedule.location_id, 10) : null;
+      if (schedule.location_id && (!locationId || locationId <= 0)) {
+        Alert.alert('Error', 'Invalid location ID for this scheduled audit.');
+        console.error('[ScheduledAuditsScreen] Invalid locationId:', {
+          raw: schedule.location_id,
+          parsed: locationId
+        });
+        return;
+      }
+      
+      console.log('[ScheduledAuditsScreen] Starting scheduled audit:', {
+        scheduleId: schedule.id,
+        templateId,
+        locationId,
+        scheduleName: schedule.name
+      });
+      
+      // Navigate directly to AuditForm in the same stack (DashboardStack)
+      navigation.navigate('AuditForm', {
+        templateId,
+        scheduledAuditId: schedule.id,
+        locationId: locationId || null,
+      });
+    } catch (error) {
+      console.error('[ScheduledAuditsScreen] Error in handleStartAudit:', error);
+      Alert.alert('Error', 'Failed to start audit. Please try again.');
     }
-    // Navigate to audit form with scheduled audit info
-    // Navigate directly to AuditForm in the same stack (DashboardStack)
-    navigation.navigate('AuditForm', {
-      templateId: schedule.template_id,
-      scheduledAuditId: schedule.id,
-      locationId: schedule.location_id || null,
-    });
   };
 
   const handleContinueAudit = (schedule) => {
-    const linkedAudit = linkedAudits[schedule.id];
-    // Support both old format (just auditId number) and new format (object with auditId and auditStatus)
-    const auditId = linkedAudit ? (typeof linkedAudit === 'object' ? linkedAudit.auditId : linkedAudit) : null;
-    if (auditId) {
+    try {
+      const linkedAudit = linkedAudits[schedule.id];
+      // Support both old format (just auditId number) and new format (object with auditId and auditStatus)
+      const auditId = linkedAudit ? (typeof linkedAudit === 'object' ? linkedAudit.auditId : linkedAudit) : null;
+      
+      if (!auditId) {
+        Alert.alert('Error', 'No audit found to continue.');
+        console.error('[ScheduledAuditsScreen] No auditId found for scheduled audit:', schedule.id);
+        return;
+      }
+      
+      // Validate schedule has required fields
+      if (!schedule || !schedule.id) {
+        Alert.alert('Error', 'Invalid scheduled audit. Please try again.');
+        console.error('[ScheduledAuditsScreen] Invalid schedule:', schedule);
+        return;
+      }
+      
+      // Validate templateId
+      const templateId = parseInt(schedule.template_id, 10);
+      if (!templateId || templateId <= 0) {
+        Alert.alert('Error', 'Invalid template ID for this scheduled audit.');
+        console.error('[ScheduledAuditsScreen] Invalid templateId:', {
+          raw: schedule.template_id,
+          parsed: templateId
+        });
+        return;
+      }
+      
+      // Validate locationId if provided
+      const locationId = schedule.location_id ? parseInt(schedule.location_id, 10) : null;
+      if (schedule.location_id && (!locationId || locationId <= 0)) {
+        Alert.alert('Error', 'Invalid location ID for this scheduled audit.');
+        console.error('[ScheduledAuditsScreen] Invalid locationId:', {
+          raw: schedule.location_id,
+          parsed: locationId
+        });
+        return;
+      }
+      
+      console.log('[ScheduledAuditsScreen] Continuing scheduled audit:', {
+        auditId,
+        scheduleId: schedule.id,
+        templateId,
+        locationId
+      });
+      
       // Navigate to AuditForm to continue editing (preserves state better than AuditDetail)
       navigation.navigate('AuditForm', {
         auditId: auditId,
-        templateId: schedule.template_id,
+        templateId,
         scheduledAuditId: schedule.id,
-        locationId: schedule.location_id || null,
+        locationId: locationId || null,
       });
+    } catch (error) {
+      console.error('[ScheduledAuditsScreen] Error in handleContinueAudit:', error);
+      Alert.alert('Error', 'Failed to continue audit. Please try again.');
     }
   };
 
@@ -269,16 +356,41 @@ const ScheduledAuditsScreen = () => {
   const handleRecoverAudit = (schedule) => {
     if (!canRecoverSchedule(schedule)) return;
 
+    // Validate schedule data before showing dialog
+    if (!schedule || !schedule.id || !schedule.template_id) {
+      Alert.alert('Error', 'Invalid scheduled audit data. Please try again.');
+      console.error('[ScheduledAuditsScreen] Invalid schedule in handleRecoverAudit:', schedule);
+      return;
+    }
+
+    const templateId = parseInt(schedule.template_id, 10);
+    if (!templateId || templateId <= 0) {
+      Alert.alert('Error', 'Invalid template ID for this scheduled audit.');
+      console.error('[ScheduledAuditsScreen] Invalid templateId in handleRecoverAudit:', {
+        raw: schedule.template_id,
+        parsed: templateId
+      });
+      return;
+    }
+
     Alert.alert(
       'Resume Audit',
       'This scheduled audit is marked in progress but no linked audit was found. Do you want to reopen it now?'
       , [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reopen', onPress: () => navigation.navigate('AuditForm', {
-          templateId: schedule.template_id,
-          scheduledAuditId: schedule.id,
-          locationId: schedule.location_id || null,
-        }) }
+        { text: 'Reopen', onPress: () => {
+          const locationId = schedule.location_id ? parseInt(schedule.location_id, 10) : null;
+          console.log('[ScheduledAuditsScreen] Recovering audit:', {
+            scheduleId: schedule.id,
+            templateId,
+            locationId
+          });
+          navigation.navigate('AuditForm', {
+            templateId,
+            scheduledAuditId: schedule.id,
+            locationId: locationId || null,
+          });
+        } }
       ]
     );
   };
