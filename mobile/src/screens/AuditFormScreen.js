@@ -46,9 +46,16 @@ const AuditFormScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const { templateId, auditId, scheduledAuditId, locationId: initialLocationId } = route.params || {};
+  
+  // Validate primary parameters to catch errors early
+  if (!templateId && !auditId && !scheduledAuditId) {
+    console.error('[AuditForm] CRITICAL: No templateId, auditId, or scheduledAuditId in route params', { route_params: route.params });
+  }
+  
   const [template, setTemplate] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   // PERMANENT FIX: Use database ui_version field instead of checking template name
   // This ensures all checklists render with correct UI version regardless of their name
   const isCvr = template && template.ui_version === 2;
@@ -1064,10 +1071,20 @@ const AuditFormScreen = () => {
       if (!hasExistingData) {
         setLoading(true);
       }
+      setError(null);
       console.log('[AuditForm] Fetching template:', templateId, 'hasExistingData:', hasExistingData);
+      
+      // Validate templateId
+      const parsedTemplateId = parseInt(templateId, 10);
+      if (!parsedTemplateId || parsedTemplateId <= 0) {
+        console.error('[AuditForm] Invalid templateId:', templateId);
+        throw new Error(`Invalid template ID: ${templateId}`);
+      }
       
       // Check if online - require real-time connection
       if (!isOnline) {
+        const offlineError = 'No Internet Connection\n\nPlease connect to the internet to load template.';
+        setError(offlineError);
         Alert.alert(
           'No Internet Connection',
           'Please connect to the internet to load template.',
@@ -1080,7 +1097,7 @@ const AuditFormScreen = () => {
       const startTime = Date.now();
       // Reduced timeout for faster failure detection
       const shouldBypassCache = isPhotoFixTemplate(templateId, template?.name);
-      const response = await axios.get(`${API_BASE_URL}/checklists/${templateId}`, {
+      const response = await axios.get(`${API_BASE_URL}/checklists/${parsedTemplateId}`, {
         timeout: 20000, // Reduced from 60s to 20s
         headers: {
           'Accept': 'application/json'
@@ -1094,10 +1111,24 @@ const AuditFormScreen = () => {
       
       console.log('[AuditForm] Template response received, has template:', !!response.data?.template);
       
+      if (!response.data || !response.data.template) {
+        console.error('[AuditForm] Invalid template response structure:', { 
+          hasData: !!response.data,
+          hasTemplate: !!response.data?.template,
+          keys: response.data ? Object.keys(response.data) : []
+        });
+        throw new Error('Invalid template response - no template data received');
+      }
+      
       if (response.data && response.data.template) {
         setTemplate(response.data.template);
         const allItems = response.data.items || [];
         console.log('[AuditForm] Template loaded:', response.data.template.name, 'with', allItems.length, 'items');
+        
+        if (!Array.isArray(allItems)) {
+          console.error('[AuditForm] Items is not an array:', { itemsType: typeof allItems });
+          throw new Error('Invalid items data structure');
+        }
         
         // Filter out time-related items
         const filteredItemsData = allItems.filter(item => !isTimeRelatedItem(item));
@@ -1131,18 +1162,36 @@ const AuditFormScreen = () => {
         throw new Error('Invalid template response');
       }
     } catch (error) {
-      console.error('[AuditForm] Error fetching template:', error.message || error);
+      console.error('[AuditForm] Error fetching template:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        url: `${API_BASE_URL}/checklists/${templateId}`,
+        fullError: error
+      });
+      
       let errorMessage = 'Failed to load template';
+      let userMessage = errorMessage;
       
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
         errorMessage = 'Template is too large. Please try again or contact support.';
+        userMessage = errorMessage;
       } else if (error.response?.status === 500) {
         errorMessage = 'Server error loading template. Please try again.';
+        userMessage = errorMessage;
       } else if (error.response?.status === 404) {
         errorMessage = 'Template not found.';
+        userMessage = 'This template could not be found. The template ID might be invalid.';
+      } else if (error.message?.includes('Invalid template response')) {
+        errorMessage = error.message;
+        userMessage = `Failed to load template: ${error.message}`;
       }
       
-      Alert.alert('Error', errorMessage);
+      setError(errorMessage);
+      Alert.alert('Error', userMessage, [
+        { text: 'Go Back', onPress: () => navigation.goBack() },
+        { text: 'Retry', onPress: () => fetchTemplate() }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -3683,8 +3732,45 @@ const AuditFormScreen = () => {
   
   console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
 
+  // Check for error state first
+  if (error && !loading) {
+    console.error('[AuditForm] RENDER: Error state detected:', error);
+    return (
+      <View style={styles.centerContainer}>
+        <Icon name="error-outline" size={64} color={themeConfig.error.main} />
+        <Text style={styles.errorTitle}>Failed to Load</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => {
+            setError(null);
+            if (auditId || currentAuditId) {
+              const idToFetch = auditId || currentAuditId;
+              console.log('[AuditForm] Retry: Fetching audit data for ID:', idToFetch);
+              fetchAuditDataById(parseInt(idToFetch, 10));
+            } else if (templateId) {
+              console.log('[AuditForm] Retry: Fetching template for ID:', templateId);
+              fetchTemplate();
+            } else {
+              console.error('[AuditForm] Retry: No auditId or templateId available');
+              Alert.alert('Error', 'Unable to retry. Missing required parameters.');
+            }
+          }}
+        >
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // Safety check: If we don't have template or items after loading, show error
-  if (!loading && (!template || !items || items.length === 0)) {
+  if (!loading && (!template || !items || items.length === 0) && !error) {
     console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'auditId:', auditId, 'templateId:', templateId);
     return (
       <View style={styles.centerContainer}>
@@ -3719,7 +3805,6 @@ const AuditFormScreen = () => {
         </TouchableOpacity>
       </View>
     );
-  }
   
   // Additional safety: If currentStep is not 0, 1, or 2, reset to a valid step
   if (currentStep !== 0 && currentStep !== 1 && currentStep !== 2) {

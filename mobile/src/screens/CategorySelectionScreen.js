@@ -111,11 +111,26 @@ const CategorySelectionScreen = () => {
   };
 
   const handleTemplateSelect = (template) => {
-    navigation.navigate('AuditForm', {
-      templateId: template.id,
-      templateData: template,
-      selectedCategory: selectedCategory?.name
-    });
+    try {
+      if (!template || !template.id) {
+        Alert.alert('Error', 'Invalid template selected. Please try again.');
+        console.error('Invalid template:', template);
+        return;
+      }
+      console.log('[CategorySelectionScreen] Selecting template:', {
+        id: template.id,
+        name: template.name,
+        hasItems: !!template.item_count
+      });
+      navigation.navigate('AuditForm', {
+        templateId: template.id,
+        templateData: template,
+        selectedCategory: selectedCategory?.name
+      });
+    } catch (error) {
+      console.error('[CategorySelectionScreen] Error in handleTemplateSelect:', error);
+      Alert.alert('Error', 'Failed to select template. Please try again.');
+    }
   };
 
   const handleBackToCategories = () => {
