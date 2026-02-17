@@ -1106,6 +1106,12 @@ const AuditForm = () => {
     try {
       const selectedStore = locations.find(l => l.id === parseInt(locationId));
       if (!selectedStore) return;
+      const storeName = (selectedStore.name && String(selectedStore.name).trim())
+        ? String(selectedStore.name).trim()
+        : (selectedStore.store_number ? `Store ${selectedStore.store_number}` : `Location ${locationId}`);
+      const storeLocationLabel = selectedStore.store_number
+        ? `Store ${selectedStore.store_number}`
+        : storeName;
       const routeAuditId = auditId ? parseInt(auditId, 10) : null;
       let activeAuditId = currentAuditIdRef.current || currentAuditId || routeAuditId;
       if (!activeAuditId) {
@@ -1118,8 +1124,8 @@ const AuditForm = () => {
         }
         const auditData = {
           template_id: parsedTemplateId,
-          restaurant_name: selectedStore.name,
-          location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+          restaurant_name: storeName,
+          location: storeLocationLabel,
           location_id: parseInt(locationId),
           notes,
           client_audit_uuid: clientAuditUuidRef.current,
@@ -1225,6 +1231,12 @@ const AuditForm = () => {
         setSaving(false);
         return;
       }
+      const storeName = (selectedStore.name && String(selectedStore.name).trim())
+        ? String(selectedStore.name).trim()
+        : (selectedStore.store_number ? `Store ${selectedStore.store_number}` : `Location ${locationId}`);
+      const storeLocationLabel = selectedStore.store_number
+        ? `Store ${selectedStore.store_number}`
+        : storeName;
 
       const routeAuditId = auditId ? parseInt(auditId, 10) : null;
       let activeAuditId = currentAuditIdRef.current || currentAuditId || routeAuditId;
@@ -1233,8 +1245,8 @@ const AuditForm = () => {
       if (activeAuditId) {
         try {
           await axios.put(`/api/audits/${activeAuditId}`, {
-            restaurant_name: selectedStore.name,
-            location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+            restaurant_name: storeName,
+            location: storeLocationLabel,
             location_id: parseInt(locationId),
             notes
           });
@@ -1252,8 +1264,8 @@ const AuditForm = () => {
         }
         const auditData = {
           template_id: parsedTemplateId,
-          restaurant_name: selectedStore.name,
-          location: selectedStore.store_number ? `Store ${selectedStore.store_number}` : selectedStore.name,
+          restaurant_name: storeName,
+          location: storeLocationLabel,
           location_id: parseInt(locationId),
           notes,
           client_audit_uuid: clientAuditUuidRef.current
