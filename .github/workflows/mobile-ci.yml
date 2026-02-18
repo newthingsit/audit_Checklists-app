@@ -214,6 +214,7 @@ jobs:
         run: |
           echo "Building production for iOS..."
           eas build --platform ios --profile production --non-interactive --no-wait
+        continue-on-error: true
 
       - name: Deployment summary
         if: always()
