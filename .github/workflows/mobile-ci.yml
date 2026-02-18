@@ -244,6 +244,5 @@ jobs:
         if: always()
         run: |
           echo "### 🎯 Quality Gate Results" >> $GITHUB_STEP_SUMMARY
-          echo "- **Lint**: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Security**: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
