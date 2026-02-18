@@ -71,24 +71,48 @@ export const mockApiEndpoint = (method, urlPattern, response, status = 200) => {
 
 /**
  * Setup AsyncStorage with initial data
+ * Note: Uses setTimeout to ensure async operations complete
  */
 export const setupAsyncStorage = async (initialData = {}) => {
+  // Clear storage
   await AsyncStorage.clear();
+  
+  // Wait for clear to complete
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
-  for (const [key, value] of Object.entries(initialData)) {
-    await AsyncStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-  }
+  // Set initial data
+  const setPromises = Object.entries(initialData).map(([key, value]) =>
+    AsyncStorage.setItem(
+      key,
+      typeof value === 'string' ? value : JSON.stringify(value)
+    )
+  );
+
+  await Promise.all(setPromises);
+  
+  // Ensure all writes complete
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
   return {
     clear: () => AsyncStorage.clear(),
-    set: (key, value) =>
-      AsyncStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value)),
-    get: (key) => AsyncStorage.getItem(key),
+    set: async (key, value) => {
+      await AsyncStorage.setItem(
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value)
+      );
+      // Ensure write completes
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    },
+    get: async (key) => {
+      const value = await AsyncStorage.getItem(key);
+      return value;
+    },
   };
 };
 
 /**
  * Setup common test mocks
+ * Note: Does NOT use fake timers for integration tests that rely on real AsyncStorage
  */
 export const setupCommonMocks = () => {
   // Mock console methods to reduce noise
@@ -96,13 +120,13 @@ export const setupCommonMocks = () => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
 
-  // Mock timers if needed
-  jest.useFakeTimers();
+  // NOTE: We do NOT use jest.useFakeTimers() here because:
+  // - Integration tests rely on real async operations (AsyncStorage, axios)
+  // - Fake timers can cause AsyncStorage operations to hang or fail
+  // - Tests need real time for proper async/await behavior
 
   return {
     cleanup: () => {
-      jest.runOnlyPendingTimers();
-      jest.useRealTimers();
       console.log.mockRestore();
       console.warn.mockRestore();
       console.error.mockRestore();
@@ -145,6 +169,5 @@ export const setupIntegrationTests = async () => {
 export const cleanupIntegrationTests = async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
-  jest.useRealTimers();
   jest.restoreAllMocks();
 };

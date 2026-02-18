@@ -1,11 +1,8 @@
 /**
  * Integration Test Mock Providers
  * Provides all necessary contexts and navigation for integration tests
+ * Service-layer mocking - no React component rendering
  */
-
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // Mock context hooks
 export const createMockAuthContext = (overrides = {}) => {
@@ -130,8 +127,8 @@ export const createMockUseFocused = (isFocused = true) => {
 };
 
 /**
- * Integration test wrapper component
- * Provides all contexts and navigation needed for integration tests
+ * Integration test wrapper factory
+ * Provides all contexts and navigation needed for integration tests (service layer only)
  */
 export const createIntegrationTestWrapper = ({
   authContext = {},
@@ -149,12 +146,8 @@ export const createIntegrationTestWrapper = ({
   const nav = navigation || createMockNavigation();
   const rt = route || createMockRoute();
 
-  // Note: jest.mock() calls should be at module level in test files, not here
-  // This function just organizes context values for use in beforeEach() blocks
-
-  // Return wrapper component and context values for assertions
+  // Return context values for use in test assertions
   return {
-    Wrapper: ({ children }) => <>{children}</>,
     contexts: { auth, location, network, notification },
     navigation: nav,
     route: rt,
