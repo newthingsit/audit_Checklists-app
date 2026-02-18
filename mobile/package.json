@@ -13,6 +13,7 @@
     "test:e2e": "maestro test .maestro/flows/audit-full.yaml"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",

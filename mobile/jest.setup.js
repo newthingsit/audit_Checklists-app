@@ -47,6 +47,31 @@ jest.mock('expo-image-picker', () => ({
   launchCameraAsync: jest.fn(),
 }));
 
+jest.mock('expo-linear-gradient', () => {
+  const React = require('react');
+  const { View: RNView } = require('react-native');
+  return {
+    LinearGradient: ({ children }) =>
+      React.createElement(RNView, {}, children),
+  };
+});
+
+// Mock @expo/vector-icons - CRITICAL for test suites
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  const { View: RNView } = require('react-native');
+  return {
+    MaterialIcons: ({ name, size, color, testID }) =>
+      React.createElement(RNView, { testID: testID || `icon-${name}` }),
+    FontAwesome: ({ name, size, color, testID }) =>
+      React.createElement(RNView, { testID: testID || `icon-${name}` }),
+    AntDesign: ({ name, size, color, testID }) =>
+      React.createElement(RNView, { testID: testID || `icon-${name}` }),
+    Ionicons: ({ name, size, color, testID }) =>
+      React.createElement(RNView, { testID: testID || `icon-${name}` }),
+  };
+});
+
 jest.mock('@react-native-community/netinfo', () => ({
   fetch: jest.fn(() => Promise.resolve({ isConnected: true })),
   addEventListener: jest.fn(),
