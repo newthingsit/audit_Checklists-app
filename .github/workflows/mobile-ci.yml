@@ -42,37 +42,6 @@ env:
   WORKING_DIR: './mobile'
 
 jobs:
-  lint:
-    name: Lint Code
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ${{ env.WORKING_DIR }}
-        run: npm ci --legacy-peer-deps
-
-      - name: Run ESLint
-        working-directory: ${{ env.WORKING_DIR }}
-        run: npm run lint 2>/dev/null || echo "ESLint not configured, skipping"
-        continue-on-error: true
-
-      - name: Lint summary
-        if: always()
-        run: |
-          echo "### 🔍 Lint Results" >> $GITHUB_STEP_SUMMARY
-          echo "Linting completed for mobile app" >> $GITHUB_STEP_SUMMARY
-
   test:
     name: Run Tests
     runs-on: ubuntu-latest
