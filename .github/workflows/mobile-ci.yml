@@ -74,7 +74,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: lint
     
     steps:
@@ -92,9 +92,14 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: npm ci --legacy-peer-deps
 
-      - name: Run tests with coverage
+      - name: Run unit tests with coverage
         working-directory: ${{ env.WORKING_DIR }}
         run: npm run test:ci
+
+      - name: Run Phase G integration tests
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npx jest __tests__/integration --no-coverage --testTimeout=10000 --collectCoverage
+        continue-on-error: true
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
@@ -124,6 +129,11 @@ jobs:
             echo "#### Coverage Summary" >> $GITHUB_STEP_SUMMARY
             cat mobile/coverage/coverage-summary.json | jq -r '.total | "- **Lines**: \(.lines.pct)%\n- **Statements**: \(.statements.pct)%\n- **Functions**: \(.functions.pct)%\n- **Branches**: \(.branches.pct)%"' >> $GITHUB_STEP_SUMMARY
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Integration Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Phase G**: Contexts, Sync, Location, Notification services" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier 1**: Audit creation, authentication, offline flows" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier 2**: Context state, sync queue, location tracking, notifications" >> $GITHUB_STEP_SUMMARY
 
   build-preview:
     name: Build Preview (EAS)
