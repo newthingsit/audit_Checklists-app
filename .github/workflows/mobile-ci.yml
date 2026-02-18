@@ -109,7 +109,7 @@ jobs:
     name: Build Preview (EAS)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test
+    needs: quality-gate
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview')
     
     steps:
@@ -150,7 +150,7 @@ jobs:
     name: Build Production (EAS)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: test
+    needs: quality-gate
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment:
       name: production
