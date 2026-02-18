@@ -329,4 +329,147 @@ describe('ApiService Integration Tests', () => {
       expect(apiClient.get).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('Error Handling - HTTP Status Codes', () => {
+    it('should handle 400 Bad Request', async () => {
+      const mockError = new Error('Bad Request');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+
+    it('should handle 403 Forbidden', async () => {
+      const mockError = new Error('Forbidden');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/admin')).rejects.toThrow();
+    });
+
+    it('should handle 429 Rate Limited', async () => {
+      const mockError = new Error('Too Many Requests');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+
+    it('should handle 500 Server Error', async () => {
+      const mockError = new Error('Internal Server Error');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+
+    it('should handle 502 Bad Gateway', async () => {
+      const mockError = new Error('Bad Gateway');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+  });
+
+  describe('Network Error Handling', () => {
+    it('should handle timeout errors', async () => {
+      const mockError = new Error('Timeout');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+
+    it('should handle connection errors', async () => {
+      const mockError = new Error('Connection failed');
+      apiClient.get = jest.fn().mockRejectedValue(mockError);
+
+      await expect(get('/items')).rejects.toThrow();
+    });
+  });
+
+  describe('Cache Persistence', () => {
+    it('should cache requests in AsyncStorage', async () => {
+      const mockData = { id: 1, name: 'Test' };
+      apiClient.get = jest.fn().mockResolvedValue({ data: mockData });
+
+      await cachedGet('/items');
+      
+      // Call again - should use cache
+      apiClient.get.mockClear();
+      const result = await cachedGet('/items');
+
+      expect(result).toEqual(mockData);
+      expect(apiClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('HTTP Methods - Extended', () => {
+    it('should handle POST responses correctly', async () => {
+      const responseData = { id: 1, name: 'New' };
+      apiClient.post = jest.fn().mockResolvedValue({ data: responseData });
+
+      const result = await post('/items', { name: 'New' });
+
+      expect(result).toEqual(responseData);
+    });
+
+    it('should handle PUT responses correctly', async () => {
+      const responseData = { id: 1, name: 'Updated' };
+      apiClient.put = jest.fn().mockResolvedValue({ data: responseData });
+
+      const result = await put('/items/1', { name: 'Updated' });
+
+      expect(result).toEqual(responseData);
+    });
+
+    it('should handle DELETE responses correctly', async () => {
+      const responseData = { success: true };
+      apiClient.delete = jest.fn().mockResolvedValue({ data: responseData });
+
+      const result = await del('/items/1');
+
+      expect(result).toEqual(responseData);
+    });
+  });
+
+  describe('Cache Key Management', () => {
+    it('should use consistent cache keys for same endpoint', async () => {
+      const mockData = { results: [] };
+      apiClient.get = jest.fn().mockResolvedValue({ data: mockData });
+
+      await cachedGet('/items');
+      const callCount1 = apiClient.get.mock.calls.length;
+
+      await cachedGet('/items');
+      const callCount2 = apiClient.get.mock.calls.length;
+
+      // Should not make another call
+      expect(callCount2).toBe(callCount1);
+    });
+
+    it('should handle dynamic URLs with IDs', async () => {
+      const mockData = { id: 123 };
+      apiClient.get = jest.fn().mockResolvedValue({ data: mockData });
+
+      const result = await cachedGet('/items/123');
+
+      expect(result).toEqual(mockData);
+    });
+  });
+
+  describe('Concurrent Operations', () => {
+    it('should handle multiple concurrent requests', async () => {
+      const mockData = { id: 1, name: 'Test' };
+      apiClient.get = jest.fn().mockResolvedValue({ data: mockData });
+
+      const promises = [
+        cachedGet('/items'),
+        cachedGet('/items'),
+      ];
+
+      const results = await Promise.all(promises);
+
+      expect(results[0]).toBeDefined();
+      expect(results[1]).toBeDefined();
+      expect(results[0].id).toBeDefined();
+      expect(results[1].id).toBeDefined();
+    });
+  });
+
 });
