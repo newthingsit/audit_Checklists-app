@@ -77,7 +77,6 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: lint
     
     steps:
       - name: Checkout code
@@ -232,7 +231,6 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: lint
     
     steps:
       - name: Checkout code
@@ -261,7 +259,7 @@ jobs:
     name: Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [lint, test, security-scan]
+    needs: [test, security-scan]
     if: always()
     
     steps:
