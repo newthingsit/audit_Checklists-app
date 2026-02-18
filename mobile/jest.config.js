@@ -6,7 +6,7 @@ module.exports = {
   
   // Transform files - Transform React Native, Expo, and other ESM packages
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-navigation|@sentry|expo|expo-.*)/)',
+    'node_modules/(?!(react-native|@react-native|@react-navigation|@sentry|@expo|expo|expo-.*)/)',
   ],
   
   // Module paths

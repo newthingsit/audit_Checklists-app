@@ -67,16 +67,43 @@ jest.mock('@sentry/react-native', () => ({
   ReactNavigationInstrumentation: jest.fn(),
 }));
 
-// Mock AsyncStorage
+// Mock AsyncStorage with in-memory implementation
+const asyncStorageData = {};
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  setItem: jest.fn(() => Promise.resolve()),
-  getItem: jest.fn(() => Promise.resolve(null)),
-  removeItem: jest.fn(() => Promise.resolve()),
-  getAllKeys: jest.fn(() => Promise.resolve([])),
-  multiGet: jest.fn(() => Promise.resolve([])),
-  multiSet: jest.fn(() => Promise.resolve()),
-  multiRemove: jest.fn(() => Promise.resolve()),
-  clear: jest.fn(() => Promise.resolve()),
+  setItem: jest.fn((key, value) => {
+    asyncStorageData[key] = value;
+    return Promise.resolve();
+  }),
+  getItem: jest.fn((key) => Promise.resolve(asyncStorageData[key] || null)),
+  removeItem: jest.fn((key) => {
+    delete asyncStorageData[key];
+    return Promise.resolve();
+  }),
+  getAllKeys: jest.fn(() => Promise.resolve(Object.keys(asyncStorageData))),
+  multiGet: jest.fn((keys) =>
+    Promise.resolve(
+      keys.map((key) => [key, asyncStorageData[key] || null])
+    )
+  ),
+  multiSet: jest.fn((entries) => {
+    entries.forEach(([ key, value ]) => {
+      asyncStorageData[key] = value;
+    });
+    return Promise.resolve();
+  }),
+  multiRemove: jest.fn((keys) => {
+    keys.forEach((key) => {
+      delete asyncStorageData[key];
+    });
+    return Promise.resolve();
+  }),
+  clear: jest.fn(() => {
+    Object.keys(asyncStorageData).forEach((key) => {
+      delete asyncStorageData[key];
+    });
+    return Promise.resolve();
+  }),
 }));
 
 // Mock axios
