@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">10.52% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/95</span>
+                <span class='fraction'>10/95</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">5.26% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/19</span>
+                <span class='fraction'>1/19</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">10.22% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/88</span>
+                <span class='fraction'>9/88</span>
             </div>
         
             
@@ -672,11 +672,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">18x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -684,10 +684,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -845,7 +845,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -949,9 +949,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -990,7 +990,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1034,7 +1034,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1265,11 +1265,11 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import Svg, { Path, G } from 'react-native-svg';
 import { themeConfig } from '../config/theme';
 &nbsp;
-const { width: SCREEN_WIDTH } = <span class="cstat-no" title="statement not covered" >Dimensions.get('window');</span>
-const CANVAS_WIDTH = <span class="cstat-no" title="statement not covered" >SCREEN_WIDTH - 48;</span>
-const CANVAS_HEIGHT = <span class="cstat-no" title="statement not covered" >200;</span>
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CANVAS_WIDTH = SCREEN_WIDTH - 48;
+const CANVAS_HEIGHT = 200;
 &nbsp;
-export const buildSignatureData = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(p</span>aths) =&gt; (<span class="cstat-no" title="statement not covered" >{</span></span>
+export const buildSignatureData = (paths) =&gt; ({
   paths,
   width: CANVAS_WIDTH,
   height: CANVAS_HEIGHT,
@@ -1277,7 +1277,7 @@ export const buildSignatureData = <span class="cstat-no" title="statement not co
 });
 &nbsp;
 // Signature Pad Component
-const SignaturePad = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >({</span> onSave, onClear, onChange, style }) =&gt; {</span>
+const SignaturePad = <span class="fstat-no" title="function not covered" >({</span> onSave, onClear, onChange, style }) =&gt; {
   const [paths, setPaths] = <span class="cstat-no" title="statement not covered" >useState([]);</span>
   const [currentPath, setCurrentPath] = <span class="cstat-no" title="statement not covered" >useState('');</span>
   const [isSigning, setIsSigning] = <span class="cstat-no" title="statement not covered" >useState(false);</span>
@@ -1438,7 +1438,7 @@ const SignaturePad = <span class="cstat-no" title="statement not covered" ><span
 };
 &nbsp;
 // Full Signature Modal
-export const SignatureModal = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >({ </span></span>
+export const SignatureModal = <span class="fstat-no" title="function not covered" >({ </span>
   visible, 
   onClose, 
   onSave,
@@ -1542,7 +1542,7 @@ export const SignatureModal = <span class="cstat-no" title="statement not covere
 };
 &nbsp;
 // Signature Display Component (for viewing saved signatures)
-export const SignatureDisplay = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >({</span> signature, style }) =&gt; {</span>
+export const SignatureDisplay = <span class="fstat-no" title="function not covered" >({</span> signature, style }) =&gt; {
 <span class="cstat-no" title="statement not covered" >  if (!signature || !signature.paths || signature.paths.length === 0) {</span>
 <span class="cstat-no" title="statement not covered" >    return (</span>
       &lt;View style={[styles.signatureDisplay, styles.emptySignature, style]}&gt;
@@ -1583,7 +1583,7 @@ export const SignatureDisplay = <span class="cstat-no" title="statement not cove
 };
 &nbsp;
 // Signature Button (triggers modal)
-export const SignatureButton = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >({ </span></span>
+export const SignatureButton = <span class="fstat-no" title="function not covered" >({ </span>
   onPress, 
   signed = <span class="branch-0 cbranch-no" title="branch not covered" >false, </span>
   label = <span class="branch-0 cbranch-no" title="branch not covered" >'Add Signature',</span>
@@ -1627,7 +1627,7 @@ export const SignatureButton = <span class="cstat-no" title="statement not cover
   );
 };
 &nbsp;
-const styles = <span class="cstat-no" title="statement not covered" >StyleSheet.create({</span>
+const styles = StyleSheet.create({
   // Signature Pad
   signaturePad: {
     backgroundColor: themeConfig.background.paper,
@@ -1849,7 +1849,7 @@ export default SignaturePad;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-18T05:39:49.035Z
+                at 2026-02-18T09:50:25.986Z
             </div>
         <script src="../prettify.js"></script>
         <script>

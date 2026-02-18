@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
-import { View, Text ] from 'react-native';
+import { View, Text } from 'react-native';
 import { buildSignatureData } from '../../src/components/SignatureCapture';
 
 // Mock theme config

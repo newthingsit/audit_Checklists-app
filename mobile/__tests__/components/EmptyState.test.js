@@ -479,14 +479,15 @@ describe('EmptyState Component', () => {
     });
 
     test('renders different presets successfully', () => {
-      const { rerender, getByText } = render(<NoAudits onAction={jest.fn()} />);
-      expect(getByText('No Audits Yet')).toBeTruthy();
+      const { rerender } = render(<NoAudits onAction={jest.fn()} />);
+      const screen1 = render(<NoAudits onAction={jest.fn()} />);
+      expect(screen1.getByText('No Audits Yet')).toBeTruthy();
 
-      rerender(<NoTasks />);
-      expect(getByText('No Tasks Found')).toBeTruthy();
+      const screen2 = render(<NoTasks />);
+      expect(screen2.getByText('No Tasks Found')).toBeTruthy();
 
-      rerender(<NoHistory />);
-      expect(getByText('No History')).toBeTruthy();
+      const screen3 = render(<NoHistory />);
+      expect(screen3.getByText('No History')).toBeTruthy();
     });
   });
 });
