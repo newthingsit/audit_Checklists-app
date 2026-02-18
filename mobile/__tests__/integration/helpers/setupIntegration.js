@@ -151,6 +151,16 @@ export const waitForCondition = async (condition, timeout = 5000, interval = 100
 };
 
 /**
+ * Helper to ensure AsyncStorage operations complete
+ * Use this instead of directly getting/setting for reliability
+ */
+export const ensureAsyncStorageOperation = async (operation) => {
+  const result = await operation();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  return result;
+};
+
+/**
  * Global integration test setup (call in beforeAll)
  */
 export const setupIntegrationTests = async () => {
