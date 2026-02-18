@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { setAuthEventListener } from '../services/ApiService';
+import { setSentryUser } from '../config/sentry';
 
 const AuthContext = createContext();
 
@@ -36,8 +37,11 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get(`${API_BASE_URL}/auth/me`, {
         timeout: 15000 // 15 second timeout for auth requests
       });
-      setUser(response.data.user);
-      return response.data.user;
+      const userData = response.data.user;
+      setUser(userData);
+      // Set Sentry user context for crash reports
+      setSentryUser(userData);
+      return userData;
     } catch (error) {
       // Only clear auth if it's an authentication error (401/403)
       // Don't clear on network errors (503, timeout, etc.) - these will be retried
@@ -301,6 +305,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     refreshTokenRef.current = null;
     delete axios.defaults.headers.common['Authorization'];
+    // Clear Sentry user context
+    setSentryUser(null);
   };
 
   // Login with existing token (for biometric auth)

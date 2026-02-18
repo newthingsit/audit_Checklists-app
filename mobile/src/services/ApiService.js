@@ -7,6 +7,19 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, API_TIMEOUT, RETRY_CONFIG } from '../config/api';
+import { captureApiError } from '../config/sentry';
+
+/**
+ * Generate a unique correlation ID for request tracing
+ * Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (UUID v4)
+ */
+const generateCorrelationId = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 // In-memory cache for frequently accessed data
 const memoryCache = new Map();
@@ -59,7 +72,7 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor for auth token
+// Request interceptor for auth token and correlation ID
 apiClient.interceptors.request.use(
   (config) => {
     // Ensure Authorization is copied from global axios defaults
@@ -70,6 +83,24 @@ apiClient.interceptors.request.use(
         Authorization: globalAuth,
       };
     }
+    
+    // Add correlation ID for distributed tracing
+    // Matches backend's correlation ID system
+    if (!config.headers?.['X-Correlation-ID']) {
+      const correlationId = generateCorrelationId();
+      config.headers = {
+        ...config.headers,
+        'X-Correlation-ID': correlationId,
+      };
+      
+      // Store correlation ID in config for error logging
+      config.correlationId = correlationId;
+      
+      if (__DEV__) {
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [${correlationId}]`);
+      }
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)
@@ -84,9 +115,16 @@ export const setAuthEventListener = (listener) => {
 
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in dev mode with correlation ID
+    if (__DEV__ && response.config?.correlationId) {
+      console.log(`[API] ✓ ${response.status} ${response.config.url} [${response.config.correlationId}]`);
+    }
+    return response;
+  },
   async (error) => {
     const config = error.config;
+    const correlationId = config?.correlationId || 'unknown';
     
     // Handle 401 Unauthorized - token expired or invalid
     if (error.response?.status === 401) {
@@ -102,33 +140,51 @@ apiClient.interceptors.response.use(
             return apiClient(config);
           }
         } catch (refreshError) {
+          console.error(`[API] ✗ Token refresh failed [${correlationId}]`, refreshError.message);
           // fall through to auth error
         }
       }
 
+      if (__DEV__) {
+        console.warn(`[API] ✗ 401 Unauthorized: ${config?.url} [${correlationId}]`);
+      }
+      
       if (authEventListener) {
         authEventListener({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
       }
+      
+      // Capture auth error to Sentry (non-network errors only)
+      if (error.response) {
+        captureApiError(error, correlationId, config?.url, config?.method);
+      }
+      
       return Promise.reject(error);
     }
     
     // Handle 403 Forbidden - permission issues
     if (error.response?.status === 403) {
       if (__DEV__) {
-        console.warn('Permission denied:', config?.url);
+        console.warn(`[API] ✗ 403 Permission denied: ${config?.url} [${correlationId}]`);
       }
+      
+      // Capture permission error to Sentry
+      captureApiError(error, correlationId, config?.url, config?.method);
+      
       return Promise.reject(error);
     }
     
     // Handle 400 Bad Request - don't retry (likely invalid credentials or bad request)
     if (error.response?.status === 400) {
+      if (__DEV__) {
+        console.warn(`[API] ✗ 400 Bad Request: ${config?.url} [${correlationId}]`, error.response?.data);
+      }
       return Promise.reject(error);
     }
     
     // Handle 429 Too Many Requests - don't retry (rate limited)
     if (error.response?.status === 429) {
       if (__DEV__) {
-        console.warn('Rate limited:', config?.url);
+        console.warn(`[API] ✗ 429 Rate limited: ${config?.url} [${correlationId}]`);
       }
       return Promise.reject(error);
     }
@@ -147,10 +203,27 @@ apiClient.interceptors.response.use(
       await new Promise(resolve => setTimeout(resolve, delay));
       
       if (__DEV__) {
-        console.log(`Retrying request (attempt ${config._retryCount}):`, config.url);
+        console.log(`[API] ↻ Retrying request (attempt ${config._retryCount}/${RETRY_CONFIG.maxRetries}): ${config.url} [${correlationId}]`);
       }
       
       return apiClient(config);
+    }
+    
+    // Log final error with correlation ID
+    if (__DEV__) {
+      const status = error.response?.status || 'Network Error';
+      const errorMsg = error.response?.data?.message || error.message;
+      console.error(`[API] ✗ ${status}: ${config?.url} [${correlationId}]`, errorMsg);
+    }
+    
+    // Capture critical errors to Sentry (5xx errors and network failures)
+    // Only capture errors that have exhausted retries
+    const shouldCapture = 
+      !config._retry && // Not currently retrying
+      (error.response?.status >= 500 || !error.response); // Server error or network error
+    
+    if (shouldCapture) {
+      captureApiError(error, correlationId, config?.url, config?.method);
     }
     
     return Promise.reject(error);

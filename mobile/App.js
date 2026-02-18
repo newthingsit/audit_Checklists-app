@@ -1,4 +1,8 @@
-// Initialize tracing FIRST
+// Initialize Sentry FIRST for crash reporting
+import { initSentry } from './src/config/sentry';
+initSentry();
+
+// Initialize tracing
 import { initTracing } from './utils/tracing';
 initTracing();
 

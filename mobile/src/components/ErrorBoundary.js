@@ -1,14 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { captureSentryException } from '../config/sentry';
 
 /**
  * React Native Error Boundary — catches unhandled rendering errors
  * and shows a fallback UI instead of a crash.
+ * Reports errors to Sentry for monitoring and debugging.
  */
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -16,9 +18,24 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    // Log to console in development
     if (__DEV__) {
-      console.error('[ErrorBoundary]', error, errorInfo);
+      console.error('[ErrorBoundary] Component error:', error, errorInfo);
     }
+    
+    // Report to Sentry
+    captureSentryException(error, {
+      react: {
+        componentStack: errorInfo.componentStack,
+      },
+      errorBoundary: {
+        parentComponent: this.props.parentComponent || 'App',
+        screen: this.props.currentScreen || 'Unknown',
+      },
+    });
+    
+    // Store error info for display
+    this.setState({ errorInfo });
   }
 
   handleReset = () => {

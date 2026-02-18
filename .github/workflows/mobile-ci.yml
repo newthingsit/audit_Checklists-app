@@ -1,0 +1,274 @@
+name: Mobile CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
+
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  NODE_VERSION: '20'
+  WORKING_DIR: './mobile'
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Run ESLint
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm run lint
+        continue-on-error: false
+
+      - name: Lint summary
+        if: always()
+        run: |
+          echo "### 🔍 Lint Results" >> $GITHUB_STEP_SUMMARY
+          echo "Linting completed for mobile app" >> $GITHUB_STEP_SUMMARY
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Run tests with coverage
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm run test:ci
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./mobile/coverage/lcov.info
+          flags: mobile
+          name: mobile-coverage
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Generate coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+          echo "Coverage: ${COVERAGE}%"
+          echo "COVERAGE=${COVERAGE}" >> $GITHUB_ENV
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "### ✅ Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "All tests completed for mobile app" >> $GITHUB_STEP_SUMMARY
+          if [ -f mobile/coverage/coverage-summary.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### Coverage Summary" >> $GITHUB_STEP_SUMMARY
+            cat mobile/coverage/coverage-summary.json | jq -r '.total | "- **Lines**: \(.lines.pct)%\n- **Statements**: \(.statements.pct)%\n- **Functions**: \(.functions.pct)%\n- **Branches**: \(.branches.pct)%"' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  build-preview:
+    name: Build Preview (EAS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Android Preview
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "Building preview for Android..."
+          eas build --platform android --profile preview --non-interactive --no-wait || echo "Build queued"
+
+      - name: Build summary
+        run: |
+          echo "### 📱 Build Preview" >> $GITHUB_STEP_SUMMARY
+          echo "Preview build initiated for Android" >> $GITHUB_STEP_SUMMARY
+          echo "Check build status at: https://expo.dev" >> $GITHUB_STEP_SUMMARY
+
+  build-production:
+    name: Build Production (EAS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: test
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://expo.dev
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Android Production
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "Building production for Android..."
+          eas build --platform android --profile production --non-interactive --no-wait || echo "Build queued"
+
+      - name: Build iOS Production
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "Building production for iOS..."
+          eas build --platform ios --profile production --non-interactive --no-wait || echo "Build queued"
+
+      - name: Deployment summary
+        run: |
+          echo "### 🚀 Production Build" >> $GITHUB_STEP_SUMMARY
+          echo "Production builds initiated for Android and iOS" >> $GITHUB_STEP_SUMMARY
+          echo "Check build status at: https://expo.dev" >> $GITHUB_STEP_SUMMARY
+
+  security-scan:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Run npm audit
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          npm audit --audit-level=moderate || echo "Vulnerabilities found, review recommended"
+        continue-on-error: true
+
+      - name: Security summary
+        if: always()
+        run: |
+          echo "### 🔒 Security Audit" >> $GITHUB_STEP_SUMMARY
+          echo "Security audit completed for mobile dependencies" >> $GITHUB_STEP_SUMMARY
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test, security-scan]
+    if: always()
+    
+    steps:
+      - name: Check quality gate
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "❌ Lint failed"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "❌ Tests failed"
+            exit 1
+          fi
+          echo "✅ All quality checks passed"
+
+      - name: Quality gate summary
+        if: always()
+        run: |
+          echo "### 🎯 Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lint**: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security**: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY

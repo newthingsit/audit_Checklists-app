@@ -22,7 +22,11 @@
         "production": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api",
         "development": "auto",
         "tunnel": "https://audit-app-backend-2221-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api"
-      }
+      },
+      "sentryDsn": "",
+      "sentryEnvironment": "production",
+      "sentryEnabled": true,
+      "sentryTracesSampleRate": 0.2
     },
     "android": {
       "package": "com.kapilchauhan.auditpro",
