@@ -135,11 +135,22 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: npm ci --legacy-peer-deps
 
+      - name: Verify EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "❌ EXPO_TOKEN secret is not set. Add it in GitHub repo Settings > Secrets."
+            echo "Get a token from: https://expo.dev/accounts/[account]/settings/access-tokens"
+            exit 1
+          fi
+          echo "✅ EXPO_TOKEN is configured"
+
       - name: Build Android Preview
         working-directory: ${{ env.WORKING_DIR }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           echo "Building preview for Android..."
-          eas build --platform android --profile preview --non-interactive --no-wait || echo "Build queued"
+          eas build --platform android --profile preview --non-interactive --no-wait
 
       - name: Build summary
         run: |
@@ -179,19 +190,33 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: npm ci --legacy-peer-deps
 
+      - name: Verify EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "❌ EXPO_TOKEN secret is not set. Add it in GitHub repo Settings > Secrets."
+            echo "Get a token from: https://expo.dev/accounts/[account]/settings/access-tokens"
+            exit 1
+          fi
+          echo "✅ EXPO_TOKEN is configured"
+
       - name: Build Android Production
         working-directory: ${{ env.WORKING_DIR }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           echo "Building production for Android..."
-          eas build --platform android --profile production --non-interactive --no-wait || echo "Build queued"
+          eas build --platform android --profile production --non-interactive --no-wait
 
       - name: Build iOS Production
         working-directory: ${{ env.WORKING_DIR }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           echo "Building production for iOS..."
-          eas build --platform ios --profile production --non-interactive --no-wait || echo "Build queued"
+          eas build --platform ios --profile production --non-interactive --no-wait
 
       - name: Deployment summary
+        if: always()
         run: |
           echo "### 🚀 Production Build" >> $GITHUB_STEP_SUMMARY
           echo "Production builds initiated for Android and iOS" >> $GITHUB_STEP_SUMMARY
