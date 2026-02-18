@@ -7,7 +7,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import MockAdapter from 'axios-mock-adapter';
 import {
   setupIntegrationTests,
   cleanupIntegrationTests,
@@ -16,21 +15,16 @@ import {
 import { createMockNotificationContext } from '../helpers/mockProviders';
 
 describe('Integration: Notification Service', () => {
-  let axiosMock;
-
   beforeAll(async () => {
     await setupIntegrationTests();
-    axiosMock = new MockAdapter(axios);
   });
 
   afterAll(async () => {
-    axiosMock.reset();
     await cleanupIntegrationTests();
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    axiosMock.reset();
     await AsyncStorage.clear();
   });
 

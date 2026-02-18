@@ -7,7 +7,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import MockAdapter from 'axios-mock-adapter';
 import {
   setupIntegrationTests,
   cleanupIntegrationTests,
@@ -17,21 +16,16 @@ import { createMockLocationContext } from '../helpers/mockProviders';
 import { sampleLocations } from '../helpers/fixtures';
 
 describe('Integration: Location Service', () => {
-  let axiosMock;
-
   beforeAll(async () => {
     await setupIntegrationTests();
-    axiosMock = new MockAdapter(axios);
   });
 
   afterAll(async () => {
-    axiosMock.reset();
     await cleanupIntegrationTests();
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    axiosMock.reset();
     await AsyncStorage.clear();
   });
 
