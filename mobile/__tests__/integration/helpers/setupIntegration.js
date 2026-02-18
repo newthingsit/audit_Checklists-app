@@ -11,27 +11,27 @@ const API_BASE_URL = 'http://api.example.com';
 /**
  * Setup API mocks with interceptor-level control
  * Allows testing retry logic, error handling, etc.
+ * NOTE: Does not call jest.clearAllMocks() to preserve axios mock from jest.setup.js
  */
 export const setupApiMocks = () => {
-  // Store original methods
-  const originalGet = axios.get;
-  const originalPost = axios.post;
-  const originalPut = axios.put;
-  const originalDelete = axios.delete;
+  // Reset axios method mocks specifically (don't clear them entirely)
+  if (axios.get && axios.get.mockClear) {
+    axios.get.mockClear();
+  }
+  if (axios.post && axios.post.mockClear) {
+    axios.post.mockClear();
+  }
+  if (axios.put && axios.put.mockClear) {
+    axios.put.mockClear();
+  }
+  if (axios.delete && axios.delete.mockClear) {
+    axios.delete.mockClear();
+  }
 
-  // Reset all mocks
-  jest.clearAllMocks();
-  axios.get = jest.fn();
-  axios.post = jest.fn();
-  axios.put = jest.fn();
-  axios.delete = jest.fn();
-
+  // Return cleanup function (no restore needed since jest.setup.js defines permanent mocks)
   return {
     restore: () => {
-      axios.get = originalGet;
-      axios.post = originalPost;
-      axios.put = originalPut;
-      axios.delete = originalDelete;
+      // Mocks are permanently defined in jest.setup.js
     },
   };
 };
