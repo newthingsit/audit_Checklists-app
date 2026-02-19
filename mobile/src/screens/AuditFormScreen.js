@@ -3799,7 +3799,7 @@ const AuditFormScreen = () => {
 
   // Only show loading spinner if we don't have any data yet
   // If we have data, keep it visible while refreshing (prevents blank screen flash)
-  const hasData = template && items && items.length > 0;
+  const hasData = template && items && Array.isArray(items) && items.length > 0;
   
   if (loading && !hasData) {
     console.log('[AuditForm] RENDER: Showing loading spinner (no data yet)');
@@ -3857,7 +3857,7 @@ const AuditFormScreen = () => {
   }
 
   // Safety check: If we don't have template or items after loading, show error
-  if (!loading && (!template || !items || items.length === 0) && !error) {
+  if (!loading && (!template || !items || !Array.isArray(items) || items.length === 0) && !error) {
     console.error('[AuditForm] RENDER: Missing data - loading:', loading, 'template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'auditId:', auditId, 'templateId:', templateId);
     return (
       <View style={styles.centerContainer}>
@@ -3912,7 +3912,7 @@ const AuditFormScreen = () => {
 
   // Calculate completed items correctly - count items with valid marks/responses
   // Check both responses state and actual item marks
-  const completedItems = filteredItems.filter(item => {
+  const completedItems = (filteredItems && Array.isArray(filteredItems) ? filteredItems : []).filter(item => {
     const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
     // Also check if item has a mark from loaded audit data
     const hasMark = item.mark !== null && item.mark !== undefined && String(item.mark).trim() !== '';
@@ -3926,7 +3926,7 @@ const AuditFormScreen = () => {
   const hasCategoryProgress = categories && Array.isArray(categories) && categories.length > 0;
   const isReadyToSubmit = hasCategoryProgress
     ? remainingCategoriesCount === 0
-    : (filteredItems.length > 0 && completedItems === filteredItems.length);
+    : (filteredItems && Array.isArray(filteredItems) && filteredItems.length > 0 && completedItems === filteredItems.length);
   const submitButtonLabel = isReadyToSubmit ? 'Submit Audit' : 'Save Progress';
 
   const tabAccent = isCvr ? cvrTheme.accent.purple : (themeConfig?.primary?.main || '#B91C1C');
