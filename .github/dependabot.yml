@@ -3,20 +3,46 @@ updates:
   - package-ecosystem: "npm"
     directory: "/backend"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "monthly"  # Changed from weekly to reduce noise
+    open-pull-requests-limit: 3  # Reduced from 10
+    ignore:
+      # Ignore major updates - handle manually
+      - dependency-name: "express"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "bcryptjs"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "nodemailer"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "node-cron"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "monthly"  # Changed from weekly
+    open-pull-requests-limit: 3  # Reduced from 10
+    ignore:
+      # Ignore major updates - handle manually when ready
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@mui/material"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@mui/icons-material"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "framer-motion"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "recharts"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/mobile"
     schedule:
-      interval: "weekly"
+      interval: "monthly"  # Changed from weekly
       day: "monday"
       time: "03:00"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5  # Reduced from 10
     labels:
       - "dependencies"
       - "mobile"
@@ -56,8 +82,18 @@ updates:
     reviewers:
       - "mobile-team"
     ignore:
-      # Ignore major updates for stable packages
+      # Ignore major updates for stable packages - handle manually
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "react-native"
         update-types: ["version-update:semver-major"]
       - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@react-navigation/native"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@react-navigation/stack"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@react-navigation/bottom-tabs"
         update-types: ["version-update:semver-major"]
