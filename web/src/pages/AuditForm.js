@@ -412,6 +412,29 @@ const AuditForm = () => {
             } else {
               commentsData[auditItem.item_id] = auditItem.comment;
             }
+          } else if (inputType === 'signature') {
+            // Mobile app stores signatures as JSON path data in comment
+            // Convert to SVG data URI so it displays as an image in the photo preview
+            try {
+              const sigData = JSON.parse(auditItem.comment);
+              if (sigData && Array.isArray(sigData.paths) && sigData.paths.length > 0) {
+                const w = sigData.width || 300;
+                const h = sigData.height || 200;
+                const pathEls = sigData.paths.map(d =>
+                  `<path d="${d}" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+                ).join('');
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${pathEls}</svg>`;
+                const svgDataUri = `data:image/svg+xml;base64,${btoa(svg)}`;
+                photosData[auditItem.item_id] = svgDataUri;
+                inputValuesData[auditItem.item_id] = 'Signed';
+                responsesData[auditItem.item_id] = 'completed';
+                // Don't store raw path JSON as comment text
+              } else {
+                commentsData[auditItem.item_id] = auditItem.comment;
+              }
+            } catch {
+              commentsData[auditItem.item_id] = auditItem.comment;
+            }
           } else {
             commentsData[auditItem.item_id] = auditItem.comment;
           }

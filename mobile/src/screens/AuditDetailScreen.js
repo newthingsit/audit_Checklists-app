@@ -17,6 +17,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig } from '../config/theme';
 import { LocationDisplay } from '../components/LocationCapture';
+import { SignatureDisplay } from '../components';
 import { useLocation } from '../context/LocationContext';
 
 const AuditDetailScreen = () => {
@@ -504,12 +505,32 @@ const AuditDetailScreen = () => {
             </View>
           </View>
 
-          {item.comment && (
-            <View style={styles.commentContainer}>
-              <Text style={styles.commentLabel}>Comment:</Text>
-              <Text style={styles.commentText}>{item.comment}</Text>
-            </View>
-          )}
+          {item.comment && (() => {
+            // Check if comment contains signature path data (from mobile signatures)
+            let signatureObj = null;
+            try {
+              const parsed = JSON.parse(item.comment);
+              if (parsed && Array.isArray(parsed.paths) && parsed.paths.length > 0) {
+                signatureObj = parsed;
+              }
+            } catch (e) {
+              // Not JSON, regular comment
+            }
+            if (signatureObj) {
+              return (
+                <View style={styles.commentContainer}>
+                  <Text style={styles.commentLabel}>Signature:</Text>
+                  <SignatureDisplay signature={signatureObj} style={{ marginTop: 4 }} />
+                </View>
+              );
+            }
+            return (
+              <View style={styles.commentContainer}>
+                <Text style={styles.commentLabel}>Comment:</Text>
+                <Text style={styles.commentText}>{item.comment}</Text>
+              </View>
+            );
+          })()}
 
           {!item.comment && item.mark && !item.selected_option_id && (() => {
             const inputType = String(item.input_type || '').toLowerCase();

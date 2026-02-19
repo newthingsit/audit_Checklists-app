@@ -89,6 +89,30 @@ function formatSeconds(seconds) {
 function decodeSignatureData(signatureData) {
   if (!signatureData) return null;
   const raw = String(signatureData);
+  // Handle SVG data URI (from mobile path-based signatures)
+  if (raw.startsWith('data:image/svg+xml;base64,')) {
+    const base64 = raw.split('base64,')[1];
+    try {
+      return Buffer.from(base64, 'base64');
+    } catch (err) {
+      return null;
+    }
+  }
+  // Handle paths-based JSON directly (mobile signature format)
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.paths) && parsed.paths.length > 0) {
+      const w = parsed.width || 300;
+      const h = parsed.height || 200;
+      const pathEls = parsed.paths.map(d =>
+        `<path d="${d}" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      ).join('');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${pathEls}</svg>`;
+      return Buffer.from(svg);
+    }
+  } catch (e) {
+    // Not JSON, continue to base64 handling
+  }
   const base64 = raw.includes('base64,') ? raw.split('base64,')[1] : raw;
   try {
     return Buffer.from(base64, 'base64');

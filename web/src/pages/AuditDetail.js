@@ -44,6 +44,59 @@ import ExportMenu from '../components/ExportMenu';
 import PrintButton from '../components/PrintButton';
 import { showSuccess, showError } from '../utils/toast';
 
+// Helper: detect if a comment string contains signature path data (from mobile app)
+const isSignaturePathData = (comment) => {
+  if (!comment || typeof comment !== 'string') return false;
+  try {
+    const parsed = JSON.parse(comment);
+    return parsed && Array.isArray(parsed.paths) && parsed.paths.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+// Helper: render signature SVG from paths data
+const SignatureFromPaths = ({ comment }) => {
+  try {
+    const data = JSON.parse(comment);
+    if (!data || !Array.isArray(data.paths) || data.paths.length === 0) return null;
+    const width = data.width || 300;
+    const height = data.height || 200;
+    return (
+      <Box sx={{ mt: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Signature:</Typography>
+        <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#fff', display: 'inline-block', p: 1 }}>
+          <svg
+            width={Math.min(width, 400)}
+            height={Math.min(height, 200)}
+            viewBox={`0 0 ${width} ${height}`}
+            style={{ display: 'block' }}
+          >
+            {data.paths.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                stroke="#333"
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </svg>
+        </Box>
+        {data.timestamp && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Signed: {new Date(data.timestamp).toLocaleString()}
+          </Typography>
+        )}
+      </Box>
+    );
+  } catch {
+    return null;
+  }
+};
+
 // Helper: normalize category name for display and grouping
 const normalizeCategoryName = (name) => {
   if (!name) return '';
@@ -1256,11 +1309,17 @@ const AuditDetail = () => {
                 </Box>
               )}
               {item.comment && (
-                <Paper sx={{ p: 1, mt: 1, bgcolor: 'grey.100' }}>
-                  <Typography variant="body2">
-                    <strong>Comment:</strong> {item.comment}
-                  </Typography>
-                </Paper>
+                isSignaturePathData(item.comment) ? (
+                  <Paper sx={{ p: 1, mt: 1, bgcolor: 'grey.100' }}>
+                    <SignatureFromPaths comment={item.comment} />
+                  </Paper>
+                ) : (
+                  <Paper sx={{ p: 1, mt: 1, bgcolor: 'grey.100' }}>
+                    <Typography variant="body2">
+                      <strong>Comment:</strong> {item.comment}
+                    </Typography>
+                  </Paper>
+                )
               )}
               {item.photo_url && (
                 <Box sx={{ mt: 2 }}>

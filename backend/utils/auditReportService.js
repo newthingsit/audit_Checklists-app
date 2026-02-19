@@ -490,6 +490,17 @@ async function getAuditReportData(auditId, options = {}) {
             const sigData = JSON.parse(item.comment);
             if (sigData && (sigData.uri || sigData.base64 || sigData.data)) {
               acknowledgement.signatureData = sigData.uri || sigData.base64 || sigData.data || '';
+            } else if (sigData && Array.isArray(sigData.paths) && sigData.paths.length > 0) {
+              // Mobile app stores signature as SVG path data
+              // Convert paths to a simple SVG data URI for rendering
+              const w = sigData.width || 300;
+              const h = sigData.height || 200;
+              const pathElements = sigData.paths.map(d => 
+                `<path d="${d}" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+              ).join('');
+              const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${pathElements}</svg>`;
+              const svgBase64 = Buffer.from(svg).toString('base64');
+              acknowledgement.signatureData = `data:image/svg+xml;base64,${svgBase64}`;
             }
           } catch (e) {
             // Not JSON, might be a direct base64 or URI string
