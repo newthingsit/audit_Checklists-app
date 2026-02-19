@@ -3929,6 +3929,19 @@ const AuditFormScreen = () => {
     : (filteredItems && Array.isArray(filteredItems) && filteredItems.length > 0 && completedItems === filteredItems.length);
   const submitButtonLabel = isReadyToSubmit ? 'Submit Audit' : 'Save Progress';
 
+  // Count how many previously-failed (recurring) items are now resolved in the current category
+  const resolvedRecurringCount = (() => {
+    try {
+      if (!Array.isArray(recurringItemIds) || !Array.isArray(filteredItems)) return 0;
+      return recurringItemIds.filter(id => {
+        const item = filteredItems.find(i => i && i.id === id);
+        return item ? isItemComplete(item) : false;
+      }).length;
+    } catch (e) {
+      return 0;
+    }
+  })();
+
   const tabAccent = isCvr ? cvrTheme.accent.purple : (themeConfig?.primary?.main || '#B91C1C');
   const tabTextPrimary = isCvr ? cvrTheme.text.primary : (themeConfig?.text?.primary || '#0C0A09');
   const tabTextSecondary = isCvr ? cvrTheme.text.secondary : (themeConfig?.text?.secondary || '#44403C');
@@ -4192,7 +4205,7 @@ const AuditFormScreen = () => {
             </Text>
           </View>
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            {categories.length > 0 ? (
+            {(Array.isArray(categories) && categories.length > 0) ? (
               categories.map((cat) => {
                 const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
                 const isSelected = selectedCategory === cat;
@@ -4249,7 +4262,7 @@ const AuditFormScreen = () => {
           {/* Fixed Header with Category Tabs and Progress */}
           <View style={[styles.stickyHeader, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
             {/* Horizontal Category Tabs (all templates) */}
-            {categories.length > 1 && (
+            {(Array.isArray(categories) && categories.length > 1) && (
               <View style={{ marginBottom: 12 }}>
                 <ScrollView 
                   ref={categoryTabScrollViewRef}
@@ -4327,11 +4340,11 @@ const AuditFormScreen = () => {
             {/* Current Category Progress */}
             <View style={styles.currentCategoryProgress}>
             <Text style={[styles.progressText, isCvr && { color: cvrTheme.text.primary }]}>
-              Progress: {completedItems} / {filteredItems.length} items
+              Progress: {completedItems} / {(Array.isArray(filteredItems) ? filteredItems : []).length} items
               {selectedCategory && !isCvr && ` (${selectedCategory})`}
             </Text>
               {(() => {
-                if (!filteredItems.length) return null;
+                if (!(Array.isArray(filteredItems) && filteredItems.length)) return null;
 
                 // Calculate detailed breakdown - use local state for real-time display
                 const requiredItems = filteredItems.filter(item => item.is_required);
@@ -4453,7 +4466,7 @@ const AuditFormScreen = () => {
             {sectionedItems.map((entry, index) => {
               if (entry.type === 'section') {
                 const sectionData = entry.section;
-                const sectionItems = sectionData.items;
+                const sectionItems = Array.isArray(sectionData?.items) ? sectionData.items : [];
                 const sectionCompleted = sectionItems.filter(item => isItemComplete(item)).length;
                 const sectionTotal = sectionItems.length;
                 const isSectionExpanded = expandedSections[sectionData.name] !== false;
@@ -5012,7 +5025,7 @@ const AuditFormScreen = () => {
             />
 
             <View style={styles.buttonRow}>
-              {categories.length <= 1 && (
+              {(Array.isArray(categories) && categories.length <= 1) && (
                 <TouchableOpacity
                   style={[styles.button, styles.buttonSecondary]}
                   onPress={() => setCurrentStep(0)}
