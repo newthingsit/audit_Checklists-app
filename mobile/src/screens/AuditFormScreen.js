@@ -1409,6 +1409,20 @@ const AuditFormScreen = () => {
 
   // Auto-navigate to next category when current category is completed
   const moveToNextCategory = useCallback((currentCategory) => {
+    if (!categories || !Array.isArray(categories) || categories.length === 0) {
+      console.warn('[AuditForm] moveToNextCategory called, but categories not ready:', { 
+        hasCats: !!categories, 
+        isArray: Array.isArray(categories), 
+        length: categories?.length 
+      });
+      return;
+    }
+    
+    if (!currentCategory || typeof currentCategory !== 'string') {
+      console.warn('[AuditForm] moveToNextCategory called with invalid currentCategory:', currentCategory);
+      return;
+    }
+    
     const currentIndex = categories.indexOf(currentCategory);
     if (currentIndex >= 0 && currentIndex < categories.length - 1) {
       // Check if current category is Speed of Service - if so, skip to last category
@@ -2196,7 +2210,7 @@ const AuditFormScreen = () => {
 
   // Update grouped categories when items or categories change
   useEffect(() => {
-    if (items.length > 0 && categories.length > 0) {
+    if (items && Array.isArray(items) && items.length > 0 && categories && Array.isArray(categories) && categories.length > 0) {
       const grouped = groupCategories(categories, items);
       setGroupedCategories(grouped);
       
@@ -3906,10 +3920,10 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
-  const remainingCategoriesCount = categories.length > 0
+  const remainingCategoriesCount = (categories && Array.isArray(categories) && categories.length > 0)
     ? categories.filter(cat => !categoryCompletionStatus[cat]?.isComplete).length
     : 0;
-  const hasCategoryProgress = categories.length > 0;
+  const hasCategoryProgress = categories && Array.isArray(categories) && categories.length > 0;
   const isReadyToSubmit = hasCategoryProgress
     ? remainingCategoriesCount === 0
     : (filteredItems.length > 0 && completedItems === filteredItems.length);
