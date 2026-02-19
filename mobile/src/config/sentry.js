@@ -8,8 +8,27 @@
  * - SENTRY_ENABLED: Enable/disable Sentry (default: true in production, false in dev)
  */
 
-import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+
+// Safe Sentry import - falls back to no-ops if native module unavailable
+let Sentry;
+try {
+  Sentry = require('@sentry/react-native');
+} catch (e) {
+  console.warn('[Sentry] Native module not available, using no-op fallback:', e?.message);
+  // Provide no-op fallback so all exported functions work without crashing
+  Sentry = {
+    init: () => {},
+    setUser: () => {},
+    addBreadcrumb: () => {},
+    captureException: () => {},
+    captureMessage: () => {},
+    startTransaction: () => ({ finish: () => {} }),
+    wrap: (component) => component,
+    ReactNativeTracing: class { constructor() {} },
+    ReactNavigationInstrumentation: class { constructor() {} },
+  };
+}
 
 // Get configuration from environment or expo config
 const getConfig = () => {

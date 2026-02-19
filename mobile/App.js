@@ -1,10 +1,10 @@
 // Initialize Sentry FIRST for crash reporting
 import { initSentry } from './src/config/sentry';
-initSentry();
+try { initSentry(); } catch (e) { console.warn('Sentry init failed:', e); }
 
 // Initialize tracing
 import { initTracing } from './utils/tracing';
-initTracing();
+try { initTracing(); } catch (e) { console.warn('Tracing init failed:', e); }
 
 import { registerRootComponent } from 'expo';
 import React, { useRef, useEffect } from 'react';

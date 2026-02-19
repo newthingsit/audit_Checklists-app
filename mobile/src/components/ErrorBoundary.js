@@ -51,9 +51,12 @@ class ErrorBoundary extends React.Component {
           <Text style={styles.message}>
             An unexpected error occurred. Please try again.
           </Text>
-          {__DEV__ && this.state.error && (
+          {this.state.error && (
             <ScrollView style={styles.errorBox}>
               <Text style={styles.errorText}>{this.state.error.toString()}</Text>
+              {this.state.errorInfo?.componentStack && (
+                <Text style={styles.errorText}>{'\n'}Component Stack:{'\n'}{this.state.errorInfo.componentStack}</Text>
+              )}
             </ScrollView>
           )}
           <TouchableOpacity style={styles.button} onPress={this.handleReset}>
@@ -93,7 +96,7 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   errorBox: {
-    maxHeight: 120,
+    maxHeight: 250,
     width: '100%',
     backgroundColor: '#FEF2F2',
     borderRadius: 8,

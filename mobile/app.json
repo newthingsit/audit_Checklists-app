@@ -52,6 +52,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kapilchauhan.auditpro"
-    }
+    },
+    "plugins": [
+      "expo-location",
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-image-picker"
+    ]
   }
 }

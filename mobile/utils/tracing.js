@@ -3,8 +3,8 @@
  * Captures performance metrics and error tracking for audit flow
  */
 
-import { fetch as fetchAPI } from 'react-native';
-import { setJSExceptionHandler, getJSExceptionHandler } from 'react-native-exception-handler';
+// Note: fetch is a global in React Native, no need to import it
+// Using safe JS-only error tracking (no native modules required)
 
 /**
  * Initialize tracing for mobile app
@@ -24,7 +24,7 @@ export class MobileTracer {
     // Patch fetch to track API calls
     this.patchFetch();
     
-    // Patch error handler for crash reporting
+    // Patch error handler for crash reporting (JS-only, no native dependency)
     this.setupErrorTracking();
   }
 
@@ -81,7 +81,7 @@ export class MobileTracer {
     if (this.spans.length === 0) return;
 
     try {
-      const sendFetch = globalThis.fetch || fetchAPI;
+      const sendFetch = globalThis.fetch;
       if (typeof sendFetch !== 'function') {
         console.warn('[Tracing] fetch is not available; skipping trace flush');
         return;
@@ -148,7 +148,7 @@ export class MobileTracer {
       return;
     }
 
-    const originalFetch = globalThis.fetch || fetchAPI;
+    const originalFetch = globalThis.fetch;
     if (typeof originalFetch !== 'function') {
       console.warn('[Tracing] fetch is not available; skipping fetch patch');
       return;
@@ -178,19 +178,32 @@ export class MobileTracer {
   }
 
   /**
-   * Set up error tracking for crashes
+   * Set up error tracking for crashes (JS-only, no native dependency)
    */
   setupErrorTracking() {
-    setJSExceptionHandler((error, isFatal) => {
-      const span = this.startSpan('error', {
-        'error.type': error.name,
-        'error.message': error.message,
-        'error.fatal': isFatal,
-        'error.stack': error.stack,
+    // Use global ErrorUtils (React Native's built-in JS error handler)
+    const originalHandler = global.ErrorUtils?.getGlobalHandler?.();
+    
+    if (global.ErrorUtils?.setGlobalHandler) {
+      global.ErrorUtils.setGlobalHandler((error, isFatal) => {
+        try {
+          const span = this.startSpan('error', {
+            'error.type': error?.name || 'UnknownError',
+            'error.message': error?.message || String(error),
+            'error.fatal': String(!!isFatal),
+            'error.stack': error?.stack || '',
+          });
+          this.endSpan(span, 'ERROR', error);
+        } catch (e) {
+          // Don't let tracing errors prevent original handler from running
+        }
+        
+        // Call original handler so errors still propagate
+        if (originalHandler) {
+          originalHandler(error, isFatal);
+        }
       });
-      
-      this.endSpan(span, 'ERROR', error);
-    });
+    }
   }
 
   /**
