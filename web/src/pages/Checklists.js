@@ -33,7 +33,9 @@ import {
   FormControlLabel,
   Checkbox,
   Tooltip,
-  Autocomplete
+  Autocomplete,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -306,6 +308,9 @@ Auditor Signature,Auditor confirms audit completion and accuracy,SIGN-OFF,Audito
 const Checklists = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -1015,7 +1020,17 @@ const Checklists = () => {
         </Box>
 
         {/* Templates Grid - Direct view without category selection */}
-        <Grid container spacing={3} sx={{ mt: 2 }}>
+        <Grid 
+          container 
+          spacing={isMobile ? 1.5 : isTablet ? 2 : 3}
+          sx={{ 
+            mt: isMobile ? 1 : 2,
+            '@media (max-width: 600px)': {
+              mt: 1,
+              mx: -1,
+            }
+          }}
+        >
           {templates.length === 0 ? (
             <Grid item xs={12}>
               <Card>
@@ -1031,7 +1046,7 @@ const Checklists = () => {
               const templateId = getTemplateId(template) ?? index;
               const templateCategories = template.categories || [];
               return (
-                <Grid item xs={12} sm={6} md={4} key={templateId}>
+                <Grid item xs={12} sm={isMobile ? 12 : 6} md={4} key={templateId}>
                   <Card sx={{ 
                     height: '100%', 
                     display: 'flex', 
@@ -1040,9 +1055,12 @@ const Checklists = () => {
                     borderColor: 'divider',
                     transition: 'all 0.3s ease',
                     '&:hover': { 
-                      transform: 'translateY(-4px)',
+                      transform: isMobile ? 'none' : 'translateY(-4px)',
                       boxShadow: 6,
                       borderColor: 'primary.main'
+                    },
+                    '@media (max-width: 600px)': {
+                      borderRadius: '12px',
                     }
                   }}>
                     <CardContent sx={{ flexGrow: 1 }}>
@@ -1105,7 +1123,22 @@ const Checklists = () => {
                         </Typography>
                       </Box>
                     </CardContent>
-                    <CardActions sx={{ p: 2, pt: 0, gap: 1 }}>
+                    <CardActions sx={{ 
+                      p: 2, 
+                      pt: 0, 
+                      gap: 1,
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      '& > button': {
+                        flex: '1 1 auto',
+                        minWidth: '100%'
+                      },
+                      '@media (max-width: 600px)': {
+                        flexDirection: 'column',
+                        p: 1.5,
+                        gap: 0.5,
+                      }
+                    }}>
                       <Button
                         fullWidth
                         variant="contained"
@@ -1119,6 +1152,10 @@ const Checklists = () => {
                             boxShadow: '0 4px 12px rgba(67, 56, 202, 0.4)',
                           },
                           transition: 'all 0.2s ease',
+                          '@media (max-width: 600px)': {
+                            fontSize: '0.9rem',
+                            padding: '10px 12px',
+                          }
                         }}
                       >
                         Start Audit
@@ -1130,6 +1167,12 @@ const Checklists = () => {
                               size="small"
                               color="primary"
                               onClick={() => handleEditTemplate(getTemplateId(template))}
+                              sx={{
+                                flex: '0 0 auto',
+                                '@media (max-width: 600px)': {
+                                  flex: '1 1 auto',
+                                }
+                              }}
                             >
                               <EditIcon fontSize="small" />
                             </IconButton>
@@ -1139,6 +1182,12 @@ const Checklists = () => {
                               size="small"
                               color="primary"
                               onClick={() => handleCloneTemplate(getTemplateId(template))}
+                              sx={{
+                                flex: '0 0 auto',
+                                '@media (max-width: 600px)': {
+                                  flex: '1 1 auto',
+                                }
+                              }}
                             >
                               <ContentCopyIcon fontSize="small" />
                             </IconButton>
@@ -1148,6 +1197,12 @@ const Checklists = () => {
                               size="small"
                               color="success"
                               onClick={() => handleExportCSV(getTemplateId(template), template.name)}
+                              sx={{
+                                flex: '0 0 auto',
+                                '@media (max-width: 600px)': {
+                                  flex: '1 1 auto',
+                                }
+                              }}
                             >
                               <DownloadIcon fontSize="small" />
                             </IconButton>
@@ -1160,6 +1215,12 @@ const Checklists = () => {
                             size="small"
                             color="error"
                             onClick={() => handleDeleteTemplate(getTemplateId(template))}
+                            sx={{
+                              flex: '0 0 auto',
+                              '@media (max-width: 600px)': {
+                                flex: '1 1 auto',
+                              }
+                            }}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>

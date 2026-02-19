@@ -306,7 +306,15 @@ const Layout = ({ children }) => {
           borderBottom: `1px solid ${themeConfig.border.light}`,
         }}
       >
-        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, md: 3 }, minHeight: { xs: 64, md: 70 } }}>
+        <Toolbar sx={{ 
+          justifyContent: 'space-between', 
+          px: { xs: 1.5, sm: 2, md: 3 }, 
+          minHeight: { xs: 56, md: 70 },
+          '@media (max-width: 600px)': {
+            px: '10px',
+            minHeight: '56px',
+          }
+        }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton
               color="inherit"
@@ -436,6 +444,8 @@ const Layout = ({ children }) => {
               boxSizing: 'border-box', 
               width: drawerWidth,
               border: 'none',
+              overflow: 'hidden',
+              '-webkit-overflow-scrolling': 'touch',
             },
           }}
         >
@@ -461,11 +471,14 @@ const Layout = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 3 },
+          p: { xs: 1.5, sm: 2, md: 3 },
           width: { md: `calc(100% - ${drawerWidth}px)` },
           mt: { xs: 8, md: 9 },
           bgcolor: themeConfig.background.default,
           minHeight: 'calc(100vh - 64px)',
+          '@media (max-width: 600px)': {
+            p: '12px',
+          }
         }}
       >
         {children}

@@ -7,6 +7,7 @@
 html {
   /* Prevent iOS text size adjustment */
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   /* Smooth scrolling */
   scroll-behavior: smooth;
 }
@@ -48,25 +49,28 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   user-select: none;
 }
 
-/* Improve touch scrolling */
+/* Improve touch scrolling - Modern browsers handle this natively */
 .MuiDrawer-paper,
 .MuiDialog-paper,
 .MuiMenu-paper {
+  /* Note: -webkit-overflow-scrolling is deprecated but kept for legacy iOS support */
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* ===== Mobile Browser Responsive Styles ===== */
 /* For Safari, Chrome, and other mobile browsers */
 
 @media (max-width: 768px) {
-/* Hide scrollbars on mobile for cleaner look */
+  /* Hide scrollbars on mobile for cleaner look */
   ::-webkit-scrollbar {
     display: none;
   }
   
   body {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+    scroll-behavior: smooth;
   }
   
   /* Larger touch targets on mobile */
@@ -78,6 +82,69 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   .MuiButton-root {
     width: 100%;
     margin-bottom: 8px;
+    font-size: 0.95rem;
+    padding: 10px 16px !important;
+  }
+  
+  /* Improve mobile form spacing */
+  .MuiTextField-root {
+    margin-bottom: 12px !important;
+  }
+  
+  .MuiFormControl-root {
+    margin-bottom: 12px !important;
+  }
+  
+  /* Better card padding on mobile */
+  .MuiCard-root {
+    margin-bottom: 16px !important;
+  }
+  
+  .MuiCardContent-root {
+    padding: 16px !important;
+  }
+  
+  .MuiCardActions-root {
+    padding: 12px !important;
+    flex-direction: column;
+    gap: 8px !important;
+  }
+  
+  .MuiCardActions-root .MuiButton-root {
+    width: 100%;
+  }
+  
+  /* Optimize dialog for mobile */
+  .MuiDialog-paper {
+    margin: 16px !important;
+  }
+  
+  /* Better grid spacing on mobile */
+  .MuiGrid-root {
+    padding: 4px !important;
+  }
+  
+  .MuiGrid-item {
+    padding: 8px !important;
+  }
+  
+  /* Container padding */
+  .MuiContainer-root {
+    padding: 12px !important;
+  }
+  
+  /* Better typography on mobile */
+  h1, .MuiTypography-h1 {
+    font-size: 1.75rem !important;
+  }
+  
+  h4, .MuiTypography-h4 {
+    font-size: 1.2rem !important;
+  }
+  
+  h6, .MuiTypography-h6 {
+    font-size: 1rem !important;
+  }
   }
   
   /* Inline buttons in forms should not be full width */
@@ -156,7 +223,9 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Tables ===== */
   .MuiTableContainer-root {
     overflow-x: auto;
+    /* Modern browsers handle momentum scrolling natively */
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   
   .MuiTable-root {
@@ -226,7 +295,9 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   .MuiStepper-root {
     padding: 16px 0 !important;
     overflow-x: auto;
+    /* Modern browsers handle momentum scrolling natively */
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   
   .MuiStepLabel-label {
@@ -301,6 +372,9 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Menu ===== */
   .MuiMenu-paper {
     max-height: 70vh !important;
+    /* Modern browsers handle momentum scrolling natively */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   
   .MuiMenuItem-root {
@@ -311,7 +385,9 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Tabs ===== */
   .MuiTabs-root {
     overflow-x: auto;
+    /* Modern browsers handle momentum scrolling natively */
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   
   .MuiTab-root {
@@ -337,7 +413,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
     right: 20px !important;
     z-index: 1000 !important;
   }
-}
 
 /* Small mobile devices */
 @media (max-width: 480px) {
@@ -369,14 +444,17 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
 
 /* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
-  /* Fix for iOS momentum scrolling */
+  /* Fix for iOS momentum scrolling - legacy support */
   .MuiDrawer-paper {
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   
   /* Fix input zoom on iOS */
   input, select, textarea {
     font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
   }
   
   /* Fix for iOS bottom safe area */
@@ -424,13 +502,11 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
     background: white !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    color-adjust: exact !important;
   }
   
   /* Ensure proper page breaks */
   .MuiPaper-root {
     break-inside: avoid;
-    page-break-inside: avoid;
     box-shadow: none !important;
     border: 1px solid #e0e0e0 !important;
     margin-bottom: 12px !important;
@@ -451,7 +527,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   .MuiTypography-h5,
   .MuiTypography-h6 {
     break-after: avoid;
-    page-break-after: avoid;
   }
   
   /* Container adjustments */
@@ -465,12 +540,12 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    color-adjust: exact !important;
   }
   
   /* Background colors for badges */
   .MuiBox-root[style*="background"] {
     -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   
   /* Hide scroll shadows */
@@ -516,5 +591,277 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* ===== Enhanced Mobile Optimizations ===== */
+
+/* Mobile-specific layout adjustments */
+@media (max-width: 960px) {
+  /* Better touch spacing */
+  .MuiButtonBase-root {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  
+  /* Improve card readability */
+  .MuiCard-root {
+    border-radius: 12px;
+  }
+  
+  /* Better form field focus states */
+  .MuiOutlinedInput-root:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+  
+  .MuiOutlinedInput-root.Mui-focused {
+    background-color: rgba(0, 0, 0, 0.01);
+  }
+}
+
+/* Landscape mobile optimizations */
+@media (max-width: 800px) and (orientation: landscape) {
+  /* Reduce padding for landscape */
+  .MuiContainer-root {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  
+  /* Compact header for landscape */
+  .MuiAppBar-root {
+    padding: 8px 0;
+  }
+  
+  .MuiToolbar-root {
+    min-height: 48px;
+    padding: 8px 16px;
+  }
+  
+  /* Smaller typography in landscape */
+  .MuiTypography-h4 {
+    font-size: 1rem;
+  }
+  
+  .MuiTypography-body1 {
+    font-size: 0.9rem;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 360px) {
+  /* Very compact spacing */
+  .MuiCardContent-root {
+    padding: 8px;
+  }
+  
+  .MuiCardActions-root {
+    padding: 8px;
+  }
+  
+  .MuiButton-root {
+    padding: 8px 12px !important;
+    font-size: 0.75rem;
+  }
+  
+  .MuiTextField-root {
+    margin-bottom: 8px !important;
+  }
+  
+  /* Hide optional content */
+  .hide-on-xs {
+    display: none !important;
+  }
+}
+
+/* ===== Checklist-specific Mobile Optimizations ===== */
+.checklist-card-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  /* Single column grid for checklist templates on mobile */
+  .checklist-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .checklist-card {
+    margin-bottom: 0;
+  }
+  
+  /* Better icon sizing on mobile */
+  .checklist-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+  }
+  
+  /* Category chips stack vertically on mobile */
+  .category-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+/* ===== Audit Form Mobile Optimizations ===== */
+.audit-form-mobile {
+  padding: 12px;
+}
+
+@media (max-width: 768px) {
+  /* Better spacing for form sections */
+  .form-section {
+    margin-bottom: 20px;
+  }
+  
+  /* Full-width option buttons */
+  .option-button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .option-button {
+    width: 100%;
+    padding: 14px 12px;
+    font-size: 1rem;
+    text-align: left;
+    justify-content: flex-start;
+    min-height: 48px;
+  }
+  
+  /* Better signature canvas sizing */
+  .signature-canvas-container {
+    margin-bottom: 16px;
+  }
+  
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  /* Better photo display on mobile */
+  .photo-preview {
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  
+  /* Stepper improvements */
+  .MuiStepper-vertical {
+    padding: 8px 0;
+  }
+  
+  .MuiStepIcon-root {
+    font-size: 1.75rem;
+  }
+}
+
+/* ===== Form Input Improvements ===== */
+/* Prevent font zoom on iOS when input is focused */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+/* Better text area on mobile */
+textarea {
+  resize: vertical;
+  min-height: 120px;
+  padding: 12px;
+}
+
+/* ===== Improved Touch Targets ===== */
+/* Ensure all interactive elements are at least 44x44px */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
+.MuiIconButton-root,
+.MuiListItem-root {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Better spacing for form labels */
+.MuiFormLabel-root {
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+
+/* Better visual feedback on touch */
+.MuiButton-root,
+.MuiIconButton-root,
+.MuiListItem-root {
+  transition: all 0.2s ease-in-out;
+}
+
+.MuiButton-root:active,
+.MuiIconButton-root:active {
+  transform: scale(0.98);
+}
+
+/* ===== Navigation Mobile Optimizations ===== */
+@media (max-width: 768px) {
+  .drawer-navigation {
+    width: 100%;
+    max-width: calc(100vw - 56px);
+  }
+  
+  .app-bar-mobile {
+    height: 56px;
+  }
+  
+  /* Better menu icon spacing */
+  .menu-icon {
+    padding: 8px;
+  }
+}
+
+/* ===== Tab Navigation Mobile ===== */
+@media (max-width: 768px) {
+  .MuiTabs-root {
+    margin-left: -12px;
+    margin-right: -12px;
+    width: calc(100% + 24px);
+  }
+  
+  .MuiTab-root {
+    min-width: 100px;
+    flex: 1;
+  }
+  
+  .MuiTabPanel-root {
+    padding: 12px 0;
+  }
+}
+
+/* ===== Accordion Mobile Optimizations ===== */
+@media (max-width: 768px) {
+  .MuiAccordion-root {
+    margin-bottom: 12px;
+  }
+  
+  .MuiAccordionSummary-root {
+    padding: 12px;
+    min-height: 48px;
+  }
+  
+  .MuiAccordionDetails-root {
+    padding: 12px;
+  }
 }
 

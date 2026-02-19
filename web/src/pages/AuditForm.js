@@ -2470,8 +2470,11 @@ const AuditForm = () => {
             color: cvrTheme.text.primary,
             minHeight: '100vh',
             py: 2,
-            px: { xs: 1.5, md: 3 }
-          }) 
+            px: { xs: 1.5, sm: 2, md: 3 }
+          }),
+          '@media (max-width: 600px)': {
+            padding: '12px 12px',
+          }
         }}
       >
         <Typography 
@@ -3160,7 +3163,19 @@ const AuditForm = () => {
                   mt: 3,
                   display: 'flex',
                   justifyContent: isMobile ? 'stretch' : 'flex-end',
-                  gap: 2
+                  gap: isMobile ? 1 : 2,
+                  flexDirection: isMobile ? 'column' : 'row',
+                  '@media (max-width: 600px)': {
+                    mt: 2,
+                    position: 'sticky',
+                    bottom: 0,
+                    backgroundColor: '#fff',
+                    padding: '12px',
+                    borderTop: '1px solid #e0e0e0',
+                    zIndex: 100,
+                    margin: '0 -12px -12px',
+                    gap: 0.5,
+                  }
                 }}
               >
                 <Button
@@ -3168,7 +3183,14 @@ const AuditForm = () => {
                   variant={isCvr ? 'text' : 'outlined'}
                   disabled={saving}
                   data-testid="save-button"
-                  sx={isCvr ? { color: cvrTheme.accent.purple } : {}}
+                  sx={{
+                    flex: isMobile ? '1' : 'auto',
+                    ...(isCvr ? { color: cvrTheme.accent.purple } : {}),
+                    '@media (max-width: 600px)': {
+                      fontSize: '0.9rem',
+                      padding: '10px 16px',
+                    }
+                  }}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
                 </Button>
@@ -3178,11 +3200,17 @@ const AuditForm = () => {
                   disabled={saving}
                   data-testid="submit-button"
                   sx={{
+                    flex: isMobile ? '1' : 'auto',
                     ...(isCvr && {
                       background: cvrTheme.button.next,
                       color: '#fff',
                       '&:hover': { background: 'linear-gradient(135deg, #5a3ee6 0%, #8b52e6 100%)' }
-                    })
+                    }),
+                    '@media (max-width: 600px)': {
+                      fontSize: '0.9rem',
+                      padding: '10px 16px',
+                      order: -1, // Show Submit button first on mobile
+                    }
                   }}
                 >
                   {saving ? 'Saving...' : 'Submit'}
