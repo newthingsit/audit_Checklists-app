@@ -236,7 +236,8 @@ const AuditFormScreen = () => {
 
   // Memoized filtered locations for store picker - must be called unconditionally (React hooks rule)
   const filteredLocations = useMemo(() => {
-    return locations.filter(loc => {
+    const safeLocations = Array.isArray(locations) ? locations : [];
+    return safeLocations.filter(loc => {
       if (!storeSearchText) return true;
       const search = storeSearchText.toLowerCase();
       return (
@@ -506,7 +507,7 @@ const AuditFormScreen = () => {
   // Pre-fill location when audit data is loaded  
   // Only update when selectedLocation is not set and we have location data
   useEffect(() => {
-    if (locations.length === 0 || selectedLocation) {
+    if (!Array.isArray(locations) || locations.length === 0 || selectedLocation) {
       // Skip if no locations available or location already selected
       return;
     }
@@ -1367,19 +1368,19 @@ const AuditFormScreen = () => {
   }, [items, recurringItemIds, scrollToItemId]);
 
   const jumpToFirstFailure = useCallback(() => {
-    if (!recurringItemIds.length) return;
+    if (!Array.isArray(recurringItemIds) || recurringItemIds.length === 0) return;
     jumpToRecurringByIndex(0);
-  }, [jumpToRecurringByIndex, recurringItemIds.length]);
+  }, [jumpToRecurringByIndex, recurringItemIds]);
 
   const jumpToNextFailure = useCallback(() => {
-    if (!recurringItemIds.length) return;
+    if (!Array.isArray(recurringItemIds) || recurringItemIds.length === 0) return;
     const nextIndex = (recurringViewIndex + 1) % recurringItemIds.length;
     jumpToRecurringByIndex(nextIndex);
-  }, [jumpToRecurringByIndex, recurringItemIds.length, recurringViewIndex]);
+  }, [jumpToRecurringByIndex, recurringItemIds, recurringViewIndex]);
 
   // Re-evaluate conditional logic when responses change
   useEffect(() => {
-    if (selectedCategory && filteredItems.length > 0) {
+    if (selectedCategory && Array.isArray(filteredItems) && filteredItems.length > 0) {
       // Re-filter items based on updated conditional logic
       const filtered = items.filter(item => {
         if (item.category !== selectedCategory) return false;
@@ -1396,7 +1397,7 @@ const AuditFormScreen = () => {
   }, [filteredItems, selectedCategory, selectedSection]);
 
   const recurringItemIds = useMemo(() => (
-    previousFailures
+    (Array.isArray(previousFailures) ? previousFailures : [])
       .map(item => item.item_id)
       .filter(id => id !== null && id !== undefined)
   ), [previousFailures]);
@@ -1405,7 +1406,7 @@ const AuditFormScreen = () => {
     if (recurringItemIds.length > 0) {
       setRecurringViewIndex(0);
     }
-  }, [recurringItemIds.length]);
+  }, [recurringItemIds]);
 
   // Auto-navigate to next category when current category is completed
   const moveToNextCategory = useCallback((currentCategory) => {
@@ -2326,8 +2327,9 @@ const AuditFormScreen = () => {
   const groupItemsBySection = useCallback((itemsList) => {
     const sections = {};
     const itemsWithoutSection = [];
+    const safeItemsList = Array.isArray(itemsList) ? itemsList : [];
 
-    itemsList.forEach(item => {
+    safeItemsList.forEach(item => {
       const section = item.section;
       if (section && section.trim()) {
         if (!sections[section]) {
@@ -2356,11 +2358,11 @@ const AuditFormScreen = () => {
     };
   }, []);
 
-  const groupedItems = useMemo(() => groupItemsBySection(filteredItems), [filteredItems, groupItemsBySection]);
+  const groupedItems = useMemo(() => groupItemsBySection(Array.isArray(filteredItems) ? filteredItems : []), [filteredItems, groupItemsBySection]);
 
   const itemIndexMap = useMemo(() => {
     const map = {};
-    filteredItems.forEach((item, index) => {
+    (Array.isArray(filteredItems) ? filteredItems : []).forEach((item, index) => {
       map[item.id] = index;
     });
     return map;
@@ -2378,7 +2380,7 @@ const AuditFormScreen = () => {
 
   const sectionedItems = useMemo(() => {
     if (groupedItems.sections.length === 0) {
-      return filteredItems.map(item => ({ type: 'item', item }));
+      return (Array.isArray(filteredItems) ? filteredItems : []).map(item => ({ type: 'item', item }));
     }
 
     const list = [];
@@ -3920,21 +3922,26 @@ const AuditFormScreen = () => {
     return hasResponse || hasMark;
   }).length;
 
-  const remainingCategoriesCount = (categories && Array.isArray(categories) && categories.length > 0)
-    ? categories.filter(cat => !categoryCompletionStatus[cat]?.isComplete).length
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeFilteredItems = Array.isArray(filteredItems) ? filteredItems : [];
+  const safeRecurringItemIds = Array.isArray(recurringItemIds) ? recurringItemIds : [];
+  const safePreviousFailures = Array.isArray(previousFailures) ? previousFailures : [];
+
+  const remainingCategoriesCount = safeCategories.length > 0
+    ? safeCategories.filter(cat => !categoryCompletionStatus[cat]?.isComplete).length
     : 0;
-  const hasCategoryProgress = categories && Array.isArray(categories) && categories.length > 0;
+  const hasCategoryProgress = safeCategories.length > 0;
   const isReadyToSubmit = hasCategoryProgress
     ? remainingCategoriesCount === 0
-    : (filteredItems && Array.isArray(filteredItems) && filteredItems.length > 0 && completedItems === filteredItems.length);
+    : (safeFilteredItems.length > 0 && completedItems === safeFilteredItems.length);
   const submitButtonLabel = isReadyToSubmit ? 'Submit Audit' : 'Save Progress';
 
   // Count how many previously-failed (recurring) items are now resolved in the current category
   const resolvedRecurringCount = (() => {
     try {
-      if (!Array.isArray(recurringItemIds) || !Array.isArray(filteredItems)) return 0;
-      return recurringItemIds.filter(id => {
-        const item = filteredItems.find(i => i && i.id === id);
+      if (safeRecurringItemIds.length === 0 || safeFilteredItems.length === 0) return 0;
+      return safeRecurringItemIds.filter(id => {
+        const item = safeFilteredItems.find(i => i && i.id === id);
         return item ? isItemComplete(item) : false;
       }).length;
     } catch (e) {
@@ -4095,7 +4102,7 @@ const AuditFormScreen = () => {
               <TouchableOpacity
                 style={[styles.button, isCvr && { padding: 0, overflow: 'hidden' }]}
                 onPress={() => {
-                  if (categories.length <= 1) setCurrentStep(2);
+                  if (safeCategories.length <= 1) setCurrentStep(2);
                   else setCurrentStep(1);
                 }}
               >
@@ -4205,8 +4212,8 @@ const AuditFormScreen = () => {
             </Text>
           </View>
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-            {(Array.isArray(categories) && categories.length > 0) ? (
-              categories.map((cat) => {
+            {safeCategories.length > 0 ? (
+              safeCategories.map((cat) => {
                 const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
                 const isSelected = selectedCategory === cat;
                 return (
@@ -4262,7 +4269,7 @@ const AuditFormScreen = () => {
           {/* Fixed Header with Category Tabs and Progress */}
           <View style={[styles.stickyHeader, isCvr && { backgroundColor: cvrTheme.background.elevated, borderBottomColor: cvrTheme.input.border }]}>
             {/* Horizontal Category Tabs (all templates) */}
-            {(Array.isArray(categories) && categories.length > 1) && (
+            {safeCategories.length > 1 && (
               <View style={{ marginBottom: 12 }}>
                 <ScrollView 
                   ref={categoryTabScrollViewRef}
@@ -4285,7 +4292,7 @@ const AuditFormScreen = () => {
                   </TouchableOpacity>
                   
                   {/* Category Tabs */}
-                  {categories.map((cat, idx) => {
+                  {safeCategories.map((cat, idx) => {
                     const isActive = selectedCategory === cat;
                     const catStatus = categoryCompletionStatus[cat] || { completed: 0, total: 0, isComplete: false };
                     return (
@@ -4340,22 +4347,22 @@ const AuditFormScreen = () => {
             {/* Current Category Progress */}
             <View style={styles.currentCategoryProgress}>
             <Text style={[styles.progressText, isCvr && { color: cvrTheme.text.primary }]}>
-              Progress: {completedItems} / {(Array.isArray(filteredItems) ? filteredItems : []).length} items
+              Progress: {completedItems} / {safeFilteredItems.length} items
               {selectedCategory && !isCvr && ` (${selectedCategory})`}
             </Text>
               {(() => {
-                if (!(Array.isArray(filteredItems) && filteredItems.length)) return null;
+                if (safeFilteredItems.length === 0) return null;
 
                 // Calculate detailed breakdown - use local state for real-time display
-                const requiredItems = filteredItems.filter(item => item.is_required);
+                const requiredItems = safeFilteredItems.filter(item => item.is_required);
                 const missingRequired = requiredItems.filter(item => !isItemComplete(item));
-                const itemsNeedingPhotos = filteredItems.filter(item => {
+                const itemsNeedingPhotos = safeFilteredItems.filter(item => {
                   const fieldType = getEffectiveItemFieldType(item);
                   return item.is_required && fieldType === 'image_upload' && !hasPhotoForItem(item.id);
                 });
                 
                 // Calculate real-time completion for current category
-                const currentCategoryCompleted = filteredItems.filter(item => {
+                const currentCategoryCompleted = safeFilteredItems.filter(item => {
                   const hasResponse = responses[item.id] && responses[item.id] !== 'pending' && responses[item.id] !== '';
                   const hasComment = comments[item.id] && String(comments[item.id]).trim();
                   const hasPhoto = hasPhotoForItem(item.id);
@@ -4368,8 +4375,8 @@ const AuditFormScreen = () => {
                   return hasResponse;
                 }).length;
                 
-                const percent = filteredItems.length > 0 ? Math.round((currentCategoryCompleted / filteredItems.length) * 100) : 0;
-                const isComplete = currentCategoryCompleted === filteredItems.length && filteredItems.length > 0;
+                const percent = safeFilteredItems.length > 0 ? Math.round((currentCategoryCompleted / safeFilteredItems.length) * 100) : 0;
+                const isComplete = currentCategoryCompleted === safeFilteredItems.length && safeFilteredItems.length > 0;
                 
                 return (
                   <View>
@@ -4403,10 +4410,10 @@ const AuditFormScreen = () => {
                 );
               })()}
             </View>
-            {recurringItemIds.length > 0 && (
+            {safeRecurringItemIds.length > 0 && (
               <View style={styles.recurringHeaderRow}>
                 <Text style={styles.recurringHeaderText}>
-                  Recurring: {resolvedRecurringCount}/{recurringItemIds.length} resolved
+                  Recurring: {resolvedRecurringCount}/{safeRecurringItemIds.length} resolved
                 </Text>
                 <TouchableOpacity
                   style={styles.recurringHeaderButton}
@@ -4429,15 +4436,15 @@ const AuditFormScreen = () => {
             )}
 
             {/* Previous failures summary banner */}
-            {previousAuditInfo && previousFailures.length > 0 && recurringNoticeVisible && (
+            {previousAuditInfo && safePreviousFailures.length > 0 && recurringNoticeVisible && (
               <View style={styles.previousFailuresBanner}>
                 <Icon name="history" size={18} color={themeConfig.warning.dark} />
                 <Text style={styles.previousFailuresBannerText}>
-                  {previousFailures.length} item(s) failed in last audit ({new Date(previousAuditInfo.date).toLocaleDateString()})
+                  {safePreviousFailures.length} item(s) failed in last audit ({new Date(previousAuditInfo.date).toLocaleDateString()})
                 </Text>
-                {recurringItemIds.length > 1 && (
+                {safeRecurringItemIds.length > 1 && (
                   <Text style={styles.previousFailuresCountText}>
-                    {recurringViewIndex + 1}/{recurringItemIds.length}
+                    {recurringViewIndex + 1}/{safeRecurringItemIds.length}
                   </Text>
                 )}
                 <TouchableOpacity
@@ -4446,7 +4453,7 @@ const AuditFormScreen = () => {
                 >
                   <Text style={styles.previousFailuresCtaText}>View</Text>
                 </TouchableOpacity>
-                {recurringItemIds.length > 1 && (
+                {safeRecurringItemIds.length > 1 && (
                   <TouchableOpacity
                     onPress={jumpToNextFailure}
                     style={styles.previousFailuresCtaSecondary}
