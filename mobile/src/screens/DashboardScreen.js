@@ -39,6 +39,11 @@ const DashboardScreen = () => {
   const lastRecentAuditsRef = useRef(recentAudits);
   const lastAnalyticsRef = useRef(analytics);
 
+  const toFiniteNumber = useCallback((value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }, []);
+
   useEffect(() => {
     lastStatsRef.current = stats;
   }, [stats]);
@@ -104,7 +109,8 @@ const DashboardScreen = () => {
     try {
       const requestConfig = {
         params: { _t: Date.now() },
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache' },
+        timeout: 20000
       };
 
       const safeGet = async (url) => {
@@ -121,10 +127,10 @@ const DashboardScreen = () => {
           ? safeGet(`${API_BASE_URL}/templates`)
           : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewAuditsNow
-          ? safeGet(`${API_BASE_URL}/audits`)
+          ? safeGet(`${API_BASE_URL}/audits?limit=20`)
           : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewActionsNow 
-          ? safeGet(`${API_BASE_URL}/actions`)
+          ? safeGet(`${API_BASE_URL}/actions?status=pending`)
           : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewAnalyticsNow
           ? safeGet(`${API_BASE_URL}/analytics/dashboard`)
@@ -139,7 +145,31 @@ const DashboardScreen = () => {
         nextStats.templates = templatesRes.data?.templates?.length || 0;
       }
 
-      if (auditsRes.ok) {
+      if (actionsRes.ok) {
+        const pendingActions = (actionsRes.data?.actions || []).length;
+        nextStats.pendingActions = pendingActions;
+      }
+
+      if (analyticsRes.ok) {
+        const analyticsData = analyticsRes.data || {};
+        setAnalytics(analyticsData);
+
+        nextStats.audits = toFiniteNumber(analyticsData.total, nextStats.audits);
+        nextStats.completed = toFiniteNumber(analyticsData.completed, nextStats.completed);
+
+        if (Array.isArray(analyticsData.recent)) {
+          setRecentAudits(analyticsData.recent.slice(0, 5));
+        }
+      } else if (lastAnalyticsRef.current) {
+        setAnalytics(lastAnalyticsRef.current);
+
+        nextStats.audits = toFiniteNumber(lastAnalyticsRef.current.total, nextStats.audits);
+        nextStats.completed = toFiniteNumber(lastAnalyticsRef.current.completed, nextStats.completed);
+
+        if (Array.isArray(lastAnalyticsRef.current.recent)) {
+          setRecentAudits(lastAnalyticsRef.current.recent.slice(0, 5));
+        }
+      } else if (auditsRes.ok) {
         const audits = auditsRes.data?.audits || [];
         const sortedAudits = [...audits].sort((a, b) => {
           const aTime = new Date(a.updated_at || a.completed_at || a.created_at).getTime();
@@ -151,17 +181,6 @@ const DashboardScreen = () => {
         nextStats.audits = audits.length;
         nextStats.completed = completed;
         setRecentAudits(sortedAudits.slice(0, 5));
-      }
-
-      if (actionsRes.ok) {
-        const pendingActions = (actionsRes.data?.actions || []).filter(a => a.status === 'pending').length;
-        nextStats.pendingActions = pendingActions;
-      }
-
-      if (analyticsRes.ok) {
-        setAnalytics(analyticsRes.data);
-      } else if (lastAnalyticsRef.current) {
-        setAnalytics(lastAnalyticsRef.current);
       }
 
       setStats(nextStats);
@@ -237,6 +256,18 @@ const DashboardScreen = () => {
   }
 
   const completionRate = stats.audits > 0 ? Math.round((stats.completed / stats.audits) * 100) : 0;
+  const scheduleAdherencePercent = toFiniteNumber(
+    analytics?.scheduleAdherence?.adherence ?? analytics?.scheduleAdherence?.percentage,
+    0
+  );
+  const scheduleAdherenceOnTime = toFiniteNumber(
+    analytics?.scheduleAdherence?.onTime ?? analytics?.scheduleAdherence?.completedOnTime,
+    0
+  );
+  const scheduleAdherenceTotal = toFiniteNumber(
+    analytics?.scheduleAdherence?.total ?? analytics?.scheduleAdherence?.totalScheduled,
+    0
+  );
 
   return (
     <ScrollView
@@ -367,12 +398,12 @@ const DashboardScreen = () => {
                 <Icon name="schedule" size={24} color="#fff" />
               </View>
               <Text style={styles.statNumber}>
-                {analytics.scheduleAdherence.adherence || analytics.scheduleAdherence.percentage || 0}%
+                {scheduleAdherencePercent}%
               </Text>
               <Text style={styles.statLabel}>Schedule Adherence</Text>
-              {analytics.scheduleAdherence.total > 0 && (
+              {scheduleAdherenceTotal > 0 && (
                 <Text style={styles.statSubtext}>
-                  {analytics.scheduleAdherence.onTime || analytics.scheduleAdherence.completedOnTime || 0} / {analytics.scheduleAdherence.total || analytics.scheduleAdherence.totalScheduled || 0} on time
+                  {scheduleAdherenceOnTime} / {scheduleAdherenceTotal} on time
                 </Text>
               )}
             </LinearGradient>
