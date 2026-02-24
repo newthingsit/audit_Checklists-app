@@ -790,110 +790,82 @@ router.get('/leaderboard/summary', authenticate, (req, res) => {
 // Get detailed trend analysis with comparisons
 router.get('/trends/analysis', authenticate, (req, res) => {
   const dbInstance = db.getDb();
-  const { period = 'week' } = req.query; // 'day', 'week', 'month', 'quarter'
-  
+  const allowedPeriods = new Set(['day', 'week', 'month', 'quarter']);
+  const requestedPeriod = typeof req.query.period === 'string' ? req.query.period.toLowerCase() : 'week';
+  const period = allowedPeriods.has(requestedPeriod) ? requestedPeriod : 'week';
+  const forceRefresh = req.query.refresh === 'true';
+  const cacheKey = `trend-analysis:${period}`;
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
-  
-  // Calculate date ranges based on period
-  let currentFilter, previousFilter;
-  switch (period) {
-    case 'day':
-      currentFilter = isMssql 
-        ? "a.created_at >= DATEADD(day, -1, GETDATE())"
-        : "a.created_at >= date('now', '-1 day')";
-      previousFilter = isMssql
-        ? "a.created_at >= DATEADD(day, -2, GETDATE()) AND a.created_at < DATEADD(day, -1, GETDATE())"
-        : "a.created_at >= date('now', '-2 days') AND a.created_at < date('now', '-1 day')";
-      break;
-    case 'week':
-      currentFilter = isMssql 
-        ? "a.created_at >= DATEADD(day, -7, GETDATE())"
-        : "a.created_at >= date('now', '-7 days')";
-      previousFilter = isMssql
-        ? "a.created_at >= DATEADD(day, -14, GETDATE()) AND a.created_at < DATEADD(day, -7, GETDATE())"
-        : "a.created_at >= date('now', '-14 days') AND a.created_at < date('now', '-7 days')";
-      break;
-    case 'month':
-      currentFilter = isMssql 
-        ? "a.created_at >= DATEADD(day, -30, GETDATE())"
-        : "a.created_at >= date('now', '-30 days')";
-      previousFilter = isMssql
-        ? "a.created_at >= DATEADD(day, -60, GETDATE()) AND a.created_at < DATEADD(day, -30, GETDATE())"
-        : "a.created_at >= date('now', '-60 days') AND a.created_at < date('now', '-30 days')";
-      break;
-    case 'quarter':
-      currentFilter = isMssql 
-        ? "a.created_at >= DATEADD(day, -90, GETDATE())"
-        : "a.created_at >= date('now', '-90 days')";
-      previousFilter = isMssql
-        ? "a.created_at >= DATEADD(day, -180, GETDATE()) AND a.created_at < DATEADD(day, -90, GETDATE())"
-        : "a.created_at >= date('now', '-180 days') AND a.created_at < date('now', '-90 days')";
-      break;
-    default:
-      currentFilter = isMssql 
-        ? "a.created_at >= DATEADD(day, -7, GETDATE())"
-        : "a.created_at >= date('now', '-7 days')";
-      previousFilter = isMssql
-        ? "a.created_at >= DATEADD(day, -14, GETDATE()) AND a.created_at < DATEADD(day, -7, GETDATE())"
-        : "a.created_at >= date('now', '-14 days') AND a.created_at < date('now', '-7 days')";
+
+  if (!forceRefresh && cache.has(cacheKey)) {
+    return res.json(cache.get(cacheKey));
   }
-  
-  const getStats = (filter) => {
-    return new Promise((resolve, reject) => {
-      dbInstance.get(`
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-          ROUND(AVG(CAST(score AS FLOAT)), 1) as avgScore,
-          SUM(CASE WHEN score >= 80 THEN 1 ELSE 0 END) as excellent,
-          SUM(CASE WHEN score < 60 THEN 1 ELSE 0 END) as poor,
-          COUNT(DISTINCT location_id) as stores
-        FROM audits a
-        WHERE ${filter}
-      `, [], (err, row) => err ? reject(err) : resolve(row || { total: 0, completed: 0, avgScore: 0 }));
-    });
+
+  const periodDays = {
+    day: 1,
+    week: 7,
+    month: 30,
+    quarter: 90
   };
-  
-  Promise.all([
-    getStats(currentFilter),
-    getStats(previousFilter)
-  ])
-  .then(([current, previous]) => {
-    // Calculate changes in the format frontend expects
-    const totalChange = (current.total || 0) - (previous.total || 0);
-    const completedChange = (current.completed || 0) - (previous.completed || 0);
-    const scoreChange = (current.avgScore || 0) - (previous.avgScore || 0);
-    
+
+  const days = periodDays[period] || 7;
+  const currentStartExpr = isMssql
+    ? `DATEADD(day, -${days}, GETDATE())`
+    : `datetime('now', '-${days} days')`;
+  const previousStartExpr = isMssql
+    ? `DATEADD(day, -${days * 2}, GETDATE())`
+    : `datetime('now', '-${days * 2} days')`;
+
+  const toNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  dbInstance.get(`
+    SELECT
+      SUM(CASE WHEN a.created_at >= ${currentStartExpr} THEN 1 ELSE 0 END) as current_total,
+      SUM(CASE WHEN a.created_at >= ${currentStartExpr} AND a.status = 'completed' THEN 1 ELSE 0 END) as current_completed,
+      ROUND(AVG(CASE WHEN a.created_at >= ${currentStartExpr} THEN CAST(a.score AS FLOAT) END), 1) as current_avg_score,
+      SUM(CASE WHEN a.created_at >= ${previousStartExpr} AND a.created_at < ${currentStartExpr} THEN 1 ELSE 0 END) as previous_total,
+      SUM(CASE WHEN a.created_at >= ${previousStartExpr} AND a.created_at < ${currentStartExpr} AND a.status = 'completed' THEN 1 ELSE 0 END) as previous_completed,
+      ROUND(AVG(CASE WHEN a.created_at >= ${previousStartExpr} AND a.created_at < ${currentStartExpr} THEN CAST(a.score AS FLOAT) END), 1) as previous_avg_score
+    FROM audits a
+    WHERE a.created_at >= ${previousStartExpr}
+  `,
+  [],
+  (err, row) => {
+    if (err) {
+      logger.error('Trend analysis error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
     const currentPeriod = {
-      total: current.total || 0,
-      completed: current.completed || 0,
-      avgScore: current.avgScore || 0
+      total: toNumber(row?.current_total),
+      completed: toNumber(row?.current_completed),
+      avgScore: toNumber(row?.current_avg_score)
     };
     const previousPeriod = {
-      total: previous.total || 0,
-      completed: previous.completed || 0,
-      avgScore: previous.avgScore || 0
+      total: toNumber(row?.previous_total),
+      completed: toNumber(row?.previous_completed),
+      avgScore: toNumber(row?.previous_avg_score)
     };
 
-    res.json({
-      // Legacy keys for existing clients/tests
+    const response = {
       current: currentPeriod,
       previous: previousPeriod,
-      // Preferred keys for newer clients
       currentPeriod,
       previousPeriod,
       changes: {
-        totalChange,
-        completedChange,
-        scoreChange
+        totalChange: currentPeriod.total - previousPeriod.total,
+        completedChange: currentPeriod.completed - previousPeriod.completed,
+        scoreChange: Math.round((currentPeriod.avgScore - previousPeriod.avgScore) * 100) / 100
       },
       period
-    });
-  })
-  .catch(err => {
-    logger.error('Trend analysis error:', err);
-    res.status(500).json({ error: 'Database error' });
+    };
+
+    cache.set(cacheKey, response, 180);
+    return res.json(response);
   });
 });
 

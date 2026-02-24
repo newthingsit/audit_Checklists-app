@@ -63,7 +63,7 @@ import Layout from '../components/Layout';
 import { themeConfig } from '../config/theme';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
-import { withTimeout } from '../utils/fetchUtils';
+import { withTimeout, validateDashboardData } from '../utils/fetchUtils';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -75,12 +75,16 @@ const Dashboard = () => {
   const [trends, setTrends] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [leaderboard, setLeaderboard] = useState({ stores: [], auditors: [] });
   const [trendAnalysis, setTrendAnalysis] = useState(null);
   const [leaderboardTab, setLeaderboardTab] = useState(0);
   const [trendPeriod, setTrendPeriod] = useState('week');
   const navigate = useNavigate();
+
+  const toFiniteNumber = useCallback((value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }, []);
 
   // Permission checks
   const canCreateAudit = hasPermission(userPermissions, 'create_audits') || 
@@ -113,7 +117,6 @@ const Dashboard = () => {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       
       const requestConfig = {
         timeout: 30000 // 30 second timeout
@@ -130,16 +133,9 @@ const Dashboard = () => {
               return { data: { templates: [] } };
             })
           : Promise.resolve({ data: { templates: [] } }),
-        // Audits
-        canViewAudits
-          ? withTimeout(axios.get('/api/audits', requestConfig), 30000).catch((err) => {
-              if (process.env.NODE_ENV !== 'production') console.error('Audits fetch error:', err.message);
-              return { data: { audits: [] } };
-            })
-          : Promise.resolve({ data: { audits: [] } }),
         // Actions
         canViewActions 
-          ? withTimeout(axios.get('/api/actions', requestConfig), 30000).catch((err) => {
+          ? withTimeout(axios.get('/api/actions?status=pending', requestConfig), 30000).catch((err) => {
               if (process.env.NODE_ENV !== 'production') console.error('Actions fetch error:', err.message);
               return { data: { actions: [] } };
             })
@@ -148,7 +144,6 @@ const Dashboard = () => {
         canViewAnalytics
           ? withTimeout(axios.get('/api/analytics/dashboard', requestConfig), 30000).catch((err) => {
               if (process.env.NODE_ENV !== 'production') console.error('Analytics fetch error:', err.message);
-              setError('Dashboard data temporarily unavailable. Showing cached data if available.');
               return { data: analytics || {} }; // Use existing analytics if available
             })
           : Promise.resolve({ data: {} }),
@@ -172,37 +167,41 @@ const Dashboard = () => {
               if (process.env.NODE_ENV !== 'production') console.error('Auditor leaderboard fetch error:', err.message);
               return { data: { auditors: [] } };
             })
-          : Promise.resolve({ data: { auditors: [] } }),
-        // Trend Analysis
-        canViewAnalytics
-          ? withTimeout(axios.get('/api/analytics/trends/analysis?period=week', requestConfig), 30000).catch((err) => {
-              console.error('Trend analysis fetch error:', err.message);
-              return { data: {} };
-            })
-          : Promise.resolve({ data: {} })
+          : Promise.resolve({ data: { auditors: [] } })
       ];
 
-      const [templatesRes, auditsRes, actionsRes, analyticsRes, trendsRes, storesLeaderboardRes, auditorsLeaderboardRes, trendAnalysisRes] = await Promise.all(fetchPromises);
+      const [templatesRes, actionsRes, analyticsRes, trendsRes, storesLeaderboardRes, auditorsLeaderboardRes] = await Promise.all(fetchPromises);
 
-      const audits = auditsRes.data.audits || [];
-      const completed = audits.filter(a => a.status === 'completed').length;
-      const pendingActions = (actionsRes.data.actions || []).filter(a => a.status === 'pending').length;
+      const normalizedAnalytics = validateDashboardData(analyticsRes.data || {});
+      const pendingActions = (actionsRes.data.actions || []).length;
 
       setStats({
         templates: templatesRes.data.templates?.length || 0,
-        audits: audits.length,
-        completed,
+        audits: toFiniteNumber(normalizedAnalytics.total),
+        completed: toFiniteNumber(normalizedAnalytics.completed),
         pendingActions
       });
 
-      setAnalytics(analyticsRes.data);
+      setAnalytics(normalizedAnalytics);
       setTrends(trendsRes.data.trends || []);
-      setRecentAudits(analyticsRes.data?.recent || audits.slice(0, 5));
+      setRecentAudits(normalizedAnalytics.recent || []);
       setLeaderboard({
         stores: storesLeaderboardRes.data.stores || [],
         auditors: auditorsLeaderboardRes.data.auditors || []
       });
-      setTrendAnalysis(trendAnalysisRes.data);
+
+      if (canViewAnalytics) {
+        withTimeout(axios.get('/api/analytics/trends/analysis?period=week', requestConfig), 12000)
+          .then((trendAnalysisRes) => {
+            setTrendAnalysis(trendAnalysisRes.data || null);
+          })
+          .catch((err) => {
+            if (process.env.NODE_ENV !== 'production') console.error('Trend analysis fetch error:', err.message);
+            setTrendAnalysis(null);
+          });
+      } else {
+        setTrendAnalysis(null);
+      }
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') console.error('Error fetching data:', error);
     } finally {
@@ -213,10 +212,14 @@ const Dashboard = () => {
 
   const fetchTrendAnalysis = useCallback(async (period) => {
     try {
-      const response = await axios.get(`/api/analytics/trends/analysis?period=${period}`);
-      setTrendAnalysis(response.data);
+      const response = await withTimeout(
+        axios.get(`/api/analytics/trends/analysis?period=${period}`),
+        30000
+      );
+      setTrendAnalysis(response.data || null);
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') console.error('Error fetching trend analysis:', error);
+      setTrendAnalysis(null);
     }
   }, []);
 
@@ -224,15 +227,6 @@ const Dashboard = () => {
     const period = e.target.value;
     setTrendPeriod(period);
     fetchTrendAnalysis(period);
-  };
-
-  const getMedalColor = (rank) => {
-    switch(rank) {
-      case 1: return '#FFD700'; // Gold
-      case 2: return '#C0C0C0'; // Silver
-      case 3: return '#CD7F32'; // Bronze
-      default: return '#9e9e9e';
-    }
   };
 
   const getMedalEmoji = (rank) => {
@@ -291,9 +285,21 @@ const Dashboard = () => {
     );
   }
 
-  const monthChange = analytics?.monthChange || {};
-  const currentMonthStats = analytics?.currentMonthStats || {};
-  const lastMonthStats = analytics?.lastMonthStats || {};
+  const monthChange = {
+    total: toFiniteNumber(analytics?.monthChange?.total),
+    completed: toFiniteNumber(analytics?.monthChange?.completed),
+    avgScore: toFiniteNumber(analytics?.monthChange?.avgScore)
+  };
+  const currentMonthStats = {
+    total: toFiniteNumber(analytics?.currentMonthStats?.total),
+    completed: toFiniteNumber(analytics?.currentMonthStats?.completed),
+    avgScore: toFiniteNumber(analytics?.currentMonthStats?.avgScore)
+  };
+  const lastMonthStats = {
+    total: toFiniteNumber(analytics?.lastMonthStats?.total),
+    completed: toFiniteNumber(analytics?.lastMonthStats?.completed),
+    avgScore: toFiniteNumber(analytics?.lastMonthStats?.avgScore)
+  };
 
   return (
     <Layout>
