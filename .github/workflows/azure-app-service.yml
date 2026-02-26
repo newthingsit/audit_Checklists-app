@@ -23,6 +23,7 @@ jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     name: Build and Deploy Backend
+    if: github.actor != 'dependabot[bot]'
     
     steps:
       - uses: actions/checkout@v4
@@ -115,21 +116,53 @@ jobs:
           echo "   This typically takes 3-5 minutes"
           sleep 180
 
+      - name: 'Resolve backend hostname'
+        if: always()
+        id: resolve_host
+        run: |
+          DEFAULT_HOST=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group $(az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --query resourceGroup -o tsv) \
+            --query defaultHostName -o tsv)
+
+          echo "default_host=$DEFAULT_HOST" >> "$GITHUB_OUTPUT"
+          echo "Resolved default host: $DEFAULT_HOST"
+
       - name: 'Verify deployment'
         if: always()
-        continue-on-error: true
         run: |
-          echo "🔍 Testing health endpoint..."
-          for i in {1..5}; do
-            if curl -f -s -o /dev/null -w "%{http_code}" \
-              https://${{ env.AZURE_WEBAPP_NAME }}-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net/api/health | grep -q "200"; then
-              echo "✅ Backend is healthy!"
-              exit 0
+          echo "🔍 Testing health endpoint(s)..."
+
+          declare -a HOSTS
+          HOSTS+=("${{ steps.resolve_host.outputs.default_host }}")
+          HOSTS+=("${{ env.AZURE_WEBAPP_NAME }}-g9cna3ath2b4h8br.centralindia-01.azurewebsites.net")
+
+          for host in "${HOSTS[@]}"; do
+            if [ -z "$host" ]; then
+              continue
             fi
-            echo "Attempt $i/5 failed, waiting 30s..."
-            sleep 30
+
+            echo "Checking host: $host"
+            for i in {1..6}; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/api/health")
+              if [ "$CODE" = "200" ]; then
+                echo "✅ Backend is healthy on https://$host/api/health"
+                exit 0
+              fi
+              echo "Attempt $i/6 on $host returned HTTP $CODE, waiting 30s..."
+              sleep 30
+            fi
           done
-          echo "⚠️ Health check incomplete - may need more time to start"
-          exit 0
+
+          echo "❌ Health check failed for all candidate hosts"
+          for host in "${HOSTS[@]}"; do
+            if [ -n "$host" ]; then
+              echo "--- Diagnostics for $host ---"
+              curl -I -s "https://$host/api/health" || true
+              curl -I -s "https://$host/" || true
+            fi
+          done
+
+          exit 1
 
 

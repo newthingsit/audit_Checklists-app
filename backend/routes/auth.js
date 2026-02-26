@@ -35,6 +35,71 @@ const logger = require('../utils/logger');
 const tokenService = require('../utils/tokenService');
 
 const router = express.Router();
+const AUTH_DB_QUERY_TIMEOUT_MS = Number(process.env.AUTH_DB_QUERY_TIMEOUT_MS || 10000);
+const AUTH_PERMISSIONS_TIMEOUT_MS = Number(process.env.AUTH_PERMISSIONS_TIMEOUT_MS || 5000);
+const AUTH_BCRYPT_TIMEOUT_MS = Number(process.env.AUTH_BCRYPT_TIMEOUT_MS || 5000);
+
+const dbGetWithTimeout = (dbInstance, query, params = [], timeoutMs = AUTH_DB_QUERY_TIMEOUT_MS) => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Database query timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    dbInstance.get(query, params, (err, row) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row || null);
+      }
+    });
+  });
+};
+
+const comparePasswordWithTimeout = async (plainTextPassword, passwordHash) => {
+  return Promise.race([
+    bcrypt.compare(plainTextPassword, passwordHash),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Password comparison timeout after ${AUTH_BCRYPT_TIMEOUT_MS}ms`)), AUTH_BCRYPT_TIMEOUT_MS);
+    })
+  ]);
+};
+
+const getUserPermissionsWithTimeout = (userId, role) => {
+  return new Promise((resolve) => {
+    try {
+      const { getUserPermissions } = require('../middleware/permissions');
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        logger.warn('Permissions lookup timeout; returning empty permissions', { userId, role });
+        resolve([]);
+      }, AUTH_PERMISSIONS_TIMEOUT_MS);
+
+      getUserPermissions(userId, role, (permErr, permissions) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (permErr) {
+          logger.error('Error fetching permissions:', permErr.message || permErr);
+          resolve([]);
+        } else {
+          resolve(permissions || []);
+        }
+      });
+    } catch (error) {
+      logger.error('Error loading permissions module:', error.message || error);
+      resolve([]);
+    }
+  });
+};
 
 // Register
 router.post('/register', [
@@ -133,93 +198,78 @@ router.post('/login', [
 
   // Normalize email - we do this in JavaScript so we can use a simple database query
   const normalizedEmail = email.toLowerCase().trim();
-  
-  // Simple query - email is already normalized, so we can do a direct comparison
-  // For case-insensitive comparison across all databases, we'll compare the normalized values
-  dbInstance.get('SELECT * FROM users WHERE LOWER(email) = ?', [normalizedEmail], (err, user) => {
-    if (err) {
-      logger.error('Login database error:', err);
-      return res.status(500).json({ error: 'Database error', details: err.message });
-    }
 
-    if (!user) {
-      logger.security('login_failed', { reason: 'user_not_found', email: normalizedEmail });
-      return res.status(400).json({
-        error: 'Invalid credentials',
-        message: 'Email or password is incorrect'
-      });
-    }
+  let user;
+  try {
+    user = await dbGetWithTimeout(dbInstance, 'SELECT * FROM users WHERE email = ?', [normalizedEmail]);
+  } catch (err) {
+    logger.error('Login database error:', err);
+    return res.status(500).json({ error: 'Database error', details: err.message });
+  }
 
-    // Defensive: avoid throwing when password hash is missing/invalid
-    if (!user.password || typeof user.password !== 'string') {
-      logger.error('Login error: user record has invalid password hash', { userId: user.id, email: normalizedEmail });
-      return res.status(500).json({ error: 'Invalid user password data' });
-    }
+  if (!user) {
+    logger.security('login_failed', { reason: 'user_not_found', email: normalizedEmail });
+    return res.status(400).json({
+      error: 'Invalid credentials',
+      message: 'Email or password is incorrect'
+    });
+  }
 
-    // IMPORTANT: do not use an `async` callback here; errors from awaited promises can be mishandled by some DB wrappers.
-    bcrypt.compare(password, user.password)
-      .then(async (isMatch) => {
-        if (!isMatch) {
-          logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
-          return res.status(400).json({
-            error: 'Invalid credentials',
-            message: 'Email or password is incorrect'
-          });
-        }
+  if (!user.password || typeof user.password !== 'string') {
+    logger.error('Login error: user record has invalid password hash', { userId: user.id, email: normalizedEmail });
+    return res.status(500).json({ error: 'Invalid user password data' });
+  }
 
-        let tokenPair;
-        try {
-          tokenPair = await tokenService.issueTokenPair({
-            id: user.id, email: user.email, name: user.name, role: user.role
-          });
-        } catch (tokenErr) {
-          logger.error('Login token generation error:', tokenErr);
-          return res.status(500).json({ error: 'Token generation failed' });
-        }
+  let isMatch;
+  try {
+    isMatch = await comparePasswordWithTimeout(password, user.password);
+  } catch (compareErr) {
+    logger.error('Login password compare error:', compareErr);
+    return res.status(500).json({ error: 'Login failed' });
+  }
 
-        const { accessToken: token, refreshToken } = tokenPair;
-        const role = user.role ? String(user.role).toLowerCase() : '';
+  if (!isMatch) {
+    logger.security('login_failed', { reason: 'password_mismatch', userId: user.id, email: normalizedEmail });
+    return res.status(400).json({
+      error: 'Invalid credentials',
+      message: 'Email or password is incorrect'
+    });
+  }
 
-        // Fast path for admin users - no database query needed
-        if (role === 'admin' || role === 'superadmin') {
-          logger.security('login_success', { userId: user.id });
-          return res.json({
-            token,
-            refreshToken,
-            user: {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              role: user.role,
-              permissions: ['*']
-            }
-          });
-        }
+  let tokenPair;
+  try {
+    tokenPair = await tokenService.issueTokenPair({
+      id: user.id, email: user.email, name: user.name, role: user.role
+    });
+  } catch (tokenErr) {
+    logger.error('Login token generation error:', tokenErr);
+    return res.status(500).json({ error: 'Token generation failed' });
+  }
 
-        // For non-admin users, fetch permissions (but don't block login if it fails)
-        const { getUserPermissions } = require('../middleware/permissions');
-        getUserPermissions(user.id, user.role, (permErr, permissions) => {
-          if (permErr) {
-            logger.error('Error fetching permissions:', permErr.message);
-            logger.security('login_success', { userId: user.id });
-            return res.json({
-              token,
-              refreshToken,
-              user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: [] }
-            });
-          }
-          logger.security('login_success', { userId: user.id });
-          return res.json({
-            token,
-            refreshToken,
-            user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions: permissions || [] }
-          });
-        });
-      })
-      .catch((compareErr) => {
-        logger.error('Login password compare error:', compareErr);
-        return res.status(500).json({ error: 'Login failed' });
-      });
+  const { accessToken: token, refreshToken } = tokenPair;
+  const role = user.role ? String(user.role).toLowerCase() : '';
+
+  if (role === 'admin' || role === 'superadmin') {
+    logger.security('login_success', { userId: user.id });
+    return res.json({
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        permissions: ['*']
+      }
+    });
+  }
+
+  const permissions = await getUserPermissionsWithTimeout(user.id, user.role);
+  logger.security('login_success', { userId: user.id });
+  return res.json({
+    token,
+    refreshToken,
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, permissions }
   });
 });
 
@@ -227,13 +277,23 @@ router.post('/login', [
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) {
-    return res.status(400).json({ error: 'Refresh token is required' });
+    return res.status(400).json({
+      error: 'Bad Request',
+      code: 'REFRESH_TOKEN_MISSING',
+      message: 'Refresh token is required',
+      requestId: req.requestId || null
+    });
   }
 
   try {
     const result = await tokenService.rotateRefreshToken(refreshToken);
     if (!result) {
-      return res.status(401).json({ error: 'Invalid or expired refresh token. Please log in again.' });
+      return res.status(401).json({
+        error: 'Unauthorized',
+        code: 'REFRESH_TOKEN_INVALID',
+        message: 'Invalid or expired refresh token. Please log in again.',
+        requestId: req.requestId || null
+      });
     }
     res.json({
       token: result.accessToken,
@@ -241,7 +301,12 @@ router.post('/refresh', async (req, res) => {
     });
   } catch (err) {
     logger.error('Error refreshing token:', err);
-    return res.status(500).json({ error: 'Failed to refresh token' });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      code: 'REFRESH_FAILED',
+      message: 'Failed to refresh token',
+      requestId: req.requestId || null
+    });
   }
 });
 
@@ -252,10 +317,20 @@ router.get('/me', require('../middleware/auth').authenticate, (req, res) => {
     [req.user.id], (err, user) => {
       if (err) {
         logger.error('Error fetching user:', err.message);
-        return res.status(500).json({ error: 'Database error' });
+        return res.status(500).json({
+          error: 'Internal Server Error',
+          code: 'USER_FETCH_FAILED',
+          message: 'Database error while fetching user profile',
+          requestId: req.requestId || null
+        });
       }
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return res.status(404).json({
+          error: 'Not Found',
+          code: 'USER_NOT_FOUND',
+          message: 'User not found',
+          requestId: req.requestId || null
+        });
       }
 
       // Get user permissions from role

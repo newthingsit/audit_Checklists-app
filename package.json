@@ -24,6 +24,11 @@
     "test:all": "node scripts/run-all-tests.js --all",
     "test:setup": "cd backend && npm run test:setup",
     "test:quick": "node scripts/run-all-tests.js --quick",
+    "env:check:prod": "cd backend && npm run env:check:prod",
+    "preflight:prod": "powershell -ExecutionPolicy Bypass -File ./scripts/prod-preflight.ps1",
+    "diag:prd-api": "powershell -ExecutionPolicy Bypass -File ./scripts/prod-api-diagnose.ps1",
+    "start:backend": "cd backend && npm start",
+    "smoke:report-stability": "powershell -ExecutionPolicy Bypass -File ./scripts/smoke-report-stability.ps1",
     "build:apk:preview": "cd mobile && npx eas build --platform android --profile preview --local --output app-preview.apk",
     "build:apk:release": "cd mobile && npx eas build --platform android --profile release --local --output app-release.apk"
   },

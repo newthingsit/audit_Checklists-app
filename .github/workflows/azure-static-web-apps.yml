@@ -13,7 +13,7 @@ name: Azure Static Web Apps CI/CD
 
 jobs:
   build_and_deploy_job:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    if: github.actor != 'dependabot[bot]' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed'))
     runs-on: ubuntu-latest
     name: Build and Deploy Web App
     steps:
@@ -37,6 +37,14 @@ jobs:
         env:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
           CI: false
+
+      - name: Verify SWA config in build output
+        run: |
+          if [ ! -f "web/build/staticwebapp.config.json" ]; then
+            echo "::error::Missing web/build/staticwebapp.config.json. API routing/method rules will not be applied."
+            exit 1
+          fi
+          echo "✅ Found web/build/staticwebapp.config.json"
 
       - name: Deploy to Azure Static Web Apps
         id: builddeploy

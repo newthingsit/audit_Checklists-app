@@ -6,6 +6,7 @@
   "routes": [
     {
       "route": "/api/*",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
       "allowedRoles": ["anonymous"]
     }
   ],
