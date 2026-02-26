@@ -4,6 +4,9 @@ const sql = require('mssql');
 let pool = null;
 let isConnecting = false;
 let connectionPromise = null;
+let lastReconnectLogAt = 0;
+
+const RECONNECT_LOG_COOLDOWN_MS = parseInt(process.env.MSSQL_RECONNECT_LOG_COOLDOWN_MS || '5000', 10);
 
 const init = () => {
   return new Promise(async (resolve, reject) => {
@@ -13,14 +16,20 @@ const init = () => {
       
       // Detect if connecting to localhost/local SQL Server
       const server = process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS';
-      const isLocalServer = server.toLowerCase().includes('localhost') || 
-                           server.toLowerCase().includes('127.0.0.1') ||
-                           server.toLowerCase().includes('local') ||
-                           process.env.NODE_ENV !== 'production';
+      const normalizedServer = String(server || '').toLowerCase();
+      const machineName = String(process.env.COMPUTERNAME || process.env.HOSTNAME || '').toLowerCase();
+      const isLocalServer = normalizedServer.includes('localhost') ||
+               normalizedServer.includes('127.0.0.1') ||
+               normalizedServer.includes('(local)') ||
+               normalizedServer === '.' ||
+               normalizedServer.startsWith('.\\') ||
+               (machineName && (normalizedServer === machineName || normalizedServer.startsWith(`${machineName}\\`))) ||
+               process.env.NODE_ENV !== 'production';
       
       // For local development, trust self-signed certificates
       // For production, only trust if explicitly set or encryption is disabled
-      const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
+      const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' ||
+                 process.env.DB_TRUST_SERVER_CERT === 'true' ||
                              !shouldEncrypt || 
                              isLocalServer;
 
@@ -106,20 +115,25 @@ const ensureConnection = async (forceReconnect = false) => {
     return pool;
   }
   
-  // If already connecting, wait for that to complete
-  if (isConnecting && connectionPromise) {
+  // If a connection attempt is already in progress, reuse it
+  if (connectionPromise) {
     return connectionPromise;
   }
-  
-  console.log('Database pool not connected, attempting reconnection...');
+
+  const now = Date.now();
+  if ((now - lastReconnectLogAt) >= RECONNECT_LOG_COOLDOWN_MS) {
+    console.log('Database pool not connected, attempting reconnection...');
+    lastReconnectLogAt = now;
+  }
+
   isConnecting = true;
-  
-  // Force close any stale connections
-  await forceClosePool();
-  
+
   connectionPromise = new Promise(async (resolve, reject) => {
     const maxRetries = 3;
     let lastError = null;
+
+    // Force close any stale connections before trying again
+    await forceClosePool();
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -127,14 +141,20 @@ const ensureConnection = async (forceReconnect = false) => {
         
         // Detect if connecting to localhost/local SQL Server
         const server = process.env.DB_HOST || process.env.MSSQL_SERVER || 'localhost\\SQLEXPRESS';
-        const isLocalServer = server.toLowerCase().includes('localhost') || 
-                             server.toLowerCase().includes('127.0.0.1') ||
-                             server.toLowerCase().includes('local') ||
-                             process.env.NODE_ENV !== 'production';
+        const normalizedServer = String(server || '').toLowerCase();
+        const machineName = String(process.env.COMPUTERNAME || process.env.HOSTNAME || '').toLowerCase();
+        const isLocalServer = normalizedServer.includes('localhost') ||
+                 normalizedServer.includes('127.0.0.1') ||
+                 normalizedServer.includes('(local)') ||
+                 normalizedServer === '.' ||
+                 normalizedServer.startsWith('.\\') ||
+                 (machineName && (normalizedServer === machineName || normalizedServer.startsWith(`${machineName}\\`))) ||
+                 process.env.NODE_ENV !== 'production';
         
         // For local development, trust self-signed certificates
         // For production, only trust if explicitly set or encryption is disabled
-        const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' || 
+        const shouldTrustCert = process.env.MSSQL_TRUST_CERT === 'true' ||
+                   process.env.DB_TRUST_SERVER_CERT === 'true' ||
                                !shouldEncrypt || 
                                isLocalServer;
 
