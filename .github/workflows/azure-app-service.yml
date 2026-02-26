@@ -54,19 +54,10 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 'Clear any stuck deployment lock'
+      - name: 'Stabilize SCM before deploy'
         run: |
-          echo "Clearing any in-progress deployment locks on Azure..."
-          az webapp deployment source config-zip \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --resource-group $(az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --query resourceGroup -o tsv) \
-            --src /dev/null 2>/dev/null || true
-          # Cancel any active Kudu deployments
-          az rest --method DELETE \
-            --url "https://management.azure.com$(az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --query id -o tsv)/deployments/latest?api-version=2022-03-01" \
-            2>/dev/null || true
-          echo "✅ Lock clear attempted"
-          sleep 10
+          echo "Waiting briefly to avoid SCM restart/deploy overlap..."
+          sleep 45
 
       - name: 'Deploy to Azure Web App (attempt 1)'
         uses: azure/webapps-deploy@v3
