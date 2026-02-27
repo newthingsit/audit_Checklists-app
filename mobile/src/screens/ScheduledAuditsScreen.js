@@ -55,6 +55,13 @@ const ScheduledAuditsScreen = () => {
   const appState = useRef(AppState.currentState);
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
+  const toastTimerRef = useRef(null);
+  const fetchSilentRef = useRef(null);
+
+  // Keep fetchSilentRef always pointing to latest fetchScheduledAuditsSilent
+  useEffect(() => {
+    fetchSilentRef.current = fetchScheduledAuditsSilent;
+  });
 
   // Track if this is initial mount to prevent double fetching
   const isInitialMount = useRef(true);
@@ -77,9 +84,9 @@ const ScheduledAuditsScreen = () => {
       }
       isInitialMount.current = false;
       
-      // Set up auto-refresh interval
+      // Set up auto-refresh interval (uses ref to avoid stale closure)
       intervalRef.current = setInterval(() => {
-        fetchScheduledAuditsSilent();
+        if (fetchSilentRef.current) fetchSilentRef.current();
       }, AUTO_REFRESH_INTERVAL);
     } else {
       // Clear interval when screen loses focus
@@ -100,7 +107,7 @@ const ScheduledAuditsScreen = () => {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active' && isFocused && user) {
-        fetchScheduledAuditsSilent();
+        if (fetchSilentRef.current) fetchSilentRef.current();
       }
       appState.current = nextAppState;
     });
@@ -414,12 +421,18 @@ const ScheduledAuditsScreen = () => {
     return isPending && (isCreator || isAssignee || isAdmin(user));
   };
 
-  const showToast = (message, duration = 3000) => {
+  const showToast = useCallback((message, duration = 3000) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMessage(message);
-    setTimeout(() => {
+    toastTimerRef.current = setTimeout(() => {
       setToastMessage(null);
     }, duration);
-  };
+  }, []);
+
+  // Cleanup toast timer on unmount
+  useEffect(() => {
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, []);
 
   const handleOpenRescheduleModal = async (schedule) => {
     // Check reschedule count for this specific scheduled audit (checklist)
@@ -536,11 +549,11 @@ const ScheduledAuditsScreen = () => {
     // Validate date is not in the past
     // Parse date in local timezone to match today comparison
     const [year, month, day] = newRescheduleDate.split('-').map(Number);
-    const selectedDate = new Date(year, month - 1, day); // month is 0-indexed
-    selectedDate.setHours(0, 0, 0, 0);
+    const parsedDate = new Date(year, month - 1, day); // month is 0-indexed
+    parsedDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (selectedDate < today) {
+    if (parsedDate < today) {
       Alert.alert('Invalid Date', 'Cannot reschedule to a past date');
       return;
     }
@@ -587,15 +600,15 @@ const ScheduledAuditsScreen = () => {
 
   const fetchScheduledAudits = async () => {
     try {
-      console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits`);
-      console.log('[Mobile] Current user:', user?.email);
+      if (__DEV__) console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits`);
+      if (__DEV__) console.log('[Mobile] Current user:', user?.email);
       // Add cache-busting parameter to ensure fresh data
       const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
         params: { _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' }
       });
-      console.log('[Mobile] Response status:', response.status);
-      console.log('[Mobile] Response data:', JSON.stringify(response.data, null, 2));
+      if (__DEV__) console.log('[Mobile] Response status:', response.status);
+      if (__DEV__) console.log('[Mobile] Schedules count:', (response.data.schedules || []).length);
       let schedulesData = response.data.schedules || [];
       
       // Filter out completed scheduled audits on frontend as backup
@@ -606,7 +619,7 @@ const ScheduledAuditsScreen = () => {
       });
       
       console.log('[Mobile] Fetched scheduled audits (after filtering):', schedulesData.length);
-      if (schedulesData.length > 0) {
+      if (__DEV__ && schedulesData.length > 0) {
         console.log('[Mobile] First schedule:', JSON.stringify(schedulesData[0], null, 2));
       }
       setSchedules(schedulesData);
@@ -631,6 +644,9 @@ const ScheduledAuditsScreen = () => {
           }
         });
         setLinkedAudits(auditsMap);
+      } else {
+        // Clear stale linked audits when no in-progress schedules
+        setLinkedAudits({});
       }
     } catch (error) {
       console.error('[Mobile] Error fetching scheduled audits:', error);

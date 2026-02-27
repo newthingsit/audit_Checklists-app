@@ -42,7 +42,8 @@ const LoginScreen = () => {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEnabled, canUseBiometric]);
 
   const handleLogin = async () => {
     if (!email || !password) {

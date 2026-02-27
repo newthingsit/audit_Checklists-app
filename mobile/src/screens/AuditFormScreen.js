@@ -13,7 +13,9 @@ import {
   FlatList,
   Platform,
   AppState,
-  Dimensions
+  Dimensions,
+  BackHandler,
+  KeyboardAvoidingView
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,7 +42,7 @@ import SignatureCapture from '../components/SignatureCapture';
 
 // Import Phase 1 hooks
 import { useCategoryNavigation } from '../hooks/useCategoryNavigation';
-import { useAuditData } from '../hooks/useAuditData';
+// useAuditData hook available but not used — AuditFormScreen manages its own items
 
 const AuditFormScreen = () => {
   const route = useRoute();
@@ -171,6 +173,45 @@ const AuditFormScreen = () => {
       autoSaveTimeoutRef.current = null;
     }
   }, [auditStatus]);
+
+  // Keep all refs in sync with state (single useEffect to avoid churn)
+  useEffect(() => { responsesRef.current = responses; }, [responses]);
+  useEffect(() => { commentsRef.current = comments; }, [comments]);
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+  useEffect(() => { selectedOptionsRef.current = selectedOptions; }, [selectedOptions]);
+  useEffect(() => { multipleSelectionsRef.current = multipleSelections; }, [multipleSelections]);
+  useEffect(() => { categoryCompletionStatusRef.current = categoryCompletionStatus; }, [categoryCompletionStatus]);
+  useEffect(() => { selectedCategoryRef.current = selectedCategory; }, [selectedCategory]);
+  useEffect(() => { attendeesRef.current = attendees; }, [attendees]);
+  useEffect(() => { pointsDiscussedRef.current = pointsDiscussed; }, [pointsDiscussed]);
+  useEffect(() => { infoPicturesRef.current = infoPictures; }, [infoPictures]);
+  useEffect(() => { notesRef.current = notes; }, [notes]);
+  useEffect(() => { capturedLocationRef.current = capturedLocation; }, [capturedLocation]);
+  useEffect(() => { locationVerifiedRef.current = locationVerified; }, [locationVerified]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
+  useEffect(() => { selectedLocationRef.current = selectedLocation; }, [selectedLocation]);
+  useEffect(() => { locationIdRef.current = locationId; }, [locationId]);
+  useEffect(() => { templateRef.current = template; }, [template]);
+
+  // Android hardware back-button handler — prevent data loss
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (currentStepRef.current === 2 && Object.keys(responsesRef.current).length > 0 && auditStatusRef.current !== 'completed') {
+        Alert.alert(
+          'Unsaved Changes',
+          'You have unsaved audit progress. What would you like to do?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
+          ]
+        );
+        return true; // Prevent default back behaviour
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [navigation]);
   
 
   const draftStorageKey = useMemo(() => {
@@ -181,6 +222,29 @@ const AuditFormScreen = () => {
   }, [templateId, scheduledAuditId, locationId]);
 
   const apiBaseUrl = useMemo(() => API_BASE_URL.replace('/api', ''), []);
+
+  // Memoized item lookup by ID — O(1) instead of O(n) for every handler call
+  const itemsById = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
+
+  // Refs for values read inside AppState & auto-save interval (avoids listener churn)
+  const responsesRef = useRef(responses);
+  const commentsRef = useRef(comments);
+  const photosRef = useRef(photos);
+  const selectedOptionsRef = useRef(selectedOptions);
+  const multipleSelectionsRef = useRef(multipleSelections);
+  const categoryCompletionStatusRef = useRef(categoryCompletionStatus);
+  const selectedCategoryRef = useRef(selectedCategory);
+  const attendeesRef = useRef(attendees);
+  const pointsDiscussedRef = useRef(pointsDiscussed);
+  const infoPicturesRef = useRef(infoPictures);
+  const notesRef = useRef(notes);
+  const capturedLocationRef = useRef(capturedLocation);
+  const locationVerifiedRef = useRef(locationVerified);
+  const itemsRef = useRef(items);
+  const currentStepRef = useRef(currentStep);
+  const selectedLocationRef = useRef(selectedLocation);
+  const locationIdRef = useRef(locationId);
+  const templateRef = useRef(template);
 
   const clearDraftStorage = useCallback(async () => {
     try {
@@ -1471,8 +1535,8 @@ const AuditFormScreen = () => {
     setResponses(prev => {
       const updated = { ...prev, [itemId]: status };
       // Recalculate category completion after state update
-      // Find the category of this item
-      const item = items.find(i => i.id === itemId);
+      // O(1) lookup via itemsById Map instead of O(n) items.find()
+      const item = itemsById.get(itemId);
       if (item && item.category) {
         setCategoryCompletionStatus(prevStatus => {
           const cat = item.category;
@@ -1501,7 +1565,7 @@ const AuditFormScreen = () => {
       }
       return updated;
     });
-  }, [auditStatus, items, selectedCategory, moveToNextCategory]);
+  }, [auditStatus, items, itemsById, selectedCategory, moveToNextCategory]);
 
   const handleOptionChange = useCallback((itemId, optionId) => {
     if (auditStatus === 'completed') {
@@ -1511,9 +1575,8 @@ const AuditFormScreen = () => {
     setSelectedOptions(prev => ({ ...prev, [itemId]: optionId }));
     setResponses(prev => {
       const updated = { ...prev, [itemId]: 'completed' };
-      // Recalculate category completion after state update
-      // Find the category of this item
-      const item = items.find(i => i.id === itemId);
+      // O(1) lookup via itemsById Map
+      const item = itemsById.get(itemId);
       if (item && item.category) {
         setCategoryCompletionStatus(prevStatus => {
           const cat = item.category;
@@ -1542,7 +1605,7 @@ const AuditFormScreen = () => {
       }
       return updated;
     });
-  }, [auditStatus, items, selectedCategory, moveToNextCategory]);
+  }, [auditStatus, items, itemsById, selectedCategory, moveToNextCategory]);
 
   const handleCommentChange = useCallback((itemId, comment) => {
     if (auditStatus === 'completed') {
@@ -1708,29 +1771,30 @@ const AuditFormScreen = () => {
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
+        // Read from refs to avoid re-creating this callback on every keystroke
         const draftData = {
           template_id: parseInt(templateId),
-          template_name: template?.name || '',
-          location_id: parseInt(locationId),
-          restaurant_name: selectedLocation?.name || '',
-          store_number: selectedLocation?.store_number || '',
+          template_name: templateRef.current?.name || '',
+          location_id: parseInt(locationIdRef.current),
+          restaurant_name: selectedLocationRef.current?.name || '',
+          store_number: selectedLocationRef.current?.store_number || '',
           status: 'draft',
           client_audit_uuid: clientAuditUuidRef.current,
-          responses,
-          comments,
-          photos,
-          selectedOptions,
-          multipleSelections,
-          categoryCompletionStatus,
-          selectedCategory,
-          currentStep,
-          attendees,
-          pointsDiscussed,
-          infoPictures,
-          notes,
-          capturedLocation,
-          locationVerified,
-          items: items.map(item => ({
+          responses: responsesRef.current,
+          comments: commentsRef.current,
+          photos: photosRef.current,
+          selectedOptions: selectedOptionsRef.current,
+          multipleSelections: multipleSelectionsRef.current,
+          categoryCompletionStatus: categoryCompletionStatusRef.current,
+          selectedCategory: selectedCategoryRef.current,
+          currentStep: currentStepRef.current,
+          attendees: attendeesRef.current,
+          pointsDiscussed: pointsDiscussedRef.current,
+          infoPictures: infoPicturesRef.current,
+          notes: notesRef.current,
+          capturedLocation: capturedLocationRef.current,
+          locationVerified: locationVerifiedRef.current,
+          items: (itemsRef.current || []).map(item => ({
             id: item.id,
             title: item.title,
             category: item.category,
@@ -1740,17 +1804,17 @@ const AuditFormScreen = () => {
             options: item.options,
           })),
           savedAt: new Date().toISOString(),
-          auditId: currentAuditId,
-          scheduledAuditId,
+          auditId: currentAuditIdRef.current,
+          scheduledAuditId: scheduledAuditIdRef.current,
           isAutoSave: true,
         };
         await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
-        console.log('[AutoSave] Draft saved silently (on response)');
+        if (__DEV__) console.log('[AutoSave] Draft saved silently (on response)');
       } catch (error) {
         console.warn('[AutoSave] Failed to auto-save draft (on response):', error);
       }
-    }, 200); // Real-time sync: 200ms delay for immediate feedback
-  }, [auditStatus, currentStep, selectedLocation, responses, comments, photos, selectedOptions, multipleSelections, templateId, template, locationId, categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed, infoPictures, notes, capturedLocation, locationVerified, items, currentAuditId, scheduledAuditId, draftStorageKey]);
+    }, 1500); // Debounced: 1.5s delay to avoid excessive writes on fast typing
+  }, [templateId, draftStorageKey]);
 
   useEffect(() => {
     queueSilentDraftSave();
@@ -1969,6 +2033,9 @@ const AuditFormScreen = () => {
         quality: 0.3, // Reduced quality for faster upload and smaller file size
         exif: false, // Skip EXIF data for faster processing
         base64: false, // Don't include base64 for faster processing
+        // Constrain dimensions to prevent huge images from modern 48MP+ cameras
+        maxWidth: 1280,
+        maxHeight: 1280,
       });
 
       if (!result.canceled && result.assets[0]) {
@@ -2022,8 +2089,8 @@ const AuditFormScreen = () => {
         setResponses(prev => {
           const updated = { ...prev, [itemId]: 'completed' };
           
-          // Recalculate category completion after state update
-          const item = items.find(i => i.id === itemId);
+          // Recalculate category completion after state update (O(1) lookup)
+          const item = itemsById.get(itemId);
           if (item && item.category) {
             setCategoryCompletionStatus(prevStatus => {
               const cat = item.category;
@@ -2058,6 +2125,20 @@ const AuditFormScreen = () => {
       }
     } catch (error) {
       console.error('Error uploading photo:', error);
+
+      // Roll back the optimistic photo entry so item doesn't appear to have a photo
+      setPhotos(prev => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      // Also revert auto-set 'completed' response that was set on upload
+      setResponses(prev => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+
       let errorMessage = 'Failed to upload photo';
       
       if (error.type) {
@@ -2585,8 +2666,8 @@ const AuditFormScreen = () => {
           if (activeAuditId) {
             // Update existing audit
             const updateData = {
-              restaurant_name: store.name,
-              location: store.store_number ? `Store ${store.store_number}` : store.name,
+              restaurant_name: selectedLocation.name,
+              location: selectedLocation.store_number ? `Store ${selectedLocation.store_number}` : selectedLocation.name,
               location_id: parseInt(locationId),
               notes: notesToSave
             };
@@ -2706,45 +2787,44 @@ const AuditFormScreen = () => {
     scheduledAuditId, isOnline, draftStorageKey, auditId
   ]);
 
-  // Real-time auto-save: every 15 seconds when in audit step + immediate on changes
+  // Real-time auto-save: every 15 seconds (stable interval, checks refs internally)
   useEffect(() => {
-    // Only auto-save if: in checklist step, not completed, has a location selected, and has some responses
-    const hasUnsavedWork = currentStep === 2 && 
-                          auditStatus !== 'completed' && 
-                          selectedLocation && 
-                          Object.keys(responses).length > 0;
-    
-    if (!hasUnsavedWork) return;
-
     const autoSaveInterval = setInterval(async () => {
-      // Silent auto-save (no alerts, no loading indicator for auto-save)
+      // Silent auto-save — reads from refs to avoid dependency churn
       try {
+        // Check if we should save using refs
+        const shouldSave = currentStepRef.current === 2 && 
+                          auditStatusRef.current !== 'completed' && 
+                          selectedLocationRef.current && 
+                          Object.keys(responsesRef.current).length > 0;
+        if (!shouldSave) return;
+
         if (!clientAuditUuidRef.current) {
           clientAuditUuidRef.current = `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
         const draftData = {
           template_id: parseInt(templateId),
-          template_name: template?.name || '',
-          location_id: parseInt(locationId),
-          restaurant_name: selectedLocation?.name || '',
-          store_number: selectedLocation?.store_number || '',
+          template_name: templateRef.current?.name || '',
+          location_id: parseInt(locationIdRef.current),
+          restaurant_name: selectedLocationRef.current?.name || '',
+          store_number: selectedLocationRef.current?.store_number || '',
           status: 'draft',
           client_audit_uuid: clientAuditUuidRef.current,
-          responses,
-          comments,
-          photos,
-          selectedOptions,
-          multipleSelections,
-          categoryCompletionStatus,
-          selectedCategory,
-          currentStep,
-          attendees,
-          pointsDiscussed,
-          infoPictures,
-          notes,
-          capturedLocation,
-          locationVerified,
-          items: items.map(item => ({
+          responses: responsesRef.current,
+          comments: commentsRef.current,
+          photos: photosRef.current,
+          selectedOptions: selectedOptionsRef.current,
+          multipleSelections: multipleSelectionsRef.current,
+          categoryCompletionStatus: categoryCompletionStatusRef.current,
+          selectedCategory: selectedCategoryRef.current,
+          currentStep: currentStepRef.current,
+          attendees: attendeesRef.current,
+          pointsDiscussed: pointsDiscussedRef.current,
+          infoPictures: infoPicturesRef.current,
+          notes: notesRef.current,
+          capturedLocation: capturedLocationRef.current,
+          locationVerified: locationVerifiedRef.current,
+          items: (itemsRef.current || []).map(item => ({
             id: item.id,
             title: item.title,
             category: item.category,
@@ -2754,39 +2834,34 @@ const AuditFormScreen = () => {
             options: item.options,
           })),
           savedAt: new Date().toISOString(),
-          auditId: currentAuditId,
-          scheduledAuditId,
+          auditId: currentAuditIdRef.current,
+          scheduledAuditId: scheduledAuditIdRef.current,
           isAutoSave: true,
         };
         await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
-        console.log('[AutoSave] Draft saved silently');
+        if (__DEV__) console.log('[AutoSave] Draft saved silently');
       } catch (error) {
         console.warn('[AutoSave] Failed to auto-save draft:', error);
       }
-    }, 15000); // Real-time sync: 15 seconds for background saves
+    }, 15000); // Background auto-save: every 15 seconds (stable interval, never torn down)
 
     return () => clearInterval(autoSaveInterval);
-  }, [
-    currentStep, auditStatus, selectedLocation, responses, templateId, template,
-    locationId, comments, photos, selectedOptions, multipleSelections,
-    categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
-    infoPictures, notes, capturedLocation, locationVerified, items,
-    currentAuditId, scheduledAuditId, draftStorageKey
-  ]);
+  }, [templateId, draftStorageKey]); // Minimal deps — interval reads from refs
 
   // ==================== APP STATE LISTENER: Save on Background ====================
   // CRITICAL FIX: Save audit progress when app goes to background (e.g., incoming call)
+  // Uses refs for ALL state to avoid re-subscribing on every keystroke
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
       // When app goes from active to background/inactive (call, home button, etc.)
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        console.log('[AppState] App going to background - saving audit progress...');
+        if (__DEV__) console.log('[AppState] App going to background - saving audit progress...');
         
-        // Check if we have unsaved work that needs to be saved
-        const hasUnsavedWork = currentStep === 2 && 
-                              auditStatus !== 'completed' && 
-                              selectedLocation && 
-                              Object.keys(responses).length > 0;
+        // Check if we have unsaved work using refs
+        const hasUnsavedWork = currentStepRef.current === 2 && 
+                              auditStatusRef.current !== 'completed' && 
+                              selectedLocationRef.current && 
+                              Object.keys(responsesRef.current).length > 0;
         
         if (hasUnsavedWork) {
           try {
@@ -2795,28 +2870,28 @@ const AuditFormScreen = () => {
             }
             
             const draftData = {
-              template_id: parseInt(templateId),
-              template_name: template?.name || '',
-              location_id: parseInt(locationId),
-              restaurant_name: selectedLocation?.name || '',
-              store_number: selectedLocation?.store_number || '',
+              template_id: parseInt(templateIdRef.current),
+              template_name: templateRef.current?.name || '',
+              location_id: parseInt(locationIdRef.current),
+              restaurant_name: selectedLocationRef.current?.name || '',
+              store_number: selectedLocationRef.current?.store_number || '',
               status: 'draft',
               client_audit_uuid: clientAuditUuidRef.current,
-              responses,
-              comments,
-              photos,
-              selectedOptions,
-              multipleSelections,
-              categoryCompletionStatus,
-              selectedCategory,
-              currentStep,
-              attendees,
-              pointsDiscussed,
-              infoPictures,
-              notes,
-              capturedLocation,
-              locationVerified,
-              items: items.map(item => ({
+              responses: responsesRef.current,
+              comments: commentsRef.current,
+              photos: photosRef.current,
+              selectedOptions: selectedOptionsRef.current,
+              multipleSelections: multipleSelectionsRef.current,
+              categoryCompletionStatus: categoryCompletionStatusRef.current,
+              selectedCategory: selectedCategoryRef.current,
+              currentStep: currentStepRef.current,
+              attendees: attendeesRef.current,
+              pointsDiscussed: pointsDiscussedRef.current,
+              infoPictures: infoPicturesRef.current,
+              notes: notesRef.current,
+              capturedLocation: capturedLocationRef.current,
+              locationVerified: locationVerifiedRef.current,
+              items: (itemsRef.current || []).map(item => ({
                 id: item.id,
                 title: item.title,
                 category: item.category,
@@ -2826,69 +2901,20 @@ const AuditFormScreen = () => {
                 options: item.options,
               })),
               savedAt: new Date().toISOString(),
-              auditId: currentAuditId,
-              scheduledAuditId,
+              auditId: currentAuditIdRef.current,
+              scheduledAuditId: scheduledAuditIdRef.current,
               isAutoSave: true,
-              savedOnBackground: true, // Flag to indicate it was saved on background
+              savedOnBackground: true,
             };
             
             await AsyncStorage.setItem(draftStorageKey, JSON.stringify(draftData));
-            console.log('[AppState] ✅ Audit progress saved successfully before going to background');
-            
-            // Also try to sync to server if online
-            if (isOnline) {
-              try {
-                const dataToSave = {
-                  template_id: parseInt(templateId),
-                  location_id: parseInt(locationId),
-                  status: 'in_progress',
-                  client_audit_uuid: clientAuditUuidRef.current,
-                  scheduled_audit_id: scheduledAuditId || null,
-                  responses: Object.keys(responses).map(itemId => ({
-                    item_id: parseInt(itemId),
-                    response: responses[itemId],
-                    comment: comments[itemId] || '',
-                    photos: photos[itemId] || [],
-                    selected_option: selectedOptions[itemId],
-                    multiple_selections: multipleSelections[itemId] || [],
-                  })),
-                  category_completion_status: categoryCompletionStatus,
-                  selected_category: selectedCategory,
-                  current_step: currentStep,
-                  attendees: attendees || '',
-                  points_discussed: pointsDiscussed || '',
-                  info_pictures: infoPictures || [],
-                  notes: notes || '',
-                  captured_location: capturedLocation,
-                  location_verified: locationVerified,
-                };
-                
-                if (currentAuditId) {
-                  await axios.put(`${API_BASE_URL}/audits/${currentAuditId}`, dataToSave);
-                  console.log('[AppState] ✅ Audit synced to server before background');
-                } else {
-                  const response = await axios.post(`${API_BASE_URL}/audits`, dataToSave);
-                  if (response.data?.id) {
-                    setCurrentAuditId(response.data.id);
-                    console.log('[AppState] ✅ New audit created and synced before background');
-                  }
-                }
-              } catch (syncError) {
-                const syncStatus = syncError?.response?.status;
-                if (syncStatus === 401 || syncStatus === 403) {
-                  console.warn('[AppState] Auth error during background sync; skipping retry.');
-                } else {
-                  console.warn('[AppState] Failed to sync to server (will retry later):', syncError.message);
-                }
-                // Don't block - local save is more important
-              }
-            }
+            if (__DEV__) console.log('[AppState] Audit progress saved before going to background');
           } catch (error) {
-            console.error('[AppState] ❌ Failed to save audit on background:', error);
+            console.error('[AppState] Failed to save audit on background:', error);
           }
         }
       } else if (nextAppState === 'active') {
-        console.log('[AppState] App returned to foreground');
+        if (__DEV__) console.log('[AppState] App returned to foreground');
       }
     });
 
@@ -2896,23 +2922,18 @@ const AuditFormScreen = () => {
     return () => {
       appStateSubscription?.remove();
     };
-  }, [
-    currentStep, auditStatus, selectedLocation, responses, templateId, template,
-    locationId, comments, photos, selectedOptions, multipleSelections,
-    categoryCompletionStatus, selectedCategory, attendees, pointsDiscussed,
-    infoPictures, notes, capturedLocation, locationVerified, items,
-    currentAuditId, scheduledAuditId, draftStorageKey, isOnline
-  ]);
+  }, [draftStorageKey]); // Stable — reads all values from refs
 
   const handleSubmit = async () => {
     if (auditStatus === 'completed') {
       Alert.alert('Error', 'Cannot modify a completed audit');
       return;
     }
+    // Synchronous guard FIRST to prevent double-tap race condition
     if (saveInFlightRef.current || saving) {
       return;
     }
-    saveInFlightRef.current = true;
+    saveInFlightRef.current = true; // Set immediately before any async work
     setSaving(true);
     try {
       let activeAuditId = currentAuditId || auditId;
@@ -3819,11 +3840,11 @@ const AuditFormScreen = () => {
   
   // If loading but we have data, show data with a subtle loading indicator
   if (loading && hasData) {
-    console.log('[AuditForm] RENDER: Refreshing - showing existing data with loading overlay');
+    if (__DEV__) console.log('[AuditForm] RENDER: Refreshing - showing existing data with loading overlay');
     // Continue to render the form below, but we'll add a subtle loading indicator
   }
   
-  console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
+  if (__DEV__) console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
 
   // Check for error state first
   if (error && !loading) {
@@ -5466,6 +5487,10 @@ const styles = StyleSheet.create({
   },
   previousFailuresLoadingText: {
     marginLeft: 8,
+    color: themeConfig.text.secondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   previousFailuresCtaSecondary: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -5478,10 +5503,6 @@ const styles = StyleSheet.create({
     color: themeConfig.warning.main,
     fontSize: 12,
     fontWeight: '700',
-  },
-    color: themeConfig.text.secondary,
-    fontSize: 13,
-    fontWeight: '500',
   },
   previousFailuresCta: {
     paddingHorizontal: 10,

@@ -47,6 +47,12 @@ const AuditHistoryScreen = () => {
   const retryCountRef = useRef(0);
   const bannerOpacity = useRef(new Animated.Value(0)).current;
   const lastSuccessfulFetchRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -112,7 +118,7 @@ const AuditHistoryScreen = () => {
 
     if (searchTerm) {
       filtered = filtered.filter(audit =>
-        audit.restaurant_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (audit.restaurant_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         audit.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         audit.template_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -197,8 +203,8 @@ const AuditHistoryScreen = () => {
         
         // Try to recover with exponential backoff
         const shouldRetry = await retryWithBackoff();
-        if (shouldRetry) {
-          fetchAudits(true); // Retry silently
+        if (shouldRetry && mountedRef.current) {
+          fetchAudits(true); // Retry silently (guarded by mountedRef)
         }
       } else {
         // Non-silent fetch (initial load or manual refresh)

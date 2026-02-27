@@ -94,7 +94,7 @@ const CategorySelectionScreen = () => {
       if (!loading) {
         fetchTemplates();
       }
-    }, [isOnline])
+    }, [isOnline, loading, fetchTemplates])
   );
 
   const onRefresh = () => {

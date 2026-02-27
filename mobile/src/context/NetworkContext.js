@@ -20,7 +20,6 @@ export const NetworkProvider = ({ children }) => {
   useEffect(() => {
     // Subscribe to network state changes
     const unsubscribe = NetInfo.addEventListener(state => {
-      const wasConnected = isConnected;
       const nowConnected = state.isConnected && state.isInternetReachable;
       
       setIsConnected(state.isConnected);

@@ -30,24 +30,15 @@ const AuditDetailScreen = () => {
   const [timeStats, setTimeStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionPlan, setActionPlan] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
     fetchAudit();
   }, [id]);
 
-  // Preserve state when component is focused (e.g., when navigating back)
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      // Force refresh audit data when screen comes into focus
-      // This ensures real-time progress updates when user navigates back
-      console.log('[AuditDetail] Screen focused, refreshing audit data');
-      fetchAudit();
-    });
-
-    return unsubscribe;
-  }, [navigation, id]);
-
-  // Also refresh when route params change (e.g., refreshAuditDetail flag)
+  // Refresh when route params change (e.g., refreshAuditDetail flag)
+  // Focus listener removed to avoid double-fetching with params watcher
   useEffect(() => {
     if (route.params?.refresh || route.params?.refreshAuditDetail) {
       console.log('[AuditDetail] Refresh requested via params, fetching latest data');
@@ -59,6 +50,7 @@ const AuditDetailScreen = () => {
 
   const fetchAudit = async () => {
     try {
+      setFetchError(null);
       const response = await axios.get(`${API_BASE_URL}/audits/${id}`);
       setAudit(response.data.audit);
       setItems(response.data.items || []);
@@ -75,6 +67,7 @@ const AuditDetailScreen = () => {
       }
     } catch (error) {
       console.error('Error fetching audit:', error);
+      setFetchError(error.response ? 'server' : 'network');
     } finally {
       setLoading(false);
     }
@@ -149,7 +142,13 @@ const AuditDetailScreen = () => {
   if (!audit) {
     return (
       <View style={styles.centerContainer}>
-        <Text>Audit not found</Text>
+        <Icon name={fetchError === 'network' ? 'wifi-off' : 'error-outline'} size={48} color={themeConfig.text.disabled} />
+        <Text style={{ marginTop: 12, color: themeConfig.text.secondary }}>
+          {fetchError === 'network' ? 'Network error — check your connection' : fetchError === 'server' ? 'Server error — please try again' : 'Audit not found'}
+        </Text>
+        <TouchableOpacity onPress={() => { setLoading(true); fetchAudit(); }} style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: themeConfig.primary.main, borderRadius: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -197,7 +196,7 @@ const AuditDetailScreen = () => {
             accessibilityLabel="audit-status"
           >
             <Text style={styles.statusText}>
-              {audit.status === 'in_progress' ? 'In Progress' : audit.status.charAt(0).toUpperCase() + audit.status.slice(1)}
+              {audit.status === 'in_progress' ? 'In Progress' : (audit.status || 'Unknown').charAt(0).toUpperCase() + (audit.status || 'unknown').slice(1)}
             </Text>
           </View>
           {audit.score !== null && (
