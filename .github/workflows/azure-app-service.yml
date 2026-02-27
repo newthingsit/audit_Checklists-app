@@ -63,6 +63,18 @@ jobs:
           echo "✅ Deployment package created (includes production node_modules)"
           ls -lh ../backend.zip
 
+      - name: Validate deployment artifact integrity
+        run: |
+          set -e
+          echo "🔍 Validating backend.zip contents..."
+
+          unzip -l backend.zip | grep -q "server.js" || { echo "❌ server.js missing in backend.zip"; exit 1; }
+          unzip -l backend.zip | grep -q "package.json" || { echo "❌ package.json missing in backend.zip"; exit 1; }
+          unzip -l backend.zip | grep -q "node_modules/express/" || { echo "❌ express dependency missing in backend.zip"; exit 1; }
+          unzip -l backend.zip | grep -q "node_modules/@opentelemetry/sdk-trace-node/" || { echo "❌ OpenTelemetry sdk-trace-node missing in backend.zip"; exit 1; }
+
+          echo "✅ backend.zip integrity checks passed"
+
       - name: 'Azure Login'
         uses: azure/login@v1
         with:
