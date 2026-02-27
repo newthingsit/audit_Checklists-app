@@ -81,19 +81,26 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 'Disable Oryx build on App Service'
+      - name: 'Configure App Service settings'
         run: |
-          az webapp config appsettings set \
+          # Check current settings to avoid unnecessary restart
+          CURRENT=$(az webapp config appsettings list \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --name "${{ env.AZURE_WEBAPP_NAME }}" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false \
-            --output none
-          echo "✅ Oryx build disabled (node_modules are pre-bundled)"
+            --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT'].value | [0]" -o tsv 2>/dev/null || echo '')
 
-      - name: 'Stabilize SCM before deploy'
-        run: |
-          echo "Waiting briefly to avoid SCM restart/deploy overlap..."
-          sleep 30
+          if [ "$CURRENT" = "false" ]; then
+            echo "✅ SCM_DO_BUILD_DURING_DEPLOYMENT already set to false — skipping (no SCM restart needed)"
+          else
+            echo "Setting SCM_DO_BUILD_DURING_DEPLOYMENT=false..."
+            az webapp config appsettings set \
+              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+              --name "${{ env.AZURE_WEBAPP_NAME }}" \
+              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              --output none
+            echo "✅ App setting updated — waiting 90s for SCM container to stabilize after restart..."
+            sleep 90
+          fi
 
       - name: 'Deploy to Azure Web App (async + poll)'
         run: |
@@ -130,18 +137,17 @@ jobs:
               break
             fi
 
-            if echo "$DEPLOY_OUTPUT" | grep -Eqi "Conflict|409|another operation|deployment in progress"; then
-              WAIT_SECONDS=$((ATTEMPT * 45))
-              echo "⚠️ OneDeploy conflict detected. Restarting app and retrying in ${WAIT_SECONDS}s..."
-              az webapp restart --resource-group "$RG_NAME" --name "$APP_NAME" || true
+            if echo "$DEPLOY_OUTPUT" | grep -Eqi "Conflict|409|another operation|deployment in progress|SCM container restart|stopped due to SCM"; then
+              WAIT_SECONDS=$((ATTEMPT * 60))
+              echo "⚠️ OneDeploy conflict / SCM restart detected. Waiting ${WAIT_SECONDS}s before retry..."
               sleep "$WAIT_SECONDS"
               ATTEMPT=$((ATTEMPT + 1))
               continue
             fi
 
-            if echo "$DEPLOY_OUTPUT" | grep -Eqi "504|GatewayTimeout|Gateway Timeout|502|503|timed out|timeout"; then
+            if echo "$DEPLOY_OUTPUT" | grep -Eqi "504|GatewayTimeout|Gateway Timeout|502|503|timed out|timeout|failed to start|worker proccess failed"; then
               WAIT_SECONDS=$((ATTEMPT * 60))
-              echo "⚠️ Transient gateway/timeout error detected. Retrying in ${WAIT_SECONDS}s..."
+              echo "⚠️ Transient error detected (gateway/timeout/startup). Retrying in ${WAIT_SECONDS}s..."
               sleep "$WAIT_SECONDS"
               ATTEMPT=$((ATTEMPT + 1))
               continue
