@@ -119,27 +119,52 @@ const ScheduledAuditsReport = () => {
     }
   };
 
-  const handleExportPDF = () => {
-    const params = new URLSearchParams();
-    if (dateFrom) params.append('date_from', dateFrom);
-    if (dateTo) params.append('date_to', dateTo);
-    if (locationId) params.append('location_id', locationId);
-    if (templateId) params.append('template_id', templateId);
-    window.open(`/api/reports/scheduled-audits/pdf?${params.toString()}`, '_blank');
+  const handleExportPDF = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (locationId) params.append('location_id', locationId);
+      if (templateId) params.append('template_id', templateId);
+      const response = await axios.get(`/api/reports/scheduled-audits/pdf?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'scheduled-audits-report.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      showError('Failed to download PDF report');
+    }
   };
 
-  const handleExportCSV = () => {
-    const params = new URLSearchParams();
-    if (dateFrom) params.append('date_from', dateFrom);
-    if (dateTo) params.append('date_to', dateTo);
-    if (locationId) params.append('location_id', locationId);
-    if (templateId) params.append('template_id', templateId);
-    const link = document.createElement('a');
-    link.href = `/api/reports/scheduled-audits/csv?${params.toString()}`;
-    link.download = 'scheduled-audits-report.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportCSV = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (locationId) params.append('location_id', locationId);
+      if (templateId) params.append('template_id', templateId);
+      const response = await axios.get(`/api/reports/scheduled-audits/csv?${params.toString()}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'scheduled-audits-report.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      showError('Failed to download CSV report');
+    }
   };
 
   if (loading) {

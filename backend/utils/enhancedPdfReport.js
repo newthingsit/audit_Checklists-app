@@ -137,8 +137,15 @@ async function fetchImage(url) {
           return resolve(buffer);
         } catch (err) {
           logger.warn(`Failed to read local image: ${localPath}`);
-          return resolve(null);
         }
+      }
+      // Fallback: try Azure Blob Storage URL if local file doesn't exist (post-migration)
+      const blobBaseUrl = process.env.AZURE_STORAGE_URL || process.env.BLOB_STORAGE_URL;
+      if (blobBaseUrl) {
+        const blobUrl = `${blobBaseUrl}/audit-photos/${path.basename(url)}`;
+        logger.info(`Local file not found, trying blob: ${blobUrl}`);
+        fetchImage(blobUrl).then(resolve).catch(() => resolve(null));
+        return;
       }
       return resolve(null);
     }
@@ -148,8 +155,23 @@ async function fetchImage(url) {
     if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
       return resolve(null);
     }
+
+    // Block requests to internal/metadata IPs to prevent SSRF
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ||
+          hostname.startsWith('169.254.') || hostname.startsWith('10.') ||
+          hostname.startsWith('192.168.') || hostname === 'metadata.google.internal') {
+        logger.warn(`Blocked image fetch to internal URL: ${hostname}`);
+        return resolve(null);
+      }
+    } catch (e) {
+      return resolve(null);
+    }
     
     try {
+      const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB limit
       const protocol = url.startsWith('https') ? https : http;
       const request = protocol.get(url, { timeout: 5000 }, (response) => {
         if (response.statusCode !== 200) {
@@ -157,7 +179,16 @@ async function fetchImage(url) {
         }
         
         const chunks = [];
-        response.on('data', chunk => chunks.push(chunk));
+        let totalSize = 0;
+        response.on('data', chunk => {
+          totalSize += chunk.length;
+          if (totalSize > MAX_IMAGE_SIZE) {
+            request.destroy();
+            logger.warn(`Image too large (>${MAX_IMAGE_SIZE} bytes): ${url}`);
+            return resolve(null);
+          }
+          chunks.push(chunk);
+        });
         response.on('end', () => resolve(Buffer.concat(chunks)));
         response.on('error', () => resolve(null));
       });
@@ -474,7 +505,7 @@ function isScorableInputType(inputType) {
  * Draw a question row with 6 columns matching View Report format
  * Columns: #, Question, Score, Response, Remarks, Photo
  */
-async function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
+function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   const inputType = String(item.input_type || '').toLowerCase();
   const actualMark = parseFloat(item.mark) || 0;
   const maxMark = item.maxScore || 3;
@@ -754,7 +785,7 @@ function drawTemperatureTrackingSection(doc, temperatureTracking = []) {
  * Draw Action Plan section - Matches View Report format
  * Columns: #, Category, Deviation, Severity, Corrective Action, Owner, Target Date, Status
  */
-async function drawActionPlanSection(doc, actionPlanItems) {
+function drawActionPlanSection(doc, actionPlanItems) {
   if (!actionPlanItems || actionPlanItems.length === 0) return;
   
   // Only limit to top 3 deviations as shown in View Report
@@ -1015,37 +1046,44 @@ function addPageNumbers(doc, appName = 'LBF Audit App') {
  * Generate Enhanced Audit PDF Report
  */
 async function generateEnhancedAuditPdf(auditId, options = {}) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const reportData = await getAuditReportData(auditId, options);
-      const audit = {
-        template_name: reportData.audit.templateName,
-        restaurant_name: reportData.audit.outletName,
-        location_name: reportData.audit.outletName,
-        store_number: reportData.audit.outletCode,
-        city: reportData.audit.city,
-        created_at: reportData.audit.startDate,
-        completed_at: reportData.audit.endDate,
-        auditor_name: reportData.audit.submittedBy
-      };
-      const items = reportData.items || [];
-      const actionPlanItems = reportData.actionPlan || [];
-      
-      // Pre-fetch all photos
-      const photos = {};
-      for (const item of items) {
-        if (item.photo_url) {
-          const buffer = await fetchImage(item.photo_url);
-          if (buffer) photos[item.photo_url] = buffer;
-        }
+  // Fetch all async data BEFORE creating the Promise (avoids async-in-Promise anti-pattern)
+  const reportData = await getAuditReportData(auditId, options);
+  const audit = {
+    template_name: reportData.audit.templateName,
+    restaurant_name: reportData.audit.outletName,
+    location_name: reportData.audit.outletName,
+    store_number: reportData.audit.outletCode,
+    city: reportData.audit.city,
+    created_at: reportData.audit.startDate,
+    completed_at: reportData.audit.endDate,
+    auditor_name: reportData.audit.submittedBy
+  };
+  const items = reportData.items || [];
+  const actionPlanItems = reportData.actionPlan || [];
+
+  // Pre-fetch all photos in parallel batches (5 at a time) instead of sequentially
+  const photos = {};
+  const PHOTO_CONCURRENCY = 5;
+  const uniquePhotoUrls = [...new Set(items.filter(i => i.photo_url).map(i => i.photo_url))];
+  for (let i = 0; i < uniquePhotoUrls.length; i += PHOTO_CONCURRENCY) {
+    const batch = uniquePhotoUrls.slice(i, i + PHOTO_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map(url => fetchImage(url)));
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value) {
+        photos[batch[idx]] = result.value;
       }
+    });
+  }
       
-      const totalPerfectScore = reportData.summary.totalPerfect;
-      const totalActualScore = reportData.summary.totalActual;
-      const overallScore = reportData.summary.overallPercentage;
-      const scoreByCategory = reportData.scoreByCategory || [];
-      const detailedCategories = reportData.detailedCategories || [];
-      
+  const totalPerfectScore = reportData.summary.totalPerfect;
+  const totalActualScore = reportData.summary.totalActual;
+  const overallScore = reportData.summary.overallPercentage;
+  const scoreByCategory = reportData.scoreByCategory || [];
+  const detailedCategories = reportData.detailedCategories || [];
+
+  // Only synchronous PDF operations inside the Promise
+  return new Promise((resolve, reject) => {
+    try {
       // Create PDF
       const doc = new PDFDocument({ 
         margin: PAGE.MARGIN, 
@@ -1116,7 +1154,7 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
           // Questions
           for (let i = 0; i < subcatData.items.length; i++) {
             const item = subcatData.items[i];
-            const success = await drawQuestionRow(doc, item, questionIndex, colWidths, photos);
+            const success = drawQuestionRow(doc, item, questionIndex, colWidths, photos);
             questionIndex += 1;
             
             if (!success) {
@@ -1132,7 +1170,7 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
               drawQuestionTableHeader(doc);
               
               // Retry drawing the row
-              await drawQuestionRow(doc, item, questionIndex - 1, colWidths, photos);
+              drawQuestionRow(doc, item, questionIndex - 1, colWidths, photos);
             }
           }
         }
@@ -1143,7 +1181,7 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
       // ==================== ACTION PLAN ====================
       
       if (actionPlanItems.length > 0) {
-        await drawActionPlanSection(doc, actionPlanItems);
+        drawActionPlanSection(doc, actionPlanItems);
       }
       
       // ==================== SPECIAL SECTIONS ====================

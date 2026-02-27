@@ -373,7 +373,7 @@ async function getAuditReportData(auditId, options = {}) {
     nonScored: isNonScoredInputType(item.input_type),
     maxScore: isNonScoredInputType(item.input_type)
       ? 0
-      : parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 3
+      : parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 0
   }));
 
   let totalPerfect = 0;

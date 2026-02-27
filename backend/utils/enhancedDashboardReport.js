@@ -218,7 +218,11 @@ const createEnhancedDashboardReport = async (userId, isAdmin, dateFrom, dateTo) 
           action_plan_done: actionPlanDone,
           action_plan_status: actionPlanStatus,
           total_action_items: audit.total_action_items,
-          completed_action_items: audit.completed_action_items
+          completed_action_items: audit.completed_action_items,
+          // Fields needed for schedule adherence calculation
+          scheduled_audit_id: audit.scheduled_audit_id,
+          original_scheduled_date: audit.original_scheduled_date,
+          completed_at: audit.completed_at
         });
       });
       

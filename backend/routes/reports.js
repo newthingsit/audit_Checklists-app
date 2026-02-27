@@ -140,6 +140,12 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
               res.status(500).json({ error: 'Error generating PDF', details: pdfErr.message });
             }
           });
+          // Clean up if client disconnects mid-stream
+          res.on('close', () => {
+            if (!res.writableFinished) {
+              doc.end();
+            }
+          });
           res.setHeader('Content-Type', 'application/pdf');
           const storeName = audit.restaurant_name || audit.location || 'Restaurant';
           const fileName = `${audit.template_name || 'Report'} - ${storeName}.pdf`;
@@ -160,12 +166,11 @@ router.get('/audit/:id/pdf', authenticate, (req, res) => {
           
           // Track page numbers
           let currentPage = 1;
-          const totalPagesEstimate = Math.ceil(itemsWithMaxScores.length / 8) + 2;
           
           // Helper: Draw footer
           const drawFooter = () => {
             doc.fontSize(9).fillColor('#666');
-            doc.text(`Page ${currentPage} of ${totalPagesEstimate}`, margin, pageHeight - 30, { width: 100 });
+            doc.text(`Page ${currentPage}`, margin, pageHeight - 30, { width: 100 });
             doc.text('Powered By LBF Audit App', pageWidth - margin - 150, pageHeight - 30, { width: 150, align: 'right' });
           };
           
@@ -3237,8 +3242,7 @@ router.get('/dashboard/excel', authenticate, requirePermission('view_analytics',
     logger.error('Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Error generating dashboard report', 
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message
     });
   }
 });
