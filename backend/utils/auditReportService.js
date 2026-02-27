@@ -5,9 +5,10 @@ const APP_NAME = process.env.APP_NAME || 'LBF Audit App';
 
 const MAJOR_CATEGORIES = [
   { name: 'QUALITY', match: ['quality'] },
-  { name: 'SERVICE', match: ['service'] },
-  { name: 'HYGIENE & CLEANLINESS', match: ['hygiene', 'cleanliness'] },
-  { name: 'PROCESSES', match: ['process'] }
+  { name: 'SPEED', match: ['speed of service', 'speed', 'service'] },
+  { name: 'CLEANLINESS & HYGIENE', match: ['hygiene', 'cleanliness', 'sanitation'] },
+  { name: 'PROCESSES', match: ['process', 'compliance', 'sop'] },
+  { name: 'HK', match: ['hk', 'house keeping', 'housekeeping'] }
 ];
 
 const NON_SCORED_INPUT_TYPES = new Set(['text', 'textarea', 'comment', 'note']);
@@ -50,7 +51,9 @@ const normalizeMultiSelectionComment = (item) => {
 const mapToMajorCategory = (category) => {
   const normalized = normalizeCategoryKey(category);
   if (!normalized) return 'PROCESSES';
-  if (normalized.includes('speed of service') || normalized.includes('tracking')) return null;
+  if (normalized.includes('speed of service')) return 'SPEED';
+  if (normalized === 'hk' || normalized.includes('house keeping') || normalized.includes('housekeeping')) return 'HK';
+  if (normalized.includes('cleanliness') || normalized.includes('hygiene')) return 'CLEANLINESS & HYGIENE';
   if (normalized.includes('temperature')) return null;
   if (normalized.includes('acknowledg')) return null;
   const match = MAJOR_CATEGORIES.find(entry => entry.match.some(token => normalized.includes(token)));

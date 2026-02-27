@@ -44,7 +44,14 @@ export const setupApiMocks = () => {
  * @param {number} status - HTTP status code (default: 200)
  */
 export const mockApiEndpoint = (method, urlPattern, response, status = 200) => {
-  const mockFn = axios[method];
+  const normalizedMethod = String(method || '').toLowerCase();
+  const mockFn = axios[normalizedMethod];
+
+  if (!mockFn || typeof mockFn.mockImplementation !== 'function') {
+    throw new Error(`Unsupported axios method for mockApiEndpoint: ${method}`);
+  }
+
+  const previousImpl = mockFn.getMockImplementation?.();
 
   mockFn.mockImplementation((url, ...rest) => {
     const isMatch =
@@ -62,7 +69,10 @@ export const mockApiEndpoint = (method, urlPattern, response, status = 200) => {
       return Promise.resolve({ status, data: responseData });
     }
 
-    // Delegate to other handlers or reject
+    if (previousImpl) {
+      return previousImpl(url, ...rest);
+    }
+
     return Promise.reject(new Error(`Unmocked URL: ${url}`));
   });
 

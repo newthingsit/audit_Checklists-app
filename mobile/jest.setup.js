@@ -47,6 +47,16 @@ jest.mock('expo-image-picker', () => ({
   launchCameraAsync: jest.fn(),
 }));
 
+jest.mock('expo-file-system', () => ({
+  readAsStringAsync: jest.fn(() => Promise.resolve('mock-base64')),
+  writeAsStringAsync: jest.fn(() => Promise.resolve()),
+  getInfoAsync: jest.fn(() => Promise.resolve({ exists: true })),
+  deleteAsync: jest.fn(() => Promise.resolve()),
+  EncodingType: {
+    Base64: 'base64',
+  },
+}));
+
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
   const { View: RNView } = require('react-native');

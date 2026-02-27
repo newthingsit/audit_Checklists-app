@@ -13,7 +13,7 @@ import {
   mockApiEndpoint,
   setupAsyncStorage,
 } from '../helpers/setupIntegration';
-import { createAudit, createApiResponse, createApiError } from '../helpers/fixtures';
+import { createAudit, createApiResponse } from '../helpers/fixtures';
 
 describe('Integration: Sync Service', () => {
   beforeAll(async () => {
@@ -209,7 +209,7 @@ describe('Integration: Sync Service', () => {
       const audit = createAudit({ id: undefined });
       const response = createApiResponse(audit, 201);
 
-      mockApiEndpoint('POST', '/audits', response, 201);
+      mockApiEndpoint('post', '/audits', response, 201);
 
       // Queue item
       const queueItem = {
@@ -231,7 +231,7 @@ describe('Integration: Sync Service', () => {
       const audit = createAudit({ id: undefined });
 
       // First call fails with 503
-      mockApiEndpoint('POST', '/audits', createApiError('Service Unavailable'), 503);
+      mockApiEndpoint('post', '/audits', { message: 'Service Unavailable' }, 503);
 
       const queueItem = {
         retries: 0,
@@ -252,7 +252,7 @@ describe('Integration: Sync Service', () => {
     it('should skip retry on client error', async () => {
       const audit = createAudit({ id: undefined });
 
-      mockApiEndpoint('POST', '/audits', createApiError('Invalid data'), 400);
+      mockApiEndpoint('post', '/audits', { message: 'Invalid data' }, 400);
 
       const queueItem = {
         retries: 0,
@@ -495,7 +495,7 @@ describe('Integration: Sync Service', () => {
       };
 
       // Check if already synced
-      const isDuplicate = queueItem.status === 'completed' && queueItem.serverId;
+      const isDuplicate = queueItem.status === 'completed' && !!queueItem.serverId;
 
       expect(isDuplicate).toBe(true);
     });

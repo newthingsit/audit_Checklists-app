@@ -9,11 +9,30 @@ RESTful API server for the Restaurant Audit & Checklist application.
 npm install
 ```
 
-2. Create `.env` file (optional):
+2. Create `.env` file (optional for local development):
 ```env
 PORT=5000
 JWT_SECRET=your-secret-key-change-in-production
+# Optional report generation tuning (milliseconds)
+ENHANCED_PDF_TIMEOUT_MS=15000
+REPORT_DATA_TIMEOUT_MS=10000
 ```
+
+### Production environment
+
+Use `backend/.env.production.example` as the baseline for production settings (or mirror these values in your hosting platform app settings).
+
+Before deploying, run:
+
+```bash
+npm run env:check:prod
+```
+
+This validates production requirements such as:
+- `JWT_SECRET` present and strong (non-placeholder, minimum length)
+- database settings present for selected DB type
+- report timeout env values are valid positive integers
+- key production hardening flags (`ALLOWED_ORIGINS`, `TRUST_PROXY`, `FORCE_HTTPS`)
 
 3. Create data directory:
 ```bash
@@ -92,6 +111,42 @@ npm run dev  # with nodemon for auto-reload
 - **PUT** `/api/audits/:id/complete`
 - Headers: `Authorization: Bearer <token>`
 - Returns: `{ message, score }`
+
+### Report Endpoints
+
+#### Get Audit Report Data (JSON)
+- **GET** `/api/reports/audit/:id/report`
+- Headers: `Authorization: Bearer <token>`
+- Returns: summary, category scoring, detailed sections, action plan, and tracking data
+- Notes:
+  - Returns `400` for invalid audit id
+  - Returns `404` for missing/inaccessible audit
+  - Returns `409` when audit is not completed
+  - Returns `504` when report generation exceeds `REPORT_DATA_TIMEOUT_MS`
+
+#### Download Enhanced Audit PDF
+- **GET** `/api/reports/audit/:id/enhanced-pdf`
+- Headers: `Authorization: Bearer <token>`
+- Query params:
+  - `photos=true|false`
+  - `comments=true|false` (default: `true`)
+- Notes:
+  - Returns `400` for invalid audit id
+  - Returns `404` for missing/inaccessible audit
+  - Returns `504` when PDF generation exceeds `ENHANCED_PDF_TIMEOUT_MS`
+
+#### Download Legacy Audit PDF (Fallback)
+- **GET** `/api/reports/audit/:id/pdf`
+- Headers: `Authorization: Bearer <token>`
+- Notes:
+  - Kept for compatibility and fallback when enhanced PDF times out/fails
+
+#### Get Top-3 Deviations
+- **GET** `/api/reports/audit/:id/deviations`
+- Headers: `Authorization: Bearer <token>`
+- Query params:
+  - `all=true` to include full deviations list in addition to top 3
+- Returns: `total_deviations`, `top_3_deviations`
 
 ## Database Schema
 

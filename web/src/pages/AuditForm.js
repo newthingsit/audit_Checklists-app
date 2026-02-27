@@ -233,19 +233,13 @@ const AuditForm = () => {
         setLocationId(schedule.location_id.toString());
       }
       
-      // Check if current date matches scheduled date (scheduled audits can only be opened on the scheduled date)
-      // Requirement: "Audit template should open on the same day of audit and not other days"
+      // Keep scheduled date metadata for display and adherence tracking.
+      // Starting before/after scheduled date is allowed by business rules.
       if (schedule.scheduled_date) {
         const scheduledDate = new Date(schedule.scheduled_date);
-        scheduledDate.setHours(0, 0, 0, 0);
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        // Only allow opening on the exact scheduled date (same day)
-        if (scheduledDate.getTime() !== today.getTime()) {
-          setIsBeforeScheduledDate(true);
-          setError(`This audit is scheduled for ${scheduledDate.toLocaleDateString()}. Please open it on the scheduled date.`);
-        }
+        const isBefore = today.setHours(0, 0, 0, 0) < scheduledDate.setHours(0, 0, 0, 0);
+        setIsBeforeScheduledDate(isBefore);
       }
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') console.error('Error fetching scheduled audit:', error);
@@ -1458,7 +1452,7 @@ const AuditForm = () => {
       // Check if audit was completed - trigger PDF download
       if (response.data && response.data.status === 'completed') {
         // Trigger PDF download automatically
-        const pdfUrl = response.data.pdfUrl || `/api/reports/audit/${activeAuditId}/pdf`;
+        const pdfUrl = response.data.pdfUrl || `/api/reports/audit/${activeAuditId}/enhanced-pdf`;
         if (pdfUrl) {
           // Open PDF in new tab for download
           window.open(pdfUrl, '_blank');
@@ -2566,11 +2560,11 @@ const AuditForm = () => {
               {isCvr ? 'Details' : 'Store Information'}
             </Typography>
             
-            {/* Warning for scheduled date restriction */}
+            {/* Warning when starting before scheduled date */}
             {isBeforeScheduledDate && scheduledAudit && (
               <Alert severity="warning" sx={{ mb: 2 }}>
                 ⚠️ This audit is scheduled for {new Date(scheduledAudit.scheduled_date).toLocaleDateString()}. 
-                You cannot start the audit before the scheduled date.
+                You are starting it before the scheduled date.
               </Alert>
             )}
             

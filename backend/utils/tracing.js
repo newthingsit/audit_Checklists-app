@@ -19,7 +19,44 @@ const { trace, context } = require('@opentelemetry/api');
  */
 function initializeTracing() {
   try {
-    const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+    const nodeEnv = String(process.env.NODE_ENV || 'development').toLowerCase();
+    const isAzureHosted = Boolean(
+      process.env.WEBSITE_SITE_NAME ||
+      process.env.WEBSITE_INSTANCE_ID ||
+      process.env.WEBSITE_HOSTNAME
+    );
+    const tracingFlag = String(
+      process.env.OTEL_ENABLED ?? process.env.TRACING_ENABLED ?? 'true'
+    ).toLowerCase();
+
+    if (['0', 'false', 'off', 'no'].includes(tracingFlag)) {
+      console.log('ℹ️  OpenTelemetry disabled via OTEL_ENABLED/TRACING_ENABLED');
+      return null;
+    }
+
+    let otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
+    if (!otlpEndpoint) {
+      if (nodeEnv === 'production' || isAzureHosted) {
+        console.log('ℹ️  OpenTelemetry disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set on hosted environment)');
+        return null;
+      }
+      otlpEndpoint = 'http://localhost:4318';
+    }
+
+    if (nodeEnv === 'production' || isAzureHosted) {
+      try {
+        const endpointUrl = new URL(otlpEndpoint);
+        const host = String(endpointUrl.hostname || '').toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+          console.log('ℹ️  OpenTelemetry disabled (localhost OTLP endpoint on hosted environment)');
+          return null;
+        }
+      } catch (parseError) {
+        console.warn('⚠️  Invalid OTEL_EXPORTER_OTLP_ENDPOINT, tracing disabled:', parseError.message);
+        return null;
+      }
+    }
   
   // Create resource with service name and version
   const resource = defaultResource().merge(

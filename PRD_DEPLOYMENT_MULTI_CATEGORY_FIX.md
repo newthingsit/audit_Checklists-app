@@ -27,6 +27,17 @@
 
 ## 🎯 Deployment Steps
 
+### Step 0: Preflight (Required)
+
+From repo root:
+
+```powershell
+npm run env:check:prod
+npm run preflight:prod
+```
+
+Do not deploy until these checks pass.
+
 ### Step 1: Check GitHub Actions (Automatic Deployment)
 
 **If GitHub Actions is configured:**
@@ -125,6 +136,17 @@ eas submit --platform ios
 ```
 
 **Note:** Mobile app changes don't require immediate deployment - they work with the updated backend API.
+
+---
+
+### Step 5: Post-Deploy Smoke Validation
+
+```powershell
+npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+```
+
+- Verifies report and PDF paths remain healthy after deployment
+- Helps catch timeout regressions before users report them
 
 ---
 

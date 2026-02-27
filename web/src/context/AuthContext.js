@@ -89,6 +89,8 @@ export const AuthProvider = ({ children }) => {
   const initializedRef = useRef(false);
   const refreshPromiseRef = useRef(null);
 
+  const isUnauthorizedStatus = (status) => status === 401 || status === 403;
+
   // Silent token refresh — called when a 401 is received
   const silentRefresh = useCallback(async () => {
     // Deduplicate concurrent refresh calls
@@ -106,12 +108,16 @@ export const AuthProvider = ({ children }) => {
         axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
         return newToken;
       })
-      .catch(() => {
-        // Refresh failed → force logout
-        tokenStorage.clear();
-        setToken(null);
-        setUser(null);
-        delete axios.defaults.headers.common['Authorization'];
+      .catch((error) => {
+        const status = error?.response?.status;
+        // Only force logout on explicit auth failures.
+        // For network/5xx/transient errors, keep session state intact.
+        if (isUnauthorizedStatus(status)) {
+          tokenStorage.clear();
+          setToken(null);
+          setUser(null);
+          delete axios.defaults.headers.common['Authorization'];
+        }
         return null;
       })
       .finally(() => {
@@ -127,6 +133,7 @@ export const AuthProvider = ({ children }) => {
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
+        if (!originalRequest) return Promise.reject(error);
         // Only retry once, and not for the refresh endpoint itself
         if (
           error.response?.status === 401 &&
@@ -137,6 +144,7 @@ export const AuthProvider = ({ children }) => {
           originalRequest._retry = true;
           const newToken = await silentRefresh();
           if (newToken) {
+            if (!originalRequest.headers) originalRequest.headers = {};
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
             return axios(originalRequest);
           }
@@ -174,9 +182,12 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get('/api/auth/me');
       setUser(response.data.user);
     } catch (error) {
-      tokenStorage.clear();
-      setToken(null);
-      delete axios.defaults.headers.common['Authorization'];
+      const status = error?.response?.status;
+      if (isUnauthorizedStatus(status)) {
+        tokenStorage.clear();
+        setToken(null);
+        delete axios.defaults.headers.common['Authorization'];
+      }
     } finally {
       setLoading(false);
     }

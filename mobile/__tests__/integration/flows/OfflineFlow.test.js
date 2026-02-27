@@ -122,6 +122,7 @@ describe('Integration: Offline-to-Online Sync Flow', () => {
     });
 
     it('should show offline indicator to user', () => {
+      mockNetwork.isOnline = false;
       const isOnlineIndicatorShown = !mockNetwork.isOnline;
 
       expect(isOnlineIndicatorShown).toBe(true);
@@ -163,7 +164,7 @@ describe('Integration: Offline-to-Online Sync Flow', () => {
       const unsubscribe = mockNetwork.subscribeToNetworkChange(() => {});
 
       expect(mockNetwork.subscribeToNetworkChange).toHaveBeenCalled();
-      expect(unsubscribe).toBeInstanceOf(Function);
+      expect(typeof unsubscribe).toBe('function');
     });
 
     it('should debounce rapid network changes', async () => {
@@ -224,26 +225,17 @@ describe('Integration: Offline-to-Online Sync Flow', () => {
     });
 
     it('should retry failed sync operations', async () => {
-      let attempts = 0;
-
-      mockApiEndpoint('post', /\/audits/, () => {
-        attempts++;
-        if (attempts < 3) {
-          return Promise.reject({ response: { status: 500 } });
-        }
-        return sampleCompletedAudit;
-      });
+      mockApiEndpoint('post', /\/audits/, { message: 'Transient server error' }, 500);
 
       const operation = { type: 'create_audit', data: sampleAuditFormData };
 
       try {
         await axios.post('/audits', operation.data);
       } catch (error) {
-        // First attempt fails
+        expect(error.response?.status).toBe(500);
       }
 
       // Should retry
-      attempts = 0;
       mockApiEndpoint('post', /\/audits/, sampleCompletedAudit, 201);
       const response = await axios.post('/audits', operation.data);
 

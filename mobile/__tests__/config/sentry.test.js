@@ -352,11 +352,12 @@ describe('Sentry Configuration', () => {
         finish: jest.fn(),
       };
 
-      Sentry.startTransaction = jest.fn().mockReturnValue(mockTransaction);
+      const sentryClient = require('../../src/config/sentry').default;
+      sentryClient.startTransaction = jest.fn().mockReturnValue(mockTransaction);
 
       const transaction = startSentryTransaction('Load Audits', 'http');
 
-      expect(Sentry.startTransaction).toHaveBeenCalledWith({
+      expect(sentryClient.startTransaction).toHaveBeenCalledWith({
         name: 'Load Audits',
         op: 'http',
       });

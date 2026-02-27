@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.15.0] - 2026-02-25 - Report Stability Hardening & Smoke Automation
+
+### Added
+- **Report Stability Handoff**: New runbook `REPORT_STABILITY_HANDOFF_2026-02-25.md` with rollout, validation, and rollback steps
+- **Production Env Template**: `backend/.env.production.example` with hardened baseline settings
+- **Production Env Validation Script**: `backend/scripts/validate-production-env.js`
+  - Backend command: `npm run env:check:prod`
+  - Fails fast on missing/weak `JWT_SECRET` and invalid DB/runtime config
+- **Smoke Automation Script**: `scripts/smoke-report-stability.ps1`
+  - Validates auth, completed-audit discovery, report JSON endpoint, deviations endpoint, and PDF endpoint behavior
+  - Includes enhanced-PDF check with legacy-PDF fallback validation path
+- **Task Shortcuts**:
+  - Root npm shortcut: `npm run smoke:report-stability`
+  - VS Code tasks in `.vscode/tasks.json`:
+    - `Backend: Start API`
+    - `Backend: Stop API (Node on 5000)`
+    - `Smoke: Report Stability (Local)`
+    - `Smoke: Report Stability`
+    - `Smoke: Full Local Flow`
+
+### Changed
+- **Backend report route hardening** (`backend/routes/reports.js`):
+  - Added strict audit-id validation for report endpoints
+  - Added timeout guards for enhanced PDF and report data routes
+  - Added structured timeout responses (`504`) for bounded failure behavior
+- **Production env guardrails** (`backend/config/env.js`):
+  - Added strong JWT checks (minimum length + placeholder detection)
+  - Added validation for report timeout env values
+  - Added production warnings for `TRUST_PROXY` and `FORCE_HTTPS`
+- **SQL Server production connection behavior** (`backend/config/database-mssql.js`):
+  - Improved local named-instance detection under production mode
+  - Added `DB_TRUST_SERVER_CERT` alias support alongside `MSSQL_TRUST_CERT`
+- **Frontend PDF resilience**:
+  - Added enhanced-first with legacy fallback at major web download points
+  - Updated completion flow default PDF URL to enhanced route
+- **Scheduling UX alignment**:
+  - Updated scheduled audit reschedule UI to checklist-scoped limit behavior
+
+### Documentation
+- Updated deployment/runtime docs:
+  - `backend/README.md`
+  - `DEPLOYMENT_CHECKLIST.md`
+  - `README.md`
+
+### Validation
+- Web production build completed successfully (warnings only)
+- Backend reports module load check passed
+- Report generation smoke test passed
+- Deviations endpoint contract check passed
+- New smoke script validated via direct PowerShell execution and npm shortcut
+
 ## [1.14.0] - 2025-01-27
 
 ### Added

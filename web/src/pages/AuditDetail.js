@@ -394,12 +394,25 @@ const AuditDetail = () => {
   // Download Enhanced QA Report with Executive Summary, Top-3 Deviations & Action Plan
   const handleDownloadEnhancedReport = async () => {
     try {
-      const response = await axios.get(`/api/reports/audit/${id}/enhanced-pdf`, {
-        responseType: 'blob',
-        headers: {
-          'Accept': 'application/pdf'
+      let response;
+      try {
+        response = await axios.get(`/api/reports/audit/${id}/enhanced-pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      } catch (enhancedError) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('Enhanced PDF unavailable, falling back to legacy PDF', enhancedError);
         }
-      });
+        response = await axios.get(`/api/reports/audit/${id}/pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      }
       
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const downloadUrl = window.URL.createObjectURL(blob);

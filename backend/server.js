@@ -1,8 +1,12 @@
 // Initialize OpenTelemetry tracing FIRST before any other imports (optional)
 try {
   const { initializeTracing } = require('./utils/tracing');
-  initializeTracing();
-  console.log('✅ OpenTelemetry tracing initialized successfully');
+  const tracingProvider = initializeTracing();
+  if (tracingProvider) {
+    console.log('✅ OpenTelemetry tracing initialized successfully');
+  } else {
+    console.log('ℹ️  OpenTelemetry tracing is disabled');
+  }
 } catch (error) {
   console.warn('⚠️  OpenTelemetry tracing not available:', error.message);
   console.warn('   Server will continue without distributed tracing');
