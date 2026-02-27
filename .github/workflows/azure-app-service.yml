@@ -38,21 +38,29 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend production dependencies
+        run: |
+          cd backend
+          npm ci --omit=dev --no-audit --no-fund
+          npm ls express
+          echo "✅ Production dependencies installed"
 
       - name: Create deployment package
         run: |
           cd backend
-          # Package source code WITHOUT node_modules
-          # Azure Oryx will run npm install on the server
+          # Package source code WITH production node_modules
+          # This avoids runtime failures when Oryx build is skipped on App Service
           zip -r ../backend.zip . \
             -x "*.git*" \
             -x "web.config" \
             -x "*.md" \
-            -x "node_modules/*" \
             -x "tests/*" \
             -x "*.test.js"
-          
-          echo "✅ Deployment package created (excludes node_modules)"
+
+          echo "✅ Deployment package created (includes production node_modules)"
           ls -lh ../backend.zip
 
       - name: 'Azure Login'
