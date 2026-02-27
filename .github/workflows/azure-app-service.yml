@@ -129,6 +129,14 @@ jobs:
               continue
             fi
 
+            if echo "$DEPLOY_OUTPUT" | grep -Eqi "504|GatewayTimeout|Gateway Timeout|502|503|timed out|timeout"; then
+              WAIT_SECONDS=$((ATTEMPT * 60))
+              echo "⚠️ Transient gateway/timeout error detected. Retrying in ${WAIT_SECONDS}s..."
+              sleep "$WAIT_SECONDS"
+              ATTEMPT=$((ATTEMPT + 1))
+              continue
+            fi
+
             echo "❌ Deployment failed with non-retryable error"
             exit $EXIT_CODE
           done
