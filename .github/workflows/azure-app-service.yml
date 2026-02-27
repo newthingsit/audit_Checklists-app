@@ -90,7 +90,12 @@ jobs:
           set -e
 
           APP_NAME="${{ env.AZURE_WEBAPP_NAME }}"
-          RG_NAME=$(az webapp show --name "$APP_NAME" --query resourceGroup -o tsv)
+          RG_NAME=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RG_NAME" ] || [ "$RG_NAME" = "null" ]; then
+            echo "❌ Could not resolve resource group for app '$APP_NAME'"
+            az webapp list --query "[].{name:name,resourceGroup:resourceGroup}" -o table || true
+            exit 1
+          fi
 
           echo "Deploying backend.zip to app '$APP_NAME' in resource group '$RG_NAME'"
 
@@ -148,15 +153,21 @@ jobs:
         run: |
           echo "🔍 Testing health endpoint(s)..."
 
-          PRIMARY_HOST="${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          APP_NAME="${{ env.AZURE_WEBAPP_NAME }}"
+          PRIMARY_HOST="${APP_NAME}.azurewebsites.net"
           declare -a HOSTS=("$PRIMARY_HOST")
 
-          RESOLVED_HOST=$(az webapp show \
-            --name ${{ env.AZURE_WEBAPP_NAME }} \
-            --query defaultHostName -o tsv 2>/dev/null || true)
-          if [ -n "$RESOLVED_HOST" ] && [ "$RESOLVED_HOST" != "$PRIMARY_HOST" ]; then
+          RESOLVED_HOST=$(az webapp list --query "[?name=='$APP_NAME'].defaultHostName | [0]" -o tsv 2>/dev/null || true)
+          if [ -n "$RESOLVED_HOST" ] && [ "$RESOLVED_HOST" != "null" ] && [ "$RESOLVED_HOST" != "$PRIMARY_HOST" ]; then
             HOSTS+=("$RESOLVED_HOST")
           fi
+
+          APP_URL_HOST=$(az webapp list --query "[?name=='$APP_NAME'].defaultHostName | [0]" -o tsv 2>/dev/null || true)
+          if [ -n "$APP_URL_HOST" ] && [ "$APP_URL_HOST" != "null" ] && [ "$APP_URL_HOST" != "$PRIMARY_HOST" ] && [ "$APP_URL_HOST" != "$RESOLVED_HOST" ]; then
+            HOSTS+=("$APP_URL_HOST")
+          fi
+
+          echo "Candidate hosts: ${HOSTS[*]}"
 
           for host in "${HOSTS[@]}"; do
             if [ -z "$host" ]; then
