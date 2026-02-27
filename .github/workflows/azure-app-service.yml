@@ -85,53 +85,63 @@ jobs:
           echo "Waiting briefly to avoid SCM restart/deploy overlap..."
           sleep 45
 
-      - name: 'Deploy to Azure Web App (attempt 1)'
-        uses: azure/webapps-deploy@v3
-        id: deploy_1
-        continue-on-error: true
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: backend.zip
-          clean: true
-
-      - name: 'Wait before retry (60s)'
-        if: steps.deploy_1.outcome == 'failure'
+      - name: 'Deploy to Azure Web App (conflict-aware retry)'
         run: |
-          echo "Deployment failed, waiting 60 seconds before retry..."
-          sleep 60
+          set -e
 
-      - name: 'Deploy to Azure Web App (attempt 2)'
-        if: steps.deploy_1.outcome == 'failure'
-        uses: azure/webapps-deploy@v3
-        id: deploy_2
-        continue-on-error: true
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: backend.zip
-          clean: true
+          APP_NAME="${{ env.AZURE_WEBAPP_NAME }}"
+          RG_NAME=$(az webapp show --name "$APP_NAME" --query resourceGroup -o tsv)
 
-      - name: 'Wait before retry (120s)'
-        if: steps.deploy_2.outcome == 'failure'
-        run: |
-          echo "Deployment failed again, waiting 120 seconds before final retry..."
-          sleep 120
+          echo "Deploying backend.zip to app '$APP_NAME' in resource group '$RG_NAME'"
 
-      - name: 'Deploy to Azure Web App (attempt 3)'
-        if: steps.deploy_2.outcome == 'failure'
-        uses: azure/webapps-deploy@v3
-        id: deploy_3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: backend.zip
-          clean: true
+          MAX_ATTEMPTS=6
+          ATTEMPT=1
+          SUCCESS=0
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "🚀 Deploy attempt $ATTEMPT/$MAX_ATTEMPTS"
+
+            set +e
+            DEPLOY_OUTPUT=$(az webapp deploy \
+              --resource-group "$RG_NAME" \
+              --name "$APP_NAME" \
+              --src-path backend.zip \
+              --type zip \
+              --clean true 2>&1)
+            EXIT_CODE=$?
+            set -e
+
+            echo "$DEPLOY_OUTPUT"
+
+            if [ $EXIT_CODE -eq 0 ]; then
+              SUCCESS=1
+              echo "✅ Deployment command succeeded"
+              break
+            fi
+
+            if echo "$DEPLOY_OUTPUT" | grep -Eqi "Conflict|409|another operation|deployment in progress"; then
+              WAIT_SECONDS=$((ATTEMPT * 45))
+              echo "⚠️ OneDeploy conflict detected. Restarting app and retrying in ${WAIT_SECONDS}s..."
+              az webapp restart --resource-group "$RG_NAME" --name "$APP_NAME" || true
+              sleep "$WAIT_SECONDS"
+              ATTEMPT=$((ATTEMPT + 1))
+              continue
+            fi
+
+            echo "❌ Deployment failed with non-retryable error"
+            exit $EXIT_CODE
+          done
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "❌ Deployment failed after $MAX_ATTEMPTS attempts"
+            exit 1
+          fi
 
       - name: 'Wait for Azure Oryx build and startup'
         if: always()
         run: |
-          echo "⏳ Waiting for Azure to build dependencies and start app..."
-          echo "   Azure Oryx will run: npm install --production"
-          echo "   This typically takes 3-5 minutes"
-          sleep 240
+          echo "⏳ Waiting for app restart and warm-up..."
+          sleep 120
 
       - name: 'Verify deployment'
         if: always()
