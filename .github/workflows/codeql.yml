@@ -13,9 +13,14 @@ permissions:
   actions: read
   security-events: write
 
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -27,5 +32,13 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          config: |
+            paths-ignore:
+              - mobile/coverage/**
+              - **/coverage/**
+              - **/lcov-report/**
+              - **/*.md
+
+      - uses: github/codeql-action/autobuild@v3
 
       - uses: github/codeql-action/analyze@v3
