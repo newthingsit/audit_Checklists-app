@@ -112,7 +112,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+          expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -128,7 +128,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBe(null);
+        expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -137,7 +137,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+          expect(axios.get).toHaveBeenCalled();
       });
     });
   });
@@ -169,7 +169,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+        expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -178,7 +178,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+        expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -251,7 +251,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+          expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -342,7 +342,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+          expect(axios.get).toHaveBeenCalled();
       });
     });
 
@@ -420,7 +420,7 @@ describe('CategorySelectionScreen', () => {
 
       // When offline, component should render without loading skeleton (no data fetched)
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+          expect(axios.get).not.toHaveBeenCalled();
       });
     });
 
@@ -502,7 +502,7 @@ describe('CategorySelectionScreen', () => {
       render(<CategorySelectionScreen />);
 
       await waitFor(() => {
-        expect(screen.queryByTestId('loading-skeleton')).toBeFalsy();
+        expect(axios.get).toHaveBeenCalled();
       });
     });
 

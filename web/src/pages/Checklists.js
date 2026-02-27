@@ -78,6 +78,7 @@ import { showSuccess, showError } from '../utils/toast';
 import { themeConfig } from '../config/theme';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { withTimeout } from '../utils/fetchUtils';
 
 const getTemplateId = (template) => {
   if (!template) return null;
@@ -306,6 +307,7 @@ Auditor Signature,Auditor confirms audit completion and accuracy,SIGN-OFF,Audito
 `;
 
 const Checklists = () => {
+  const TEMPLATE_FETCH_TIMEOUT_MS = 30000;
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
   const theme = useTheme();
@@ -342,14 +344,42 @@ const Checklists = () => {
     fetchTemplates();
   }, []);
 
+  const normalizeTemplatesResponse = (response) => {
+    const templatesData = response?.data?.templates;
+    return Array.isArray(templatesData) ? templatesData : [];
+  };
+
+  const fetchFromTemplatesEndpoint = async () => {
+    return withTimeout(
+      axios.get('/api/templates', {
+        params: { _t: Date.now(), dedupe: 'true' }
+      }),
+      TEMPLATE_FETCH_TIMEOUT_MS
+    );
+  };
+
+  const fetchFromChecklistsEndpoint = async () => {
+    return withTimeout(
+      axios.get('/api/checklists', {
+        params: { _t: Date.now() }
+      }),
+      TEMPLATE_FETCH_TIMEOUT_MS
+    );
+  };
+
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      // Add cache-busting parameter to ensure fresh data after create/update
-      const response = await axios.get('/api/templates', {
-        params: { _t: Date.now(), dedupe: 'true' }
-      });
-      const serverTemplates = response.data.templates || [];
+      let response;
+
+      try {
+        response = await fetchFromTemplatesEndpoint();
+      } catch (templatesError) {
+        if (process.env.NODE_ENV !== 'production') console.warn('Primary templates endpoint failed, trying fallback /api/checklists:', templatesError?.message || templatesError);
+        response = await fetchFromChecklistsEndpoint();
+      }
+
+      const serverTemplates = normalizeTemplatesResponse(response);
       
       if (process.env.NODE_ENV !== 'production') console.log('Templates fetched:', serverTemplates.length, 'templates');
       if (process.env.NODE_ENV !== 'production') console.log('Template data:', serverTemplates);
@@ -365,6 +395,13 @@ const Checklists = () => {
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') console.error('Error fetching templates:', error);
       if (process.env.NODE_ENV !== 'production') console.error('Error details:', error.response?.data || error.message);
+      setTemplates([]);
+
+      const isTimeout = (error?.message || '').toLowerCase().includes('timeout');
+      if (isTimeout) {
+        showError('Template loading timed out. Please retry.');
+      }
+
       if (error.response?.status === 403) {
         if (process.env.NODE_ENV !== 'production') console.error('Permission denied - user may not have access to templates');
       } else if (error.response?.status === 401) {

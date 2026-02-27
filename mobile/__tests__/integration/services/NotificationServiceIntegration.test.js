@@ -484,7 +484,7 @@ describe('Integration: Notification Service', () => {
       ];
 
       mockApiEndpoint('GET', /\/audits.*/,
-        { data: audits }, 200);
+        audits, 200);
 
       const response = await axios.get('/audits');
 

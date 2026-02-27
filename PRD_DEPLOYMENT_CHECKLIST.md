@@ -34,10 +34,24 @@
 - [x] Environment variables checked
 - [x] CORS settings verified
 - [x] API URLs configured
+- [x] Production preflight command available (`npm run preflight:prod`)
+- [x] Report/PDF smoke script available (`npm run smoke:report-stability`)
 
 ---
 
 ## 🚀 Deployment Steps
+
+### Step 0: Run production preflight (required)
+
+```bash
+# From repository root
+npm run preflight:prod
+
+# Optional: include live health check
+powershell -ExecutionPolicy Bypass -File .\scripts\prod-preflight.ps1 -HealthUrl "https://audit-app-backend-2221.azurewebsites.net/api/health" -UseForwardedHttps
+```
+
+Expected result: `Production preflight passed`
 
 ### Step 1: Commit Changes to Git
 
@@ -170,10 +184,21 @@ SELECT name, permissions FROM roles WHERE name = 'manager';
 - [ ] Schedule Adherence appears on dashboard
 - [ ] Reschedule works (per-checklist, 2 times limit)
 - [ ] Backdated rescheduling works
-- [ ] Same-day validation works
+- [ ] Scheduled audit behavior matches current policy (starting before scheduled date is allowed with warning)
 - [ ] Checklist assignment works
 - [ ] Mobile app can login
 - [ ] Rate limits are appropriate
+- [ ] Report JSON endpoint works for completed audits
+- [ ] Enhanced PDF works, or legacy PDF fallback works
+
+### Step 7: Run report stability smoke checks
+
+```bash
+# Local or environment-specific
+npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+```
+
+Expected result: `Report stability smoke test passed`
 
 ---
 
@@ -184,7 +209,11 @@ Verify these are set in Azure App Service:
 - `NODE_ENV=production`
 - `DB_TYPE=mssql` (or your database type)
 - `JWT_SECRET` (strong secret)
-- `CORS_ORIGINS` (frontend URL)
+- `ALLOWED_ORIGINS` (frontend URL allowlist)
+- `TRUST_PROXY=true`
+- `FORCE_HTTPS=true`
+- `ENHANCED_PDF_TIMEOUT_MS=15000`
+- `REPORT_DATA_TIMEOUT_MS=10000`
 - Rate limit settings (now 100 for login)
 
 ### Frontend Environment Variables
@@ -232,6 +261,12 @@ If issues occur:
 - Verify scheduled audits exist
 - Check date comparison logic
 - Verify completed audits have correct dates
+
+### Issue: Enhanced PDF Fails or Times Out
+**Solution:**
+- Verify `ENHANCED_PDF_TIMEOUT_MS` and `REPORT_DATA_TIMEOUT_MS`
+- Confirm fallback endpoint `/api/reports/audit/:id/pdf` is reachable
+- Run smoke script and inspect failing step output
 
 ### Issue: Reschedule Count Always 0
 **Solution:**

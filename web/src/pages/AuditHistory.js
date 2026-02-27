@@ -340,12 +340,22 @@ const AuditHistory = () => {
   const handleDownloadPdf = async (auditId, auditName) => {
     try {
       showSuccess('Generating PDF report...');
-      const response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
-        responseType: 'blob',
-        headers: {
-          'Accept': 'application/pdf'
-        }
-      });
+      let response;
+      try {
+        response = await axios.get(`/api/reports/audit/${auditId}/enhanced-pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      } catch (enhancedError) {
+        response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      }
       
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -368,12 +378,22 @@ const AuditHistory = () => {
   const handlePreviewPdf = async (auditId) => {
     try {
       showSuccess('Opening PDF preview...');
-      const response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
-        responseType: 'blob',
-        headers: {
-          'Accept': 'application/pdf'
-        }
-      });
+      let response;
+      try {
+        response = await axios.get(`/api/reports/audit/${auditId}/enhanced-pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      } catch (enhancedError) {
+        response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
+          responseType: 'blob',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+      }
       
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const pdfUrl = window.URL.createObjectURL(blob);

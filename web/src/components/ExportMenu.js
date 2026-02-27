@@ -39,15 +39,24 @@ const ExportMenu = ({ auditId, auditName, audits, onExport }) => {
       if (auditId) {
         // Single audit export
         if (format === 'pdf') {
-          url = `/api/reports/audit/${auditId}/pdf`;
+          url = `/api/reports/audit/${auditId}/enhanced-pdf`;
           filename = `${auditName || 'audit'}.pdf`;
-          // Use axios to fetch PDF with authentication
-          response = await axios.get(url, {
-            responseType: 'blob',
-            headers: {
-              'Accept': 'application/pdf'
-            }
-          });
+          // Prefer enhanced PDF endpoint and fallback to legacy PDF route
+          try {
+            response = await axios.get(url, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            });
+          } catch (enhancedError) {
+            response = await axios.get(`/api/reports/audit/${auditId}/pdf`, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            });
+          }
           const blob = new Blob([response.data], { type: 'application/pdf' });
           const downloadUrl = window.URL.createObjectURL(blob);
           const link = document.createElement('a');

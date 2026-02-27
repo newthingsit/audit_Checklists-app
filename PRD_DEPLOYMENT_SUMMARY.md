@@ -29,6 +29,17 @@
 
 ## 🚀 Deployment Steps for PRD
 
+### Step 0: Preflight (Required)
+
+Run from repo root before any deployment step:
+
+```bash
+npm run env:check:prod
+npm run preflight:prod
+```
+
+Proceed only when preflight passes.
+
 ### Step 1: Backend Deployment (Azure App Service)
 
 **Option A: Automatic via GitHub Actions**
@@ -99,6 +110,13 @@ curl https://audit-app-backend-2221.azurewebsites.net/api/analytics/dashboard \
 # }
 ```
 
+#### Report/PDF Smoke Test
+```bash
+npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+```
+- Confirms report JSON + deviations + PDF routes remain healthy after deployment
+- Catches PDF timeout regressions early
+
 #### Frontend Verification
 1. ✅ Open web app URL
 2. ✅ Login successfully
@@ -138,7 +156,11 @@ Verify these are set in Azure App Service Configuration:
 - `NODE_ENV=production`
 - `DB_TYPE=mssql` (or your database type)
 - `JWT_SECRET` (strong secret)
-- `CORS_ORIGINS` (frontend URL)
+- `ALLOWED_ORIGINS` (frontend origins, comma-separated)
+- `TRUST_PROXY=true`
+- `FORCE_HTTPS=true`
+- `ENHANCED_PDF_TIMEOUT_MS=15000`
+- `REPORT_DATA_TIMEOUT_MS=10000`
 - Rate limit settings (now 100 for login in production)
 
 ### Database Tables

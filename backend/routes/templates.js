@@ -7,6 +7,49 @@ const router = express.Router();
 
 const normalizeTemplateKey = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
+const dbAll = (dbInstance, query, params = []) =>
+  new Promise((resolve, reject) => {
+    dbInstance.all(query, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows || []);
+    });
+  });
+
+let templateIndexesEnsured = false;
+const runQuerySafe = (dbInstance, query) =>
+  new Promise((resolve, reject) => {
+    try {
+      const maybePromise = dbInstance.run(query, [], (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(() => resolve()).catch(reject);
+      }
+    } catch (error) {
+      reject(error);
+    }
+  });
+
+const ensureTemplateQueryIndexes = async (dbInstance, dbType) => {
+  if (templateIndexesEnsured) return;
+  try {
+    const normalized = (dbType || '').toLowerCase();
+    if (normalized === 'mssql' || normalized === 'sqlserver') {
+      await runQuerySafe(dbInstance, `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_checklist_items_template_id') CREATE INDEX idx_checklist_items_template_id ON checklist_items(template_id)`).catch(() => {});
+      await runQuerySafe(dbInstance, `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_checklist_items_template_category') CREATE INDEX idx_checklist_items_template_category ON checklist_items(template_id, category)`).catch(() => {});
+      await runQuerySafe(dbInstance, `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_checklist_templates_created_at') CREATE INDEX idx_checklist_templates_created_at ON checklist_templates(created_at)`).catch(() => {});
+    } else {
+      await runQuerySafe(dbInstance, 'CREATE INDEX IF NOT EXISTS idx_checklist_items_template_id ON checklist_items(template_id)').catch(() => {});
+      await runQuerySafe(dbInstance, 'CREATE INDEX IF NOT EXISTS idx_checklist_items_template_category ON checklist_items(template_id, category)').catch(() => {});
+      await runQuerySafe(dbInstance, 'CREATE INDEX IF NOT EXISTS idx_checklist_templates_created_at ON checklist_templates(created_at)').catch(() => {});
+    }
+    templateIndexesEnsured = true;
+  } catch (error) {
+    logger.warn('[Templates API] Index ensure failed (continuing):', error.message);
+  }
+};
+
 // Health check endpoint to test database connection
 router.get('/health', authenticate, (req, res) => {
   const dbInstance = db.getDb();
@@ -32,56 +75,44 @@ router.get('/health', authenticate, (req, res) => {
 });
 
 // Get all templates (public endpoint for template selection)
-router.get('/', authenticate, (req, res) => {
+router.get('/', authenticate, async (req, res) => {
+  const startedAt = Date.now();
   const dbInstance = db.getDb();
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
   const isMssql = dbType === 'mssql' || dbType === 'sqlserver';
   const dedupe = req.query.dedupe !== 'false';
-  
-  // Use a simpler, more reliable query approach
-  // First get all templates, then get item counts separately to avoid GROUP BY issues
-  let templatesQuery;
-  if (isMssql) {
-    // For MSSQL, use a simpler query without complex GROUP BY
-    templatesQuery = `SELECT 
-      ct.id, 
-      ct.name, 
-      ISNULL(ct.category, '') as category,
-      CAST(ISNULL(ct.description, '') AS NVARCHAR(MAX)) as description,
-      ct.created_by,
-      ct.created_at,
-      ISNULL(u.name, '') as created_by_name
-    FROM checklist_templates ct
-    LEFT JOIN users u ON ct.created_by = u.id
-    ORDER BY ct.created_at DESC`;
-  } else {
-    templatesQuery = `SELECT 
-      ct.*,
-      u.name as created_by_name
-    FROM checklist_templates ct
-    LEFT JOIN users u ON ct.created_by = u.id
-    ORDER BY ct.created_at DESC`;
-  }
-  
-  dbInstance.all(templatesQuery, [], (err, templates) => {
-    if (err) {
-      logger.error('[Templates API] Query error:', err);
-      logger.error('[Templates API] Query:', templatesQuery);
-      logger.error('[Templates API] DB Type:', dbType);
-      return res.status(500).json({ error: 'Database error', details: err.message });
+
+  try {
+    await ensureTemplateQueryIndexes(dbInstance, dbType);
+
+    const templatesQuery = isMssql
+      ? `SELECT 
+          ct.id,
+          ct.name,
+          ISNULL(ct.category, '') as category,
+          CAST(ISNULL(ct.description, '') AS NVARCHAR(MAX)) as description,
+          ct.created_by,
+          ct.created_at,
+          ISNULL(u.name, '') as created_by_name
+        FROM checklist_templates ct
+        LEFT JOIN users u ON ct.created_by = u.id
+        ORDER BY ct.created_at DESC`
+      : `SELECT 
+          ct.*,
+          u.name as created_by_name
+        FROM checklist_templates ct
+        LEFT JOIN users u ON ct.created_by = u.id
+        ORDER BY ct.created_at DESC`;
+
+    const templates = await dbAll(dbInstance, templatesQuery, []);
+    if (!templates.length) {
+      return res.status(200).json({ templates: [] });
     }
-    
-    if (!templates || templates.length === 0) {
-      logger.info(`[Templates API] No templates found for user ${req.user?.id}`);
-      return res.json({ templates: [] });
-    }
-    
-    logger.info(`[Templates API] Found ${templates.length} templates for user ${req.user?.id}`);
 
     let filteredTemplates = templates;
     if (dedupe) {
       const deduped = new Map();
-      templates.forEach(template => {
+      templates.forEach((template) => {
         const key = normalizeTemplateKey(template.name);
         if (!key) return;
         const existing = deduped.get(key);
@@ -91,106 +122,85 @@ router.get('/', authenticate, (req, res) => {
         }
         const existingDate = Date.parse(existing.created_at || '') || 0;
         const currentDate = Date.parse(template.created_at || '') || 0;
-        const shouldReplace = currentDate > existingDate || (currentDate === existingDate && template.id > existing.id);
-        if (shouldReplace) {
-          deduped.set(key, template);
-        }
+        const shouldReplace = currentDate > existingDate || (currentDate === existingDate && Number(template.id) > Number(existing.id));
+        if (shouldReplace) deduped.set(key, template);
       });
       filteredTemplates = Array.from(deduped.values());
-      if (filteredTemplates.length !== templates.length) {
-        logger.warn(`[Templates API] Deduped templates from ${templates.length} to ${filteredTemplates.length}`);
-      }
     }
-    
-    // Get item counts for each template
-    const templateIds = filteredTemplates.map(t => t.id);
+
+    const templateIds = filteredTemplates.map((template) => template.id).filter((id) => id !== null && id !== undefined);
+    if (!templateIds.length) {
+      return res.status(200).json({ templates: [] });
+    }
+
     const placeholders = templateIds.map(() => '?').join(',');
-    
-    let itemCountQuery;
-    if (isMssql) {
-      itemCountQuery = `SELECT template_id, COUNT(*) as item_count 
-                       FROM checklist_items 
-                       WHERE template_id IN (${placeholders})
-                       GROUP BY template_id`;
-    } else {
-      itemCountQuery = `SELECT template_id, COUNT(*) as item_count 
-                       FROM checklist_items 
-                       WHERE template_id IN (${placeholders})
-                       GROUP BY template_id`;
-    }
-    
-    dbInstance.all(itemCountQuery, templateIds, (countErr, itemCounts) => {
-      if (countErr) {
-        logger.error('[Templates API] Item count query error:', countErr);
-        // Continue without item counts
-        const templatesWithDefaults = filteredTemplates.map(t => ({
-          ...t,
-          item_count: 0,
-          categories: []
-        }));
-        return res.json({ templates: templatesWithDefaults });
-      }
-      
-      // Create a map of template_id -> item_count
-      const countMap = {};
-      itemCounts.forEach(row => {
-        countMap[row.template_id] = row.item_count || 0;
-      });
-      
-      // Get unique categories for each template
-      let categoryQuery;
-      if (isMssql) {
-        categoryQuery = `SELECT DISTINCT template_id, category 
-                        FROM checklist_items 
-                        WHERE template_id IN (${placeholders}) 
-                        AND category IS NOT NULL 
-                        AND LTRIM(RTRIM(category)) != ''`;
-      } else {
-        categoryQuery = `SELECT DISTINCT template_id, category 
-                        FROM checklist_items 
-                        WHERE template_id IN (${placeholders}) 
-                        AND category IS NOT NULL 
-                        AND category != ''`;
-      }
-      
-      dbInstance.all(categoryQuery, templateIds, (catErr, categoryRows) => {
-        if (catErr) {
-          logger.error('[Templates API] Category query error:', catErr);
-          // Continue without categories
-          const templatesWithCounts = filteredTemplates.map(t => ({
-            ...t,
-            item_count: countMap[t.id] || 0,
-            categories: []
-          }));
-          return res.json({ templates: templatesWithCounts });
-        }
-        
-        // Group categories by template_id
-        const categoriesByTemplate = {};
-        categoryRows.forEach(row => {
-          if (row.template_id && row.category) {
-            if (!categoriesByTemplate[row.template_id]) {
-              categoriesByTemplate[row.template_id] = [];
-            }
-            const category = String(row.category).trim();
-            if (category && !categoriesByTemplate[row.template_id].includes(category)) {
-              categoriesByTemplate[row.template_id].push(category);
-            }
-          }
-        });
-        
-        // Combine all data
-        const templatesWithCategories = filteredTemplates.map(template => ({
-          ...template,
-          item_count: countMap[template.id] || 0,
-          categories: categoriesByTemplate[template.id] || []
-        }));
-        
-        logger.info(`[Templates API] Returning ${templatesWithCategories.length} templates with categories`);
-        res.json({ templates: templatesWithCategories });
-      });
+    const categoryTrimPredicate = isMssql
+      ? `AND LTRIM(RTRIM(category)) != ''`
+      : `AND TRIM(category) != ''`;
+
+    const [itemCounts, categoryRows] = await Promise.all([
+      dbAll(
+        dbInstance,
+        `SELECT template_id, COUNT(*) as item_count
+         FROM checklist_items
+         WHERE template_id IN (${placeholders})
+         GROUP BY template_id`,
+        templateIds
+      ).catch(() => []),
+      dbAll(
+        dbInstance,
+        `SELECT DISTINCT template_id, category
+         FROM checklist_items
+         WHERE template_id IN (${placeholders})
+           AND category IS NOT NULL
+           ${categoryTrimPredicate}`,
+        templateIds
+      ).catch(() => [])
+    ]);
+
+    const countMap = {};
+    itemCounts.forEach((row) => {
+      countMap[row.template_id] = Number(row.item_count) || 0;
     });
-  });
+
+    const categoriesByTemplate = {};
+    categoryRows.forEach((row) => {
+      if (!row.template_id) return;
+      const category = String(row.category || '').trim();
+      if (!category) return;
+      if (!categoriesByTemplate[row.template_id]) categoriesByTemplate[row.template_id] = [];
+      if (!categoriesByTemplate[row.template_id].includes(category)) {
+        categoriesByTemplate[row.template_id].push(category);
+      }
+    });
+
+    const payload = filteredTemplates.map((template) => ({
+      ...template,
+      item_count: countMap[template.id] || 0,
+      categories: categoriesByTemplate[template.id] || []
+    }));
+
+    logger.info('[Templates API] Response', {
+      userId: req.user?.id || null,
+      templateCount: payload.length,
+      dedupe,
+      elapsedMs: Date.now() - startedAt
+    });
+
+    return res.status(200).json({ templates: payload });
+  } catch (error) {
+    logger.error('[Templates API] Fatal error', {
+      userId: req.user?.id || null,
+      elapsedMs: Date.now() - startedAt,
+      error: error.message
+    });
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      code: 'TEMPLATES_FETCH_FAILED',
+      message: 'Failed to fetch templates',
+      requestId: req.requestId || null
+    });
+  }
 });
 
 // Admin endpoint to update Speed of Service TRACKING category items

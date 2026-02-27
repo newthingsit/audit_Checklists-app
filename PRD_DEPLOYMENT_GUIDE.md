@@ -12,6 +12,21 @@ This guide deploys critical performance optimizations to your Azure production e
 
 ## 📋 PRD Deployment Steps
 
+### Step 0: Run production preflight (required)
+
+```powershell
+# From repository root
+cd D:\audit_Checklists-app
+
+# Validate production env requirements
+npm run preflight:prod
+
+# Optional: validate against a running API endpoint
+powershell -ExecutionPolicy Bypass -File .\scripts\prod-preflight.ps1 -HealthUrl "https://audit-app-backend-2221.azurewebsites.net/api/health" -UseForwardedHttps
+```
+
+Expected output includes: `Production preflight passed`
+
 ### Step 1: Prepare Backend for Deployment
 
 ```powershell
@@ -125,6 +140,15 @@ az webapp log tail `
 ---
 
 ## ✅ Post-Deployment Verification
+
+### 0. Run report stability smoke check
+
+```powershell
+cd D:\audit_Checklists-app
+npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+```
+
+Expected output includes: `Report stability smoke test passed`
 
 ### 1. Test API Endpoints
 

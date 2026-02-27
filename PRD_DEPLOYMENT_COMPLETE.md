@@ -214,6 +214,30 @@ git push
 
 ---
 
+## 🛡️ Guardrails for Next PRD Deploy
+
+Use this sequence for all future production rollouts:
+
+1. **Preflight (before deploy):**
+   ```bash
+   npm run env:check:prod
+   npm run preflight:prod
+   ```
+2. **Deploy backend/frontend**
+3. **Post-deploy smoke check:**
+   ```bash
+   npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+   ```
+
+Recommended production environment values:
+- `ALLOWED_ORIGINS` set to frontend domains
+- `TRUST_PROXY=true`
+- `FORCE_HTTPS=true`
+- `ENHANCED_PDF_TIMEOUT_MS=15000`
+- `REPORT_DATA_TIMEOUT_MS=10000`
+
+---
+
 ## 📢 Communication to Users
 
 ### What to Tell Users

@@ -1,5 +1,10 @@
 module.exports = {
   preset: 'react-native',
+
+  // Ensure Babel handles JSX/TS parsing consistently (especially for coverage workers)
+  transform: {
+    '^.+\\.[jt]sx?$': 'babel-jest',
+  },
   
   // Setup files
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
@@ -10,7 +15,7 @@ module.exports = {
   ],
   
   // Module paths
-  moduleFileExtensions: ['js', 'jsx', 'json'],
+  moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json'],
   
   // Test match patterns
   testMatch: [

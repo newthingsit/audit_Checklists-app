@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
@@ -70,6 +71,8 @@ const AuditFormScreen = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const AUTH_TOKEN_KEY = 'auth_token';
+  const REFRESH_TOKEN_KEY = 'refresh_token';
   // PERMANENT FIX: Use database ui_version field instead of checking template name
   // This ensures all checklists render with correct UI version regardless of their name
   const isCvr = template && template.ui_version === 2;
@@ -328,6 +331,10 @@ const AuditFormScreen = () => {
     }
     return '';
   }, [isLocalFilePath]);
+
+  const hasServerPhotoForItem = useCallback((itemId) => {
+    return !!getServerPhotoUrl(photos[itemId]);
+  }, [getServerPhotoUrl, photos]);
 
   // Fetch previous audit failures when location and template are available
   // This works for both regular audits and scheduled audits (same location + same checklist)
@@ -588,9 +595,7 @@ const AuditFormScreen = () => {
           status: error.response?.status,
           url: `${API_BASE_URL}/audits/by-scheduled/${scheduledAuditId}`
         });
-        const errorMsg = 'Failed to check for existing audit.';
-        setError(errorMsg);
-        Alert.alert('Error', errorMsg + ' Creating new audit.');
+        setError(null);
         await fetchTemplate();
       }
     }
@@ -1682,6 +1687,16 @@ const AuditFormScreen = () => {
     return (status && status !== 'pending') || hasItemStatus || hasItemMark;
   }, [comments, photos, responses, selectedOptions, multipleSelections, hasPhotoForItem, getEffectiveItemFieldType, isOptionFieldType, isAnswerFieldType]);
 
+  const isItemCompleteForSave = useCallback((item) => {
+    const fieldType = getEffectiveItemFieldType(item);
+    if (fieldType === 'image_upload') {
+      const existingPhoto = item?.photo_url;
+      const hasExistingPhoto = existingPhoto !== null && existingPhoto !== undefined && String(existingPhoto).trim() !== '';
+      return hasServerPhotoForItem(item.id) || hasExistingPhoto;
+    }
+    return isItemComplete(item);
+  }, [getEffectiveItemFieldType, hasServerPhotoForItem, isItemComplete]);
+
   const queueSilentDraftSave = useCallback(() => {
     if (auditStatus === 'completed') return;
     if (currentStep !== 2) return;
@@ -1851,71 +1866,119 @@ const AuditFormScreen = () => {
     });
   }, [auditStatus, comments, getSosAverageItems, items, moveToNextCategory, selectedCategory]);
 
+  const normalizeAuthHeader = useCallback((tokenValue) => {
+    if (!tokenValue || !String(tokenValue).trim()) return null;
+    const raw = String(tokenValue).trim();
+    return raw.toLowerCase().startsWith('bearer ') ? raw : `Bearer ${raw}`;
+  }, []);
+
+  const getStoredAuthHeader = useCallback(async () => {
+    const currentHeader = normalizeAuthHeader(axios.defaults?.headers?.common?.Authorization);
+    if (currentHeader) return currentHeader;
+
+    const storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+    const normalized = normalizeAuthHeader(storedToken);
+    if (normalized) {
+      axios.defaults.headers.common['Authorization'] = normalized;
+    }
+    return normalized;
+  }, [normalizeAuthHeader]);
+
+  const refreshUploadAuthHeader = useCallback(async () => {
+    try {
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      if (!refreshToken) return null;
+
+      const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken }, { timeout: 15000 });
+      const newToken = refreshResponse.data?.token;
+      const newRefreshToken = refreshResponse.data?.refreshToken;
+      const normalizedHeader = normalizeAuthHeader(newToken);
+
+      if (!normalizedHeader) return null;
+
+      await SecureStore.setItemAsync(AUTH_TOKEN_KEY, String(newToken));
+      if (newRefreshToken) {
+        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, String(newRefreshToken));
+      }
+
+      axios.defaults.headers.common['Authorization'] = normalizedHeader;
+      return normalizedHeader;
+    } catch (refreshError) {
+      console.warn('[Upload] Token refresh failed:', refreshError?.message || refreshError);
+      return null;
+    }
+  }, [normalizeAuthHeader]);
+
   // Photo upload with retry logic - Optimized for large audits (174+ items)
-  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
+  const uploadPhotoWithRetry = async (formData, initialAuthHeader, maxRetries = 3) => {
     let lastError = null;
+    let authHeader = initialAuthHeader || null;
+    let attemptedRefresh = false;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      let didTimeout = false; // Declare outside try block to be accessible in catch
       try {
-        
-        // Create AbortController for timeout handling
-        const controller = new AbortController();
-        const timeoutMs = 30000; // 30 second timeout (uploads can be slow on mobile networks)
-        const timeoutId = setTimeout(() => {
-          didTimeout = true;
-          controller.abort();
-        }, timeoutMs);
-        
-        const uploadUrl = `${API_BASE_URL}/photo`;
-        const requestHeaders = {
-            'Accept': 'application/json',
-            ...(authToken ? { 'Authorization': authToken } : {}),
-        };
-        
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: requestHeaders,
-          body: formData,
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json().catch(() => ({}));
-          if (uploadResponse.status === 401) {
-            throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
-          } else if (uploadResponse.status === 404) {
-            throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
-          } else if (uploadResponse.status === 429) {
-            // Rate limited - wait longer and retry with exponential backoff
-            if (attempt < maxRetries) {
-              const retryAfterHeader = uploadResponse.headers?.get?.('retry-after');
-              const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
-              const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
-              const waitTime = retryAfterMs ?? Math.min(5000 * attempt, 30000); // Max 30 seconds wait
-              console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-              continue;
-            }
-            throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
-          } else {
-            throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
-          }
+        if (!authHeader) {
+          authHeader = await getStoredAuthHeader();
         }
 
-        const responseData = await uploadResponse.json();
-        return responseData;
+        const uploadUrl = `${API_BASE_URL}/photo`;
+        const requestHeaders = {
+          Accept: 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        };
+
+        const uploadResponse = await axios.post(uploadUrl, formData, {
+          method: 'POST',
+          headers: requestHeaders,
+          timeout: 30000,
+        });
+
+        return uploadResponse.data;
       } catch (error) {
         lastError = error;
+        const status = error?.response?.status;
+        const errorData = error?.response?.data || {};
+
+        if (status === 401) {
+          if (!attemptedRefresh) {
+            attemptedRefresh = true;
+            const refreshedHeader = await refreshUploadAuthHeader();
+            if (refreshedHeader) {
+              authHeader = refreshedHeader;
+              continue;
+            }
+          }
+          throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
+        }
+
+        if (status === 404) {
+          throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
+        }
+
+        if (status === 429) {
+          if (attempt < maxRetries) {
+            const retryAfterHeader = error?.response?.headers?.['retry-after'];
+            const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+            const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+            const waitTime = retryAfterMs ?? Math.min(5000 * attempt, 30000);
+            console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
+        }
+
+        if (status && status >= 400) {
+          throw { type: 'server', message: errorData.error || errorData.message || `Server error: ${status}` };
+        }
         
         // Metro-visible debug line (device cannot reach 127.0.0.1 ingest endpoint)
         console.log('[Upload][Debug]', {
           attempt,
           maxRetries,
-          didTimeout,
+          status,
           errorName: error?.name,
+          errorCode: error?.code,
           errorMessage: error?.message,
         });
         
@@ -1923,7 +1986,7 @@ const AuditFormScreen = () => {
         if (error.noRetry) throw error;
         
         // Handle timeout errors
-        if (didTimeout || error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
+        if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
           if (attempt < maxRetries) {
             console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
@@ -1933,7 +1996,7 @@ const AuditFormScreen = () => {
         }
         
         // Network errors - retry with exponential backoff
-        if (error.message?.includes('Network request failed') && attempt < maxRetries) {
+        if ((!error.response || error.message?.includes('Network request failed') || error.message?.includes('Network Error')) && attempt < maxRetries) {
           console.log(`Network error. Retrying ${attempt + 1}/${maxRetries}...`);
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
@@ -1987,7 +2050,7 @@ const AuditFormScreen = () => {
           name: `photo_${itemId}_${Date.now()}.jpg`,
         });
 
-        const authToken = axios.defaults.headers.common['Authorization'];
+        const authToken = await getStoredAuthHeader();
         
         // Use retry logic for upload
         const responseData = await uploadPhotoWithRetry(formData, authToken);
@@ -2063,7 +2126,11 @@ const AuditFormScreen = () => {
       if (error.type) {
         errorMessage = error.message;
       } else if (error.message) {
-        if (error.message.includes('Network request failed')) {
+        if (
+          error.message.includes('Network request failed') ||
+          error.message.includes('Network Error') ||
+          error.message.toLowerCase().includes('timeout')
+        ) {
           errorMessage = 'Cannot connect to server. Please check your connection and try again.';
         } else {
           errorMessage = error.message;
@@ -2084,7 +2151,7 @@ const AuditFormScreen = () => {
     } finally {
       setUploading(prev => ({ ...prev, [itemId]: false }));
     }
-  }, [auditStatus, photos, uploading, items, selectedCategory, moveToNextCategory]);
+  }, [auditStatus, items, selectedCategory, moveToNextCategory, getStoredAuthHeader]);
 
   // Group categories by parent and sections (similar to web app)
   const groupCategories = useCallback((categoryList, itemsList) => {
@@ -2458,23 +2525,41 @@ const AuditFormScreen = () => {
               setShowLocationVerification(true);
             }
           } else {
-            // Location not available - ask user if they want to continue without verification
-            Alert.alert(
-              'Location Not Available',
-              'Unable to get your current location. Location verification is required to start the audit.\n\nPlease enable location services and try again.',
-              [{ text: 'OK', style: 'cancel' }]
-            );
-            return;
+            const continueWithoutLocation = await new Promise((resolve) => {
+              Alert.alert(
+                'Location Not Available',
+                'Unable to get your current location right now. You can continue and capture location later, or retry after enabling location services.',
+                [
+                  { text: 'Retry', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Continue', onPress: () => resolve(true) }
+                ]
+              );
+            });
+
+            if (!continueWithoutLocation) {
+              return;
+            }
+
+            setLocationVerified(false);
+            setShowLocationVerification(false);
           }
         } catch (error) {
           console.error('Error checking location:', error);
-          // Show error but don't block
-          Alert.alert(
-            'Location Check Failed',
-            'Unable to verify your location. Please ensure location services are enabled.',
-            [{ text: 'OK', style: 'cancel' }]
-          );
-          return;
+          const continueWithoutLocation = await new Promise((resolve) => {
+            Alert.alert(
+              'Location Check Failed',
+              'Unable to verify your location. You can continue now and retry location capture later.',
+              [
+                { text: 'Retry', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Continue', onPress: () => resolve(true) }
+              ]
+            );
+          });
+          if (!continueWithoutLocation) {
+            return;
+          }
+          setLocationVerified(false);
+          setShowLocationVerification(false);
         }
       }
       
@@ -3195,17 +3280,22 @@ const AuditFormScreen = () => {
       }
 
       // Validate required checklist items before saving
-      const requiredItems = (filteredItems || []).filter(item => item?.is_required);
-      const missingRequired = requiredItems.filter(item => !isItemComplete(item));
+      const requiredItems = (filteredItems || []).filter(item => item?.is_required || item?.required === true || item?.required === 1);
+      const missingRequired = requiredItems.filter(item => !isItemCompleteForSave(item));
       if (missingRequired.length > 0) {
         // Check for missing photos specifically
         const missingPhotos = missingRequired.filter(item => {
           const fieldType = getEffectiveItemFieldType(item);
-          return fieldType === 'image_upload' && !hasPhotoForItem(item.id);
+          const existingPhoto = item?.photo_url;
+          const hasExistingPhoto = existingPhoto !== null && existingPhoto !== undefined && String(existingPhoto).trim() !== '';
+          return fieldType === 'image_upload' && !hasServerPhotoForItem(item.id) && !hasExistingPhoto;
         });
+        const uploadingRequiredPhotos = missingPhotos.filter(item => uploading[item.id]);
         
         let errorMessage = `Please complete all required items (${missingRequired.length} remaining).`;
-        if (missingPhotos.length > 0) {
+        if (uploadingRequiredPhotos.length > 0) {
+          errorMessage = `Required photos are still uploading (${uploadingRequiredPhotos.length}). Please wait for upload to finish, then save again.`;
+        } else if (missingPhotos.length > 0) {
           const photoItems = missingPhotos.slice(0, 3).map(item => `• ${item.title}`).join('\n');
           const moreText = missingPhotos.length > 3 ? `\n...and ${missingPhotos.length - 3} more` : '';
           errorMessage = `Missing required photos for:\n${photoItems}${moreText}\n\nPlease add photos before submitting.`;
@@ -3254,6 +3344,8 @@ const AuditFormScreen = () => {
         const isMultiSelectType = isMultiSelectFieldType(fieldType);
         const hasAnswer = !!(comments[item.id] && String(comments[item.id]).trim());
         const hasPhoto = hasPhotoForItem(item.id);
+        const photoUrlForSave = getServerPhotoUrl(photos[item.id]) || (item.photo_url ? String(item.photo_url) : '');
+        const hasServerPhoto = !!(photoUrlForSave && String(photoUrlForSave).trim());
         const statusFromState = responses[item.id] || 'pending';
 
         let effectiveStatus = statusFromState;
@@ -3261,7 +3353,7 @@ const AuditFormScreen = () => {
           effectiveStatus = hasAnswer ? 'completed' : 'pending';
         }
         if (fieldType === 'image_upload') {
-          effectiveStatus = hasPhoto ? 'completed' : statusFromState;
+          effectiveStatus = hasServerPhoto ? 'completed' : 'pending';
         }
         if (isMultiSelectType) {
           const selections = multipleSelections[item.id] || [];
@@ -3293,7 +3385,7 @@ const AuditFormScreen = () => {
         if (isAnswerType && hasAnswer) {
           updateData.mark = 'NA';
         }
-        if (fieldType === 'image_upload' && hasPhoto) {
+        if (fieldType === 'image_upload' && hasServerPhoto) {
           updateData.mark = 'NA';
         }
         if (fieldType === 'task') {
@@ -3315,7 +3407,6 @@ const AuditFormScreen = () => {
           }
         }
         
-        const photoUrlForSave = getServerPhotoUrl(photos[item.id]);
         if (photoUrlForSave) {
           // Extract just the path if it's a full URL
           if (photoUrlForSave.startsWith('http')) {

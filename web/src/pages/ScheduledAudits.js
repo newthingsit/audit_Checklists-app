@@ -105,30 +105,56 @@ const ScheduledAudits = () => {
     assigned_to: ''
   });
 
+  const toDateInputValue = (dateValue) => {
+    if (!dateValue) return '';
+    if (typeof dateValue === 'string') return dateValue.slice(0, 10);
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  };
+
   useEffect(() => {
     fetchData();
-    fetchRescheduleCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchRescheduleCount = async () => {
+  const fetchRescheduleCount = async (scheduledAuditId) => {
+    if (!scheduledAuditId) {
+      setRescheduleCount({ count: 0, limit: 2, remaining: 2 });
+      return;
+    }
+
     try {
-      const response = await axios.get('/api/scheduled-audits/reschedule-count');
+      const response = await axios.get('/api/scheduled-audits/reschedule-count', {
+        params: { scheduled_audit_id: scheduledAuditId }
+      });
       setRescheduleCount(response.data);
     } catch (error) {
       console.error('Error fetching reschedule count:', error);
+      setRescheduleCount({ count: 0, limit: 2, remaining: 2 });
     }
   };
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      const fetchTemplates = async () => {
+        try {
+          return await axios.get('/api/templates', { params: { dedupe: true } });
+        } catch (primaryError) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('Primary templates endpoint failed, falling back to /api/checklists', primaryError?.message || primaryError);
+          }
+          return axios.get('/api/checklists');
+        }
+      };
+
       const promises = [
         axios.get('/api/scheduled-audits').catch((err) => {
           console.error('Error fetching scheduled audits:', err);
           return { data: { schedules: [] } };
         }),
-        axios.get('/api/templates').catch((err) => {
+        fetchTemplates().catch((err) => {
           console.error('Error fetching templates:', err);
           return { data: { templates: [] } };
         }),
@@ -352,16 +378,10 @@ const ScheduledAudits = () => {
   };
 
   const handleOpenRescheduleDialog = (schedule) => {
-    if (rescheduleCount.count >= rescheduleCount.limit) {
-      showError(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
-      return;
-    }
     setReschedulingSchedule(schedule);
-    // Convert ISO date to yyyy-MM-dd format for date input
-    const dateValue = schedule.scheduled_date 
-      ? new Date(schedule.scheduled_date).toISOString().split('T')[0] 
-      : '';
+    const dateValue = toDateInputValue(schedule.scheduled_date);
     setNewRescheduleDate(dateValue);
+    fetchRescheduleCount(schedule.id);
     setOpenRescheduleDialog(true);
   };
 
@@ -378,7 +398,7 @@ const ScheduledAudits = () => {
     }
 
     if (rescheduleCount.count >= rescheduleCount.limit) {
-      showInfo(`You have already rescheduled ${rescheduleCount.count} audits this month. The limit is ${rescheduleCount.limit} reschedules per month.`);
+      showInfo(`This checklist has already been rescheduled ${rescheduleCount.count} times. The limit is ${rescheduleCount.limit} per checklist.`);
       return;
     }
 
@@ -390,7 +410,6 @@ const ScheduledAudits = () => {
       showSuccess(response.data.message || 'Audit rescheduled successfully!');
       handleCloseRescheduleDialog();
       fetchData();
-      fetchRescheduleCount();
     } catch (error) {
       console.error('Error rescheduling audit:', error);
       const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Failed to reschedule audit';
@@ -1395,16 +1414,13 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                   InputLabelProps={{
                     shrink: true,
                   }}
-                  inputProps={{
-                    min: new Date().toISOString().split('T')[0] // Prevent selecting past dates
-                  }}
                   margin="normal"
                   required
                 />
                 {rescheduleCount.count >= rescheduleCount.limit && (
                   <Alert severity="error" sx={{ mt: 2 }}>
-                    You have reached the monthly reschedule limit of {rescheduleCount.limit}. 
-                    You cannot reschedule more audits this month.
+                    This checklist has reached the reschedule limit of {rescheduleCount.limit}.
+                    It cannot be rescheduled again.
                   </Alert>
                 )}
               </>

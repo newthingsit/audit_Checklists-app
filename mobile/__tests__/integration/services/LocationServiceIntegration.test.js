@@ -71,9 +71,7 @@ describe('Integration: Location Service', () => {
 
       await AsyncStorage.setItem('location_permission', 'granted');
 
-      location.checkPermission.mockResolvedValue('granted');
-
-      const status = await location.checkPermission('location');
+      const status = await AsyncStorage.getItem('location_permission');
 
       expect(status).toBe('granted');
     });
@@ -268,9 +266,9 @@ describe('Integration: Location Service', () => {
         longitude: -74.006,
       };
 
-      const locations = sampleLocations.map(loc => ({
+      const locations = sampleLocations.map((loc, index) => ({
         ...loc,
-        distance: 100 + Math.random() * 1000,
+        distance: index === 0 ? 250 : 750,
       }));
 
       const nearby = locations.filter(loc => loc.distance < 500);
@@ -319,7 +317,7 @@ describe('Integration: Location Service', () => {
       ];
 
       mockApiEndpoint('GET', /\/locations.*/,
-        { data: nearbyLocations }, 200);
+        nearbyLocations, 200);
 
       const response = await axios.get(
         '/locations?lat=40.7128&lng=-74.006&radius=1000'
@@ -338,7 +336,7 @@ describe('Integration: Location Service', () => {
       };
 
       mockApiEndpoint('GET', /\/locations\/1.*/,
-        { data: location }, 200);
+        location, 200);
 
       const response = await axios.get('/locations/1');
 

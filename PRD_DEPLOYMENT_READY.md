@@ -43,6 +43,17 @@
 
 ## 🚀 Deployment Steps
 
+### 0. **Preflight (Required before deploy)**
+
+From repo root:
+
+```bash
+npm run env:check:prod
+npm run preflight:prod
+```
+
+Do not proceed until this passes. It validates production-critical backend environment values before deployment.
+
 ### 1. **Backend Deployment (Azure App Service)**
 
 ```bash
@@ -98,6 +109,11 @@ ORDER BY TABLE_NAME;
 - `DB_PASSWORD=your-password`
 - `JWT_SECRET=your-secret-key`
 - `NODE_ENV=production`
+- `ALLOWED_ORIGINS=https://app.litebitefoods.com,https://www.app.litebitefoods.com`
+- `TRUST_PROXY=true`
+- `FORCE_HTTPS=true`
+- `ENHANCED_PDF_TIMEOUT_MS=15000`
+- `REPORT_DATA_TIMEOUT_MS=10000`
 
 **Frontend Environment Variables:**
 - `REACT_APP_API_URL=https://your-backend.azurewebsites.net`
@@ -167,6 +183,13 @@ ORDER BY TABLE_NAME;
    - Set date range
    - Download report
    - Verify Excel file downloads correctly
+
+6. **Run report/PDF smoke check:**
+   ```bash
+   npm run smoke:report-stability -- -BaseUrl "https://audit-app-backend-2221.azurewebsites.net" -Email "<email>" -Password "<password>"
+   ```
+   - Should complete without timeout failures
+   - Enhanced PDF should work, with legacy PDF fallback available
 
 ---
 

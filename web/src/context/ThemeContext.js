@@ -41,9 +41,7 @@ export const ThemeProvider = ({ children }) => {
         return;
       }
 
-      const response = await axios.get('/api/settings/preferences', {
-        headers: { Authorization: `Bearer ${token}` }
-      }).catch(() => null);
+      const response = await axios.get('/api/settings/preferences').catch(() => null);
       if (response && response.data && response.data.preferences) {
         const theme = response.data.preferences.theme || 'light';
         setThemeMode(theme);
@@ -73,7 +71,9 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     fetchThemePreference();
+  }, []);
 
+  useEffect(() => {
     // Listen for system theme changes if auto mode
     if (themeMode === 'auto' && window.matchMedia) {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');

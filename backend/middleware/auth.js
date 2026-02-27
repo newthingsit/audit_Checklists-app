@@ -16,11 +16,27 @@ if (!JWT_SECRET) {
 }
 const SECRET = JWT_SECRET || crypto.randomBytes(64).toString('hex');
 
+const unauthorized = (res, req, code, message) => {
+  return res.status(401).json({
+    error: 'Unauthorized',
+    code,
+    message,
+    requestId: req.requestId || null
+  });
+};
+
+const getBearerToken = (req) => {
+  const header = req.header('Authorization') || req.headers.authorization || '';
+  if (!header) return null;
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+};
+
 const authenticate = (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
+  const token = getBearerToken(req);
 
   if (!token) {
-    return res.status(401).json({ error: 'No token provided, authorization denied' });
+    return unauthorized(res, req, 'TOKEN_MISSING', 'Access token is required');
   }
 
   try {
@@ -32,7 +48,7 @@ const authenticate = (req, res, next) => {
       const dbInstance = db.getDb();
       dbInstance.get('SELECT role FROM users WHERE id = ?', [req.user.id], (err, user) => {
         if (err || !user) {
-          return res.status(401).json({ error: 'User not found' });
+          return unauthorized(res, req, 'USER_NOT_FOUND', 'User associated with token was not found');
         }
         req.user.role = user.role || 'user';
         next();
@@ -41,7 +57,13 @@ const authenticate = (req, res, next) => {
       next();
     }
   } catch (error) {
-    res.status(401).json({ error: 'Token is not valid' });
+    const isExpired = error && error.name === 'TokenExpiredError';
+    return unauthorized(
+      res,
+      req,
+      isExpired ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID',
+      isExpired ? 'Access token has expired' : 'Access token is invalid'
+    );
   }
 };
 

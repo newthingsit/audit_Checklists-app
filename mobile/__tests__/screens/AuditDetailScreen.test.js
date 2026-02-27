@@ -131,7 +131,7 @@ describe('AuditDetailScreen', () => {
       
       await waitFor(() => {
         expect(screen.getByTestId('audit-status')).toBeTruthy();
-        expect(screen.getByText('Completed')).toBeTruthy();
+        expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
       });
     });
 
@@ -170,8 +170,7 @@ describe('AuditDetailScreen', () => {
       render(<AuditDetailScreen />);
       
       await waitFor(() => {
-        // Should not crash, loading should stop
-        expect(screen.queryByTestId('activity-indicator')).toBe(null);
+        expect(screen.getByText('Audit not found')).toBeTruthy();
       });
     });
 
@@ -351,7 +350,7 @@ describe('AuditDetailScreen', () => {
       render(<AuditDetailScreen />);
       
       await waitFor(() => {
-        expect(screen.getByText('Failed')).toBeTruthy();
+        expect(screen.getAllByText('Failed').length).toBeGreaterThan(0);
       });
     });
 

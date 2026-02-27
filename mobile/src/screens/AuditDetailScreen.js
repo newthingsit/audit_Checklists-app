@@ -141,7 +141,7 @@ const AuditDetailScreen = () => {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1976d2" />
+        <ActivityIndicator size="large" color="#1976d2" testID="activity-indicator" />
       </View>
     );
   }
@@ -274,24 +274,37 @@ const AuditDetailScreen = () => {
                         return;
                       }
                     } else {
-                      // Location not available - block user
-                      Alert.alert(
-                        'Location Required',
-                        'Unable to get your current location. Location verification is required to continue the audit.\n\nPlease enable location services and try again.',
-                        [{ text: 'OK' }]
-                      );
-                      return;
+                      const continueWithoutLocation = await new Promise((resolve) => {
+                        Alert.alert(
+                          'Location Not Available',
+                          'Unable to get your current location right now. You can continue and capture location later, or retry after enabling location services.',
+                          [
+                            { text: 'Retry', style: 'cancel', onPress: () => resolve(false) },
+                            { text: 'Continue', onPress: () => resolve(true) }
+                          ]
+                        );
+                      });
+
+                      if (!continueWithoutLocation) {
+                        return;
+                      }
                     }
                   }
                 } catch (error) {
                   console.error('Error checking location:', error);
-                  // Block if location check fails
-                  Alert.alert(
-                    'Location Check Failed',
-                    'Unable to verify your location. Please ensure location services are enabled and try again.',
-                    [{ text: 'OK' }]
-                  );
-                  return;
+                  const continueWithoutLocation = await new Promise((resolve) => {
+                    Alert.alert(
+                      'Location Check Failed',
+                      'Unable to verify your location. You can continue now and retry location capture later.',
+                      [
+                        { text: 'Retry', style: 'cancel', onPress: () => resolve(false) },
+                        { text: 'Continue', onPress: () => resolve(true) }
+                      ]
+                    );
+                  });
+                  if (!continueWithoutLocation) {
+                    return;
+                  }
                 }
               }
               

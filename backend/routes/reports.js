@@ -3785,6 +3785,47 @@ const { generateEnhancedAuditPdf } = require('../utils/enhancedPdfReport');
 const { getAuditReportData } = require('../utils/auditReportService');
 const { generateActionPlanWithDeviations } = require('../utils/auditActionPlanService');
 
+const parsePositiveInteger = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getEnhancedPdfTimeoutMs = () => {
+  const parsed = Number.parseInt(process.env.ENHANCED_PDF_TIMEOUT_MS, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 15000;
+};
+
+const getReportDataTimeoutMs = () => {
+  const parsed = Number.parseInt(process.env.REPORT_DATA_TIMEOUT_MS, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10000;
+};
+
+const withTimeout = (promiseFactory, timeoutMs) => new Promise((resolve, reject) => {
+  let isSettled = false;
+  const timer = setTimeout(() => {
+    if (isSettled) return;
+    isSettled = true;
+    const timeoutError = new Error(`Enhanced PDF generation timed out after ${timeoutMs}ms`);
+    timeoutError.code = 'PDF_TIMEOUT';
+    reject(timeoutError);
+  }, timeoutMs);
+
+  Promise.resolve()
+    .then(() => promiseFactory())
+    .then((result) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      resolve(result);
+    })
+    .catch((error) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+});
+
 const ensureActionPlanExists = (dbInstance, auditId) => new Promise((resolve, reject) => {
   dbInstance.get(
     'SELECT COUNT(*) as count FROM action_plan WHERE audit_id = ?',
@@ -3821,10 +3862,14 @@ const ensureActionPlanExists = (dbInstance, auditId) => new Promise((resolve, re
  * - Page numbering and footer branding
  */
 router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parsePositiveInteger(req.params.id);
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
   const dbInstance = db.getDb();
+
+  if (!auditId) {
+    return res.status(400).json({ error: 'Invalid audit id' });
+  }
 
   try {
     // Verify user has access to this audit
@@ -3849,11 +3894,29 @@ router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Audit not found or access denied' });
     }
 
-    // Generate enhanced PDF
-    const pdfBuffer = await generateEnhancedAuditPdf(auditId, {
-      includePhotos: req.query.photos === 'true',
-      includeComments: req.query.comments !== 'false'
-    });
+    try {
+      await ensureActionPlanExists(dbInstance, auditId);
+    } catch (actionPlanErr) {
+      logger.error('[Action Plan] Failed to ensure action plan before enhanced PDF:', {
+        auditId,
+        error: actionPlanErr.message
+      });
+    }
+
+    const timeoutMs = getEnhancedPdfTimeoutMs();
+
+    // Generate enhanced PDF with timeout protection
+    const pdfBuffer = await withTimeout(
+      () => generateEnhancedAuditPdf(auditId, {
+        includePhotos: req.query.photos === 'true',
+        includeComments: req.query.comments !== 'false'
+      }),
+      timeoutMs
+    );
+
+    if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+      return res.status(502).json({ error: 'Failed to generate PDF buffer' });
+    }
 
     // Set response headers
     res.setHeader('Content-Type', 'application/pdf');
@@ -3868,10 +3931,27 @@ router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
     logger.info(`Enhanced PDF report generated for audit ${auditId} by user ${userId}`);
     
   } catch (error) {
-    logger.error('Error generating enhanced PDF report:', error);
-    res.status(500).json({ 
-      error: 'Error generating PDF report', 
-      details: error.message 
+    logger.error('Error generating enhanced PDF report:', {
+      auditId,
+      userId,
+      code: error.code,
+      message: error.message
+    });
+
+    if (res.headersSent) {
+      return;
+    }
+
+    if (error.code === 'PDF_TIMEOUT') {
+      return res.status(504).json({
+        error: 'Enhanced PDF generation timed out',
+        details: error.message
+      });
+    }
+
+    res.status(500).json({
+      error: 'Error generating PDF report',
+      details: error.message
     });
   }
 });
@@ -3880,10 +3960,14 @@ router.get('/audit/:id/enhanced-pdf', authenticate, async (req, res) => {
  * Get Storewise Audit Report data for Web view (JSON)
  */
 router.get('/audit/:id/report', authenticate, async (req, res) => {
-  const auditId = req.params.id;
+  const auditId = parsePositiveInteger(req.params.id);
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
   const dbInstance = db.getDb();
+
+  if (!auditId) {
+    return res.status(400).json({ error: 'Invalid audit id' });
+  }
 
   try {
     const whereClause = isAdmin ? 'WHERE a.id = ?' : 'WHERE a.id = ? AND a.user_id = ?';
@@ -3916,12 +4000,22 @@ router.get('/audit/:id/report', authenticate, async (req, res) => {
       logger.error('[Action Plan] Failed to ensure action plan before report:', actionPlanErr);
     }
 
-    const reportData = await getAuditReportData(auditId, {
-      includePhotos: req.query.photos === 'true'
-    });
+    const reportData = await withTimeout(
+      () => getAuditReportData(auditId, {
+        includePhotos: req.query.photos === 'true'
+      }),
+      getReportDataTimeoutMs()
+    );
 
     res.json(reportData);
   } catch (error) {
+    if (error.code === 'PDF_TIMEOUT') {
+      return res.status(504).json({
+        error: 'Report generation timed out',
+        details: error.message
+      });
+    }
+
     logger.error('Error generating report data:', error);
     res.status(500).json({
       error: 'Error generating report data',

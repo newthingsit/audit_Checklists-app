@@ -49,6 +49,17 @@ This is your comprehensive guide to the Audit Checklists App modernization proje
 
 ### For Deployment (15-30 minutes)
 
+#### [REPORT_STABILITY_HANDOFF_2026-02-25.md](REPORT_STABILITY_HANDOFF_2026-02-25.md)
+- **What**: Report/PDF stabilization handoff with rollout and rollback guidance
+- **Who**: DevOps, backend owners, on-call responders
+- **When**: Before release sign-off and during production verification
+- **Time**: 15 minutes
+- **Contains**:
+  - Timeout configuration (`ENHANCED_PDF_TIMEOUT_MS`, `REPORT_DATA_TIMEOUT_MS`)
+  - Smoke validation commands and expected outputs
+  - VS Code task workflow for local and prompted checks
+  - Incident-response fallback behavior (enhanced → legacy PDF)
+
 #### [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md)
 - **What**: Step-by-step deployment procedures
 - **Who**: DevOps, deployment engineers
@@ -302,6 +313,9 @@ This is your comprehensive guide to the Audit Checklists App modernization proje
 ### Need to Deploy Today?
 → Read: [DEPLOYMENT_READY.md](DEPLOYMENT_READY.md)
 
+### Validating Report/PDF Stability?
+→ Read: [REPORT_STABILITY_HANDOFF_2026-02-25.md](REPORT_STABILITY_HANDOFF_2026-02-25.md)
+
 ### Ready to Start Development?
 → Read: [BEST_PRACTICES.md](BEST_PRACTICES.md)
 
@@ -323,6 +337,10 @@ This is your comprehensive guide to the Audit Checklists App modernization proje
 **Deployment**
 - Document: DEPLOYMENT_READY.md
 - Also check: COMPREHENSIVE_TESTING_GUIDE.md
+
+**Report/PDF Stability**
+- Document: REPORT_STABILITY_HANDOFF_2026-02-25.md
+- Also check: DEPLOYMENT_CHECKLIST.md
 
 **Code Quality**
 - Document: BEST_PRACTICES.md

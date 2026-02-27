@@ -10,6 +10,9 @@ Use this checklist to deploy Audit Pro to production.
 - [ ] All features tested and working
 - [ ] No console.log statements in production code
 - [ ] Environment variables configured
+- [ ] Start from `backend/.env.production.example` (or equivalent App Service settings)
+- [ ] Review `PRODUCTION_APP_SETTINGS_TEMPLATE.md` for copy/paste baseline values
+- [ ] Run `cd backend && npm run env:check:prod` and resolve all reported errors
 - [ ] API URLs updated for production
 - [ ] Version numbers updated
 
@@ -46,6 +49,13 @@ az group create --name audit-app-rg --location eastus
 ### Step 4: Deploy Backend
 - [ ] Create App Service (B1 plan)
 - [ ] Configure environment variables
+- [ ] Set `JWT_SECRET` to a strong random value (64+ chars, not placeholder text)
+- [ ] Set `ALLOWED_ORIGINS` to production web domains
+- [ ] Set `TRUST_PROXY=true`
+- [ ] Set `FORCE_HTTPS=true`
+- [ ] Set SQL TLS flags (`MSSQL_ENCRYPT`, `MSSQL_TRUST_CERT`) based on your SQL certificate setup
+- [ ] Set `ENHANCED_PDF_TIMEOUT_MS` (recommended: `15000`)
+- [ ] Set `REPORT_DATA_TIMEOUT_MS` (recommended: `10000`)
 - [ ] Enable build during deploy (`SCM_DO_BUILD_DURING_DEPLOYMENT=true`)
 - [ ] Ensure ZIP deploy excludes `node_modules`
 - [ ] Deploy code via GitHub Actions or ZIP

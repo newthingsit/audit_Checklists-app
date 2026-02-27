@@ -83,6 +83,37 @@ audit_Checklists-app/
    npx expo start
    ```
 
+## Report Stability Smoke Check
+
+Run this after deployment (or locally) to validate report JSON, deviations, and PDF behavior.
+
+1. Start backend (local only):
+   ```bash
+   npm --prefix backend start
+   ```
+
+2. Run smoke script:
+   ```bash
+   npm run smoke:report-stability -- -BaseUrl "http://localhost:5000" -Email "<email>" -Password "<password>"
+   ```
+
+3. See full handoff/runbook:
+   - [REPORT_STABILITY_HANDOFF_2026-02-25.md](./REPORT_STABILITY_HANDOFF_2026-02-25.md)
+
+## Production Preflight
+
+Run this before deployment to validate production environment requirements:
+
+```bash
+npm run preflight:prod
+```
+
+Optional health check (when API is running):
+
+```bash
+powershell -ExecutionPolicy Bypass -File .\scripts\prod-preflight.ps1 -HealthUrl "http://localhost:5000/api/health" -UseForwardedHttps
+```
+
 ## Live Deployment
 
 - **Web App**: [https://app.litebitefoods.com](https://app.litebitefoods.com)

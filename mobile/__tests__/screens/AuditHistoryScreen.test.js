@@ -159,7 +159,7 @@ describe('AuditHistoryScreen', () => {
     it('should render filter button', async () => {
       render(<AuditHistoryScreen />);
       await waitFor(() => {
-        expect(screen.queryByTestId('list-skeleton')).toBe(null);
+        expect(screen.getByPlaceholderText('Search audits...')).toBeTruthy();
       });
       // Filter button should be visible (MaterialIcons tune icon)
       expect(screen.root).toBeTruthy();
