@@ -81,12 +81,21 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: 'Disable Oryx build on App Service'
+        run: |
+          az webapp config appsettings set \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ env.AZURE_WEBAPP_NAME }}" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+            --output none
+          echo "✅ Oryx build disabled (node_modules are pre-bundled)"
+
       - name: 'Stabilize SCM before deploy'
         run: |
           echo "Waiting briefly to avoid SCM restart/deploy overlap..."
-          sleep 45
+          sleep 30
 
-      - name: 'Deploy to Azure Web App (conflict-aware retry)'
+      - name: 'Deploy to Azure Web App (async + poll)'
         run: |
           set -e
 
@@ -95,7 +104,7 @@ jobs:
 
           echo "Deploying backend.zip to app '$APP_NAME' in resource group '$RG_NAME'"
 
-          MAX_ATTEMPTS=6
+          MAX_ATTEMPTS=4
           ATTEMPT=1
           SUCCESS=0
 
@@ -108,15 +117,16 @@ jobs:
               --name "$APP_NAME" \
               --src-path backend.zip \
               --type zip \
-              --clean true 2>&1)
+              --clean true \
+              --async true 2>&1)
             EXIT_CODE=$?
             set -e
 
             echo "$DEPLOY_OUTPUT"
 
             if [ $EXIT_CODE -eq 0 ]; then
+              echo "✅ Deployment package pushed successfully (async)"
               SUCCESS=1
-              echo "✅ Deployment command succeeded"
               break
             fi
 
@@ -124,6 +134,14 @@ jobs:
               WAIT_SECONDS=$((ATTEMPT * 45))
               echo "⚠️ OneDeploy conflict detected. Restarting app and retrying in ${WAIT_SECONDS}s..."
               az webapp restart --resource-group "$RG_NAME" --name "$APP_NAME" || true
+              sleep "$WAIT_SECONDS"
+              ATTEMPT=$((ATTEMPT + 1))
+              continue
+            fi
+
+            if echo "$DEPLOY_OUTPUT" | grep -Eqi "504|GatewayTimeout|Gateway Timeout|502|503|timed out|timeout"; then
+              WAIT_SECONDS=$((ATTEMPT * 60))
+              echo "⚠️ Transient gateway/timeout error detected. Retrying in ${WAIT_SECONDS}s..."
               sleep "$WAIT_SECONDS"
               ATTEMPT=$((ATTEMPT + 1))
               continue
@@ -138,11 +156,46 @@ jobs:
             exit 1
           fi
 
-      - name: 'Wait for Azure Oryx build and startup'
+      - name: 'Poll deployment until complete'
+        run: |
+          set -e
+          APP_NAME="${{ env.AZURE_WEBAPP_NAME }}"
+          RG_NAME="${{ env.AZURE_RESOURCE_GROUP }}"
+          SCM_HOST="${APP_NAME}.scm.azurewebsites.net"
+
+          echo "⏳ Polling deployment status (up to 5 minutes)..."
+          for i in $(seq 1 20); do
+            STATUS_JSON=$(az rest \
+              --method get \
+              --url "https://${SCM_HOST}/api/deployments/latest" \
+              --resource "https://management.azure.com/" 2>/dev/null || echo '{}')
+
+            COMPLETE=$(echo "$STATUS_JSON" | jq -r '.complete // false')
+            STATUS=$(echo "$STATUS_JSON" | jq -r '.status // "unknown"')
+            PROGRESS=$(echo "$STATUS_JSON" | jq -r '.progress // "N/A"')
+
+            echo "  Poll $i/20: complete=$COMPLETE status=$STATUS progress=$PROGRESS"
+
+            if [ "$COMPLETE" = "true" ]; then
+              if [ "$STATUS" = "4" ]; then
+                echo "✅ Deployment completed successfully"
+                exit 0
+              else
+                echo "❌ Deployment completed with failure (status=$STATUS)"
+                exit 1
+              fi
+            fi
+
+            sleep 15
+          done
+
+          echo "⚠️ Deployment did not complete within polling window — proceeding to health check"
+
+      - name: 'Wait for app warm-up'
         if: always()
         run: |
-          echo "⏳ Waiting for app restart and warm-up..."
-          sleep 120
+          echo "⏳ Waiting for app warm-up..."
+          sleep 45
 
       - name: 'Verify deployment'
         if: always()
