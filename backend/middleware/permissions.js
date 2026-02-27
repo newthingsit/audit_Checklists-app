@@ -2,6 +2,12 @@ const { authenticate } = require('./auth');
 const db = require('../config/database-loader');
 const logger = require('../utils/logger');
 
+const ROLE_PERMISSIONS_CACHE_TTL_MS = Math.max(
+  1000,
+  parseInt(process.env.ROLE_PERMISSIONS_CACHE_TTL_MS || '300000', 10)
+);
+const rolePermissionsCache = new Map();
+
 // Helper function to check if user is admin
 const isAdminUser = (user) => {
   if (!user) return false;
@@ -59,6 +65,12 @@ const getUserPermissions = (userId, role, callback) => {
     return callback(null, ['*']); // '*' means all permissions
   }
 
+  const roleKey = String(role).toLowerCase();
+  const cached = rolePermissionsCache.get(roleKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return callback(null, cached.permissions);
+  }
+
   // Get role permissions from database
   // Use case-insensitive comparison for SQL Server compatibility
   const dbType = process.env.DB_TYPE ? process.env.DB_TYPE.toLowerCase() : 'sqlite';
@@ -77,12 +89,20 @@ const getUserPermissions = (userId, role, callback) => {
     
     if (!roleData || !roleData.permissions) {
       logger.warn('Role not found or has no permissions:', role);
+      rolePermissionsCache.set(roleKey, {
+        permissions: [],
+        expiresAt: Date.now() + ROLE_PERMISSIONS_CACHE_TTL_MS
+      });
       return callback(null, []);
     }
 
     try {
       const permissions = JSON.parse(roleData.permissions);
       const normalizedPermissions = normalizePermissionList(permissions || []);
+      rolePermissionsCache.set(roleKey, {
+        permissions: normalizedPermissions,
+        expiresAt: Date.now() + ROLE_PERMISSIONS_CACHE_TTL_MS
+      });
       callback(null, normalizedPermissions);
     } catch (parseErr) {
       logger.error('Error parsing role permissions:', parseErr);

@@ -19,6 +19,33 @@ const axios = require('axios');
 // Expo Push Notification API endpoint
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
+const UNREAD_COUNT_CACHE_TTL_MS = Math.max(
+  1000,
+  parseInt(process.env.NOTIFICATIONS_UNREAD_CACHE_TTL_MS || '15000', 10)
+);
+const unreadCountCache = new Map();
+
+const getCachedUnreadCount = (userId) => {
+  const entry = unreadCountCache.get(userId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    unreadCountCache.delete(userId);
+    return null;
+  }
+  return entry.count;
+};
+
+const setCachedUnreadCount = (userId, count) => {
+  unreadCountCache.set(userId, {
+    count,
+    expiresAt: Date.now() + UNREAD_COUNT_CACHE_TTL_MS
+  });
+};
+
+const invalidateUnreadCountCache = (userId) => {
+  unreadCountCache.delete(userId);
+};
+
 // ==================== WEB APP NOTIFICATION ENDPOINTS ====================
 
 // Get all notifications for current user
@@ -53,6 +80,11 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/unread-count', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
+    const cachedCount = getCachedUnreadCount(userId);
+    if (cachedCount !== null) {
+      return res.json({ count: cachedCount });
+    }
+
     const database = getDb();
     const dbType = getDbType();
 
@@ -67,7 +99,9 @@ router.get('/unread-count', authenticate, async (req, res) => {
       });
     });
 
-    res.json({ count: result?.count || 0 });
+    const count = result?.count || 0;
+    setCachedUnreadCount(userId, count);
+    res.json({ count });
   } catch (error) {
     logger.error('Error fetching unread count:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
@@ -92,6 +126,8 @@ router.put('/:id/read', authenticate, async (req, res) => {
         else resolve();
       });
     });
+
+    invalidateUnreadCountCache(userId);
 
     res.json({ success: true });
   } catch (error) {
@@ -118,6 +154,8 @@ router.put('/read-all', authenticate, async (req, res) => {
       });
     });
 
+    invalidateUnreadCountCache(userId);
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error marking all notifications as read:', error);
@@ -141,6 +179,8 @@ router.delete('/:id', authenticate, async (req, res) => {
       });
     });
 
+    invalidateUnreadCountCache(userId);
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting notification:', error);
@@ -162,6 +202,8 @@ router.delete('/', authenticate, async (req, res) => {
         else resolve();
       });
     });
+
+    invalidateUnreadCountCache(userId);
 
     res.json({ success: true });
   } catch (error) {
@@ -464,6 +506,10 @@ async function createNotification(userId, type, title, body, link = null, emailO
         else resolve();
       });
     });
+
+    invalidateUnreadCountCache(userId);
+
+    invalidateUnreadCountCache(userId);
     
     // Send push notification
     try {

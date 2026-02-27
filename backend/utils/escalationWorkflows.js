@@ -1,6 +1,11 @@
 const logger = require('./logger');
 const { createNotification } = require('../routes/notifications');
 
+const ESCALATION_CONCURRENCY = Math.max(
+  1,
+  parseInt(process.env.ESCALATION_CONCURRENCY || '3', 10)
+);
+
 /**
  * Escalation Workflows System
  * Auto-escalates action items after X days if not completed
@@ -80,35 +85,57 @@ function checkAndEscalateActions(dbInstance, options = {}, callback) {
 
     logger.info(`[Escalation] Found ${overdueActions.length} overdue actions to escalate`);
 
-    // Process each overdue action
+    // Process overdue actions with bounded concurrency to avoid exhausting DB pool
     let processed = 0;
+    let started = 0;
+    let inFlight = 0;
     const escalated = [];
     const errors = [];
+    let isCompleted = false;
 
-    overdueActions.forEach((action) => {
-      escalateActionItem(dbInstance, action, (err, result) => {
-        processed++;
-        
-        if (err) {
-          logger.error(`Error escalating action ${action.id}:`, err);
-          errors.push({ action_id: action.id, error: err.message });
-        } else if (result) {
-          escalated.push(result);
-          logger.info(`[Escalation] Escalated action ${action.id} "${action.title}"`);
+    const maybeFinish = () => {
+      if (isCompleted) return;
+      if (processed === overdueActions.length && inFlight === 0) {
+        isCompleted = true;
+        if (escalated.length > 0) {
+          logger.info(`[Escalation] Escalated ${escalated.length} action items`);
         }
+        if (errors.length > 0) {
+          logger.warn(`[Escalation] ${errors.length} errors during escalation`);
+        }
+        callback(null, escalated);
+      }
+    };
 
-        // When all processed
-        if (processed === overdueActions.length) {
-          if (escalated.length > 0) {
-            logger.info(`[Escalation] Escalated ${escalated.length} action items`);
+    const launchNext = () => {
+      while (inFlight < ESCALATION_CONCURRENCY && started < overdueActions.length) {
+        const action = overdueActions[started++];
+        inFlight++;
+
+        escalateActionItem(dbInstance, action, (err, result) => {
+          processed++;
+          inFlight--;
+
+          if (err) {
+            logger.error(`Error escalating action ${action.id}:`, err);
+            errors.push({ action_id: action.id, error: err.message });
+          } else if (result) {
+            escalated.push(result);
           }
-          if (errors.length > 0) {
-            logger.warn(`[Escalation] ${errors.length} errors during escalation`);
+
+          if (processed % 250 === 0 || processed === overdueActions.length) {
+            logger.info(`[Escalation] Progress: ${processed}/${overdueActions.length} processed (in-flight: ${inFlight})`);
           }
-          callback(null, escalated);
-        }
-      });
-    });
+
+          launchNext();
+          maybeFinish();
+        });
+      }
+      maybeFinish();
+    };
+
+    logger.info(`[Escalation] Processing with concurrency ${ESCALATION_CONCURRENCY}`);
+    launchNext();
   });
 }
 

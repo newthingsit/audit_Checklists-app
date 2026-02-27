@@ -5,8 +5,78 @@ let pool = null;
 let isConnecting = false;
 let connectionPromise = null;
 let lastReconnectLogAt = 0;
+let lastQueryRetryLogAt = 0;
+let lastForcedReconnectAt = 0;
+let activeQuerySlots = 0;
+const queryWaiters = [];
 
 const RECONNECT_LOG_COOLDOWN_MS = parseInt(process.env.MSSQL_RECONNECT_LOG_COOLDOWN_MS || '5000', 10);
+const QUERY_RETRY_LOG_COOLDOWN_MS = parseInt(process.env.MSSQL_QUERY_RETRY_LOG_COOLDOWN_MS || '5000', 10);
+const FORCE_RECONNECT_COOLDOWN_MS = parseInt(process.env.MSSQL_FORCE_RECONNECT_COOLDOWN_MS || '3000', 10);
+const QUERY_MAX_CONCURRENCY = Math.max(
+  1,
+  parseInt(process.env.MSSQL_QUERY_MAX_CONCURRENCY || process.env.MSSQL_POOL_MAX || '10', 10)
+);
+const QUERY_MAX_QUEUE = Math.max(0, parseInt(process.env.MSSQL_QUERY_MAX_QUEUE || '500', 10));
+const QUERY_QUEUE_WAIT_TIMEOUT_MS = Math.max(1000, parseInt(process.env.MSSQL_QUERY_QUEUE_WAIT_TIMEOUT_MS || '30000', 10));
+
+const logQueryRetry = (retryCount, maxRetries) => {
+  const now = Date.now();
+  if ((now - lastQueryRetryLogAt) >= QUERY_RETRY_LOG_COOLDOWN_MS) {
+    console.log(`Query failed due to connection error, retrying (${retryCount + 1}/${maxRetries})...`);
+    lastQueryRetryLogAt = now;
+  }
+};
+
+const acquireQuerySlot = () => new Promise((resolve, reject) => {
+  if (activeQuerySlots < QUERY_MAX_CONCURRENCY) {
+    activeQuerySlots++;
+    resolve();
+    return;
+  }
+
+  if (queryWaiters.length >= QUERY_MAX_QUEUE) {
+    reject(new Error('Database query queue is full'));
+    return;
+  }
+
+  let waiter = null;
+  const timeout = setTimeout(() => {
+    const index = queryWaiters.indexOf(waiter);
+    if (index >= 0) {
+      queryWaiters.splice(index, 1);
+    }
+    reject(new Error('Database query queue wait timeout'));
+  }, QUERY_QUEUE_WAIT_TIMEOUT_MS);
+
+  waiter = {
+    resolve: () => {
+      clearTimeout(timeout);
+      resolve();
+    }
+  };
+
+  queryWaiters.push(waiter);
+});
+
+const releaseQuerySlot = () => {
+  if (queryWaiters.length > 0) {
+    const next = queryWaiters.shift();
+    next.resolve();
+    return;
+  }
+  activeQuerySlots = Math.max(0, activeQuerySlots - 1);
+};
+
+const reconnectWithCooldown = async () => {
+  const now = Date.now();
+  if ((now - lastForcedReconnectAt) >= FORCE_RECONNECT_COOLDOWN_MS) {
+    lastForcedReconnectAt = now;
+    await ensureConnection(true);
+    return;
+  }
+  await ensureConnection();
+};
 
 const init = () => {
   return new Promise(async (resolve, reject) => {
@@ -1620,23 +1690,33 @@ const getDb = () => {
       return replacement;
     });
   };
+
+  const executePreparedQuery = async (query, params, queryBuilder) => {
+    await ensureConnection();
+    await acquireQuerySlot();
+    try {
+      const request = pool.request();
+      const processedQuery = prepareQuery(query, params, request);
+      return await queryBuilder(request, processedQuery);
+    } finally {
+      releaseQuerySlot();
+    }
+  };
   
   return {
     // Run a query (for INSERT, UPDATE, DELETE)
     run: (query, params = [], callback) => {
       const executeRun = async (retryCount = 0) => {
         try {
-          await ensureConnection();
-          const request = pool.request();
-          
           const isInsert = query.trim().toUpperCase().startsWith('INSERT');
-          let processedQuery = prepareQuery(query, params, request);
-          
-          if (isInsert && !query.includes('OUTPUT') && !query.includes('SCOPE_IDENTITY')) {
-            processedQuery = processedQuery + '; SELECT SCOPE_IDENTITY() AS id;';
-          }
-          
-          const result = await request.query(processedQuery);
+          const result = await executePreparedQuery(query, params, async (request, processedQuery) => {
+            let executableQuery = processedQuery;
+            if (isInsert && !query.includes('OUTPUT') && !query.includes('SCOPE_IDENTITY')) {
+              executableQuery = `${processedQuery}; SELECT SCOPE_IDENTITY() AS id;`;
+            }
+            return request.query(executableQuery);
+          });
+
           let lastID = 0;
           if (isInsert && result.recordset && result.recordset.length > 0) {
             const idResult = result.recordset.find(r => r.id !== undefined);
@@ -1648,8 +1728,9 @@ const getDb = () => {
         } catch (error) {
           // Retry on connection errors (but not for write operations to avoid duplicates)
           if (isConnectionError(error) && retryCount < 2 && !query.trim().toUpperCase().startsWith('INSERT')) {
-            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
-            await ensureConnection(true); // Force reconnect
+            logQueryRetry(retryCount, 2);
+            await reconnectWithCooldown();
+            await new Promise(r => setTimeout(r, 100 * (retryCount + 1)));
             return executeRun(retryCount + 1);
           }
           throw error;
@@ -1667,16 +1748,18 @@ const getDb = () => {
     get: (query, params = [], callback) => {
       const executeGet = async (retryCount = 0) => {
         try {
-          await ensureConnection();
-          const request = pool.request();
-          const processedQuery = prepareQuery(query, params, request);
-          const result = await request.query(processedQuery);
+          const result = await executePreparedQuery(
+            query,
+            params,
+            (request, processedQuery) => request.query(processedQuery)
+          );
           return result.recordset[0] || null;
         } catch (error) {
           // Retry on connection errors
           if (isConnectionError(error) && retryCount < 2) {
-            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
-            await ensureConnection(true); // Force reconnect
+            logQueryRetry(retryCount, 2);
+            await reconnectWithCooldown();
+            await new Promise(r => setTimeout(r, 100 * (retryCount + 1)));
             return executeGet(retryCount + 1);
           }
           throw error;
@@ -1694,16 +1777,18 @@ const getDb = () => {
     all: (query, params = [], callback) => {
       const executeAll = async (retryCount = 0) => {
         try {
-          await ensureConnection();
-          const request = pool.request();
-          const processedQuery = prepareQuery(query, params, request);
-          const result = await request.query(processedQuery);
+          const result = await executePreparedQuery(
+            query,
+            params,
+            (request, processedQuery) => request.query(processedQuery)
+          );
           return result.recordset || [];
         } catch (error) {
           // Retry on connection errors
           if (isConnectionError(error) && retryCount < 2) {
-            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
-            await ensureConnection(true); // Force reconnect
+            logQueryRetry(retryCount, 2);
+            await reconnectWithCooldown();
+            await new Promise(r => setTimeout(r, 100 * (retryCount + 1)));
             return executeAll(retryCount + 1);
           }
           throw error;
@@ -1721,16 +1806,18 @@ const getDb = () => {
     query: (query, params = [], callback) => {
       const executeQuery = async (retryCount = 0) => {
         try {
-          await ensureConnection();
-          const request = pool.request();
-          const processedQuery = prepareQuery(query, params, request);
-          const result = await request.query(processedQuery);
+          const result = await executePreparedQuery(
+            query,
+            params,
+            (request, processedQuery) => request.query(processedQuery)
+          );
           return { rows: result.recordset, fields: result.columns };
         } catch (error) {
           // Retry on connection errors
           if (isConnectionError(error) && retryCount < 2) {
-            console.log(`Query failed due to connection error, retrying (${retryCount + 1}/2)...`);
-            await ensureConnection(true); // Force reconnect
+            logQueryRetry(retryCount, 2);
+            await reconnectWithCooldown();
+            await new Promise(r => setTimeout(r, 100 * (retryCount + 1)));
             return executeQuery(retryCount + 1);
           }
           throw error;
