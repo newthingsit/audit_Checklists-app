@@ -1210,7 +1210,12 @@ const AuditForm = () => {
         }
         if (photos[item.id]) {
           const photoUrl = photos[item.id];
-          itemData.photo_url = photoUrl.startsWith('http') ? photoUrl.replace(/^https?:\/\/[^/]+/, '') : photoUrl;
+          // Preserve full URL for Blob Storage; strip domain only for local /uploads/ paths
+          if (photoUrl.includes('.blob.core.windows.net')) {
+            itemData.photo_url = photoUrl;
+          } else {
+            itemData.photo_url = photoUrl.startsWith('http') ? photoUrl.replace(/^https?:\/\/[^/]+/, '') : photoUrl;
+          }
         }
         return itemData;
       });
@@ -1396,9 +1401,14 @@ const AuditForm = () => {
           
           if (photos[item.id]) {
             const photoUrl = photos[item.id];
-            itemData.photo_url = photoUrl.startsWith('http') 
-              ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
-              : photoUrl;
+            // Preserve full URL for Blob Storage; strip domain only for local /uploads/ paths
+            if (photoUrl.includes('.blob.core.windows.net')) {
+              itemData.photo_url = photoUrl;
+            } else {
+              itemData.photo_url = photoUrl.startsWith('http') 
+                ? photoUrl.replace(/^https?:\/\/[^/]+/, '') 
+                : photoUrl;
+            }
           }
 
           return itemData;

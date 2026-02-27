@@ -3317,8 +3317,12 @@ const AuditFormScreen = () => {
         
         const photoUrlForSave = getServerPhotoUrl(photos[item.id]);
         if (photoUrlForSave) {
-          // Extract just the path if it's a full URL
-          if (photoUrlForSave.startsWith('http')) {
+          // If it's a Blob Storage URL (external storage), store the FULL URL.
+          // Azure Blob URLs contain ".blob.core.windows.net" and must be preserved.
+          // For local dev paths (/uploads/...), extract just the relative path.
+          if (photoUrlForSave.startsWith('http') && photoUrlForSave.includes('.blob.core.windows.net')) {
+            updateData.photo_url = photoUrlForSave;
+          } else if (photoUrlForSave.startsWith('http')) {
             try {
               const urlObj = new URL(photoUrlForSave);
               updateData.photo_url = urlObj.pathname;

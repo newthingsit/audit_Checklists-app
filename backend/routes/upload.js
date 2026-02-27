@@ -5,6 +5,7 @@ const fs = require('fs');
 const sharp = require('sharp');
 const { authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const { isBlobEnabled, uploadBlob } = require('../utils/blobStorage');
 
 const router = express.Router();
 
@@ -48,11 +49,9 @@ const PHOTO_CONFIG = {
   maxFileSizeMB: 1.5,  // Target max file size after compression
 };
 
-// Compress and save image
+// Compress and save image (to Azure Blob Storage or local filesystem)
 const compressAndSaveImage = async (buffer, filename) => {
   try {
-    const outputPath = path.join(uploadsDir, filename);
-    
     // Get image metadata
     const metadata = await sharp(buffer).metadata();
     const allowedFormats = new Set(['jpeg', 'jpg', 'png', 'webp', 'heic', 'heif']);
@@ -80,30 +79,39 @@ const compressAndSaveImage = async (buffer, filename) => {
       height = Math.round(height * ratio);
     }
     
-    // Compress and save - optimized for speed
-    await sharp(buffer)
+    // Compress to JPEG buffer
+    const compressedBuffer = await sharp(buffer)
       .resize(width, height, { 
         fit: 'inside', 
         withoutEnlargement: true,
-        fastShrinkOnLoad: true // Faster processing
+        fastShrinkOnLoad: true
       })
       .jpeg({ 
         quality: PHOTO_CONFIG.quality, 
-        progressive: false, // Disable progressive for faster encoding
-        mozjpeg: true // Use mozjpeg for better compression/speed
+        progressive: false,
+        mozjpeg: true
       })
-      .toFile(outputPath);
+      .toBuffer();
+
+    // Upload to Azure Blob Storage if enabled, otherwise save locally
+    let url;
+    if (isBlobEnabled()) {
+      url = await uploadBlob(compressedBuffer, filename, 'image/jpeg');
+      logger.debug(`Photo uploaded to Blob: ${filename}, Size: ${(compressedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+    } else {
+      // Fallback: save to local filesystem (development only)
+      const outputPath = path.join(uploadsDir, filename);
+      fs.writeFileSync(outputPath, compressedBuffer);
+      url = `/uploads/${filename}`;
+      logger.debug(`Photo saved locally: ${filename}, Size: ${(compressedBuffer.length / (1024 * 1024)).toFixed(2)}MB`);
+    }
     
-    // Get final file size
-    const stats = fs.statSync(outputPath);
-    const fileSizeMB = stats.size / (1024 * 1024);
-    
-    logger.debug(`Photo compressed: ${metadata.width}x${metadata.height} -> ${width}x${height}, Size: ${fileSizeMB.toFixed(2)}MB`);
+    logger.debug(`Photo compressed: ${metadata.width}x${metadata.height} -> ${width}x${height}`);
     
     return {
-      path: outputPath,
+      url,
       filename,
-      size: stats.size,
+      size: compressedBuffer.length,
       width,
       height
     };
@@ -123,12 +131,12 @@ router.post('/photo', authenticate, upload.single('photo'), async (req, res) => 
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const filename = 'audit-' + uniqueSuffix + '.jpg';
     
-    // Compress and save the image
+    // Compress and save the image (Blob Storage or local)
     const result = await compressAndSaveImage(req.file.buffer, filename);
     
-    const fileUrl = `/uploads/${result.filename}`;
+    // result.url is either a full Blob URL or a relative /uploads/... path
     res.json({ 
-      photo_url: fileUrl,
+      photo_url: result.url,
       filename: result.filename,
       size: result.size,
       width: result.width,
@@ -155,7 +163,7 @@ router.post('/photos', authenticate, upload.array('photos', 10), async (req, res
       
       const result = await compressAndSaveImage(file.buffer, filename);
       results.push({
-        photo_url: `/uploads/${result.filename}`,
+        photo_url: result.url,
         filename: result.filename,
         size: result.size
       });

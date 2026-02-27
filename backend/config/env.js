@@ -45,6 +45,12 @@ const validateEnv = () => {
   warnIf(!!process.env.OTEL_EXPORTER_OTLP_ENDPOINT, 'OTEL_EXPORTER_OTLP_ENDPOINT', 'Tracing exporter endpoint is not set.');
   warnIf(!!process.env.LOG_REQUESTS, 'LOG_REQUESTS', 'Request logging is disabled.');
 
+  // Azure Blob Storage is strongly recommended for production — ephemeral filesystem loses photos on deploy/restart
+  if (isProd) {
+    warnIf(!!process.env.AZURE_STORAGE_CONNECTION_STRING, 'AZURE_STORAGE_CONNECTION_STRING',
+      'Azure Blob Storage is NOT configured. Photos will be stored on the ephemeral filesystem and LOST on every deployment/restart.');
+  }
+
   const metricsEnabled = String(process.env.METRICS_ENABLED || '').toLowerCase() === 'true';
   if (metricsEnabled && isProd) {
     warnIf(!!process.env.METRICS_TOKEN, 'METRICS_TOKEN', 'Metrics enabled without METRICS_TOKEN.');

@@ -124,7 +124,7 @@ jobs:
               --name "$APP_NAME" \
               --src-path backend.zip \
               --type zip \
-              --clean true \
+              --clean false \
               --async true 2>&1)
             EXIT_CODE=$?
             set -e

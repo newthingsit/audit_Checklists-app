@@ -756,6 +756,10 @@ async function runMigrations(dbInstance) {
 db.init().then(async () => {
   // Run one-time migrations
   await runMigrations(db.getDb());
+
+  // Initialize Azure Blob Storage for photo uploads (enterprise-grade persistent storage)
+  const { initBlobStorage } = require('./utils/blobStorage');
+  await initBlobStorage();
   
   // Initialize background jobs after database is ready
   const jobs = require('./jobs/scheduled-audits');
