@@ -211,11 +211,17 @@ jobs:
           APP_NAME="${{ env.AZURE_WEBAPP_NAME }}"
           RG_NAME="${{ env.AZURE_RESOURCE_GROUP }}"
           PRIMARY_HOST="${APP_NAME}.azurewebsites.net"
-          declare -a HOSTS=("$PRIMARY_HOST")
 
+          # Resolve actual hostname from Azure (may differ from short name)
           RESOLVED_HOST=$(az webapp show --name "$APP_NAME" --resource-group "$RG_NAME" --query "defaultHostName" -o tsv 2>/dev/null || true)
-          if [ -n "$RESOLVED_HOST" ] && [ "$RESOLVED_HOST" != "null" ] && [ "$RESOLVED_HOST" != "$PRIMARY_HOST" ]; then
+
+          # Build host list: prefer resolved host first (short name may not resolve in all DNS)
+          declare -a HOSTS=()
+          if [ -n "$RESOLVED_HOST" ] && [ "$RESOLVED_HOST" != "null" ]; then
             HOSTS+=("$RESOLVED_HOST")
+          fi
+          if [ "$RESOLVED_HOST" != "$PRIMARY_HOST" ]; then
+            HOSTS+=("$PRIMARY_HOST")
           fi
 
           echo "Candidate hosts: ${HOSTS[*]}"
@@ -227,13 +233,18 @@ jobs:
 
             echo "Checking host: $host"
             for i in {1..12}; do
-              CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/api/health")
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "https://$host/api/health" 2>/dev/null || echo "000")
               if [ "$CODE" = "200" ]; then
                 echo "✅ Backend is healthy on https://$host/api/health"
                 exit 0
               fi
-              echo "Attempt $i/12 on $host returned HTTP $CODE, waiting 30s..."
-              sleep 30
+              # If DNS can't resolve this host, skip to the next one
+              if [ "$CODE" = "000" ] && [ "$i" -ge 2 ]; then
+                echo "⚠️ Host $host unreachable after $i attempts — trying next host"
+                break
+              fi
+              echo "Attempt $i/12 on $host returned HTTP $CODE, waiting 15s..."
+              sleep 15
             done
           done
 
@@ -241,8 +252,8 @@ jobs:
           for host in "${HOSTS[@]}"; do
             if [ -n "$host" ]; then
               echo "--- Diagnostics for $host ---"
-              curl -I -s "https://$host/api/health" || true
-              curl -I -s "https://$host/" || true
+              curl -I -s --connect-timeout 10 "https://$host/api/health" 2>/dev/null || true
+              curl -I -s --connect-timeout 10 "https://$host/" 2>/dev/null || true
             fi
           done
 
