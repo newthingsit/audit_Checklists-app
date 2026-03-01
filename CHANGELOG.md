@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.5] - 2026-03-01 - Stability & Report Fixes
+
+### Fixed - Mobile App (v2.1.5) — 29 fixes across 7 files
+- **AuditFormScreen.js (10 fixes)**:
+  - `store.name` crash when store object is undefined
+  - Broken `StyleSheet.create` reference
+  - Photo rollback on save failure
+  - AppState/interval/debounce ref patterns (stale closures)
+  - `itemsById` Map for O(1) lookups instead of repeated `.find()`
+  - BackHandler cleanup on unmount
+  - `__DEV__` guards on console.log
+  - ImagePicker selection limits
+  - Double-tap guard on submit
+  - **State leakage between audits**: `resetAllFormState()` before every load, draft storage key with auditId, draft identity validation, draft merge by auditId, auto-save race cancellation, previous-failures `exclude_audit_id`
+- **AuditHistoryScreen.js (3 fixes)**: mountedRef guard, null-safe filter, cleanup
+- **AuditDetailScreen.js (5 fixes)**: fetchError state, removed duplicate fetch, null-safe status, error retry UI
+- **ScheduledAuditsScreen.js (6 fixes)**: stale closure ref pattern, linkedAudits clearing, toast cleanup, variable shadowing, `__DEV__` guards
+- **CategorySelectionScreen.js**: `useFocusEffect` deps fix
+- **LoginScreen.js**: biometric `useEffect` stale closure fix
+- **NetworkContext.js**: removed dead `wasConnected` variable
+
+### Fixed - Backend (v2.0.1) — 10 fixes across 4 files
+- **CRITICAL**: Fixed `new Promise(async ...)` anti-pattern in `generateEnhancedAuditPdf` that silently swallowed errors
+- **Schedule Adherence always showed 0%**: Added missing `scheduled_audit_id`, `original_scheduled_date`, `completed_at` fields in dashboard Excel export
+- **Security**: Added 10MB image size limit, SSRF protection (block internal IPs), removed error stack exposure
+- **Performance**: Parallel photo fetching (5 at a time) — 50 photos: ~250s → ~50s
+- **Reliability**: Azure Blob Storage fallback for old `/uploads/` paths, `res.on('close')` cleanup for client disconnects, fix max-score fallback from hardcoded 3 to 0
+
+### Fixed - Web App (v2.0.1)
+- **ScheduledAuditsReport.js**: Changed export PDF/CSV from `window.open` (no auth token) to `axios` with `responseType: 'blob'` (includes auth token)
+
+### Deployed
+- Backend: Azure App Service `audit-app-backend-2221` (zip deploy, commit `57a9725`)
+- Mobile APK: EAS Build `6419d913` — https://expo.dev/artifacts/eas/dmW3Psnt9Cr4WpXLrgmYc4.apk (commit `23fcf7d`)
+
 ## [1.14.0] - 2025-01-27
 
 ### Added
