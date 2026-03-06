@@ -2966,7 +2966,7 @@ router.post('/bulk-delete', authenticate, (req, res) => {
 // Get previous audit failures for highlighting during new audit
 router.get('/previous-failures', authenticate, requirePermission('view_audits', 'view_own_audits', 'manage_audits'), (req, res) => {
   const dbInstance = db.getDb();
-  const { template_id, location_id, months_back = 1 } = req.query;
+  const { template_id, location_id, months_back = 1, exclude_audit_id } = req.query;
   
   // Parse and validate IDs
   if (!template_id || !location_id) {
@@ -2976,6 +2976,7 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
   const templateId = parseInt(template_id, 10);
   const locationId = parseInt(location_id, 10);
   const monthsBack = parseInt(months_back, 10) || 1;
+  const excludeAuditId = exclude_audit_id ? parseInt(exclude_audit_id, 10) : null;
   
   if (isNaN(templateId) || isNaN(locationId) || templateId <= 0 || locationId <= 0) {
     return res.status(400).json({ error: 'template_id and location_id must be valid positive numbers' });
@@ -2986,7 +2987,10 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
   
   // Get the most recent completed audit for this template and location
   // Look back up to 12 months to find previous audits
+  // MEDIUM FIX: Exclude the current audit so it doesn't show up as its own predecessor
   const maxMonthsBack = Math.min(monthsBack, 12);
+  const excludeClause = excludeAuditId ? ' AND a.id != ?' : '';
+  const excludeParam = excludeAuditId ? [excludeAuditId] : [];
   let previousAuditQuery;
   if (isSqlServer) {
     previousAuditQuery = `
@@ -2998,7 +3002,7 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
       WHERE a.template_id = ? 
         AND a.location_id = ? 
         AND a.status = 'completed'
-        AND a.completed_at >= DATEADD(month, -?, GETDATE())
+        AND a.completed_at >= DATEADD(month, -?, GETDATE())${excludeClause}
       ORDER BY a.completed_at DESC, a.created_at DESC
     `;
   } else {
@@ -3011,13 +3015,13 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
       WHERE a.template_id = ? 
         AND a.location_id = ? 
         AND a.status = 'completed'
-        AND a.completed_at >= date('now', '-' || ? || ' months')
+        AND a.completed_at >= date('now', '-' || ? || ' months')${excludeClause}
       ORDER BY a.completed_at DESC, a.created_at DESC
       LIMIT 1
     `;
   }
   
-  dbInstance.get(previousAuditQuery, [templateId, locationId, monthsBack], (err, previousAudit) => {
+  dbInstance.get(previousAuditQuery, [templateId, locationId, monthsBack, ...excludeParam], (err, previousAudit) => {
     if (err) {
       logger.error('Error fetching previous audit:', err);
       return res.status(500).json({ error: 'Database error' });

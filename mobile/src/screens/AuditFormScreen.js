@@ -218,8 +218,11 @@ const AuditFormScreen = () => {
     const templateKey = templateId ? String(templateId) : 'unknown';
     const scheduleKey = scheduledAuditId ? String(scheduledAuditId) : 'none';
     const locationKey = locationId ? String(locationId) : 'none';
-    return `audit_draft:${templateKey}:${scheduleKey}:${locationKey}`;
-  }, [templateId, scheduledAuditId, locationId]);
+    // CRITICAL FIX: Include auditId in the key so that different audits using the
+    // same template/schedule/location never collide on the same draft slot.
+    const auditKey = auditId ? String(auditId) : (currentAuditId ? String(currentAuditId) : 'new');
+    return `audit_draft:${templateKey}:${scheduleKey}:${locationKey}:${auditKey}`;
+  }, [templateId, scheduledAuditId, locationId, auditId, currentAuditId]);
 
   const apiBaseUrl = useMemo(() => API_BASE_URL.replace('/api', ''), []);
 
@@ -261,6 +264,48 @@ const AuditFormScreen = () => {
     setCurrentAuditId(null);
   }, [clearDraftStorage]);
 
+  // CRITICAL FIX: Reset ALL form state to prevent data leaking between audits.
+  // Must be called at the beginning of every load (param change) before fetching new data.
+  const resetAllFormState = useCallback(() => {
+    console.log('[AuditForm] Resetting all form state for clean audit start');
+    setResponses({});
+    setSelectedOptions({});
+    setMultipleSelections({});
+    setComments({});
+    setPhotos({});
+    setNotes('');
+    setAttendees('');
+    setPointsDiscussed('');
+    setInfoPictures([]);
+    setSelectedCategory(null);
+    setSelectedSection(null);
+    setCategories([]);
+    setFilteredItems([]);
+    setCategoryCompletionStatus({});
+    setGroupedCategories([]);
+    setExpandedGroups({});
+    setExpandedSections({});
+    setCapturedLocation(null);
+    setLocationVerified(false);
+    setShowLocationVerification(false);
+    setCurrentStep(0);
+    setAuditStatus(null);
+    setIsEditing(false);
+    setTemplate(null);
+    setItems([]);
+    setLocationId(initialLocationId || '');
+    setSelectedLocation(null);
+    setCurrentAuditId(auditId ? parseInt(auditId, 10) : null);
+    setPreviousFailures([]);
+    setFailedItemIds(new Set());
+    setPreviousAuditInfo(null);
+    setRecurringNoticeVisible(false);
+    setRecurringViewIndex(0);
+    setExpandedPrevComments({});
+    recurringAlertShownRef.current = new Set();
+    clientAuditUuidRef.current = null;
+  }, [initialLocationId, auditId]);
+
   useEffect(() => {
     let mounted = true;
     const loadDraftIdentity = async () => {
@@ -268,10 +313,17 @@ const AuditFormScreen = () => {
         const stored = await AsyncStorage.getItem(draftStorageKey);
         if (!stored || !mounted) return;
         const parsed = JSON.parse(stored);
-        if (parsed?.auditId && !currentAuditId && !auditId) {
+        // CRITICAL FIX: Only adopt draft identity if the draft matches the current
+        // template AND scheduled audit, preventing cross-audit contamination.
+        const draftMatchesContext =
+          parsed?.template_id === parseInt(templateId, 10) &&
+          ((!scheduledAuditId && !parsed?.scheduledAuditId) ||
+           String(parsed?.scheduledAuditId) === String(scheduledAuditId));
+        if (parsed?.auditId && !currentAuditId && !auditId && draftMatchesContext) {
+          console.log('[AuditForm] Adopting draft auditId:', parsed.auditId, 'from key:', draftStorageKey);
           setCurrentAuditId(parsed.auditId);
         }
-        if (parsed?.clientAuditUuid) {
+        if (parsed?.clientAuditUuid && draftMatchesContext) {
           clientAuditUuidRef.current = parsed.clientAuditUuid;
         }
       } catch (error) {
@@ -282,7 +334,7 @@ const AuditFormScreen = () => {
     return () => {
       mounted = false;
     };
-  }, [draftStorageKey, currentAuditId, auditId]);
+  }, [draftStorageKey, currentAuditId, auditId, templateId, scheduledAuditId]);
 
   // Previous failures state for highlighting recurring issues
   const [previousFailures, setPreviousFailures] = useState([]);
@@ -433,6 +485,10 @@ const AuditFormScreen = () => {
     isInitialLoadInProgressRef.current = true;
     hasInitialLoadedRef.current = true;
     lastLoadParamsRef.current = currentParams;
+    
+    // CRITICAL FIX: Reset all form state before loading new audit data
+    // This prevents responses/photos/comments from audit A leaking into audit B
+    resetAllFormState();
     
     if (auditId) {
       // Editing existing audit
@@ -663,6 +719,12 @@ const AuditFormScreen = () => {
 
   const fetchAuditDataById = async (id) => {
     try {
+      // CRITICAL FIX: Cancel any pending auto-save to prevent stale data from being
+      // persisted while we load fresh data for this audit
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
       // Only show full loading spinner if we don't have data yet
       // If we have data, keep it visible and show subtle loading indicator
       const hasExistingData = template && items && items.length > 0;
@@ -999,11 +1061,16 @@ const AuditFormScreen = () => {
       // This handles the case where the previous save only included current category items
       try {
         // Try multiple possible draft keys since locationId might vary
+        // CRITICAL FIX: Include auditId in keys to prevent cross-audit contamination
         const possibleKeys = [...new Set([
+          `audit_draft:${templateId}:${scheduledAuditId || 'none'}:${auditLocationId || 'none'}:${id}`,
+          `audit_draft:${templateId}:none:${auditLocationId || 'none'}:${id}`,
+          `audit_draft:${audit.template_id}:none:${auditLocationId || 'none'}:${id}`,
+          draftStorageKey,
+          // Legacy keys (without auditId suffix) for backward compatibility
           `audit_draft:${templateId}:${scheduledAuditId || 'none'}:${auditLocationId || 'none'}`,
           `audit_draft:${templateId}:none:${auditLocationId || 'none'}`,
           `audit_draft:${audit.template_id}:none:${auditLocationId || 'none'}`,
-          draftStorageKey,
         ].filter(Boolean))];
         
         let draftData = null;
@@ -1014,7 +1081,10 @@ const AuditFormScreen = () => {
             if (stored) {
               try {
                 const parsed = JSON.parse(stored);
-                if (parsed && (parsed.auditId === id || parsed.template_id === audit.template_id)) {
+                // CRITICAL FIX: Only merge drafts that belong to THIS specific audit.
+                // Matching by template_id alone could merge data from a different audit
+                // using the same template, causing cross-contamination.
+                if (parsed && parsed.auditId === id) {
                   draftData = parsed;
                   console.log('[AuditForm] Found local draft for recovery, key:', key, 'savedAt:', parsed.savedAt);
                   break;
@@ -1365,13 +1435,17 @@ const AuditFormScreen = () => {
     
     try {
       setLoadingPreviousFailures(true);
+      // MEDIUM FIX: Pass the current audit ID so the backend can exclude it
+      // from "previous" results (avoids showing the current audit as its own predecessor)
+      const excludeId = currentAuditId || (auditId ? parseInt(auditId, 10) : null);
       const response = await axios.get(
         `${API_BASE_URL}/audits/previous-failures`,
         {
           params: {
             template_id: parsedTemplateId,
             location_id: parsedLocId,
-            months_back: 6
+            months_back: 6,
+            ...(excludeId ? { exclude_audit_id: excludeId } : {})
           }
         }
       );
