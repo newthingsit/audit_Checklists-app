@@ -3037,7 +3037,28 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
     }
     
     // Get failed items from the previous audit (items with mark = 0 or 'No' or score < passing)
-    const failedItemsQuery = `
+    const failedItemsQuery = isSqlServer ? `
+      SELECT 
+        ai.item_id,
+        ci.title,
+        CAST(ci.description AS NVARCHAR(MAX)) as description,
+        ci.category,
+        ai.mark,
+        CAST(ai.comment AS NVARCHAR(MAX)) as comment,
+        CAST(ai.photo_url AS NVARCHAR(MAX)) as photo_url,
+        COALESCE(ci.weight, 1) as weight,
+        COALESCE(ci.is_critical, 0) as is_critical
+      FROM audit_items ai
+      JOIN checklist_items ci ON ai.item_id = ci.id
+      WHERE ai.audit_id = ?
+        AND (
+          ai.mark = '0' 
+          OR ai.mark = 'No' 
+          OR ai.mark = 'Fail'
+          OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
+        )
+      ORDER BY ci.order_index, ci.id
+    ` : `
       SELECT 
         ai.item_id,
         ci.title,
@@ -3068,11 +3089,11 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
           SELECT 
             ai.item_id,
             ci.title,
-            ci.description,
+            CAST(ci.description AS NVARCHAR(MAX)) as description,
             ci.category,
             ai.mark,
-            ai.comment,
-            ai.photo_url,
+            CAST(ai.comment AS NVARCHAR(MAX)) as comment,
+            CAST(ai.photo_url AS NVARCHAR(MAX)) as photo_url,
             COALESCE(ci.weight, 1) as weight,
             COALESCE(ci.is_critical, 0) as is_critical,
             ci.order_index
@@ -3083,7 +3104,7 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
               ai.mark = '0' 
               OR ai.mark = 'No' 
               OR ai.mark = 'Fail'
-              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND CAST(ai.mark AS FLOAT) = 0)
+              OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
             )
         ),
         history_counts AS (
@@ -3109,7 +3130,7 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
             ci.id as item_id,
             ci.title,
             ci.category,
-            ci.description,
+            CAST(ci.description AS NVARCHAR(MAX)) as description,
             COUNT(*) as failure_count,
             MAX(a.created_at) as last_failure_date
           FROM audit_items ai
@@ -3125,7 +3146,7 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
               OR ai.mark = 'Fail'
               OR (ai.mark IS NOT NULL AND ai.mark NOT IN ('NA', 'N/A') AND TRY_CAST(ai.mark AS FLOAT) = 0)
             )
-          GROUP BY ci.id, ci.title, ci.category, ci.description
+          GROUP BY ci.id, ci.title, ci.category, CAST(ci.description AS NVARCHAR(MAX))
           HAVING COUNT(*) >= ?
         )
         SELECT 
