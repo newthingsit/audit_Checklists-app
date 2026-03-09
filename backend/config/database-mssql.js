@@ -412,6 +412,24 @@ const createTables = async () => {
     // Add client_audit_uuid column for existing audits table
     `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'client_audit_uuid')
      ALTER TABLE [dbo].[audits] ADD [client_audit_uuid] NVARCHAR(100) NULL`,
+
+    // Add missing columns to audits table (auto-migration)
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'original_scheduled_date')
+     ALTER TABLE [dbo].[audits] ADD [original_scheduled_date] DATETIME NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'gps_latitude')
+     ALTER TABLE [dbo].[audits] ADD [gps_latitude] DECIMAL(10,8) NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'gps_longitude')
+     ALTER TABLE [dbo].[audits] ADD [gps_longitude] DECIMAL(11,8) NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'gps_accuracy')
+     ALTER TABLE [dbo].[audits] ADD [gps_accuracy] FLOAT NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'gps_timestamp')
+     ALTER TABLE [dbo].[audits] ADD [gps_timestamp] DATETIME NULL`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'location_verified')
+     ALTER TABLE [dbo].[audits] ADD [location_verified] BIT DEFAULT 0`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'has_critical_failure')
+     ALTER TABLE [dbo].[audits] ADD [has_critical_failure] BIT DEFAULT 0`,
+    `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[audits]') AND name = 'weighted_score')
+     ALTER TABLE [dbo].[audits] ADD [weighted_score] FLOAT NULL`,
     
     // Audit Items table
     `IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[audit_items]') AND type in (N'U'))

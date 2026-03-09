@@ -223,7 +223,7 @@ router.get('/by-scheduled/:scheduledId', authenticate, (req, res) => {
 });
 
 // Get single audit with items (admins can view any audit)
-router.get('/:id', authenticate, (req, res) => {
+router.get('/:id(\\d+)', authenticate, (req, res) => {
   try {
     const dbInstance = db.getDb();
     const auditId = parseInt(req.params.id, 10);
@@ -996,7 +996,7 @@ router.post('/', authenticate, (req, res) => {
 }); // Close router.post handler
 
 // Update audit details
-router.put('/:id', authenticate, (req, res) => {
+router.put('/:id(\\d+)', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   if (isNaN(auditId)) {
     return res.status(400).json({ error: 'Invalid audit ID' });
@@ -1128,7 +1128,7 @@ router.put('/:id', authenticate, (req, res) => {
 
 // Update audit item (single item)
 // NOTE: This must come AFTER the batch route, or we need to skip 'batch' as itemId
-router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
+router.put('/:auditId(\\d+)/items/:itemId(\\d+)', authenticate, (req, res, next) => {
   // Skip if this is actually a batch request (route order issue workaround)
   if (req.params.itemId === 'batch') {
     return next();
@@ -1719,7 +1719,7 @@ router.put('/:auditId/items/:itemId', authenticate, (req, res, next) => {
 });
 
 // Batch update audit items - OPTIMIZED for faster saves
-router.put('/:id/items/batch', authenticate, async (req, res) => {
+router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   logger.debug(`[Batch Update] Audit ID: ${auditId}, Body keys: ${Object.keys(req.body || {}).join(', ')}`);
   
@@ -2480,7 +2480,7 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
 }
 
 // Complete audit
-router.put('/:id/complete', authenticate, (req, res) => {
+router.put('/:id(\\d+)/complete', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   if (isNaN(auditId)) {
     return res.status(400).json({ error: 'Invalid audit ID' });
@@ -2630,7 +2630,7 @@ router.put('/:id/complete', authenticate, (req, res) => {
 });
 
 // Get Action Plan with top-3 deviations for a completed audit
-router.get('/:id/action-plan', authenticate, (req, res) => {
+router.get('/:id(\\d+)/action-plan', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   if (isNaN(auditId)) {
     return res.status(400).json({ error: 'Invalid audit ID' });
@@ -2725,7 +2725,7 @@ router.get('/:id/action-plan', authenticate, (req, res) => {
 });
 
 // Update action plan item (corrective action, responsible person, target date, status)
-router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
+router.put('/:id(\\d+)/action-items/:actionId(\\d+)', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   const actionId = parseInt(req.params.actionId, 10);
   
@@ -2825,7 +2825,7 @@ router.put('/:id/action-items/:actionId', authenticate, (req, res) => {
 });
 
 // Delete single audit
-router.delete('/:id', authenticate, (req, res) => {
+router.delete('/:id(\\d+)', authenticate, (req, res) => {
   const auditId = parseInt(req.params.id, 10);
   if (isNaN(auditId)) {
     return res.status(400).json({ error: 'Invalid audit ID' });
@@ -3266,11 +3266,11 @@ router.get('/previous-failures', authenticate, requirePermission('view_audits', 
     
     const queryParams = [
       previousAudit.id,
-      template_id,
-      location_id,
+      templateId,
+      locationId,
       RECURRING_LOOKBACK_MONTHS,
-      template_id,
-      location_id,
+      templateId,
+      locationId,
       RECURRING_LOOKBACK_MONTHS,
       CRITICAL_RECURRING_THRESHOLD,
       RECURRING_FAILURE_THRESHOLD
