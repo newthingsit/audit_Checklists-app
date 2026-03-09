@@ -89,6 +89,11 @@ const DashboardScreen = () => {
     // Prevent concurrent/duplicate fetches within 3 seconds
     const now = Date.now();
     if (now - lastRefreshRef.current < 3000) {
+      // If the first call won the race with silent=true while we still
+      // show the spinner, clear it so the UI isn't stuck.
+      if (!silent && loading) {
+        setLoading(false);
+      }
       return;
     }
     lastRefreshRef.current = now;
@@ -218,13 +223,17 @@ const DashboardScreen = () => {
     }
   }, [user, isOnline]);
 
-  // Refresh user data + dashboard when screen is focused
+  // Refresh user data + dashboard when screen is focused (skip initial mount)
+  const isInitialFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
+      if (isInitialFocus.current) {
+        isInitialFocus.current = false;
+        return;
+      }
       if (refreshUser) {
         refreshUser();
       }
-
       if (user) {
         fetchData({ silent: true });
       }

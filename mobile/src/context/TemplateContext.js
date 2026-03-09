@@ -22,6 +22,8 @@ export const TemplateProvider = ({ children }) => {
 
   const lastFetchRef = useRef(0);
   const pendingRef = useRef(null);
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
 
   /**
    * Fetch templates from server. Caches for CACHE_TTL and deduplicates
@@ -33,8 +35,9 @@ export const TemplateProvider = ({ children }) => {
    */
   const fetchTemplates = useCallback(async ({ force = false, silent = false } = {}) => {
     // Return cached data if still fresh
-    if (!force && templates.length > 0 && Date.now() - lastFetchRef.current < CACHE_TTL) {
-      return templates;
+    const current = templatesRef.current;
+    if (!force && current.length > 0 && Date.now() - lastFetchRef.current < CACHE_TTL) {
+      return current;
     }
 
     // Deduplicate: if a request is already in progress, piggy-back on it
@@ -52,11 +55,12 @@ export const TemplateProvider = ({ children }) => {
         });
         const data = response.data.templates || [];
         setTemplates(data);
+        templatesRef.current = data;
         lastFetchRef.current = Date.now();
         return data;
       } catch (err) {
         // On failure keep stale data if available
-        if (templates.length > 0) return templates;
+        if (templatesRef.current.length > 0) return templatesRef.current;
         throw err;
       } finally {
         pendingRef.current = null;
@@ -66,7 +70,7 @@ export const TemplateProvider = ({ children }) => {
 
     pendingRef.current = request;
     return request;
-  }, [templates, isOnline]);
+  }, []);  // stable — no deps, uses refs for current state
 
   /** Invalidate the cache so the next consumer triggers a fresh fetch. */
   const invalidate = useCallback(() => {
