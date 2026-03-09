@@ -602,9 +602,7 @@ const ScheduledAuditsScreen = () => {
     try {
       if (__DEV__) console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits`);
       if (__DEV__) console.log('[Mobile] Current user:', user?.email);
-      // Add cache-busting parameter to ensure fresh data
       const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
-        params: { _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' }
       });
       if (__DEV__) console.log('[Mobile] Response status:', response.status);

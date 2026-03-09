@@ -107,10 +107,7 @@ const AuditHistoryScreen = () => {
 
   const fetchTemplates = async () => {
     try {
-      // Add cache-busting parameter to ensure fresh data
-      const response = await axios.get(`${API_BASE_URL}/templates`, {
-        params: { _t: Date.now() }
-      });
+      const response = await axios.get(`${API_BASE_URL}/templates`);
       setTemplates(response.data.templates || []);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -169,9 +166,7 @@ const AuditHistoryScreen = () => {
         setError(null);
       }
       
-      // Add cache-busting parameter to ensure fresh data
       const response = await axios.get(`${API_BASE_URL}/audits`, {
-        params: { _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' },
         timeout: 15000 // 15 second timeout
       });

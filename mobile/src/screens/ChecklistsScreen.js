@@ -67,7 +67,7 @@ const ChecklistsScreen = () => {
 
       // Fetch from server in real-time
       const response = await axios.get(`${API_BASE_URL}/templates`, {
-        params: { _t: Date.now(), dedupe: 'true' }
+        params: { dedupe: 'true' }
       });
       const serverTemplates = response.data.templates || [];
       setTemplates(serverTemplates);

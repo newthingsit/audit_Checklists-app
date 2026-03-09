@@ -115,7 +115,6 @@ const DashboardScreen = () => {
 
     try {
       const requestConfig = {
-        params: { _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' },
         timeout: 20000
       };
