@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,6 @@ const AuditDetailScreen = () => {
   const [loading, setLoading] = useState(true);
   const [actionPlan, setActionPlan] = useState(null);
   const [fetchError, setFetchError] = useState(null);
-  const fetchedRef = useRef(false);
 
   useEffect(() => {
     fetchAudit();
