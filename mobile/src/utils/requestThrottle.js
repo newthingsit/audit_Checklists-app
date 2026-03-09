@@ -61,11 +61,18 @@ export const getThrottleDelay = (url) => {
 
 /**
  * Generate a cache key from request config
+ * Strips cache-busting params like _t so dedup/caching works correctly
  */
 const getCacheKey = (config) => {
   const url = config.url || '';
   const method = config.method || 'get';
-  const params = config.params ? JSON.stringify(config.params) : '';
+  let params = '';
+  if (config.params) {
+    const filtered = { ...config.params };
+    delete filtered._t;
+    delete filtered.dedupe;
+    params = Object.keys(filtered).length > 0 ? JSON.stringify(filtered) : '';
+  }
   return `${method.toUpperCase()}:${url}:${params}`;
 };
 

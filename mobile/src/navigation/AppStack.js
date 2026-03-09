@@ -61,6 +61,11 @@ const ChecklistsStack = () => {
         component={AuditFormScreen}
         options={{ title: 'New Audit' }}
       />
+      <Stack.Screen 
+        name="AuditDetail" 
+        component={AuditDetailScreen}
+        options={{ title: 'Audit Details' }}
+      />
     </Stack.Navigator>
   );
 };
@@ -126,6 +131,11 @@ const DashboardStack = () => {
         name="AuditForm" 
         component={AuditFormScreen}
         options={{ title: 'New Audit' }}
+      />
+      <Stack.Screen 
+        name="AuditDetail" 
+        component={AuditDetailScreen}
+        options={{ title: 'Audit Details' }}
       />
     </Stack.Navigator>
   );

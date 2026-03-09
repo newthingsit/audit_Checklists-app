@@ -77,6 +77,13 @@ const DashboardScreen = () => {
 
   const fetchData = useCallback(async (options = {}) => {
     const { silent = false } = options;
+    // Prevent concurrent/duplicate fetches within 3 seconds
+    const now = Date.now();
+    if (now - lastRefreshRef.current < 3000) {
+      return;
+    }
+    lastRefreshRef.current = now;
+
     // Check if online - require real-time connection
     if (!isOnline) {
       if (!silent) {
@@ -212,10 +219,7 @@ const DashboardScreen = () => {
       }
 
       if (user) {
-        const now = Date.now();
-        if (now - lastRefreshRef.current > 3000) {
-          fetchData({ silent: true });
-        }
+        fetchData({ silent: true });
       }
     }, [refreshUser, fetchData, user])
   );

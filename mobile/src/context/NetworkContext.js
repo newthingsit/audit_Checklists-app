@@ -16,6 +16,7 @@ export const NetworkProvider = ({ children }) => {
   const [isInternetReachable, setIsInternetReachable] = useState(true);
   const [connectionType, setConnectionType] = useState(null);
   const [lastOnline, setLastOnline] = useState(new Date());
+  const lastLoggedStateRef = React.useRef('');
 
   useEffect(() => {
     // Subscribe to network state changes
@@ -30,13 +31,17 @@ export const NetworkProvider = ({ children }) => {
         setLastOnline(new Date());
       }
       
-      // Log connection changes in development
+      // Log only when state actually changes (deduplicate rapid events)
       if (__DEV__) {
-        console.log('Network state changed:', {
-          isConnected: state.isConnected,
-          isInternetReachable: state.isInternetReachable,
-          type: state.type,
-        });
+        const stateKey = `${state.isConnected}-${state.isInternetReachable}-${state.type}`;
+        if (stateKey !== lastLoggedStateRef.current) {
+          lastLoggedStateRef.current = stateKey;
+          console.log('Network state changed:', {
+            isConnected: state.isConnected,
+            isInternetReachable: state.isInternetReachable,
+            type: state.type,
+          });
+        }
       }
     });
 

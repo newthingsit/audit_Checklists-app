@@ -60,11 +60,15 @@ const AuditHistoryScreen = () => {
     fetchTemplates();
   }, []);
 
-  // Auto-refresh when screen is focused
+  // Auto-refresh when screen is focused (skip initial focus to avoid double-fetching)
+  const isInitialFocus = useRef(true);
   useEffect(() => {
     if (isFocused) {
-      // Fetch immediately when screen comes into focus
-      fetchAudits(true);
+      if (isInitialFocus.current) {
+        isInitialFocus.current = false;
+      } else {
+        fetchAudits(true);
+      }
       
       // Set up auto-refresh interval
       intervalRef.current = setInterval(() => {

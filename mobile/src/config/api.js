@@ -160,15 +160,15 @@ axios.interceptors.request.use(
         }
       }
       
-      // Check if request should be throttled - wait instead of rejecting
+      // Check if request should be throttled
       if (shouldThrottle(config)) {
-        const url = config.url || '';
-        const throttleDelay = getThrottleDelay(url);
-        if (__DEV__) {
-          console.warn(`[API] Request throttled, waiting ${throttleDelay}ms: ${url}`);
+        // Return cached response instead of waiting and re-fetching
+        const throttleCached = getCachedResponse(config);
+        if (throttleCached) {
+          config.__useCache = true;
+          config.__cachedResponse = throttleCached;
+          return config;
         }
-        // Wait for throttle delay before proceeding
-        await new Promise(resolve => setTimeout(resolve, throttleDelay));
       }
     }
     
@@ -191,7 +191,7 @@ axios.interceptors.response.use(
       console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url} took ${duration}ms`);
     }
     
-    // Cache GET responses
+    // Cache GET responses and track pending
     if (response.config.method && response.config.method.toLowerCase() === 'get' && !response.config.__skipCache) {
       cacheResponse(response.config, response);
     }
