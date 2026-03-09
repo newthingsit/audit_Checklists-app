@@ -98,7 +98,7 @@ router.get('/', authenticate, (req, res) => {
       });
       filteredTemplates = Array.from(deduped.values());
       if (filteredTemplates.length !== templates.length) {
-        logger.warn(`[Templates API] Deduped templates from ${templates.length} to ${filteredTemplates.length}`);
+        logger.debug(`[Templates API] Deduped templates from ${templates.length} to ${filteredTemplates.length}`);
       }
     }
     

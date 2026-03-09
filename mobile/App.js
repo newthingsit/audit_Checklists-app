@@ -19,6 +19,7 @@ import { OfflineProvider } from './src/context/OfflineContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { LocationProvider } from './src/context/LocationContext';
 import { BiometricProvider } from './src/context/BiometricContext';
+import { TemplateProvider } from './src/context/TemplateContext';
 import AuthStack from './src/navigation/AuthStack';
 import AppStack from './src/navigation/AppStack';
 import { OfflineBanner } from './src/components/OfflineIndicator';
@@ -74,9 +75,11 @@ function AppWithProviders() {
         <NotificationProvider>
           <LocationProvider>
             <AuthProvider>
+              <TemplateProvider>
               <BiometricProvider>
                 <AppNavigator />
               </BiometricProvider>
+              </TemplateProvider>
             </AuthProvider>
           </LocationProvider>
         </NotificationProvider>

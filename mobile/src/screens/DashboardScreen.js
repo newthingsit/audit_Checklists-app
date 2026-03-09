@@ -17,6 +17,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
 import { useOffline } from '../context/OfflineContext';
+import { useTemplates } from '../context/TemplateContext';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
@@ -33,6 +34,7 @@ const DashboardScreen = () => {
   const navigation = useNavigation();
   const { user, refreshUser } = useAuth();
   const { isOnline } = useNetwork();
+  const { templates: sharedTemplates, fetchTemplates: fetchSharedTemplates } = useTemplates();
   const userPermissions = user?.permissions || [];
   const lastRefreshRef = useRef(0);
   const lastStatsRef = useRef(stats);
@@ -47,6 +49,13 @@ const DashboardScreen = () => {
   useEffect(() => {
     lastStatsRef.current = stats;
   }, [stats]);
+
+  // Keep template count in sync with shared context
+  useEffect(() => {
+    if (sharedTemplates.length > 0) {
+      setStats(prev => ({ ...prev, templates: sharedTemplates.length }));
+    }
+  }, [sharedTemplates]);
 
   useEffect(() => {
     lastRecentAuditsRef.current = recentAudits;
@@ -129,9 +138,6 @@ const DashboardScreen = () => {
       };
 
       const fetchPromises = [
-        canViewTemplatesNow
-          ? safeGet(`${API_BASE_URL}/templates`)
-          : Promise.resolve({ ok: false, data: null, skipped: true }),
         canViewAuditsNow
           ? safeGet(`${API_BASE_URL}/audits?limit=20`)
           : Promise.resolve({ ok: false, data: null, skipped: true }),
@@ -143,13 +149,15 @@ const DashboardScreen = () => {
           : Promise.resolve({ ok: false, data: null, skipped: true })
       ];
 
-      const [templatesRes, auditsRes, actionsRes, analyticsRes] = await Promise.all(fetchPromises);
+      // Also trigger a shared template fetch (non-blocking)
+      if (canViewTemplatesNow) fetchSharedTemplates({ silent: true });
+
+      const [auditsRes, actionsRes, analyticsRes] = await Promise.all(fetchPromises);
 
       const nextStats = { ...lastStatsRef.current };
 
-      if (templatesRes.ok) {
-        nextStats.templates = templatesRes.data?.templates?.length || 0;
-      }
+      // Use shared template context for count
+      nextStats.templates = sharedTemplates.length;
 
       if (actionsRes.ok) {
         const pendingActions = (actionsRes.data?.actions || []).length;

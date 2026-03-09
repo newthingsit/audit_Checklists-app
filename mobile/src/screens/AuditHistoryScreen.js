@@ -17,6 +17,7 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
+import { useTemplates } from '../context/TemplateContext';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError, ServerError } from '../components/ErrorState';
@@ -38,8 +39,8 @@ const AuditHistoryScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
-  const [templates, setTemplates] = useState([]);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const { templates } = useTemplates();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
   const intervalRef = useRef(null);
@@ -57,7 +58,6 @@ const AuditHistoryScreen = () => {
   // Initial fetch
   useEffect(() => {
     fetchAudits();
-    fetchTemplates();
   }, []);
 
   // Auto-refresh when screen is focused (skip initial focus to avoid double-fetching)
@@ -104,15 +104,6 @@ const AuditHistoryScreen = () => {
   useEffect(() => {
     applyFilters();
   }, [searchTerm, statusFilter, templateFilter, audits]);
-
-  const fetchTemplates = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/templates`);
-      setTemplates(response.data.templates || []);
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-    }
-  };
 
   const applyFilters = () => {
     let filtered = audits;

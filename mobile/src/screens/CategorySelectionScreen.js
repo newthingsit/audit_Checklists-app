@@ -11,24 +11,22 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
+import { useTemplates } from '../context/TemplateContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
 import { themeConfig } from '../config/theme';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 
 const CategorySelectionScreen = () => {
   const [categories, setCategories] = useState([]);
-  const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   
   const navigation = useNavigation();
   const { user } = useAuth();
   const { isOnline } = useNetwork();
+  const { templates, loading, fetchTemplates: fetchSharedTemplates } = useTemplates();
   
   const userPermissions = user?.permissions || [];
 
@@ -36,70 +34,45 @@ const CategorySelectionScreen = () => {
                          hasPermission(userPermissions, 'manage_audits') ||
                          isAdmin(user);
 
-  // Fetch templates and group by category
-  const fetchTemplates = useCallback(async (forceOnline = false) => {
-    try {
-      if (isOnline || forceOnline) {
-        const response = await axios.get(`${API_BASE_URL}/templates`, {
-          params: { dedupe: 'true' }
-        });
-        const serverTemplates = response.data.templates || [];
-        setTemplates(serverTemplates);
-        
-        // Group templates by category
-        const categoryMap = {};
-        serverTemplates.forEach(template => {
-          // Get unique categories from template items
-          const templateCategories = template.categories || [];
-          if (templateCategories.length === 0) {
-            // If no categories, use 'General'
-            const cat = 'General';
-            if (!categoryMap[cat]) {
-              categoryMap[cat] = [];
-            }
-            categoryMap[cat].push(template);
-          } else {
-            templateCategories.forEach(cat => {
-              if (!categoryMap[cat]) {
-                categoryMap[cat] = [];
-              }
-              categoryMap[cat].push(template);
-            });
-          }
-        });
-        
-        // Convert to array and sort
-        const categoryList = Object.keys(categoryMap).map(cat => ({
-          name: cat,
-          templates: categoryMap[cat],
-          count: categoryMap[cat].length
-        })).sort((a, b) => a.name.localeCompare(b.name));
-        
-        setCategories(categoryList);
-      }
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isOnline]);
-
+  // Group templates by category whenever they change
   useEffect(() => {
-    fetchTemplates();
+    const categoryMap = {};
+    templates.forEach(template => {
+      const templateCategories = template.categories || [];
+      if (templateCategories.length === 0) {
+        const cat = 'General';
+        if (!categoryMap[cat]) categoryMap[cat] = [];
+        categoryMap[cat].push(template);
+      } else {
+        templateCategories.forEach(cat => {
+          if (!categoryMap[cat]) categoryMap[cat] = [];
+          categoryMap[cat].push(template);
+        });
+      }
+    });
+    setCategories(
+      Object.keys(categoryMap).map(cat => ({
+        name: cat,
+        templates: categoryMap[cat],
+        count: categoryMap[cat].length
+      })).sort((a, b) => a.name.localeCompare(b.name))
+    );
+  }, [templates]);
+
+  // Initial load
+  useEffect(() => {
+    if (isOnline) fetchSharedTemplates();
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      if (!loading) {
-        fetchTemplates();
-      }
-    }, [isOnline, loading, fetchTemplates])
+      if (!loading && isOnline) fetchSharedTemplates({ silent: true });
+    }, [isOnline, loading, fetchSharedTemplates])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTemplates(true);
+    fetchSharedTemplates({ force: true }).finally(() => setRefreshing(false));
   };
 
   const handleCategorySelect = (category) => {

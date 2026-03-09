@@ -12,24 +12,22 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
+import { useTemplates } from '../context/TemplateContext';
 import { hasPermission, isAdmin } from '../utils/permissions';
 import { themeConfig } from '../config/theme';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoTemplates } from '../components/EmptyState';
 
 const ChecklistsScreen = () => {
-  const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   
   const navigation = useNavigation();
   const { user } = useAuth();
   const { isOnline } = useNetwork();
+  const { templates, loading, fetchTemplates } = useTemplates();
   
   const userPermissions = user?.permissions || [];
 
@@ -50,81 +48,27 @@ const ChecklistsScreen = () => {
     );
   }, [templates, searchText]);
 
-  // Fetch templates - real-time only, no offline fallback
-  const fetchTemplates = useCallback(async () => {
-    try {
-      // Check if online - fail immediately if offline
-      if (!isOnline) {
-        Alert.alert(
-          'No Internet Connection',
-          'Please connect to the internet to load templates.',
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      // Fetch from server in real-time
-      const response = await axios.get(`${API_BASE_URL}/templates`, {
-        params: { dedupe: 'true' }
-      });
-      const serverTemplates = response.data.templates || [];
-      setTemplates(serverTemplates);
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-      Alert.alert(
-        'Connection Error',
-        'Failed to load templates. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isOnline]);
-
-  // Track if this is the initial mount to prevent double fetching
-  const isInitialMount = React.useRef(true);
-
-  // Initial load - only on mount
+  // Initial load
   useEffect(() => {
-    fetchTemplates();
+    if (isOnline) fetchTemplates().finally(() => setRefreshing(false));
   }, []);
 
-  // Refresh when coming back online
-  useEffect(() => {
-    if (isOnline && templates.length === 0) {
-      fetchTemplates();
-    }
-  }, [isOnline]);
-
   // Refresh when screen comes into focus (but not on initial mount)
+  const isInitialMount = React.useRef(true);
   useFocusEffect(
     useCallback(() => {
-      // Skip the first focus (initial mount) since useEffect already handles it
-      if (isInitialMount.current) {
-        isInitialMount.current = false;
-        return;
-      }
-      // Only fetch if not currently loading and online
-      if (!loading && isOnline) {
-        fetchTemplates();
-      }
+      if (isInitialMount.current) { isInitialMount.current = false; return; }
+      if (!loading && isOnline) fetchTemplates({ silent: true });
     }, [isOnline, loading, fetchTemplates])
   );
 
   const onRefresh = () => {
     if (!isOnline) {
-      Alert.alert(
-        'No Internet Connection',
-        'Please connect to the internet to refresh templates.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('No Internet Connection', 'Please connect to the internet to refresh templates.', [{ text: 'OK' }]);
       return;
     }
     setRefreshing(true);
-    fetchTemplates();
+    fetchTemplates({ force: true }).finally(() => setRefreshing(false));
   };
 
   const handleStartAudit = (template) => {
