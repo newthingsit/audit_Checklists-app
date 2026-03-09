@@ -455,6 +455,12 @@ const AuditFormScreen = () => {
     const parsedLocationId = parseInt(effectiveLocationId, 10);
     const parsedTemplateId = parseInt(templateId, 10);
     
+    // For existing audits (auditId present), wait until locationId is set from the
+    // loaded audit data to avoid a 400 error from the API.
+    if (auditId && !effectiveLocationId) {
+      return; // locationId not yet populated from audit data — skip for now
+    }
+    
     if (parsedTemplateId > 0 && parsedLocationId > 0 && items.length > 0) {
       // Use the effective location ID for fetching previous failures
       fetchPreviousFailures(effectiveLocationId);
@@ -464,7 +470,7 @@ const AuditFormScreen = () => {
       setFailedItemIds(new Set());
       setPreviousAuditInfo(null);
     }
-  }, [templateId, locationId, initialLocationId, items.length]);
+  }, [templateId, locationId, initialLocationId, items.length, auditId]);
 
   useEffect(() => {
     const currentParams = `${templateId}-${auditId}-${scheduledAuditId}`;
@@ -3918,7 +3924,14 @@ const AuditFormScreen = () => {
     // Continue to render the form below, but we'll add a subtle loading indicator
   }
   
-  if (__DEV__) console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
+  // Throttle render log to avoid flooding the console (log at most once per second)
+  if (__DEV__) {
+    const now = Date.now();
+    if (!AuditFormScreen._lastRenderLog || now - AuditFormScreen._lastRenderLog > 1000) {
+      AuditFormScreen._lastRenderLog = now;
+      console.log('[AuditForm] RENDER: Not loading - template:', !!template, 'items:', items?.length || 0, 'currentStep:', currentStep, 'hasData:', hasData);
+    }
+  }
 
   // Check for error state first
   if (error && !loading) {
