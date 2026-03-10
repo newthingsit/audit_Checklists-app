@@ -78,6 +78,8 @@ const AuditFormScreen = () => {
   const [saving, setSaving] = useState(false);
   const [locationId, setLocationId] = useState(initialLocationId || '');
   const [selectedLocation, setSelectedLocation] = useState(null);
+  // Fallback location info from audit data (for Continue Audit when locations list hasn't loaded)
+  const auditLocationInfoRef = useRef(null);
   // Form state - properly declared useState hooks
   const [notes, setNotes] = useState('');
   const [responses, setResponses] = useState({});
@@ -829,6 +831,14 @@ const AuditFormScreen = () => {
       // Set audit info
       const auditLocationId = audit.location_id?.toString() || '';
       setLocationId(auditLocationId);
+      // Store audit location info for fallback during submit
+      if (auditLocationId) {
+        auditLocationInfoRef.current = {
+          id: parseInt(auditLocationId),
+          name: audit.restaurant_name || audit.location_name || '',
+          store_number: audit.store_number || '',
+        };
+      }
       const auditNotes = audit.notes || '';
       setNotes(auditNotes);
       
@@ -3026,6 +3036,27 @@ const AuditFormScreen = () => {
           resolvedLocation = location;
           setSelectedLocation(location);
         }
+      }
+
+      // Fallback: fetch single location from API if still not resolved
+      if (!resolvedLocation && locationId) {
+        try {
+          const locResponse = await axios.get(`${API_BASE_URL}/locations`).catch(() => null);
+          const locList = locResponse?.data?.locations || [];
+          const found = locList.find(l => l.id === parseInt(locationId));
+          if (found) {
+            resolvedLocation = found;
+            setSelectedLocation(found);
+            setLocations(prev => prev.length === 0 ? locList : prev);
+          }
+        } catch (e) {
+          console.warn('[AuditForm] Fallback location fetch failed:', e.message);
+        }
+      }
+
+      // Last resort: use stored audit location info (from when audit was loaded)
+      if (!resolvedLocation && locationId && auditLocationInfoRef.current) {
+        resolvedLocation = auditLocationInfoRef.current;
       }
 
       // Final check - if still no location, show error
