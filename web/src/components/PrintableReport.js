@@ -195,6 +195,7 @@ const formatScore = (actual, perfect) => {
   if (!Number.isFinite(actualNum) || !Number.isFinite(perfectNum)) {
     return `${actual ?? '—'}/${perfect ?? '—'}`;
   }
+  if (perfectNum === 0) return '—';
   return `${Math.round(actualNum)}/${Math.round(perfectNum)}`;
 };
 
@@ -288,7 +289,7 @@ const PrintableReport = forwardRef(({ report }, ref) => {
             </tr>
           </thead>
           <tbody>
-            {(scoreByCategory || []).map((row, idx) => (
+            {(scoreByCategory || []).filter(row => row.perfectScore > 0).map((row, idx) => (
               <tr key={row.name} style={{ backgroundColor: idx % 2 === 0 ? '#f7fafc' : '#ffffff' }}>
                 <td style={styles.td}>{row.name}</td>
                 <td style={{ ...styles.td, textAlign: 'center' }}>{Math.round(row.perfectScore)}</td>
@@ -304,14 +305,14 @@ const PrintableReport = forwardRef(({ report }, ref) => {
       {(detailedCategories || []).map((category, catIdx) => (
         <div key={category.name} style={{ ...styles.section, ...(catIdx > 0 ? styles.pageBreak : {}) }}>
           <div style={styles.categoryHeader}>
-            {category.name.toUpperCase()} - {category.percentage}% ({formatScore(category.actualScore, category.perfectScore)})
+            {category.name.toUpperCase()}{category.perfectScore > 0 ? ` - ${category.percentage}% (${formatScore(category.actualScore, category.perfectScore)})` : ''}
           </div>
           
           {(category.subsections || []).map((section) => (
             <div key={`${category.name}-${section.name}`} style={{ marginBottom: '12px' }}>
               {section.name !== 'General' && (
                 <div style={styles.subsectionHeader}>
-                  {section.name} ({formatScore(section.actualScore, section.perfectScore)})
+                  {section.name}{section.perfectScore > 0 ? ` (${formatScore(section.actualScore, section.perfectScore)})` : ''}
                 </div>
               )}
               <table style={styles.table}>
@@ -330,7 +331,7 @@ const PrintableReport = forwardRef(({ report }, ref) => {
                     <tr key={item.audit_item_id || `${item.item_id}-${index}`}>
                       <td style={{ ...styles.td, textAlign: 'center' }}>{index + 1}</td>
                       <td style={styles.td}>{item.title}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>{formatScore(item.mark || 0, item.maxScore || 0)}</td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>{item.nonScored || !item.maxScore ? '—' : formatScore(item.mark || 0, item.maxScore)}</td>
                       <td style={{ ...styles.td, textAlign: 'center', ...getResponseStyle(item) }}>
                         {getResponseText(item)}
                       </td>

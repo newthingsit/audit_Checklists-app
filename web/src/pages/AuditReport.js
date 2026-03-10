@@ -42,6 +42,7 @@ const formatScore = (actual, perfect) => {
   if (!Number.isFinite(actualNum) || !Number.isFinite(perfectNum)) {
     return `${actual ?? '—'}/${perfect ?? '—'}`;
   }
+  if (perfectNum === 0) return '—';
   return `${Math.round(actualNum)}/${Math.round(perfectNum)}`;
 };
 const formatDisplayDate = (value) => {
@@ -248,7 +249,7 @@ const AuditReport = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {(scoreByCategory || []).map((row) => (
+              {(scoreByCategory || []).filter(row => row.perfectScore > 0).map((row) => (
                 <TableRow key={row.name}>
                   <TableCell>{row.name}</TableCell>
                   <TableCell align="center">{Math.round(row.perfectScore)}</TableCell>
@@ -263,13 +264,13 @@ const AuditReport = () => {
         {(detailedCategories || []).map((category) => (
           <Paper key={category.name} sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
-              {category.name} - {category.percentage}% ({formatScore(category.actualScore, category.perfectScore)})
+              {category.name}{category.perfectScore > 0 ? ` - ${category.percentage}% (${formatScore(category.actualScore, category.perfectScore)})` : ''}
             </Typography>
             {(category.subsections || []).map((section) => (
               <Box key={`${category.name}-${section.name}`} sx={{ mb: 3 }}>
                 {section.name !== 'General' && (
                   <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                    {section.name} ({formatScore(section.actualScore, section.perfectScore)})
+                    {section.name}{section.perfectScore > 0 ? ` (${formatScore(section.actualScore, section.perfectScore)})` : ''}
                   </Typography>
                 )}
                 <Table size="small">
@@ -288,7 +289,7 @@ const AuditReport = () => {
                       <TableRow key={item.audit_item_id || `${item.item_id}-${index}`}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>{item.title}</TableCell>
-                        <TableCell align="center">{formatScore(item.mark || 0, item.maxScore || 0)}</TableCell>
+                        <TableCell align="center">{item.nonScored || !item.maxScore ? '—' : formatScore(item.mark || 0, item.maxScore)}</TableCell>
                         <TableCell align="center">
                           {item.selected_option_text ||
                             (String(item.mark || '').toUpperCase() === 'NA' ? 'NA' : (parseFloat(item.mark) > 0 ? 'Yes' : 'No'))}

@@ -318,7 +318,7 @@ function drawScoreBySection(doc, categoryData) {
         percentage: categoryData[key].percentage || 0
       }));
   
-  rows.forEach((row, idx) => {
+  rows.filter(row => (row.perfectScore || 0) > 0).forEach((row, idx) => {
     const percentage = row.percentage !== undefined ? row.percentage : (row.perfectScore > 0 ? Math.round((row.actualScore / row.perfectScore) * 100) : 0);
     const bgColor = idx % 2 === 0 ? COLORS.LIGHT_BG : COLORS.WHITE;
     
@@ -368,7 +368,9 @@ function drawCategoryHeader(doc, categoryName, actualScore, perfectScore) {
   doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, 25).fill(COLORS.SECTION_HEADER);
   doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.WHITE);
   doc.text(
-    `${categoryName.toUpperCase()} - ${percentage}% (${Math.round(actualScore)}/${Math.round(perfectScore)})`,
+    perfectScore > 0
+      ? `${categoryName.toUpperCase()} - ${percentage}% (${Math.round(actualScore)}/${Math.round(perfectScore)})`
+      : categoryName.toUpperCase(),
     PAGE.MARGIN + 10,
     startY + 7,
     { width: PAGE.CONTENT_WIDTH - 20, lineBreak: false }
@@ -386,7 +388,9 @@ function drawSubcategoryHeader(doc, subcategoryName, actualScore, perfectScore) 
   doc.rect(PAGE.MARGIN, startY, PAGE.CONTENT_WIDTH, 22).fill(COLORS.WHITE).stroke(COLORS.TABLE_BORDER);
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.SECTION_HEADER);
   doc.text(
-    `${subcategoryName} - (${Math.round(actualScore)}/${Math.round(perfectScore)})`,
+    perfectScore > 0
+      ? `${subcategoryName} - (${Math.round(actualScore)}/${Math.round(perfectScore)})`
+      : subcategoryName,
     PAGE.MARGIN + 10,
     startY + 6,
     { width: PAGE.CONTENT_WIDTH - 20, align: 'center', lineBreak: false }
