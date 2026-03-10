@@ -1972,7 +1972,7 @@ router.get('/scheduled-audits/csv', authenticate, (req, res) => {
 });
 
 // Get store-based analytics report (grouped by location/store)
-router.get('/analytics-by-store', authenticate, (req, res) => {
+router.get('/analytics-by-store', authenticate, requirePermission('view_analytics', 'manage_analytics'), (req, res) => {
   const userId = req.user.id;
   const isAdmin = isAdminUser(req.user);
   const { date_from, date_to, format } = req.query; // format: 'json' or 'csv'

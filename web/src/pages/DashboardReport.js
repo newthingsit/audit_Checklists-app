@@ -88,14 +88,14 @@ const DashboardReport = () => {
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      const url_download = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url_download;
+      link.href = downloadUrl;
       link.download = `${reportType === 'enhanced' ? 'enhanced-' : ''}dashboard-report-${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url_download);
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       console.error('Error downloading report:', err);
       setError('Failed to download report. Please try again.');
@@ -154,52 +154,6 @@ const DashboardReport = () => {
             >
               {downloading ? 'Downloading...' : 'Download Excel Report'}
             </Button>
-          </Box>
-
-          <Box sx={{ mb: 3, p: 2, bgcolor: 'background.default', borderRadius: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Report Options
-            </Typography>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12} sm={4}>
-                <FormControl fullWidth>
-                  <InputLabel>Report Type</InputLabel>
-                  <Select
-                    value={reportType}
-                    onChange={(e) => setReportType(e.target.value)}
-                    label="Report Type"
-                  >
-                    <MenuItem value="standard">Standard Dashboard Report</MenuItem>
-                    <MenuItem value="enhanced">Enhanced Detailed Report</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="Date From"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="Date To"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-            </Grid>
-            {reportType === 'enhanced' && (
-              <Alert severity="info" sx={{ mt: 2 }}>
-                Enhanced report includes detailed audit tracking with deviations, action plans, and strike rates matching the Excel structure.
-              </Alert>
-            )}
           </Box>
 
           <Box sx={{ mb: 3, p: 2, bgcolor: 'background.default', borderRadius: 2 }}>

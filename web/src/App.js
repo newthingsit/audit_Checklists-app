@@ -382,7 +382,9 @@ function ThemeWrapper() {
                 path="/store-analytics"
                 element={
                   <PrivateRoute>
-                    <StoreAnalytics />
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
+                      <StoreAnalytics />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
@@ -400,7 +402,9 @@ function ThemeWrapper() {
                 path="/location-verification"
                 element={
                   <PrivateRoute>
-                    <LocationVerificationReport />
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
+                      <LocationVerificationReport />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
@@ -457,7 +461,9 @@ function ThemeWrapper() {
                 path="/scorecard"
                 element={
                   <PrivateRoute>
-                    <MonthlyScorecard />
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
+                      <MonthlyScorecard />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
@@ -465,7 +471,9 @@ function ThemeWrapper() {
                 path="/scheduled-report"
                 element={
                   <PrivateRoute>
-                    <ScheduledAuditsReport />
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
+                      <ScheduledAuditsReport />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
@@ -473,7 +481,9 @@ function ThemeWrapper() {
                 path="/recurring-failures"
                 element={
                   <PrivateRoute>
-                    <RecurringFailures />
+                    <PermissionRoute requiredPermissions={['view_analytics']}>
+                      <RecurringFailures />
+                    </PermissionRoute>
                   </PrivateRoute>
                 }
               />
