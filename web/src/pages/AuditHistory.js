@@ -66,6 +66,7 @@ const AuditHistory = () => {
   const [audits, setAudits] = useState([]);
   const [filteredAudits, setFilteredAudits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [globalStats, setGlobalStats] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
@@ -88,6 +89,10 @@ const AuditHistory = () => {
   useEffect(() => {
     fetchAudits();
     fetchTemplates();
+    // Fetch accurate global stats from analytics
+    axios.get('/api/analytics/dashboard').then(res => {
+      if (res.data) setGlobalStats(res.data);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -190,10 +195,25 @@ const AuditHistory = () => {
 
   const fetchAudits = async () => {
     try {
-      const response = await axios.get('/api/audits');
-      const auditsData = response.data.audits || [];
-      setAudits(auditsData);
-      setFilteredAudits(auditsData);
+      // Fetch first page to get total count
+      const firstPage = await axios.get('/api/audits?limit=100&page=1');
+      let allAudits = firstPage.data.audits || [];
+      const pagination = firstPage.data.pagination;
+      
+      // If there are more pages, fetch them all
+      if (pagination && pagination.totalPages > 1) {
+        const remainingPages = [];
+        for (let p = 2; p <= pagination.totalPages; p++) {
+          remainingPages.push(axios.get(`/api/audits?limit=100&page=${p}`));
+        }
+        const responses = await Promise.all(remainingPages);
+        responses.forEach(r => {
+          allAudits = allAudits.concat(r.data.audits || []);
+        });
+      }
+      
+      setAudits(allAudits);
+      setFilteredAudits(allAudits);
     } catch (error) {
       console.error('Error fetching audits:', error);
     } finally {
@@ -284,8 +304,9 @@ const AuditHistory = () => {
   const allSelected = filteredAudits.length > 0 && selectedAudits.size === filteredAudits.length;
   const someSelected = selectedAudits.size > 0 && selectedAudits.size < filteredAudits.length;
 
-  // Calculate statistics
-  const stats = {
+  // Calculate statistics - use global stats when no filters are active, otherwise compute from filtered data
+  const isFiltered = searchTerm || statusFilter !== 'all' || templateFilter !== 'all' || quickDateFilter !== 'all' || dateRange.from || dateRange.to;
+  const stats = isFiltered ? {
     total: filteredAudits.length,
     completed: filteredAudits.filter(a => a.status === 'completed').length,
     inProgress: filteredAudits.filter(a => a.status === 'in_progress').length,
@@ -294,6 +315,18 @@ const AuditHistory = () => {
       : 0,
     completionRate: filteredAudits.length > 0
       ? Math.round((filteredAudits.filter(a => a.status === 'completed').length / filteredAudits.length) * 100)
+      : 0
+  } : {
+    total: globalStats?.total ?? audits.length,
+    completed: globalStats?.completed ?? audits.filter(a => a.status === 'completed').length,
+    inProgress: globalStats?.inProgress ?? audits.filter(a => a.status === 'in_progress').length,
+    averageScore: globalStats?.avgScore != null ? Math.round(globalStats.avgScore) : (
+      audits.filter(a => a.score !== null).length > 0
+        ? Math.round(audits.filter(a => a.score !== null).reduce((sum, a) => sum + (a.score || 0), 0) / audits.filter(a => a.score !== null).length)
+        : 0
+    ),
+    completionRate: (globalStats?.total || audits.length) > 0
+      ? Math.round(((globalStats?.completed ?? audits.filter(a => a.status === 'completed').length) / (globalStats?.total ?? audits.length)) * 100)
       : 0
   };
 
