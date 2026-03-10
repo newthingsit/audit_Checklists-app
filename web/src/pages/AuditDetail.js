@@ -1028,7 +1028,12 @@ const AuditDetail = () => {
                           </td>
                           <td style={{ padding: '10px' }}>
                             <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'} sx={{ fontSize: '0.85rem' }}>
-                              {item.corrective_action || '—'}
+                              {(() => {
+                                const t = item.corrective_action;
+                                if (!t) return '—';
+                                try { const p = JSON.parse(t); if (p && Array.isArray(p.paths)) return 'Signature captured'; } catch {}
+                                return t;
+                              })()}
                             </Typography>
                           </td>
                           <td style={{ padding: '10px' }}>
@@ -1124,7 +1129,12 @@ const AuditDetail = () => {
                         Corrective Action
                       </Typography>
                       <Typography variant="body2" color={item.corrective_action ? 'text.primary' : 'text.secondary'}>
-                        {item.corrective_action || 'Not yet defined'}
+                        {(() => {
+                          const t = item.corrective_action;
+                          if (!t) return 'Not yet defined';
+                          try { const p = JSON.parse(t); if (p && Array.isArray(p.paths)) return 'Signature captured'; } catch {}
+                          return t;
+                        })()}
                       </Typography>
                     </Box>
                     

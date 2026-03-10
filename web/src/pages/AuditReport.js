@@ -401,11 +401,23 @@ const AuditReport = () => {
               <Grid item xs={12} md={6}>
                 <Typography variant="caption" color="text.secondary">Signature</Typography>
                 {acknowledgement.signatureData ? (
-                  <img
-                    src={acknowledgement.signatureData}
-                    alt="Signature"
-                    style={{ maxWidth: 180, maxHeight: 60 }}
-                  />
+                  (() => {
+                    try {
+                      const parsed = JSON.parse(acknowledgement.signatureData);
+                      if (parsed && Array.isArray(parsed.paths) && parsed.paths.length > 0) {
+                        const w = parsed.width || 300;
+                        const h = parsed.height || 200;
+                        return (
+                          <svg width={Math.min(w, 180)} height={Math.min(h, 60)} viewBox={`0 0 ${w} ${h}`} style={{ display: 'block' }}>
+                            {parsed.paths.map((d, i) => (
+                              <path key={i} d={d} stroke="#333" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            ))}
+                          </svg>
+                        );
+                      }
+                    } catch {}
+                    return <img src={acknowledgement.signatureData} alt="Signature" style={{ maxWidth: 180, maxHeight: 60 }} />;
+                  })()
                 ) : (
                   <Typography>—</Typography>
                 )}
@@ -453,7 +465,11 @@ const AuditReport = () => {
                         {action.severity || 'MAJOR'}
                       </Box>
                     </TableCell>
-                    <TableCell>{action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.'}</TableCell>
+                    <TableCell>{(() => {
+                      const text = action.correctiveAction || action.todo || action.remarks || '';
+                      try { const p = JSON.parse(text); if (p && Array.isArray(p.paths)) return 'Signature captured'; } catch {}
+                      return text || 'Address the audit deviation noted for this item.';
+                    })()}</TableCell>
                     <TableCell align="center">{action.assignedTo}</TableCell>
                     <TableCell align="center">{formatDisplayDate(action.dueDate)}</TableCell>
                     <TableCell align="center">

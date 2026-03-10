@@ -510,7 +510,11 @@ const PrintableReport = forwardRef(({ report }, ref) => {
                     </span>
                   </td>
                   <td style={styles.td}>
-                    {action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.'}
+                    {(() => {
+                      const text = action.correctiveAction || action.todo || action.remarks || '';
+                      try { const p = JSON.parse(text); if (p && Array.isArray(p.paths)) return 'Signature captured'; } catch {}
+                      return text || 'Address the audit deviation noted for this item.';
+                    })()}
                   </td>
                   <td style={{ ...styles.td, textAlign: 'center' }}>{action.assignedTo || 'Auditor'}</td>
                   <td style={{ ...styles.td, textAlign: 'center' }}>{formatDisplayDate(action.dueDate, false)}</td>

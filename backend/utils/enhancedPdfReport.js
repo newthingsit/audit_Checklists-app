@@ -905,7 +905,9 @@ function drawActionPlanSection(doc, actionPlanItems) {
     
     // Column 5: Corrective Action (use correctiveAction field, not todo)
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.TEXT_PRIMARY);
-    const correctiveText = action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.';
+    let correctiveText = action.correctiveAction || action.todo || action.remarks || 'Address the audit deviation noted for this item.';
+    // Skip raw signature path data
+    try { const p = JSON.parse(correctiveText); if (p && Array.isArray(p.paths)) correctiveText = 'Signature captured'; } catch {}
     doc.text(correctiveText, x + 2, rowY + 5, { width: colWidths[4] - 4, height: rowHeight - 10, lineBreak: true, ellipsis: true });
     x += colWidths[4];
     

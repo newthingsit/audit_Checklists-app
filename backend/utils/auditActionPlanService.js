@@ -342,7 +342,15 @@ function _autoCreateActionPlan(dbInstance, auditId, top3, allDeviations, callbac
           const auditorName = auditRow?.auditor_name || 'Auditor';
 
           const insertPromises = top3.map((deviation) => new Promise((resolve, reject) => {
-            const correctiveAction = deviation.comment || deviation.deviation_reason || `Corrective action required for: ${deviation.title}`;
+            // Skip signature path data (JSON with "paths" array from mobile signatures)
+            let commentText = deviation.comment;
+            if (commentText && typeof commentText === 'string') {
+              try {
+                const parsed = JSON.parse(commentText);
+                if (parsed && Array.isArray(parsed.paths)) commentText = null;
+              } catch { /* not JSON, use as-is */ }
+            }
+            const correctiveAction = commentText || deviation.deviation_reason || `Corrective action required for: ${deviation.title}`;
             const preventiveAction = deviation.preventive_action || `Prevent recurrence in ${deviation.category || 'this category'}`;
             const rootCause = deviation.root_cause || deviation.deviation_reason || `Process gap detected in ${deviation.category || 'General'}`;
             const ownerRole = deviation.owner_role || 'Store Manager';
