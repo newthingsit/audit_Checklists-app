@@ -3,6 +3,17 @@ import { Button, IconButton, Tooltip } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import PrintPreviewModal from './PrintPreviewModal';
 
+// Escape HTML to prevent XSS when interpolating user data into HTML templates
+const escapeHtml = (text) => {
+  if (text == null) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 const PrintButton = ({ audit, variant = 'icon', ...props }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -169,25 +180,25 @@ const PrintButton = ({ audit, variant = 'icon', ...props }) => {
         </head>
         <body>
           <div class="header">
-            <h1>${audit.restaurant_name || 'Restaurant Audit'}</h1>
+            <h1>${escapeHtml(audit.restaurant_name || 'Restaurant Audit')}</h1>
             <div class="header-info">
               <div class="info-item">
-                <span class="info-label">Template: </span>${audit.template_name || 'N/A'}
+                <span class="info-label">Template: </span>${escapeHtml(audit.template_name || 'N/A')}
               </div>
               <div class="info-item">
-                <span class="info-label">Store: </span>${audit.location || 'N/A'}
+                <span class="info-label">Store: </span>${escapeHtml(audit.location || 'N/A')}
               </div>
               <div class="info-item">
                 <span class="info-label">Date: </span>${new Date(audit.created_at).toLocaleDateString()}
               </div>
               <div class="info-item">
-                <span class="status-badge status-${audit.status || 'in_progress'}">
-                  ${(audit.status || 'in_progress').toUpperCase()}
+                <span class="status-badge status-${escapeHtml(audit.status || 'in_progress')}">
+                  ${escapeHtml((audit.status || 'in_progress').toUpperCase())}
                 </span>
               </div>
             </div>
-            ${audit.score !== null ? `<div class="score">Score: ${audit.score}%</div>` : ''}
-            ${audit.notes ? `<div style="margin-top: 15px; padding: 10px; background-color: #f5f5f5; border-left: 3px solid #1976d2;"><strong>Notes:</strong> ${audit.notes}</div>` : ''}
+            ${audit.score !== null ? `<div class="score">Score: ${Number(audit.score)}%</div>` : ''}
+            ${audit.notes ? `<div style="margin-top: 15px; padding: 10px; background-color: #f5f5f5; border-left: 3px solid #1976d2;"><strong>Notes:</strong> ${escapeHtml(audit.notes)}</div>` : ''}
           </div>
 
           <div class="items-section">
@@ -196,15 +207,15 @@ const PrintButton = ({ audit, variant = 'icon', ...props }) => {
               <div class="item">
                 <div class="item-header">
                   <div>
-                    <span class="category-badge">${item.category || 'General'}</span>
-                    <span class="item-title">${index + 1}. ${item.title || 'Untitled Item'}</span>
+                    <span class="category-badge">${escapeHtml(item.category || 'General')}</span>
+                    <span class="item-title">${index + 1}. ${escapeHtml(item.title || 'Untitled Item')}</span>
                   </div>
-                  <span class="item-status status-${item.status || 'pending'}-item">
-                    ${(item.status || 'pending').toUpperCase()}
+                  <span class="item-status status-${escapeHtml(item.status || 'pending')}-item">
+                    ${escapeHtml((item.status || 'pending').toUpperCase())}
                   </span>
                 </div>
-                ${item.description ? `<div class="item-description">${item.description}</div>` : ''}
-                ${item.comment ? `<div class="item-comment"><strong>Comment:</strong> ${item.comment}</div>` : ''}
+                ${item.description ? `<div class="item-description">${escapeHtml(item.description)}</div>` : ''}
+                ${item.comment ? `<div class="item-comment"><strong>Comment:</strong> ${escapeHtml(item.comment)}</div>` : ''}
                 ${item.required ? '<div style="margin-top: 8px; font-size: 10px; color: #d32f2f;"><strong>Required Item</strong></div>' : ''}
               </div>
             `).join('')}
@@ -218,6 +229,10 @@ const PrintButton = ({ audit, variant = 'icon', ...props }) => {
       </html>
     `;
 
+    if (!printWindow || printWindow.closed) {
+      alert('Popup blocked. Please allow popups for this site and try again.');
+      return;
+    }
     printWindow.document.write(printContent);
     printWindow.document.close();
     
@@ -225,7 +240,7 @@ const PrintButton = ({ audit, variant = 'icon', ...props }) => {
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
-    }, 250);
+    }, 500);
   };
 
   return (

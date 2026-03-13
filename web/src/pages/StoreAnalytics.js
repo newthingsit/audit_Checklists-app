@@ -154,6 +154,10 @@ const StoreAnalytics = () => {
   };
 
   const handleFilter = () => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      toast.error('"Date From" cannot be after "Date To"');
+      return;
+    }
     fetchStoreAnalytics();
   };
 
@@ -279,7 +283,7 @@ const StoreAnalytics = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Total Stores
                 </Typography>
-                <Typography variant="h4">{data.summary.total_stores}</Typography>
+                <Typography variant="h4">{data.summary?.total_stores ?? 0}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -290,7 +294,7 @@ const StoreAnalytics = () => {
                   Total Audits
                 </Typography>
                 <Typography variant="h4" color="primary.main">
-                  {data.summary.total_audits}
+                  {data.summary?.total_audits ?? 0}
                 </Typography>
               </CardContent>
             </Card>
@@ -302,9 +306,9 @@ const StoreAnalytics = () => {
                   Date Range
                 </Typography>
                 <Typography variant="body1">
-                  {data.summary.date_range.from === 'all' && data.summary.date_range.to === 'all'
+                  {data.summary?.date_range?.from === 'all' && data.summary?.date_range?.to === 'all'
                     ? 'All Time'
-                    : `${data.summary.date_range.from || 'Start'} to ${data.summary.date_range.to || 'End'}`}
+                    : `${data.summary?.date_range?.from || 'Start'} to ${data.summary?.date_range?.to || 'End'}`}
                 </Typography>
               </CardContent>
             </Card>
@@ -414,7 +418,7 @@ const StoreAnalytics = () => {
                             Avg Score
                           </Typography>
                           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                            {store.average_score.toFixed(1)}%
+                            {store.average_score != null ? store.average_score.toFixed(1) : 'N/A'}%
                           </Typography>
                         </Grid>
                       </Grid>
@@ -483,7 +487,7 @@ const StoreAnalytics = () => {
                           {store.in_progress_audits}
                         </TableCell>
                         <TableCell align="right" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
-                          {store.average_score.toFixed(1)}%
+                          {store.average_score != null ? store.average_score.toFixed(1) : 'N/A'}%
                         </TableCell>
                         <TableCell align="right">
                           {store.min_score !== null ? `${store.min_score}%` : '-'}

@@ -116,19 +116,29 @@ const RecurringFailures = () => {
       // Create CSV data
       const items = data?.all_items || [];
       const headers = ['Item Title', 'Category', 'Template', 'Failure Count', 'Stores Affected', 'Last Failure', 'Critical'];
+      // Sanitize cell values to prevent CSV injection
+      const sanitizeCell = (value) => {
+        const str = String(value ?? '');
+        // Escape quotes and wrap in quotes; prefix formula-triggering chars
+        const escaped = str.replace(/"/g, '""');
+        if (/^[=+\-@\t\r]/.test(escaped)) {
+          return `"'${escaped}"`;
+        }
+        return `"${escaped}"`;
+      };
       const csvData = items.map(item => [
-        item.title,
-        item.category || 'N/A',
-        item.template_name,
-        item.failure_count,
-        item.stores_affected,
-        item.last_failure_date ? new Date(item.last_failure_date).toLocaleDateString() : 'N/A',
-        item.is_critical ? 'Yes' : 'No'
+        sanitizeCell(item.title),
+        sanitizeCell(item.category || 'N/A'),
+        sanitizeCell(item.template_name),
+        sanitizeCell(item.failure_count),
+        sanitizeCell(item.stores_affected),
+        sanitizeCell(item.last_failure_date ? new Date(item.last_failure_date).toLocaleDateString() : 'N/A'),
+        sanitizeCell(item.is_critical ? 'Yes' : 'No')
       ]);
 
       const csvContent = [
         headers.join(','),
-        ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+        ...csvData.map(row => row.join(','))
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

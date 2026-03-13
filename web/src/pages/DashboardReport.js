@@ -63,6 +63,10 @@ const DashboardReport = () => {
   const [reportType, setReportType] = useState('standard'); // 'standard' or 'enhanced'
 
   const handleDownloadExcel = async () => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setError('"Date From" cannot be after "Date To".');
+      return;
+    }
     try {
       setDownloading(true);
       setError(null);

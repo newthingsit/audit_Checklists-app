@@ -458,7 +458,7 @@ const LocationVerificationReport = () => {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <GpsFixedIcon fontSize="small" color="primary" />
                             <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                              {audit.gps_latitude.toFixed(6)}, {audit.gps_longitude.toFixed(6)}
+                              {audit.gps_latitude != null ? audit.gps_latitude.toFixed(6) : 'N/A'}, {audit.gps_longitude != null ? audit.gps_longitude.toFixed(6) : 'N/A'}
                             </Typography>
                           </Box>
                           {audit.gps_accuracy && (

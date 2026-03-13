@@ -93,7 +93,7 @@ const Analytics = () => {
                 <Typography color="textSecondary" gutterBottom>
                   Total Audits
                 </Typography>
-                <Typography variant="h4">{data.total}</Typography>
+                <Typography variant="h4">{data.total ?? 0}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -104,7 +104,7 @@ const Analytics = () => {
                   Completed
                 </Typography>
                 <Typography variant="h4" color="success.main">
-                  {data.completed}
+                  {data.completed ?? 0}
                 </Typography>
               </CardContent>
             </Card>
@@ -116,7 +116,7 @@ const Analytics = () => {
                   In Progress
                 </Typography>
                 <Typography variant="h4" color="warning.main">
-                  {data.inProgress}
+                  {data.inProgress ?? 0}
                 </Typography>
               </CardContent>
             </Card>
@@ -128,7 +128,7 @@ const Analytics = () => {
                   Average Score
                 </Typography>
                 <Typography variant="h4" color="primary.main">
-                  {data.avgScore}%
+                  {data.avgScore ?? 0}%
                 </Typography>
               </CardContent>
             </Card>
@@ -144,7 +144,7 @@ const Analytics = () => {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={data.byStatus}
+                      data={data.byStatus || []}
                       dataKey="count"
                       nameKey="status"
                       cx="50%"
@@ -152,7 +152,7 @@ const Analytics = () => {
                       outerRadius={80}
                       label
                     >
-                      {data.byStatus.map((entry, index) => (
+                      {(data.byStatus || []).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -172,7 +172,7 @@ const Analytics = () => {
                   Monthly Trends
                 </Typography>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={data.byMonth}>
+                  <BarChart data={data.byMonth || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis />
