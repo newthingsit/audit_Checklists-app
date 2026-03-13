@@ -3492,7 +3492,9 @@ const AuditFormScreen = () => {
       // This allows users to complete different categories in the same audit session
       try {
         const batchUrl = `${API_BASE_URL}/audits/${activeAuditId}/items/batch`;
-        const payload = { items: allBatchItems, audit_category: null };
+        // enforce_required: false — allow partial saves during mid-audit.
+        // Completion validation is handled by the separate PUT /audits/:id/complete endpoint.
+        const payload = { items: allBatchItems, audit_category: null, enforce_required: false };
 
         // Retry batch update on transient failures (especially 429/rate limit)
         let batchAttempt = 0;
