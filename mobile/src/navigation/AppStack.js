@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
@@ -159,6 +159,8 @@ const AppStack = () => {
   const { user } = useAuth();
   const userPermissions = user?.permissions || [];
 
+  // Compute permission flags (used only for hiding tab bar buttons,
+  // NOT for conditionally mounting/unmounting Tab.Screen components).
   const canViewTemplates = hasPermission(userPermissions, 'display_templates') ||
                           hasPermission(userPermissions, 'view_templates') ||
                           hasPermission(userPermissions, 'manage_templates') ||
@@ -171,44 +173,50 @@ const AppStack = () => {
                         hasPermission(userPermissions, 'view_own_audits') ||
                         isAdmin(user);
 
+  // Memoize screen options to prevent unnecessary re-renders of the navigator
+  const screenOptions = useMemo(() => ({ route }) => ({
+    tabBarIcon: ({ focused }) => {
+      let iconName;
+      if (route.name === 'Dashboard') iconName = 'dashboard';
+      else if (route.name === 'Checklists') iconName = 'checklist';
+      else if (route.name === 'History') iconName = 'history';
+      else if (route.name === 'Tasks') iconName = 'assignment';
+      else if (route.name === 'Profile') iconName = 'person';
+      return <TabIcon focused={focused} iconName={iconName} />;
+    },
+    tabBarActiveTintColor: themeConfig.primary.main,
+    tabBarInactiveTintColor: themeConfig.text.disabled,
+    tabBarLabelStyle: styles.tabBarLabel,
+    tabBarStyle: styles.tabBar,
+    headerShown: false,
+  }), []);
+
+  // IMPORTANT: All Tab.Screen components are ALWAYS mounted.
+  // Conditional mount/unmount of tabs causes the entire stack (including
+  // an active AuditForm) to be destroyed and recreated when user state
+  // changes (e.g. token refresh, app foreground). Tabs whose features the
+  // user cannot access simply hide their tab-bar button instead.
   return (
     <Tab.Navigator
       initialRouteName="Dashboard"
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused }) => {
-          let iconName;
-
-          if (route.name === 'Dashboard') {
-            iconName = 'dashboard';
-          } else if (route.name === 'Checklists') {
-            iconName = 'checklist';
-          } else if (route.name === 'History') {
-            iconName = 'history';
-          } else if (route.name === 'Tasks') {
-            iconName = 'assignment';
-          } else if (route.name === 'Profile') {
-            iconName = 'person';
-          }
-
-          return <TabIcon focused={focused} iconName={iconName} />;
-        },
-        tabBarActiveTintColor: themeConfig.primary.main,
-        tabBarInactiveTintColor: themeConfig.text.disabled,
-        tabBarLabelStyle: styles.tabBarLabel,
-        tabBarStyle: styles.tabBar,
-        headerShown: false,
-      })}
+      screenOptions={screenOptions}
     >
       <Tab.Screen name="Dashboard" component={DashboardStack} />
-      {canViewTemplates && (
-        <Tab.Screen name="Checklists" component={ChecklistsStack} />
-      )}
-      {canViewAudits && (
-        <Tab.Screen name="History" component={HistoryStack} />
-      )}
-      {canViewTasks && (
-        <Tab.Screen name="Tasks" component={TasksScreen} />
-      )}
+      <Tab.Screen
+        name="Checklists"
+        component={ChecklistsStack}
+        options={canViewTemplates ? undefined : { tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HistoryStack}
+        options={canViewAudits ? undefined : { tabBarButton: () => null }}
+      />
+      <Tab.Screen
+        name="Tasks"
+        component={TasksScreen}
+        options={canViewTasks ? undefined : { tabBarButton: () => null }}
+      />
       <Tab.Screen name="Profile" component={ProfileStack} />
     </Tab.Navigator>
   );

@@ -6,6 +6,20 @@ import { API_BASE_URL } from '../config/api';
 import { setAuthEventListener } from '../services/ApiService';
 import { setSentryUser } from '../config/sentry';
 
+/**
+ * Shallow-compare two user objects on the fields that matter for rendering.
+ * Returns true when the values are equivalent and setUser can be skipped,
+ * preventing unnecessary re-renders of the entire navigation tree.
+ */
+const isUserEqual = (prev, next) => {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.id !== next.id || prev.role !== next.role || prev.name !== next.name || prev.email !== next.email) return false;
+  const prevPerms = JSON.stringify(prev.permissions || []);
+  const nextPerms = JSON.stringify(next.permissions || []);
+  return prevPerms === nextPerms;
+};
+
 const AuthContext = createContext();
 
 // Token storage key
@@ -38,7 +52,9 @@ export const AuthProvider = ({ children }) => {
         timeout: 15000 // 15 second timeout for auth requests
       });
       const userData = response.data.user;
-      setUser(userData);
+      // Only update state when the user actually changed to avoid
+      // re-rendering the entire navigation tree (which unmounts active screens).
+      setUser(prev => isUserEqual(prev, userData) ? prev : userData);
       // Set Sentry user context for crash reports
       setSentryUser(userData);
       return userData;
@@ -200,6 +216,7 @@ export const AuthProvider = ({ children }) => {
         const originalRequest = error.config;
         const status = error.response?.status;
 
+        // Attempt silent token refresh on first 401 (skip auth endpoints)
         if (
           status === 401 &&
           !originalRequest?._retry &&
@@ -215,9 +232,17 @@ export const AuthProvider = ({ children }) => {
             };
             return axios(originalRequest);
           }
+          // Silent refresh failed — session is truly expired
+          handleAuthError({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
+          return Promise.reject(error);
         }
 
-        if (status === 401 || status === 403) {
+        // Only trigger logout for 401/403 on auth-related endpoints
+        // (non-auth 401s are handled by the retry block above)
+        if (
+          (status === 401 || status === 403) &&
+          originalRequest?._retry
+        ) {
           handleAuthError({ type: 'AUTH_ERROR', message: 'Session expired. Please login again.' });
         }
         return Promise.reject(error);
