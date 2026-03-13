@@ -52,9 +52,7 @@ const DashboardScreen = () => {
 
   // Keep template count in sync with shared context
   useEffect(() => {
-    if (sharedTemplates.length > 0) {
-      setStats(prev => ({ ...prev, templates: sharedTemplates.length }));
-    }
+    setStats(prev => ({ ...prev, templates: sharedTemplates.length }));
   }, [sharedTemplates]);
 
   useEffect(() => {
@@ -161,8 +159,8 @@ const DashboardScreen = () => {
 
       const nextStats = { ...lastStatsRef.current };
 
-      // Use shared template context for count
-      nextStats.templates = sharedTemplates.length;
+      // Template count is kept in sync by the useEffect on sharedTemplates;
+      // do NOT overwrite here — sharedTemplates in this closure may be stale.
 
       if (actionsRes.ok) {
         const pendingActions = (actionsRes.data?.actions || []).length;
