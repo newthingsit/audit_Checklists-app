@@ -442,6 +442,18 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   }
 }
 
+/* Extra small phone fixes (iPhone SE, 320px) */
+@media (max-width: 360px) {
+  .MuiFormControlLabel-root {
+    padding: 8px !important;
+    font-size: 0.85rem !important;
+  }
+  
+  .MuiFormControlLabel-label {
+    font-size: 0.85rem !important;
+  }
+}
+
 /* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
   /* Fix for iOS momentum scrolling - legacy support */

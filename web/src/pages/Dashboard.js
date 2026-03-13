@@ -305,7 +305,7 @@ const Dashboard = () => {
     <Layout>
       <Container maxWidth="xl" sx={{ px: isMobile ? 2 : 3 }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant={isMobile ? 'h5' : 'h4'} gutterBottom sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
+          <Typography variant={isMobile ? 'h6' : 'h4'} gutterBottom noWrap sx={{ fontWeight: 600, mb: 1, color: '#333' }}>
             Dashboard
           </Typography>
           <Typography variant={isMobile ? 'body2' : 'body1'} sx={{ color: '#666' }}>
@@ -614,7 +614,7 @@ const Dashboard = () => {
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                       Audits by Status
                     </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
+                    <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
                       <PieChart>
                         <Pie
                           data={pieData}
@@ -646,7 +646,7 @@ const Dashboard = () => {
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                       Audit Trends (Last 6 Months)
                     </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
+                    <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
                       <BarChart data={monthTrendData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="month" />
@@ -669,7 +669,7 @@ const Dashboard = () => {
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                       Performance Trends (Last 12 Months)
                     </Typography>
-                    <ResponsiveContainer width="100%" height={350}>
+                    <ResponsiveContainer width="100%" height={isMobile ? 250 : 350}>
                       <LineChart data={trendChartData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="period" />
@@ -714,14 +714,14 @@ const Dashboard = () => {
                       '& .MuiTabs-indicator': { backgroundColor: 'white' }
                     }}
                   >
-                    <Tab label="Top Stores" icon={<StoreIcon />} iconPosition="start" />
-                    <Tab label="Top Auditors" icon={<PersonIcon />} iconPosition="start" />
+                    <Tab label={isMobile ? 'Stores' : 'Top Stores'} icon={<StoreIcon />} iconPosition="start" />
+                    <Tab label={isMobile ? 'Auditors' : 'Top Auditors'} icon={<PersonIcon />} iconPosition="start" />
                   </Tabs>
                   
                   {leaderboardTab === 0 && leaderboard.stores.length > 0 && (
                     <Grid container spacing={2}>
                       {leaderboard.stores.map((store, index) => (
-                        <Grid item xs={12} sm={6} md={4} lg={2.4} key={store.location_id || index}>
+                        <Grid item xs={6} sm={6} md={4} lg={2.4} key={store.location_id || index}>
                           <Paper sx={{ 
                             p: 2, 
                             textAlign: 'center',
@@ -759,7 +759,7 @@ const Dashboard = () => {
                   {leaderboardTab === 1 && leaderboard.auditors.length > 0 && (
                     <Grid container spacing={2}>
                       {leaderboard.auditors.map((auditor, index) => (
-                        <Grid item xs={12} sm={6} md={4} lg={2.4} key={auditor.user_id || index}>
+                        <Grid item xs={6} sm={6} md={4} lg={2.4} key={auditor.user_id || index}>
                           <Paper sx={{ 
                             p: 2, 
                             textAlign: 'center',

@@ -3254,14 +3254,15 @@ const AuditForm = () => {
         )}
 
         {/* Signature Modal */}
-        <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth={isMobile ? 'xs' : 'sm'} fullWidth
+          sx={{ '& .MuiDialog-paper': { mx: isMobile ? 1 : 2 } }}>
           <DialogTitle>Draw Signature</DialogTitle>
           <DialogContent>
-            <Box sx={{ border: '1px solid grey', borderRadius: 1, overflow: 'hidden' }}>
+            <Box sx={{ border: '1px solid grey', borderRadius: 1, overflow: 'hidden', maxWidth: '100%' }}>
               <SignatureCanvas
                 ref={signatureRef}
                 penColor='black'
-                canvasProps={{ width: 500, height: 200, className: 'sigCanvas', 'data-testid': 'signature-canvas' }}
+                canvasProps={{ width: isMobile ? 280 : 500, height: isMobile ? 150 : 200, className: 'sigCanvas', 'data-testid': 'signature-canvas', style: { width: '100%', height: 'auto' } }}
                 backgroundColor='white'
               />
             </Box>

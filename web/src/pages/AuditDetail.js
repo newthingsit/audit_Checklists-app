@@ -921,13 +921,13 @@ const AuditDetail = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e0e0e0' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#1a365d', color: 'white' }}>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '90px' }}>Category</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, maxWidth: '90px' }}>Category</th>
                     <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Deviation</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Severity</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '200px' }}>Corrective Action</th>
-                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, width: '110px' }}>Owner</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '90px' }}>Target Date</th>
-                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '80px' }}>Status</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, maxWidth: '80px' }}>Severity</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, maxWidth: '200px' }}>Corrective Action</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, maxWidth: '110px' }}>Owner</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, maxWidth: '90px' }}>Target Date</th>
+                    <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, maxWidth: '80px' }}>Status</th>
                     <th style={{ padding: '12px', textAlign: 'center', fontWeight: 600, width: '50px' }}>Edit</th>
                   </tr>
                 </thead>

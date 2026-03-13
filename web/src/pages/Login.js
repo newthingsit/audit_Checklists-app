@@ -154,6 +154,7 @@ const Login = () => {
     }}>
       {/* Floating shapes */}
       <Box sx={{
+        display: { xs: 'none', sm: 'block' },
         position: 'absolute',
         width: 500,
         height: 500,
@@ -168,6 +169,7 @@ const Login = () => {
         },
       }} />
       <Box sx={{
+        display: { xs: 'none', sm: 'block' },
         position: 'absolute',
         width: 350,
         height: 350,
