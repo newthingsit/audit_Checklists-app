@@ -1824,6 +1824,9 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
         );
       });
 
+      // Build set of valid option IDs to detect stale references from template edits
+      const validOptionIds = new Set(Object.keys(optionMarkById).map(Number));
+
       const isFilledValue = (value) =>
         value !== undefined && value !== null && String(value).trim() !== '';
 
@@ -1900,6 +1903,13 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
           if (hasSelectedOption && item.selected_option_id !== null && String(item.selected_option_id).trim() !== '') {
             const parsed = parseInt(item.selected_option_id, 10);
             selected_option_id = Number.isFinite(parsed) ? parsed : null;
+          }
+
+          // Validate selected_option_id exists in DB to prevent FK constraint violations
+          // (template edits delete+recreate options with new IDs, stale IDs cause errors)
+          if (selected_option_id !== null && !validOptionIds.has(selected_option_id)) {
+            logger.warn(`[Batch Update] Stale selected_option_id ${selected_option_id} for item ${itemId} — option no longer exists, clearing to NULL`);
+            selected_option_id = null;
           }
           
           if (isNaN(itemId)) {
