@@ -123,21 +123,7 @@ const handleScheduledAuditCompletion = (dbInstance, auditId, auditStatus = null)
 // -----------------------------------------------------------------------
 
 function sendAuditCompletionEmail(dbInstance, auditId, score) {
-  const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
-  const isSqlServer = dbType === 'mssql' || dbType === 'sqlserver';
-
-  const query = isSqlServer
-    ? `SELECT a.id, a.status, a.completed_at,
-              t.name as template_name, l.name as location_name,
-              u.name as auditor_name, u.email as auditor_email,
-              m.email as manager_email, m.name as manager_name
-       FROM audits a
-       LEFT JOIN templates t ON a.template_id = t.id
-       LEFT JOIN locations l ON a.location_id = l.id
-       LEFT JOIN users u ON a.auditor_id = u.id
-       LEFT JOIN users m ON l.manager_id = m.id
-       WHERE a.id = @auditId`
-    : `SELECT a.id, a.status, a.completed_at,
+  const query = `SELECT a.id, a.status, a.completed_at,
               t.name as template_name, l.name as location_name,
               u.name as auditor_name, u.email as auditor_email,
               m.email as manager_email, m.name as manager_name
@@ -148,21 +134,8 @@ function sendAuditCompletionEmail(dbInstance, auditId, score) {
        LEFT JOIN users m ON l.manager_id = m.id
        WHERE a.id = ?`;
 
-  const executeQuery = (cb) => {
-    const canUseSqlServer = isSqlServer && dbInstance && typeof dbInstance.request === 'function';
-    if (canUseSqlServer) {
-      const request = dbInstance.request();
-      request.input('auditId', auditId);
-      request.query(query, cb);
-      return;
-    }
-    dbInstance.get(query, [auditId], cb);
-  };
-
-  executeQuery((err, result) => {
+  dbInstance.get(query, [auditId], (err, audit) => {
     if (err) { logger.error(`[Audit Completion Email] Error fetching audit details: ${err.message}`); return; }
-
-    const audit = isSqlServer ? (result.recordset?.[0]) : result;
     if (!audit) { logger.warn(`[Audit Completion Email] Audit ${auditId} not found`); return; }
 
     const recipients = [];
