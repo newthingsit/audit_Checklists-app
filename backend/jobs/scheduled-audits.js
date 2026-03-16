@@ -51,7 +51,7 @@ const processScheduledAudits = async () => {
 
             // Get template items to calculate total_items
             dbInstance.all(
-              'SELECT id FROM checklist_items WHERE template_id = ?',
+              'SELECT id FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0',
               [scheduledAudit.template_id],
               (err, items) => {
                 if (err) {

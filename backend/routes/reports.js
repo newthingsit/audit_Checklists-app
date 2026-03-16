@@ -752,23 +752,23 @@ router.get('/audits/csv', authenticate, (req, res) => {
     // SQL Server: Use STUFF with FOR XML PATH for better compatibility
     categorySubquery = `(SELECT STUFF((SELECT DISTINCT N',' + category 
                         FROM checklist_items 
-                        WHERE template_id = ct.id AND category IS NOT NULL AND category != N''
+                        WHERE template_id = ct.id AND COALESCE(is_deleted, 0) = 0 AND category IS NOT NULL AND category != N''
                         FOR XML PATH(N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 1, N''))`;
   } else if (dbType === 'mysql') {
     // MySQL: Use GROUP_CONCAT to combine categories
     categorySubquery = `(SELECT GROUP_CONCAT(DISTINCT ci.category SEPARATOR ', ') 
                         FROM checklist_items ci 
-                        WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+                        WHERE ci.template_id = ct.id AND COALESCE(ci.is_deleted, 0) = 0 AND ci.category IS NOT NULL AND ci.category != '')`;
   } else if (dbType === 'postgres' || dbType === 'postgresql') {
     // PostgreSQL: Use STRING_AGG to combine categories
     categorySubquery = `(SELECT STRING_AGG(DISTINCT ci.category, ', ') 
                         FROM checklist_items ci 
-                        WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+                        WHERE ci.template_id = ct.id AND COALESCE(ci.is_deleted, 0) = 0 AND ci.category IS NOT NULL AND ci.category != '')`;
   } else {
     // SQLite: Use GROUP_CONCAT (SQLite 3.5.0+)
     categorySubquery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') 
                         FROM checklist_items ci 
-                        WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+                        WHERE ci.template_id = ct.id AND COALESCE(ci.is_deleted, 0) = 0 AND ci.category IS NOT NULL AND ci.category != '')`;
   }
   
   // Use ISNULL for SQL Server, COALESCE for others
@@ -963,11 +963,11 @@ router.get('/audits/excel', authenticate, async (req, res) => {
     const dbType = process.env.DB_TYPE || 'sqlite';
     let categoryQuery;
     if (dbType === 'mssql' || dbType === 'sqlserver') {
-      categoryQuery = `(SELECT STUFF((SELECT DISTINCT N',' + category FROM checklist_items WHERE template_id = ct.id AND category IS NOT NULL AND category != N'' FOR XML PATH('')), 1, 1, ''))`;
+      categoryQuery = `(SELECT STUFF((SELECT DISTINCT N',' + category FROM checklist_items WHERE template_id = ct.id AND COALESCE(is_deleted, 0) = 0 AND category IS NOT NULL AND category != N'' FOR XML PATH('')), 1, 1, ''))`;
     } else if (dbType === 'mysql') {
-      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND COALESCE(ci.is_deleted, 0) = 0 AND ci.category IS NOT NULL AND ci.category != '')`;
     } else {
-      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND ci.category IS NOT NULL AND ci.category != '')`;
+      categoryQuery = `(SELECT GROUP_CONCAT(DISTINCT ci.category, ', ') FROM checklist_items ci WHERE ci.template_id = ct.id AND COALESCE(ci.is_deleted, 0) = 0 AND ci.category IS NOT NULL AND ci.category != '')`;
     }
 
     let query = `

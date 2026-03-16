@@ -290,6 +290,7 @@ router.get('/:id(\\d+)', authenticate, (req, res) => {
        LEFT JOIN audit_items ai ON ci.id = ai.item_id AND ai.audit_id = ?
        LEFT JOIN checklist_item_options cio ON ai.selected_option_id = cio.id
        WHERE ci.template_id = ?
+         AND (COALESCE(ci.is_deleted, 0) = 0 OR ai.id IS NOT NULL)
        ORDER BY ci.order_index, ci.id`;
       const itemsParams = [auditId, audit.template_id];
 
@@ -857,8 +858,8 @@ router.post('/', authenticate, (req, res) => {
 
       // If audit_category is provided, scope the audit to that category only.
       const itemsQuery = normalizedAuditCategory
-        ? 'SELECT * FROM checklist_items WHERE template_id = ? AND category = ? ORDER BY order_index, id'
-        : 'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id';
+        ? 'SELECT * FROM checklist_items WHERE template_id = ? AND category = ? AND COALESCE(is_deleted, 0) = 0 ORDER BY order_index, id'
+        : 'SELECT * FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0 ORDER BY order_index, id';
 
       const itemsParams = normalizedAuditCategory ? [template_id, normalizedAuditCategory] : [template_id];
 
@@ -1619,7 +1620,7 @@ router.put('/:auditId(\\d+)/items/:itemId(\\d+)', authenticate, (req, res, next)
                 // IMPORTANT: For completion status, always check ALL template items, not just the selected category.
                 // The audit_category is only used for scoping the work during editing, but completion should
                 // consider all items in the template to ensure the audit is truly complete.
-                const templateItemsQuery = 'SELECT id, input_type FROM checklist_items WHERE template_id = ?';
+                const templateItemsQuery = 'SELECT id, input_type FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0';
                 const templateItemsParams = [auditRow.template_id];
 
                 dbInstance.all(
@@ -2366,14 +2367,14 @@ function calculateAndUpdateScore(dbInstance, auditId, templateId, auditCategory,
                  (SELECT MAX(CASE WHEN ISNUMERIC(cio.mark) = 1 THEN CAST(cio.mark AS FLOAT) ELSE NULL END)
                   FROM checklist_item_options cio 
                   WHERE cio.item_id = ci.id) as max_score
-                 FROM checklist_items ci WHERE ci.template_id = ?`;
+                 FROM checklist_items ci WHERE ci.template_id = ? AND COALESCE(ci.is_deleted, 0) = 0`;
       } else {
         query = `SELECT ci.id,
                  ci.input_type,
                  (SELECT MAX(CASE WHEN cio.mark NOT LIKE '%NA%' AND cio.mark GLOB '[0-9]*' THEN CAST(cio.mark AS REAL) ELSE NULL END)
                   FROM checklist_item_options cio 
                   WHERE cio.item_id = ci.id) as max_score
-                 FROM checklist_items ci WHERE ci.template_id = ?`;
+                 FROM checklist_items ci WHERE ci.template_id = ? AND COALESCE(ci.is_deleted, 0) = 0`;
       }
 
       // IMPORTANT: For completion status, always check ALL template items, not just the selected category.

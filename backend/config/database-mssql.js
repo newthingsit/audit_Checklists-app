@@ -1449,6 +1449,20 @@ const addMissingColumns = async () => {
       }
     }
 
+    // Add soft-delete column to checklist_items table
+    if (!itemsColumns.includes('is_deleted')) {
+      console.log('Adding is_deleted column to checklist_items table...');
+      try {
+        await pool.request().query(`
+          ALTER TABLE [dbo].[checklist_items] 
+          ADD [is_deleted] BIT DEFAULT 0;
+        `);
+        console.log('is_deleted column added to checklist_items table');
+      } catch (err) {
+        console.warn('Error adding is_deleted to checklist_items:', err.message);
+      }
+    }
+
     // Add time-based columns to checklist_items table
     if (!itemsColumns.includes('is_time_based')) {
       console.log('Adding time-based columns to checklist_items table...');

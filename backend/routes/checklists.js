@@ -191,7 +191,7 @@ router.get('/:id', authenticate, (req, res) => {
       }
 
       dbInstance.all(
-        'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id',
+        'SELECT * FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0 ORDER BY order_index, id',
         [templateId],
         (err, items) => {
           if (err) {
@@ -546,7 +546,7 @@ router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_tem
       // Smart update: update existing items in-place, insert new ones, remove deleted ones
       // This avoids FK constraint violations from audit_items, action_items, action_plan
       const existingItems = await getAllRows(dbInstance,
-        'SELECT id FROM checklist_items WHERE template_id = ?', [templateId]);
+        'SELECT id FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0', [templateId]);
       const existingItemIds = new Set(existingItems.map(i => i.id));
 
       const payloadItemIds = new Set(
@@ -647,8 +647,13 @@ router.put('/:id', authenticate, requirePermission('manage_templates', 'edit_tem
           try { await runDb(dbInstance, 'UPDATE action_plan SET item_id = NULL WHERE item_id = ?', [itemId]); } catch (e) { /* ignore */ }
           await runDb(dbInstance, 'DELETE FROM checklist_items WHERE id = ?', [itemId]);
         } catch (e) {
-          // Item still referenced by audit_items (item_id NOT NULL) — leave it to preserve audit data
-          logger.warn(`Could not delete checklist item ${itemId} — still referenced by audits`);
+          // Item still referenced by audit_items — soft-delete to hide from template while preserving audit data
+          try {
+            await runDb(dbInstance, 'UPDATE checklist_items SET is_deleted = 1 WHERE id = ?', [itemId]);
+            logger.info(`Soft-deleted checklist item ${itemId} — still referenced by audits`);
+          } catch (softDelErr) {
+            logger.warn(`Could not delete checklist item ${itemId} — still referenced by audits`);
+          }
         }
       }
     }
@@ -877,7 +882,7 @@ router.post('/:id/version', authenticate, requirePermission('manage_templates', 
     );
     
     // Clone items to new version
-    const items = await getAllRows(dbInstance, 'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index', [templateId]);
+    const items = await getAllRows(dbInstance, 'SELECT * FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0 AND COALESCE(is_deleted, 0) = 0 ORDER BY order_index', [templateId]);
     
     for (const item of items) {
       const { lastID: newItemId } = await runDb(
@@ -933,7 +938,7 @@ router.get('/:id/versions', authenticate, requirePermission('display_templates',
     const versions = await getAllRows(
       dbInstance,
       `SELECT ct.*, u.name as created_by_name,
-       (SELECT COUNT(*) FROM checklist_items WHERE template_id = ct.id) as item_count,
+       (SELECT COUNT(*) FROM checklist_items WHERE template_id = ct.id AND COALESCE(is_deleted, 0) = 0) as item_count,
        (SELECT COUNT(*) FROM audits WHERE template_id = ct.id) as audit_count
        FROM checklist_templates ct
        LEFT JOIN users u ON ct.created_by = u.id
@@ -980,7 +985,7 @@ router.get('/:id/preview', authenticate, async (req, res) => {
     // Get items grouped by section
     const items = await getAllRows(
       dbInstance,
-      `SELECT * FROM checklist_items WHERE template_id = ? ORDER BY section, order_index`,
+      `SELECT * FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0 ORDER BY section, order_index`,
       [templateId]
     );
     
@@ -1171,7 +1176,7 @@ router.get('/:id/export/csv', authenticate, async (req, res) => {
     // Get items
     const items = await getAllRows(
       dbInstance, 
-      'SELECT * FROM checklist_items WHERE template_id = ? ORDER BY order_index, id', 
+      'SELECT * FROM checklist_items WHERE template_id = ? AND COALESCE(is_deleted, 0) = 0 ORDER BY order_index, id', 
       [templateId]
     );
     
