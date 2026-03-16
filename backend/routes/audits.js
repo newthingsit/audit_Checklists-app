@@ -2269,7 +2269,7 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
 
       // Calculate score once after all updates
       // If this is a category-wise audit (audit_category set), scope completion/score to that category.
-      calculateAndUpdateScore(dbInstance, auditId, audit.template_id, effectiveAuditCategory, (err, scoreData) => {
+      calculateAndUpdateScore(dbInstance, auditId, audit.template_id, effectiveAuditCategory, async (err, scoreData) => {
         if (err) {
           logger.error('Error calculating score:', err);
           // Still return success for item updates, but log the score calculation error
@@ -2279,23 +2279,49 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
         if (scoreData) {
           logger.info(`[Batch Update] Audit ${auditId} - Status: ${scoreData.status}, Score: ${scoreData.score}%, Completed: ${scoreData.completed}/${scoreData.total} items`);
           
-          // Auto-create action items for failed items when audit is completed
+          // When audit is completed, trigger ALL completion side effects
           if (scoreData.status === 'completed') {
+            // Auto-create action items for failed items
             const { autoCreateActionItems } = require('../utils/autoActions');
-            autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (err, actions) => {
-              if (err) {
-                logger.error('Error auto-creating action items:', err);
+            autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (actionErr, actions) => {
+              if (actionErr) {
+                logger.error('Error auto-creating action items:', actionErr);
               } else if (actions && actions.length > 0) {
                 logger.info(`[Auto-Actions] Created ${actions.length} action items for completed audit ${auditId}`);
               }
             });
+
+            // Update scheduled audit status
+            logger.info(`[Batch Update] Audit ${auditId} is completed - updating scheduled audit status`);
+            handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
+
+            // Send completion notification
+            try {
+              await createNotification(
+                userId,
+                'audit',
+                'Audit Completed',
+                `Audit "${audit.restaurant_name}" has been completed with a score of ${scoreData.score}%`,
+                `/audits/${auditId}`,
+                {
+                  template: 'auditCompleted',
+                  data: [audit.restaurant_name, scoreData.score, audit.location_name || audit.restaurant_name || 'Not specified']
+                }
+              );
+            } catch (notifErr) {
+              logger.error('Error creating completion notification:', notifErr.message);
+            }
+
+            // Generate Action Plan with top-3 deviations
+            generateActionPlanWithDeviations(dbInstance, auditId, (planErr) => {
+              if (planErr) {
+                logger.error('[Action Plan] Error generating action plan after batch completion:', planErr);
+              }
+            });
+
+            // Send audit completion email notification
+            sendAuditCompletionEmail(dbInstance, auditId, scoreData.score);
           }
-        }
-        
-        if (scoreData && scoreData.status === 'completed') {
-          logger.info(`[Batch Update] Audit ${auditId} is completed - updating scheduled audit status`);
-          // Pass the status directly to avoid re-reading from database
-          handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
         }
         
         res.json({ 

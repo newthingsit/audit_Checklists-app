@@ -3490,6 +3490,8 @@ const AuditFormScreen = () => {
       // Send batch update request
       // Clear audit_category to allow multiple categories in the same audit
       // This allows users to complete different categories in the same audit session
+      // Track batch response status for immediate completion detection
+      let batchResponseStatus = null;
       try {
         const batchUrl = `${API_BASE_URL}/audits/${activeAuditId}/items/batch`;
         // enforce_required: false — allow partial saves during mid-audit.
@@ -3502,7 +3504,10 @@ const AuditFormScreen = () => {
         while (true) {
           try {
             batchAttempt += 1;
-            await axios.put(batchUrl, payload);
+            const batchResponse = await axios.put(batchUrl, payload);
+            // Capture the completion status from the batch response
+            batchResponseStatus = batchResponse?.data?.status || null;
+            console.log('[AuditForm] Batch response status:', batchResponseStatus);
             break;
           } catch (e) {
             const status = e?.response?.status;
@@ -3600,8 +3605,8 @@ const AuditFormScreen = () => {
         }
       }
 
-      // NOTE: Do not update completion status purely from local batch data.
-      // The backend is the source of truth for completion to avoid race conditions.
+      // NOTE: The backend batch response already contains the definitive status.
+      // Use batchResponseStatus as primary signal for immediate completion detection.
       
       // Refresh audit data to get updated completion status and sync form state
       // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
@@ -3610,62 +3615,23 @@ const AuditFormScreen = () => {
         const updatedAudit = auditResponse.data.audit;
         const updatedAuditItems = auditResponse.data.items || [];
         
-        // Update audit status from backend (this is the source of truth)
-        const isAuditCompleted = updatedAudit.status === 'completed';
+        // Use batch response status as primary signal, fall back to GET response
+        const isAuditCompleted = batchResponseStatus === 'completed' || updatedAudit.status === 'completed';
         if (isAuditCompleted) {
           clearDraftStorage();
         }
-        console.log('[AuditForm] Save response - audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
+        console.log('[AuditForm] Save response - batch status:', batchResponseStatus, 'audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
         
-        // REAL-TIME STATUS UPDATE: Update status immediately from backend response using functional update
-        if (updatedAudit.status) {
+        // REAL-TIME STATUS UPDATE: Update status immediately
+        const effectiveStatus = isAuditCompleted ? 'completed' : (updatedAudit.status || auditStatus);
+        if (effectiveStatus) {
           setAuditStatus(prevStatus => {
-            if (prevStatus !== updatedAudit.status) {
-              console.log('[AuditForm] Updated auditStatus state from', prevStatus, 'to', updatedAudit.status, '(real-time update)');
-              return updatedAudit.status;
+            if (prevStatus !== effectiveStatus) {
+              console.log('[AuditForm] Updated auditStatus state from', prevStatus, 'to', effectiveStatus, '(real-time update)');
+              return effectiveStatus;
             }
             return prevStatus;
           });
-        }
-        
-        // STRICT COMPLETION CHECK:
-        // Only consider complete when completed_items === total_items and no pending/NA mismatches exist.
-        const totalItems = Number(updatedAudit.total_items) || items.length;
-        const completedItems = Number(updatedAudit.completed_items) || 0;
-        const hasPendingOrMismatch = updatedAuditItems.some(auditItem => {
-          const status = auditItem.status;
-          const markValue = auditItem.mark;
-          const hasMark = markValue !== null && markValue !== undefined && String(markValue).trim() !== '';
-          const hasStatus = status && status !== 'pending' && status !== '';
-          const isNaMark = String(markValue || '').trim().toUpperCase() === 'NA';
-          if (!hasMark && !hasStatus) return true;
-          if (isNaMark && (!hasStatus || status === 'pending')) return true;
-          return false;
-        });
-        const isStrictlyComplete = totalItems > 0 && completedItems === totalItems && !hasPendingOrMismatch;
-        
-        // If backend says completed, keep status. If strict check shows complete but backend hasn't updated yet,
-        // trigger backend completion and refresh, but do NOT flip status locally until backend confirms.
-        if ((isAuditCompleted || isStrictlyComplete) && items.length > 0) {
-          if (!isAuditCompleted && isStrictlyComplete) {
-            setTimeout(() => {
-              axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
-                .then(() => {
-                  console.log('[AuditForm] Backend confirmed completion');
-                  setTimeout(() => {
-                    fetchAuditDataById(activeAuditId).catch(() => {});
-                  }, 300);
-                })
-                .catch(err => {
-                  console.log('[AuditForm] Backend completion check:', err.message, 'status:', err.response?.status);
-                  if (err.response?.status !== 404) {
-                    setTimeout(() => {
-                      fetchAuditDataById(activeAuditId).catch(() => {});
-                    }, 1000);
-                  }
-                });
-            }, 500);
-          }
         }
         
         // CRITICAL: Update form state with saved responses to reflect what was saved
@@ -3755,26 +3721,15 @@ const AuditFormScreen = () => {
         });
         setCategoryCompletionStatus(updatedCategoryStatus);
         
-        // IMPORTANT: Use backend's completion status as source of truth
-        // If backend says completed, ALL categories are done (regardless of frontend calculation)
-        // REAL-TIME: Status is already updated above, now handle UI updates
-        const currentStatus = updatedAudit.status || auditStatus;
+        // Use backend completion status as source of truth
+        const currentStatus = isAuditCompleted ? 'completed' : (updatedAudit.status || auditStatus);
         if (isAuditCompleted || currentStatus === 'completed') {
-          // Audit is fully completed - trigger PDF download
-          const pdfUrl = `${API_BASE_URL.replace('/api', '')}/api/reports/audit/${activeAuditId}/pdf`;
-          
-          // Status is already updated in real-time above, just refresh data for consistency
-          console.log('[AuditForm] Audit completed, refreshing data to confirm status');
-          // Refresh immediately to update UI
-          setTimeout(() => {
-            fetchAuditDataById(activeAuditId).then(() => {
-              console.log('[AuditForm] Audit data refreshed after completion');
-            }).catch(err => {
-              console.error('[AuditForm] Error refreshing audit after completion:', err);
-            });
-          }, 300); // Shorter delay since status is already updated
-          
           // Audit is fully completed - all categories are done
+          console.log('[AuditForm] Audit completed, refreshing data');
+          
+          // Refresh data in background for consistency
+          fetchAuditDataById(activeAuditId).catch(() => {});
+          
           Alert.alert(
             'Success', 
             'All categories completed! Audit is now complete. PDF report will be available in audit details.',
@@ -3782,7 +3737,6 @@ const AuditFormScreen = () => {
               { 
                 text: 'View Audit', 
                 onPress: () => {
-                  // Navigate to detail with refresh flag
                   navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
                 }
               },
@@ -3790,7 +3744,6 @@ const AuditFormScreen = () => {
                 text: 'Done',
                 style: 'cancel',
                 onPress: () => {
-                  // Mark that we need to refresh audit detail on back
                   navigation.setParams({ refreshAuditDetail: true });
                   navigation.goBack();
                 }
@@ -3804,27 +3757,50 @@ const AuditFormScreen = () => {
             return !status.isComplete;
           });
           
-          // If all categories are complete but backend isn't updated yet, trigger completion and refresh.
+          // If all categories appear complete locally but backend hasn't set completed yet,
+          // trigger completion synchronously before showing the alert
           const allCategoriesComplete = categories.every(cat => {
             const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
             return status.isComplete;
           });
-          if (allCategoriesComplete && categories.length > 0 && !isAuditCompleted && isStrictlyComplete) {
-            axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`)
-              .then(() => {
-                console.log('[AuditForm] Backend confirmed completion');
-                setTimeout(() => {
-                  fetchAuditDataById(activeAuditId).catch(() => {});
-                }, 300);
-              })
-              .catch(err => {
-                console.log('[AuditForm] Backend completion check:', err.message);
-                setTimeout(() => {
-                  fetchAuditDataById(activeAuditId).then(() => {
-                    console.log('[AuditForm] Refreshed after category completion check');
-                  }).catch(() => {});
-                }, 500);
-              });
+          if (allCategoriesComplete && categories.length > 0) {
+            try {
+              const completeResponse = await axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`);
+              console.log('[AuditForm] Backend confirmed completion via /complete endpoint');
+              setAuditStatus('completed');
+              clearDraftStorage();
+              
+              // Refresh data in background
+              fetchAuditDataById(activeAuditId).catch(() => {});
+              
+              Alert.alert(
+                'Success', 
+                'All categories completed! Audit is now complete. PDF report will be available in audit details.',
+                [
+                  { 
+                    text: 'View Audit', 
+                    onPress: () => {
+                      navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
+                    }
+                  },
+                  {
+                    text: 'Done',
+                    style: 'cancel',
+                    onPress: () => {
+                      navigation.setParams({ refreshAuditDetail: true });
+                      navigation.goBack();
+                    }
+                  }
+                ]
+              );
+              // Skip the "category saved" alert below since we showed completion
+              setSaving(false);
+              saveInFlightRef.current = false;
+              return;
+            } catch (completeErr) {
+              console.log('[AuditForm] Backend completion check:', completeErr.message);
+              // Fall through to show category saved message
+            }
           }
           
           const message = remainingCategories.length > 0
@@ -3838,7 +3814,6 @@ const AuditFormScreen = () => {
               {
                 text: 'Done',
                 onPress: () => {
-                  // Mark that we need to refresh audit detail on back
                   navigation.setParams({ refreshAuditDetail: true });
                   navigation.goBack();
                 }
@@ -3847,26 +3822,52 @@ const AuditFormScreen = () => {
           );
         }
       } catch (refreshError) {
-        // If refresh fails, show basic success message
-        console.warn('Failed to refresh audit data:', refreshError);
-        Alert.alert(
-          'Success', 
-          'Audit saved successfully. You can continue with other categories.',
-          [
-            { 
-              text: 'Continue', 
-              style: 'cancel',
-              onPress: () => {
-                // Dismiss alert and allow user to continue working on the audit
-                // The form state is already updated, so user can continue
+        // If refresh fails but batch said completed, still show completion
+        if (batchResponseStatus === 'completed') {
+          console.log('[AuditForm] Refresh failed but batch confirmed completion');
+          setAuditStatus('completed');
+          clearDraftStorage();
+          Alert.alert(
+            'Success', 
+            'All categories completed! Audit is now complete. PDF report will be available in audit details.',
+            [
+              { 
+                text: 'View Audit', 
+                onPress: () => {
+                  navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
+                }
+              },
+              {
+                text: 'Done',
+                style: 'cancel',
+                onPress: () => {
+                  navigation.setParams({ refreshAuditDetail: true });
+                  navigation.goBack();
+                }
               }
-            },
-            { 
-              text: 'Done', 
-              onPress: () => navigation.goBack() 
-            }
-          ]
-        );
+            ]
+          );
+        } else {
+          // If refresh fails, show basic success message
+          console.warn('Failed to refresh audit data:', refreshError);
+          Alert.alert(
+            'Success', 
+            'Audit saved successfully. You can continue with other categories.',
+            [
+              { 
+                text: 'Continue', 
+                style: 'cancel',
+                onPress: () => {
+                  // Dismiss alert and allow user to continue working on the audit
+                }
+              },
+              { 
+                text: 'Done', 
+                onPress: () => navigation.goBack() 
+              }
+            ]
+          );
+        }
       }
     } catch (error) {
       console.error('Error saving audit:', error);
