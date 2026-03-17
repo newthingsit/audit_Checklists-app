@@ -1126,7 +1126,7 @@ const Checklists = () => {
                     <CardActions sx={{
                       p: 2,
                       pt: 0,
-                      gap: 1,
+                      gap: 1.5,
                       display: 'flex',
                       flexWrap: 'wrap',
                     }}>
@@ -1164,11 +1164,12 @@ const Checklists = () => {
                               borderColor: 'primary.light',
                               borderRadius: '8px',
                               textTransform: 'none',
-                              fontSize: '0.85rem',
+                              fontSize: '0.9rem',
                               fontWeight: 500,
                               minWidth: 'auto',
-                              px: 1.5,
-                              py: 0.75,
+                              minHeight: 44,
+                              px: 1.75,
+                              py: 1,
                               '&:hover': {
                                 backgroundColor: 'primary.light',
                               }
@@ -1187,11 +1188,12 @@ const Checklists = () => {
                               borderColor: 'primary.light',
                               borderRadius: '8px',
                               textTransform: 'none',
-                              fontSize: '0.85rem',
+                              fontSize: '0.9rem',
                               fontWeight: 500,
                               minWidth: 'auto',
-                              px: 1.5,
-                              py: 0.75,
+                              minHeight: 44,
+                              px: 1.75,
+                              py: 1,
                               '&:hover': {
                                 backgroundColor: 'primary.light',
                               }
@@ -1210,11 +1212,12 @@ const Checklists = () => {
                               borderColor: 'success.light',
                               borderRadius: '8px',
                               textTransform: 'none',
-                              fontSize: '0.85rem',
+                              fontSize: '0.9rem',
                               fontWeight: 500,
                               minWidth: 'auto',
-                              px: 1.5,
-                              py: 0.75,
+                              minHeight: 44,
+                              px: 1.75,
+                              py: 1,
                               '&:hover': {
                                 backgroundColor: 'success.light',
                               }
@@ -1236,11 +1239,12 @@ const Checklists = () => {
                             borderColor: 'error.light',
                             borderRadius: '8px',
                             textTransform: 'none',
-                            fontSize: '0.85rem',
+                            fontSize: '0.9rem',
                             fontWeight: 500,
                             minWidth: 'auto',
-                            px: 1.5,
-                            py: 0.75,
+                            minHeight: 44,
+                            px: 1.75,
+                            py: 1,
                             '&:hover': {
                               backgroundColor: 'error.light',
                             }

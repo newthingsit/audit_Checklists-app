@@ -15,7 +15,27 @@ const httpDuration = new client.Histogram({
   buckets: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
 });
 
+const sseActiveConnections = new client.Gauge({
+  name: 'audit_sse_active_connections',
+  help: 'Current number of active SSE client connections',
+});
+
+const sseEventsSent = new client.Counter({
+  name: 'audit_sse_events_sent_total',
+  help: 'Total SSE events successfully sent to clients',
+  labelNames: ['event_type'],
+});
+
+const sseConnectionAttempts = new client.Counter({
+  name: 'audit_sse_connection_attempts_total',
+  help: 'Total SSE connection attempts by result',
+  labelNames: ['result'],
+});
+
 registry.registerMetric(httpDuration);
+registry.registerMetric(sseActiveConnections);
+registry.registerMetric(sseEventsSent);
+registry.registerMetric(sseConnectionAttempts);
 
 const metricsMiddleware = (req, res, next) => {
   const start = process.hrtime.bigint();
@@ -40,8 +60,23 @@ const metricsHandler = async (req, res) => {
   res.end(await registry.metrics());
 };
 
+const setSseActiveConnections = (count) => {
+  sseActiveConnections.set(Number(count) || 0);
+};
+
+const recordSseEventsSent = (eventType, count = 1) => {
+  sseEventsSent.inc({ event_type: eventType || 'unknown' }, Math.max(0, Number(count) || 0));
+};
+
+const recordSseConnectionAttempt = (result) => {
+  sseConnectionAttempts.inc({ result: result || 'unknown' });
+};
+
 module.exports = {
   registry,
   metricsMiddleware,
   metricsHandler,
+  setSseActiveConnections,
+  recordSseEventsSent,
+  recordSseConnectionAttempt,
 };

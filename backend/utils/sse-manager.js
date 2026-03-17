@@ -4,6 +4,10 @@
  * Clients subscribe per userId; events are broadcast to relevant users.
  */
 const logger = require('./logger');
+const {
+  setSseActiveConnections,
+  recordSseEventsSent,
+} = require('./metrics');
 
 class SSEManager {
   constructor() {
@@ -23,6 +27,7 @@ class SSEManager {
       this.clients.set(userId, new Set());
     }
     this.clients.get(userId).add(res);
+    setSseActiveConnections(this._totalClients());
     logger.info(`[SSE] Client connected for user ${userId}. Total connections: ${this._totalClients()}`);
   }
 
@@ -39,6 +44,7 @@ class SSEManager {
         this.clients.delete(userId);
       }
     }
+    setSseActiveConnections(this._totalClients());
     logger.info(`[SSE] Client disconnected for user ${userId}. Total connections: ${this._totalClients()}`);
   }
 
@@ -54,14 +60,20 @@ class SSEManager {
 
     const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
     const deadClients = [];
+    let sentCount = 0;
 
     for (const res of userClients) {
       try {
         res.write(payload);
+        sentCount += 1;
       } catch (err) {
         logger.warn(`[SSE] Failed to send to user ${userId}, removing dead client`);
         deadClients.push(res);
       }
+    }
+
+    if (sentCount > 0) {
+      recordSseEventsSent(eventType, sentCount);
     }
 
     // Cleanup dead clients
@@ -71,6 +83,7 @@ class SSEManager {
     if (userClients.size === 0) {
       this.clients.delete(userId);
     }
+    setSseActiveConnections(this._totalClients());
   }
 
   /**
@@ -115,6 +128,7 @@ class SSEManager {
         this.clients.delete(userId);
       }
     }
+    setSseActiveConnections(this._totalClients());
   }
 
   _totalClients() {
@@ -134,6 +148,7 @@ class SSEManager {
       }
     }
     this.clients.clear();
+    setSseActiveConnections(0);
   }
 }
 

@@ -2200,6 +2200,7 @@ const AuditForm = () => {
             // Option select - show options if available
             if ((inputType === 'option_select' || inputType === 'auto') && item.options && item.options.length > 0) {
               const isSelected = (optionId) => selectedOptions[item.id] === optionId;
+              const useSegmentedMobile = isMobile && !isCvr && item.options.length <= 3;
               // Detect if option is "No" type (for red styling when selected)
               const isNoOption = (optionText) => {
                 const text = (optionText || '').toLowerCase();
@@ -2223,9 +2224,9 @@ const AuditForm = () => {
                     className="audit-item-options" 
                     sx={{ 
                       display: 'flex', 
-                      flexDirection: isCvr ? 'row' : 'column', 
-                      gap: isCvr ? 1.5 : (isMobile ? 1 : 1.5),
-                      flexWrap: isCvr ? 'wrap' : 'nowrap'
+                      flexDirection: useSegmentedMobile ? 'row' : (isCvr ? 'row' : 'column'), 
+                      gap: useSegmentedMobile ? 1 : (isCvr ? 1.5 : (isMobile ? 1.5 : 1.5)),
+                      flexWrap: useSegmentedMobile ? 'nowrap' : (isCvr ? 'wrap' : 'nowrap')
                     }}
                   >
                     {item.options.map((option) => {
@@ -2242,12 +2243,12 @@ const AuditForm = () => {
                             py: isCvr ? 1 : (isMobile ? 2 : 1.5),
                             px: isCvr ? 3 : (isMobile ? 2 : 2),
                             display: 'flex',
-                            justifyContent: isCvr ? 'center' : 'space-between',
+                            justifyContent: useSegmentedMobile ? 'center' : (isCvr ? 'center' : 'space-between'),
                             alignItems: 'center',
                             textTransform: 'none',
                             minHeight: isCvr ? 40 : (isMobile ? 56 : 48),
-                            minWidth: isCvr ? 70 : undefined,
-                            flex: isCvr ? 'none' : undefined,
+                            minWidth: isCvr ? 70 : (useSegmentedMobile ? 0 : undefined),
+                            flex: isCvr ? 'none' : (useSegmentedMobile ? 1 : undefined),
                             borderRadius: isCvr ? 6 : (isMobile ? 3 : 1),
                             border: isMobile ? '2px solid' : '1px solid',
                             borderColor: isCvr 
@@ -2272,6 +2273,7 @@ const AuditForm = () => {
                               ? (selected && isNo ? '#FFFFFF' : cvrTheme.text.primary)
                               : (selected ? 'white' : 'text.primary'),
                             fontWeight: selected ? 600 : 400,
+                            fontSize: useSegmentedMobile ? '1rem' : undefined,
                             '&:hover': {
                               borderColor: isCvr 
                                 ? (isNo ? cvrTheme.accent.red : cvrTheme.accent.primary)
@@ -2295,7 +2297,7 @@ const AuditForm = () => {
                           >
                             {option.option_text}
                           </Typography>
-                          {!isCvr && (
+                          {!isCvr && !useSegmentedMobile && (
                             <Chip
                               label={`${option.mark}`}
                               size="small"
@@ -2433,11 +2435,18 @@ const AuditForm = () => {
                     className="photo-upload-btn"
                     sx={{
                       width: isMobile ? '100%' : 'auto',
-                      minHeight: isMobile ? 48 : 36,
+                      minHeight: isMobile ? 56 : 36,
+                      fontSize: isMobile ? '1rem' : undefined,
+                      fontWeight: isMobile ? 600 : undefined,
+                      borderWidth: isMobile ? 2 : undefined,
+                      borderStyle: isMobile ? 'dashed' : undefined,
+                      borderColor: isMobile ? '#0ea5e9' : undefined,
+                      backgroundColor: isMobile ? 'rgba(14, 165, 233, 0.06)' : undefined,
+                      justifyContent: isMobile ? 'center' : undefined,
                       ...(isCvr && { borderColor: cvrTheme.accent.purple, color: cvrTheme.accent.purple, '&:hover': { borderColor: cvrTheme.accent.purple, bgcolor: cvrTheme.accent.purple + '20' } }),
                     }}
                   >
-                    {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo' : (isCvr ? 'Photo' : 'Take Photo')}
+                    {uploading[item.id] ? 'Uploading...' : photos[item.id] ? 'Change Photo / Evidence' : (isCvr ? 'Add Photo / Evidence' : 'Add Photo / Evidence')}
                   </Button>
                 </Tooltip>
               </label>
@@ -2724,10 +2733,12 @@ const AuditForm = () => {
                       }}
                       variant="scrollable"
                       scrollButtons="auto"
+                      allowScrollButtonsMobile
+                      className={isMobile ? 'mobile-category-tabs' : ''}
                       sx={{
-                        minHeight: 40,
+                        minHeight: isMobile ? 44 : 40,
                         '& .MuiTabs-flexContainer': {
-                          gap: 0.5
+                          gap: isMobile ? 1 : 0.5
                         },
                         '& .MuiTabs-indicator': {
                           backgroundColor: tabAccent,
@@ -2735,17 +2746,25 @@ const AuditForm = () => {
                         },
                         '& .MuiTab-root': {
                           color: tabTextSecondary,
-                          textTransform: 'uppercase',
-                          fontSize: isMobile ? '0.68rem' : '0.72rem',
+                          textTransform: isMobile ? 'none' : 'uppercase',
+                          fontSize: isMobile ? '0.82rem' : '0.72rem',
                           fontWeight: 500,
-                          minHeight: 40,
+                          minHeight: isMobile ? 44 : 40,
                           minWidth: 'auto',
-                          px: 1.5,
+                          px: isMobile ? 2 : 1.5,
                           py: 1,
+                          borderRadius: isMobile ? 999 : 0,
+                          border: isMobile ? '1px solid rgba(0,0,0,0.15)' : 'none',
+                          backgroundColor: isMobile ? 'rgba(255,255,255,0.75)' : 'transparent',
                           '&.Mui-selected': {
                             color: tabTextPrimary,
-                            fontWeight: 600
+                            fontWeight: 700,
+                            backgroundColor: isMobile ? '#1976d2' : 'transparent',
+                            borderColor: isMobile ? '#1976d2' : 'transparent'
                           }
+                        },
+                        '& .MuiTab-root.Mui-selected .MuiBox-root, & .MuiTab-root.Mui-selected .MuiBox-root span, & .MuiTab-root.Mui-selected .MuiSvgIcon-root': {
+                          color: isMobile ? '#fff' : undefined
                         },
                         '& .MuiTabs-scrollButtons': {
                           color: tabTextSecondary
@@ -3209,13 +3228,16 @@ const AuditForm = () => {
                   flexDirection: isMobile ? 'row' : 'row',
                   ...(isMobile ? {
                     position: 'fixed',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    backgroundColor: '#fff',
-                    padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
-                    borderTop: '1px solid #e0e0e0',
-                    boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                    bottom: 'calc(10px + env(safe-area-inset-bottom))',
+                    left: 12,
+                    right: 12,
+                    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+                    backdropFilter: 'blur(14px)',
+                    WebkitBackdropFilter: 'blur(14px)',
+                    padding: '10px',
+                    border: '1px solid rgba(255, 255, 255, 0.65)',
+                    borderRadius: '16px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                     zIndex: 1100,
                   } : {})
                 }}

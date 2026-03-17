@@ -19,7 +19,11 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const { validateEnvOrThrow } = require('./config/env');
 const requestContext = require('./middleware/request-context');
-const { metricsMiddleware, metricsHandler } = require('./utils/metrics');
+const {
+  metricsMiddleware,
+  metricsHandler,
+  recordSseConnectionAttempt,
+} = require('./utils/metrics');
 const app = express();
 
 const PORT = process.env.PORT || 5000;
@@ -618,6 +622,7 @@ app.get('/api/events', (req, res) => {
   // SSE clients (EventSource) cannot set custom headers, so accept token from query param
   const token = req.query.token || req.header('Authorization')?.replace('Bearer ', '');
   if (!token) {
+    recordSseConnectionAttempt('missing_token');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
@@ -625,6 +630,7 @@ app.get('/api/events', (req, res) => {
   try {
     decoded = jwt.verify(token, SSE_JWT_SECRET);
   } catch (err) {
+    recordSseConnectionAttempt('invalid_token');
     return res.status(401).json({ error: 'Invalid token' });
   }
 
@@ -640,6 +646,7 @@ app.get('/api/events', (req, res) => {
 
   // Send initial connection confirmation
   res.write(`event: connected\ndata: ${JSON.stringify({ userId })}\n\n`);
+  recordSseConnectionAttempt('accepted');
 
   sseManager.addClient(userId, res);
 
@@ -872,6 +879,8 @@ const shutdown = async (signal) => {
     if (server) {
       await new Promise((resolve) => server.close(() => resolve()));
     }
+
+    sseManager.shutdown();
 
     await db.close();
   } catch (error) {
