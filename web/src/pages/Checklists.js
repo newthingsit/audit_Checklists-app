@@ -1153,57 +1153,101 @@ const Checklists = () => {
                       </Button>
                       {canEdit && (
                         <>
-                          <Tooltip title="Edit Template">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEditTemplate(getTemplateId(template))}
-                              sx={{
-                                flex: '0 0 auto',
-                              }}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Duplicate Template">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleCloneTemplate(getTemplateId(template))}
-                              sx={{
-                                flex: '0 0 auto',
-                              }}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Download CSV">
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => handleExportCSV(getTemplateId(template), template.name)}
-                              sx={{
-                                flex: '0 0 auto',
-                              }}
-                            >
-                              <DownloadIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                          <Button
+                            size="small"
+                            startIcon={<EditIcon />}
+                            onClick={() => handleEditTemplate(getTemplateId(template))}
+                            sx={{
+                              flex: '0 1 auto',
+                              color: 'primary.main',
+                              border: '1px solid',
+                              borderColor: 'primary.light',
+                              borderRadius: '8px',
+                              textTransform: 'none',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              minWidth: 'auto',
+                              px: 1.5,
+                              py: 0.75,
+                              '&:hover': {
+                                backgroundColor: 'primary.light',
+                              }
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<ContentCopyIcon />}
+                            onClick={() => handleCloneTemplate(getTemplateId(template))}
+                            sx={{
+                              flex: '0 1 auto',
+                              color: 'primary.main',
+                              border: '1px solid',
+                              borderColor: 'primary.light',
+                              borderRadius: '8px',
+                              textTransform: 'none',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              minWidth: 'auto',
+                              px: 1.5,
+                              py: 0.75,
+                              '&:hover': {
+                                backgroundColor: 'primary.light',
+                              }
+                            }}
+                          >
+                            Duplicate
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            onClick={() => handleExportCSV(getTemplateId(template), template.name)}
+                            sx={{
+                              flex: '0 1 auto',
+                              color: 'success.main',
+                              border: '1px solid',
+                              borderColor: 'success.light',
+                              borderRadius: '8px',
+                              textTransform: 'none',
+                              fontSize: '0.85rem',
+                              fontWeight: 500,
+                              minWidth: 'auto',
+                              px: 1.5,
+                              py: 0.75,
+                              '&:hover': {
+                                backgroundColor: 'success.light',
+                              }
+                            }}
+                          >
+                            Download
+                          </Button>
                         </>
                       )}
                       {canDelete && (
-                        <Tooltip title="Delete Template">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleDeleteTemplate(getTemplateId(template))}
-                            sx={{
-                              flex: '0 0 auto',
-                            }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          startIcon={<DeleteIcon />}
+                          onClick={() => handleDeleteTemplate(getTemplateId(template))}
+                          sx={{
+                            flex: '0 1 auto',
+                            color: 'error.main',
+                            border: '1px solid',
+                            borderColor: 'error.light',
+                            borderRadius: '8px',
+                            textTransform: 'none',
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            minWidth: 'auto',
+                            px: 1.5,
+                            py: 0.75,
+                            '&:hover': {
+                              backgroundColor: 'error.light',
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
                       )}
                     </CardActions>
                   </Card>
