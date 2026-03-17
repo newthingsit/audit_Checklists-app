@@ -1,0 +1,8 @@
+title,description,category,input_type,required,weight,options
+"Male - Hairstyle was proper & hair combed neatly. No Fancy hair cut / Female - Hair combed properly","Hairstyle and hair grooming check",Grooming,option_select,yes,1,Yes:2|No:0
+"Male - Hair cut must be short, above collar, not touching ear / Female - Hair confined properly and neatly in a bun with net","Hair length and confinement check",Grooming,option_select,yes,1,Yes:2|No:0
+"Male - Sideburns are half the length of ear / Female - Hair accessories black in color","Sideburns and hair accessories check",Grooming,option_select,yes,1,Yes:2|No:0
+"Male - Neatly shaved / Female - Makeup applied properly","Shaving and makeup check",Grooming,option_select,yes,1,Yes:2|No:0
+"No body odour / smoke smell","Body odour and smoke smell check",Grooming,option_select,yes,1,Yes:2|No:0
+"Male - Nails properly trimmed / Female - Nails properly trimmed, without polish","Nail grooming check",Grooming,option_select,yes,1,Yes:2|No:0
+"No accessories on hand or wristwatch","Hand accessories check",Grooming,option_select,yes,1,Yes:2|No:0

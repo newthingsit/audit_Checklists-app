@@ -1,0 +1,14 @@
+title,description,category,subcategory,section,input_type,required,weight,is_critical,options
+Emp Name,Enter the name of Employee,Emp Name,Emp Details,Emp,short_answer,yes,1,no,
+Hairstyle proper & hair combed neatly,Male - Hairstyle was proper & hair combed neatly. No Fancy hair cut. Female - Hair combed properly,Grooming,Hair,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Hair cut within standards,"Male - Hair cut must be short, above collar, not touching ear. Female - Hair confined properly and neatly in a bun with net",Grooming,Hair,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Sideburns / Hair accessories,Male - Sideburns are half the length of ear. Female - Hair accessories black in color,Grooming,Hair,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Neatly shaved / Makeup applied properly,Male - Neatly shaved. Female - Makeup applied properly,Grooming,Facial,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No body odour / smoke smell,No body odour/ smoke smell,Grooming,Hygiene,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Nails properly trimmed,"Male - Nails properly trimmed. Female - Nails properly trimmed, without polish",Grooming,Hygiene,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No accessories on hand or wristwatch,No accessories on hand or wristwatch. Female - Only one pair of earrings worn- Silver/ Gold,Grooming,Accessories,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+No Visible Tattoos or Piercing,No Visible Tattoos or Piercing,Grooming,Body,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+"Uniform proper, not torn and well ironed","Uniform proper, not torn and well ironed",Grooming,Uniform,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Shoes - proper and polished,"Male - Black shoes with laces, polished and not torn. Female - Shoes are closed & formal, black in color",Grooming,Uniform,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Black socks worn,Black socks worn,Grooming,Uniform,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA
+Name Badge / Culture Badge / TCP Badge worn,Name Badge / Culture Badge worn / TCP Badge,Grooming,Uniform,Appearance,option_select,yes,1,no,Yes:2|No:0|NA:NA

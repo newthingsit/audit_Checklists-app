@@ -2259,7 +2259,15 @@ const AuditForm = () => {
                               ? (selected 
                                   ? (isNo ? cvrTheme.accent.red : cvrTheme.background.card)
                                   : cvrTheme.background.card)
-                              : (selected ? 'primary.main' : 'transparent'),
+                              : (selected && isMobile 
+                                  ? 'primary.main' 
+                                  : (selected ? 'primary.main' : 'transparent')),
+                            background: isCvr || !selected || !isMobile
+                              ? undefined
+                              : 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                            boxShadow: selected && isMobile && !isCvr
+                              ? '0 4px 12px rgba(25, 118, 210, 0.3)'
+                              : undefined,
                             color: isCvr
                               ? (selected && isNo ? '#FFFFFF' : cvrTheme.text.primary)
                               : (selected ? 'white' : 'text.primary'),
@@ -3223,9 +3231,16 @@ const AuditForm = () => {
                     ...(isMobile ? {
                       fontSize: '0.95rem',
                       fontWeight: 600,
-                      minHeight: 48,
-                      borderRadius: '10px',
-                      padding: '10px 16px',
+                      minHeight: 50,
+                      borderRadius: '12px',
+                      padding: '12px 20px',
+                      color: '#d32f2f',
+                      borderColor: '#d32f2f',
+                      border: '2px solid #d32f2f',
+                      '&:hover': {
+                        backgroundColor: 'rgba(211, 47, 47, 0.08)',
+                        borderColor: '#c62828',
+                      }
                     } : {})
                   }}
                 >
@@ -3243,12 +3258,27 @@ const AuditForm = () => {
                       color: '#fff',
                       '&:hover': { background: 'linear-gradient(135deg, #5a3ee6 0%, #8b52e6 100%)' }
                     }),
-                    ...(isMobile ? {
+                    ...(isMobile && !isCvr && {
                       fontSize: '0.95rem',
-                      fontWeight: 600,
-                      minHeight: 48,
-                      borderRadius: '10px',
-                      padding: '10px 16px',
+                      fontWeight: 700,
+                      minHeight: 50,
+                      borderRadius: '12px',
+                      padding: '12px 20px',
+                      background: 'linear-gradient(135deg, #d32f2f 0%, #c62828 100%)',
+                      color: '#fff',
+                      boxShadow: '0 4px 12px rgba(211, 47, 47, 0.3)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #c62828 0%, #b71c1c 100%)',
+                        boxShadow: '0 6px 16px rgba(211, 47, 47, 0.4)',
+                      }
+                    }),
+                    ...(isMobile && isCvr ? {
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      minHeight: 50,
+                      borderRadius: '12px',
+                      padding: '12px 20px',
+                      boxShadow: '0 4px 12px rgba(90, 62, 230, 0.3)',
                     } : {})
                   }}
                 >

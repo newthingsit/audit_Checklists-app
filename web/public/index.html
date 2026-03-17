@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#C41E3A" />
     <meta name="description" content="Audit Pro - Professional restaurant audit and quality control application" />
     
@@ -15,7 +15,6 @@
     
     <!-- Favicon and Icons -->
     <link rel="icon" href="logo192.png" type="image/png" />
-    <link rel="apple-touch-icon" href="logo192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="logo192.png" />
     
     <!-- PWA Manifest - absolute path to prevent 404 on deep routes -->
@@ -42,8 +41,8 @@
         -moz-osx-font-smoothing: grayscale;
       }
       #root { 
-        min-height: 100vh; 
         min-height: -webkit-fill-available;
+        min-height: 100vh; 
       }
       /* iOS safe area support */
       @supports (padding: env(safe-area-inset-top)) {
@@ -77,7 +76,7 @@
       /* Hide scrollbar on mobile for cleaner look */
       @media (max-width: 768px) {
         ::-webkit-scrollbar { display: none; }
-        body { -ms-overflow-style: none; scrollbar-width: none; }
+        body { -ms-overflow-style: none; }
       }
     </style>
   </head>
