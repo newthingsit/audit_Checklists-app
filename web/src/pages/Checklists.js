@@ -1129,16 +1129,29 @@ const Checklists = () => {
                       gap: 1,
                       display: 'flex',
                       flexWrap: 'wrap',
-                      '& > button': {
-                        flex: '1 1 auto',
+                      '& > button:first-of-type': {
+                        flex: '1 1 100%',
                         minWidth: '100%'
                       },
                       '@media (max-width: 600px)': {
-                        flexDirection: 'column',
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
                         p: 1.5,
-                        gap: 0.5,
+                        gap: 1,
+                        '& > button:first-of-type': {
+                          flex: '1 1 100%',
+                          minWidth: '100%',
+                        },
+                        '& > .MuiIconButton-root': {
+                          flex: '0 0 auto',
+                          minWidth: 'auto',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: '10px',
+                          padding: '8px 12px',
+                        }
                       }
-                    }}>
+                    }>
                       <Button
                         fullWidth
                         variant="contained"
@@ -1169,9 +1182,6 @@ const Checklists = () => {
                               onClick={() => handleEditTemplate(getTemplateId(template))}
                               sx={{
                                 flex: '0 0 auto',
-                                '@media (max-width: 600px)': {
-                                  flex: '1 1 auto',
-                                }
                               }}
                             >
                               <EditIcon fontSize="small" />
@@ -1184,9 +1194,6 @@ const Checklists = () => {
                               onClick={() => handleCloneTemplate(getTemplateId(template))}
                               sx={{
                                 flex: '0 0 auto',
-                                '@media (max-width: 600px)': {
-                                  flex: '1 1 auto',
-                                }
                               }}
                             >
                               <ContentCopyIcon fontSize="small" />
@@ -1199,9 +1206,6 @@ const Checklists = () => {
                               onClick={() => handleExportCSV(getTemplateId(template), template.name)}
                               sx={{
                                 flex: '0 0 auto',
-                                '@media (max-width: 600px)': {
-                                  flex: '1 1 auto',
-                                }
                               }}
                             >
                               <DownloadIcon fontSize="small" />
@@ -1217,9 +1221,6 @@ const Checklists = () => {
                             onClick={() => handleDeleteTemplate(getTemplateId(template))}
                             sx={{
                               flex: '0 0 auto',
-                              '@media (max-width: 600px)': {
-                                flex: '1 1 auto',
-                              }
                             }}
                           >
                             <DeleteIcon fontSize="small" />

@@ -2248,8 +2248,8 @@ const AuditForm = () => {
                             minHeight: isCvr ? 40 : (isMobile ? 56 : 48),
                             minWidth: isCvr ? 70 : undefined,
                             flex: isCvr ? 'none' : undefined,
-                            borderRadius: isCvr ? 6 : 1,
-                            border: '1px solid',
+                            borderRadius: isCvr ? 6 : (isMobile ? 3 : 1),
+                            border: isMobile ? '2px solid' : '1px solid',
                             borderColor: isCvr 
                               ? (selected 
                                   ? (isNo ? cvrTheme.accent.red : cvrTheme.input.border)
@@ -2680,7 +2680,7 @@ const AuditForm = () => {
 
         {/* Step 2: Audit Checklist (directly after Store Information, no category selection) */}
         {activeStep === 1 && (
-          <Box className={isMobile ? 'has-bottom-actions' : ''}>
+          <Box className={isMobile ? 'has-bottom-actions' : ''} sx={isMobile ? { pb: '80px' } : {}}>
             {/* Enhanced Progress Bar with Category Switcher */}
             <Paper 
               sx={{ 
@@ -3194,22 +3194,22 @@ const AuditForm = () => {
               <Box
                 className={isMobile ? 'mobile-bottom-actions' : ''}
                 sx={{
-                  mt: 3,
+                  mt: isMobile ? 0 : 3,
                   display: 'flex',
                   justifyContent: isMobile ? 'stretch' : 'flex-end',
                   gap: isMobile ? 1 : 2,
-                  flexDirection: isMobile ? 'column' : 'row',
-                  '@media (max-width: 600px)': {
-                    mt: 2,
-                    position: 'sticky',
+                  flexDirection: isMobile ? 'row' : 'row',
+                  ...(isMobile ? {
+                    position: 'fixed',
                     bottom: 0,
+                    left: 0,
+                    right: 0,
                     backgroundColor: '#fff',
-                    padding: '12px',
+                    padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
                     borderTop: '1px solid #e0e0e0',
-                    zIndex: 100,
-                    margin: '0 -12px -12px',
-                    gap: 0.5,
-                  }
+                    boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                    zIndex: 1100,
+                  } : {})
                 }}
               >
                 <Button
@@ -3220,10 +3220,13 @@ const AuditForm = () => {
                   sx={{
                     flex: isMobile ? '1' : 'auto',
                     ...(isCvr ? { color: cvrTheme.accent.purple } : {}),
-                    '@media (max-width: 600px)': {
-                      fontSize: '0.9rem',
+                    ...(isMobile ? {
+                      fontSize: '0.95rem',
+                      fontWeight: 600,
+                      minHeight: 48,
+                      borderRadius: '10px',
                       padding: '10px 16px',
-                    }
+                    } : {})
                   }}
                 >
                   {saving ? 'Saving...' : 'Save Draft'}
@@ -3240,11 +3243,13 @@ const AuditForm = () => {
                       color: '#fff',
                       '&:hover': { background: 'linear-gradient(135deg, #5a3ee6 0%, #8b52e6 100%)' }
                     }),
-                    '@media (max-width: 600px)': {
-                      fontSize: '0.9rem',
+                    ...(isMobile ? {
+                      fontSize: '0.95rem',
+                      fontWeight: 600,
+                      minHeight: 48,
+                      borderRadius: '10px',
                       padding: '10px 16px',
-                      order: -1, // Show Submit button first on mobile
-                    }
+                    } : {})
                   }}
                 >
                   {saving ? 'Saving...' : 'Submit'}
