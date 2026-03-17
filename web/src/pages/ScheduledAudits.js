@@ -112,12 +112,6 @@ const ScheduledAudits = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Real-time sync: refresh data instantly when audit events arrive via SSE
-  useRealtimeSync(useCallback(() => {
-    fetchData();
-    fetchRescheduleCount();
-  }, []));
-
   const fetchRescheduleCount = async () => {
     try {
       const response = await axios.get('/api/scheduled-audits/reschedule-count');
@@ -211,6 +205,13 @@ const ScheduledAudits = () => {
       setLoading(false);
     }
   };
+
+  // Real-time sync: refresh data instantly when audit events arrive via SSE
+  useRealtimeSync(useCallback(() => {
+    fetchData();
+    fetchRescheduleCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []));
 
   const handleOpenDialog = (schedule = null) => {
     if (schedule) {

@@ -115,11 +115,6 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Real-time sync: refresh dashboard when audit events arrive via SSE
-  useRealtimeSync(useCallback(() => {
-    fetchData();
-  }, [fetchData]));
-
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -215,6 +210,11 @@ const Dashboard = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, canViewAudits, canViewActions, canViewAnalytics]);
+
+  // Real-time sync: refresh dashboard when audit events arrive via SSE
+  useRealtimeSync(useCallback(() => {
+    fetchData();
+  }, [fetchData]));
 
   const fetchTrendAnalysis = useCallback(async (period) => {
     try {
