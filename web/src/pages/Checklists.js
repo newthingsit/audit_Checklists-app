@@ -1123,35 +1123,13 @@ const Checklists = () => {
                         </Typography>
                       </Box>
                     </CardContent>
-                    <CardActions sx={{ 
-                      p: 2, 
-                      pt: 0, 
+                    <CardActions sx={{
+                      p: 2,
+                      pt: 0,
                       gap: 1,
                       display: 'flex',
                       flexWrap: 'wrap',
-                      '& > button:first-of-type': {
-                        flex: '1 1 100%',
-                        minWidth: '100%'
-                      },
-                      '@media (max-width: 600px)': {
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        p: 1.5,
-                        gap: 1,
-                        '& > button:first-of-type': {
-                          flex: '1 1 100%',
-                          minWidth: '100%',
-                        },
-                        '& > .MuiIconButton-root': {
-                          flex: '0 0 auto',
-                          minWidth: 'auto',
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          borderRadius: '10px',
-                          padding: '8px 12px',
-                        }
-                      }
-                    }>
+                    }}>
                       <Button
                         fullWidth
                         variant="contained"
