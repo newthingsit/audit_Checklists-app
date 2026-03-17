@@ -53,8 +53,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
 .MuiDrawer-paper,
 .MuiDialog-paper,
 .MuiMenu-paper {
-  /* Note: -webkit-overflow-scrolling is deprecated but kept for legacy iOS support */
-  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
@@ -223,8 +221,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Tables ===== */
   .MuiTableContainer-root {
     overflow-x: auto;
-    /* Modern browsers handle momentum scrolling natively */
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
@@ -295,8 +291,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   .MuiStepper-root {
     padding: 16px 0 !important;
     overflow-x: auto;
-    /* Modern browsers handle momentum scrolling natively */
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
@@ -372,8 +366,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Menu ===== */
   .MuiMenu-paper {
     max-height: 70vh !important;
-    /* Modern browsers handle momentum scrolling natively */
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
@@ -385,8 +377,6 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
   /* ===== Mobile Tabs ===== */
   .MuiTabs-root {
     overflow-x: auto;
-    /* Modern browsers handle momentum scrolling natively */
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
@@ -456,9 +446,7 @@ button, .MuiButton-root, .MuiIconButton-root, .MuiChip-root {
 
 /* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
-  /* Fix for iOS momentum scrolling - legacy support */
   .MuiDrawer-paper {
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
   
@@ -874,6 +862,220 @@ input[type="radio"],
   
   .MuiAccordionDetails-root {
     padding: 12px;
+  }
+}
+
+/* ===== Mobile Web Audit Form – App-like Experience ===== */
+/* Optimized for Apple Safari and Chrome on mobile devices */
+
+@media (max-width: 768px) {
+  /* Full-screen audit form layout */
+  .mobile-audit-form {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Sticky category bar like mobile app */
+  .mobile-audit-form .audit-progress {
+    position: sticky !important;
+    top: 56px !important;
+    z-index: 110 !important;
+    background: #fff !important;
+    margin: 0 -12px !important;
+    padding: 8px 12px !important;
+    border-bottom: 1px solid #e0e0e0 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06) !important;
+    width: calc(100% + 24px) !important;
+  }
+
+  /* Question cards: full-width, minimal border radius, clear spacing */
+  .mobile-audit-form .audit-item-card {
+    border-radius: 12px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+  }
+
+  /* Large touch-friendly option buttons like mobile app */
+  .mobile-audit-form .audit-item-options {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .mobile-audit-form .audit-item-options .MuiButton-root {
+    min-height: 56px !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+    text-transform: none !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    border-width: 2px !important;
+  }
+  
+  /* Selected option: bold visual feedback */
+  .mobile-audit-form .audit-item-options .MuiButton-contained {
+    box-shadow: 0 2px 8px rgba(25, 118, 210, 0.25) !important;
+  }
+
+  /* Question title: larger and bolder */
+  .mobile-audit-form .MuiCardContent-root .MuiTypography-subtitle1,
+  .mobile-audit-form .MuiCardContent-root .MuiTypography-body1:first-child {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Comment field: taller for easier input */
+  .mobile-audit-form .MuiCardContent-root textarea {
+    min-height: 80px !important;
+  }
+
+  /* Photo upload: bigger target */
+  .mobile-audit-form .photo-upload-btn {
+    min-height: 56px !important;
+    border-radius: 12px !important;
+    border-style: dashed !important;
+    border-width: 2px !important;
+  }
+
+  /* Photo preview: larger on mobile */
+  .mobile-audit-form img[alt*="audit"],
+  .mobile-audit-form img[alt*="photo"],
+  .mobile-audit-form img[alt*="Photo"] {
+    width: 80px !important;
+    height: 80px !important;
+    object-fit: cover !important;
+    border-radius: 8px !important;
+  }
+
+  /* Fixed bottom action bar (like mobile app) */
+  .mobile-audit-form .mobile-bottom-actions {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: #fff !important;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) !important;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+    z-index: 1100 !important;
+    display: flex !important;
+    gap: 10px !important;
+    border-top: 1px solid #e0e0e0 !important;
+  }
+
+  .mobile-audit-form .mobile-bottom-actions .MuiButton-root {
+    flex: 1 !important;
+    min-height: 48px !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    margin-bottom: 0 !important;
+  }
+
+  /* Content padding to clear fixed bottom bar */
+  .mobile-audit-form .has-bottom-actions {
+    padding-bottom: 90px !important;
+  }
+
+  /* Stepper: hide on audit step, show compact on store step */
+  .mobile-audit-form .MuiStepper-root {
+    margin-bottom: 16px !important;
+  }
+
+  /* Category tabs: scrollable horizontal like mobile app */
+  .mobile-audit-form .MuiTabs-root {
+    margin: 0 -12px !important;
+    width: calc(100% + 24px) !important;
+  }
+  
+  .mobile-audit-form .MuiTabs-flexContainer {
+    gap: 4px !important;
+  }
+
+  .mobile-audit-form .MuiTab-root {
+    min-width: auto !important;
+    padding: 6px 12px !important;
+    font-size: 0.75rem !important;
+    min-height: 36px !important;
+    text-transform: uppercase !important;
+    font-weight: 500 !important;
+  }
+
+  /* Completion badge on category tabs */
+  .mobile-audit-form .MuiTab-root .MuiBox-root .MuiSvgIcon-root {
+    font-size: 14px !important;
+  }
+
+  /* Progress bar: compact */
+  .mobile-audit-form .MuiLinearProgress-root {
+    height: 6px !important;
+    border-radius: 3px !important;
+  }
+}
+
+/* ===== Mobile Web Scheduled Audits – App-like Cards ===== */
+@media (max-width: 768px) {
+  .mobile-schedule-list .MuiCard-root {
+    border-radius: 14px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;
+    overflow: hidden !important;
+  }
+
+  .mobile-schedule-list .MuiCardContent-root {
+    padding: 16px !important;
+  }
+
+  /* Status chip: prominent positioning */
+  .mobile-schedule-list .MuiChip-root {
+    font-size: 0.75rem !important;
+    height: 28px !important;
+    font-weight: 600 !important;
+  }
+
+  /* Action buttons: large, full-width */
+  .mobile-schedule-list .MuiCardActions-root {
+    padding: 12px 16px 16px !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .mobile-schedule-list .MuiCardActions-root .MuiButton-root {
+    width: 100% !important;
+    min-height: 48px !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    text-transform: none !important;
+  }
+
+  /* Start Audit button: prominent green */
+  .mobile-schedule-list .start-audit-btn {
+    background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3) !important;
+  }
+
+  /* Continue Audit button: prominent blue */
+  .mobile-schedule-list .continue-audit-btn {
+    background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(21, 101, 192, 0.3) !important;
+  }
+
+  /* Schedule info layout: vertical stacking */
+  .mobile-schedule-list .schedule-info {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .mobile-schedule-list .schedule-info-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 0.9rem !important;
   }
 }
 

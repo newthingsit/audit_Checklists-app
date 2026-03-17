@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -49,6 +49,7 @@ import axios from 'axios';
 import Layout from '../components/Layout';
 import { showSuccess, showError, showInfo } from '../utils/toast';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { hasPermission, isAdmin } from '../utils/permissions';
 import { cvrTheme, isCvrTemplate } from '../config/theme';
 
@@ -110,6 +111,12 @@ const ScheduledAudits = () => {
     fetchRescheduleCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Real-time sync: refresh data instantly when audit events arrive via SSE
+  useRealtimeSync(useCallback(() => {
+    fetchData();
+    fetchRescheduleCount();
+  }, []));
 
   const fetchRescheduleCount = async () => {
     try {
@@ -860,7 +867,7 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
             </Table>
           </TableContainer>
         ) : (
-          <Grid container spacing={isMobile ? 2 : 3}>
+          <Grid container spacing={isMobile ? 2 : 3} className={isMobile ? 'mobile-schedule-list' : ''}>
             {schedules.map((schedule) => {
               const isCvr = isCvrTemplate(schedule.template_name);
               const sd = schedule.scheduled_date ? new Date(schedule.scheduled_date) : null;
@@ -875,10 +882,10 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                   bgcolor: isCvr ? cvrTheme.background.card : undefined,
                   transition: 'all 0.3s ease',
                   borderRadius: isMobile ? 3 : 2,
-                  boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : undefined,
+                  boxShadow: isMobile ? '0 2px 8px rgba(0,0,0,0.08)' : undefined,
                   '&:hover': { 
                     transform: isMobile ? 'none' : 'translateY(-4px)',
-                    boxShadow: isMobile ? '0 6px 18px rgba(0,0,0,0.12)' : 6,
+                    boxShadow: isMobile ? '0 2px 8px rgba(0,0,0,0.08)' : 6,
                     borderColor: isCvr ? cvrTheme.accent.purple : 'primary.main'
                   }
                 }}>
@@ -970,14 +977,18 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                       {canContinueSchedule(schedule) && (
                         <Button
                           variant="contained"
-                          size="small"
+                          size={isMobile ? 'large' : 'small'}
+                          className="continue-audit-btn"
                           startIcon={<PlayArrowIcon />}
                           onClick={() => handleContinueAudit(schedule)}
                           fullWidth
                           sx={{
                             mt: 1,
                             textTransform: 'none',
-                            borderRadius: 1,
+                            borderRadius: isMobile ? 3 : 1,
+                            minHeight: isMobile ? 48 : undefined,
+                            fontWeight: isMobile ? 600 : undefined,
+                            fontSize: isMobile ? '0.95rem' : undefined,
                             background: 'linear-gradient(135deg, #4338CA 0%, #818CF8 100%)',
                             '&:hover': {
                               background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)',
@@ -1010,16 +1021,21 @@ ankit@test.com,Ankit,Cleanliness Audit,5040,PG Phoenix Pune,2024-12-22,pending`;
                       {canStartSchedule(schedule) && (
                         <Button
                           variant="contained"
-                          size="small"
+                          size={isMobile ? 'large' : 'small'}
+                          className="start-audit-btn"
                           startIcon={<PlayArrowIcon />}
                           onClick={() => handleStartAudit(schedule)}
                           fullWidth
                           sx={{
                             mt: 1,
                             textTransform: 'none',
-                            borderRadius: 2,
-                            background: isMobile ? '#c62828' : undefined,
-                            '&:hover': { background: isMobile ? '#b71c1c' : undefined }
+                            borderRadius: isMobile ? 3 : 2,
+                            minHeight: isMobile ? 48 : undefined,
+                            fontWeight: isMobile ? 600 : undefined,
+                            fontSize: isMobile ? '0.95rem' : undefined,
+                            background: isMobile ? 'linear-gradient(135deg, #2e7d32 0%, #43a047 100%)' : '#c62828',
+                            boxShadow: isMobile ? '0 2px 8px rgba(46,125,50,0.25)' : undefined,
+                            '&:hover': { background: isMobile ? 'linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%)' : '#b71c1c' }
                           }}
                         >
                           Start Audit

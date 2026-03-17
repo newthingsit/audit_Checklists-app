@@ -610,6 +610,44 @@ app.use('/api/assignment-rules', require('./routes/assignment-rules')); // Assig
 app.use('/api/escalation-paths', require('./routes/escalation-paths')); // Multi-level Escalation Paths
 app.use('/api', require('./routes/dynamic-audit-items')); // Dynamic item entry during audits
 
+// Server-Sent Events (SSE) endpoint for real-time audit updates
+const sseManager = require('./utils/sse-manager');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET: SSE_JWT_SECRET } = require('./middleware/auth');
+app.get('/api/events', (req, res) => {
+  // SSE clients (EventSource) cannot set custom headers, so accept token from query param
+  const token = req.query.token || req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, SSE_JWT_SECRET);
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  const userId = decoded.id;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no', // Disable nginx buffering
+  });
+  res.flushHeaders();
+
+  // Send initial connection confirmation
+  res.write(`event: connected\ndata: ${JSON.stringify({ userId })}\n\n`);
+
+  sseManager.addClient(userId, res);
+
+  req.on('close', () => {
+    sseManager.removeClient(userId, res);
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

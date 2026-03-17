@@ -2497,6 +2497,7 @@ const AuditForm = () => {
     <Layout>
       <Container 
         maxWidth="md" 
+        className={isMobile ? 'mobile-audit-form' : ''}
         sx={{ 
           ...(isCvr && { 
             bgcolor: cvrTheme.background.primary, 

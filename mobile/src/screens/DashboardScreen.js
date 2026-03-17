@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
 import { useOffline } from '../context/OfflineContext';
 import { useTemplates } from '../context/TemplateContext';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
@@ -223,6 +224,17 @@ const DashboardScreen = () => {
 
   // Refresh user data + dashboard when screen is focused (skip initial mount)
   const isInitialFocus = useRef(true);
+
+  // Real-time sync via SSE – refresh dashboard instantly on audit events
+  useRealtimeSync(
+    useCallback((eventType) => {
+      if (['audit_scheduled', 'audit_completed', 'audit_updated'].includes(eventType)) {
+        fetchData({ silent: true });
+      }
+    }, [fetchData]),
+    !!user
+  );
+
   useFocusEffect(
     useCallback(() => {
       if (isInitialFocus.current) {

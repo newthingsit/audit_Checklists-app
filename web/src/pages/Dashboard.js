@@ -62,6 +62,7 @@ import axios from 'axios';
 import Layout from '../components/Layout';
 import { themeConfig } from '../config/theme';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { hasPermission, isAdmin } from '../utils/permissions';
 import { withTimeout, validateDashboardData } from '../utils/fetchUtils';
 
@@ -113,6 +114,11 @@ const Dashboard = () => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Real-time sync: refresh dashboard when audit events arrive via SSE
+  useRealtimeSync(useCallback(() => {
+    fetchData();
+  }, [fetchData]));
 
   const fetchData = useCallback(async () => {
     try {

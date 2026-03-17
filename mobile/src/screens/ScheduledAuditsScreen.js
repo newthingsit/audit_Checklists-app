@@ -23,9 +23,10 @@ import { API_BASE_URL } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { hasPermission, isAdmin } from '../utils/permissions';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
-// Auto-refresh interval in milliseconds (60 seconds to prevent rate limiting)
-const AUTO_REFRESH_INTERVAL = 60000;
+// Polling fallback interval (30s) – SSE provides instant updates when connected
+const AUTO_REFRESH_INTERVAL = 30000;
 
 const getStatusValue = (status) => {
   if (!status) return 'pending';
@@ -62,6 +63,17 @@ const ScheduledAuditsScreen = () => {
   useEffect(() => {
     fetchSilentRef.current = fetchScheduledAuditsSilent;
   });
+
+  // Real-time sync via SSE – triggers immediate refresh when audit events arrive
+  useRealtimeSync(
+    useCallback((eventType) => {
+      if (['audit_scheduled', 'audit_completed', 'audit_updated'].includes(eventType)) {
+        // Trigger immediate silent refresh
+        if (fetchSilentRef.current) fetchSilentRef.current();
+      }
+    }, []),
+    !!user
+  );
 
   // Track if this is initial mount to prevent double fetching
   const isInitialMount = useRef(true);

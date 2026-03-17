@@ -1555,6 +1555,13 @@ router.put('/:auditId(\\d+)/items/:itemId(\\d+)', authenticate, (req, res, next)
                         logger.error('Error updating audit:', updateErr.message);
                       }
                       if (auditStatus === 'completed') {
+                        // Broadcast real-time SSE event for audit completion
+                        try {
+                          const sseManager = require('../utils/sse-manager');
+                          sseManager.broadcast('audit_completed', { auditId, score, completed, total });
+                        } catch (sseErr) {
+                          // SSE is optional - don't fail the request
+                        }
                         handleScheduledAuditCompletion(dbInstance, auditId, 'completed');
                         // Auto-create action items for failed items
                         const { autoCreateActionItems } = require('../utils/autoActions');

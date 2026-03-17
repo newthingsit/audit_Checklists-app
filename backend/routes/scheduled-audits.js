@@ -431,6 +431,22 @@ router.post('/', authenticate, requirePermission('manage_scheduled_audits', 'cre
         );
       }
       
+      // Broadcast real-time SSE event so mobile/web update instantly
+      try {
+        const sseManager = require('../utils/sse-manager');
+        const eventData = { scheduleId, template_id, location_id, scheduled_date, assigned_to };
+        // Notify the assigned user
+        if (assigned_to) {
+          sseManager.sendToUser(assigned_to, 'audit_scheduled', eventData);
+        }
+        // Also notify the creator (if different)
+        if (req.user.id !== assigned_to) {
+          sseManager.sendToUser(req.user.id, 'audit_scheduled', eventData);
+        }
+      } catch (sseErr) {
+        logger.warn('[SSE] Failed to broadcast audit_scheduled event:', sseErr.message);
+      }
+
       res.status(201).json({ id: scheduleId, message: 'Scheduled audit created successfully' });
     }
   );
@@ -528,6 +544,19 @@ router.put('/:id', authenticate, requirePermission('manage_scheduled_audits', 'u
             );
           }
           
+          // Broadcast real-time SSE event for schedule update
+          try {
+            const sseManager = require('../utils/sse-manager');
+            const eventData = { scheduleId: parseInt(id, 10), template_id, status, assigned_to };
+            if (assigned_to) sseManager.sendToUser(assigned_to, 'audit_updated', eventData);
+            if (currentSchedule && currentSchedule.assigned_to && currentSchedule.assigned_to !== assigned_to) {
+              sseManager.sendToUser(currentSchedule.assigned_to, 'audit_updated', eventData);
+            }
+            sseManager.sendToUser(userId, 'audit_updated', eventData);
+          } catch (sseErr) {
+            logger.warn('[SSE] Failed to broadcast audit_updated event:', sseErr.message);
+          }
+
           res.json({ message: 'Scheduled audit updated successfully' });
         }
       );
