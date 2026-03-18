@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "env:check": "node scripts/check-env-prod.js",
+    "env:check:prod": "node scripts/check-env-prod.js",
     "test": "node tests/run-all-tests.js",
     "test:api": "node tests/api-contract.test.js",
     "test:full-checklists": "node tests/full-checklist-completion.test.js",
