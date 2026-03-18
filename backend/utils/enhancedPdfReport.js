@@ -121,6 +121,40 @@ function decodeSignatureData(signatureData) {
   }
 }
 
+function parsePhotoUrls(raw) {
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    return raw.map((entry) => String(entry || '').trim()).filter(Boolean);
+  }
+
+  const value = String(raw).trim();
+  if (!value) return [];
+
+  if (value.startsWith('[') || value.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => String(entry || '').trim()).filter(Boolean);
+      }
+      if (parsed && Array.isArray(parsed.urls)) {
+        return parsed.urls.map((entry) => String(entry || '').trim()).filter(Boolean);
+      }
+    } catch (err) {
+      // Fall through to delimiter parsing
+    }
+  }
+
+  if (value.includes(',') || value.includes('\n')) {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  return [value];
+}
+
 /**
  * Fetch image from URL and return as buffer
  */
@@ -520,7 +554,11 @@ function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   
   // Calculate row height based on content
   let rowHeight = 22;
-  const hasPhoto = item.photo_url && photos[item.photo_url];
+  const photoCandidates = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0)
+    ? item.photo_urls
+    : parsePhotoUrls(item.photo_url);
+  const resolvedPhotoKey = photoCandidates.find((url) => photos[url]);
+  const hasPhoto = !!resolvedPhotoKey;
   const hasRemarks = item.comment && item.comment.trim() && !['short_answer', 'long_answer', 'number', 'date', 'time'].includes(inputType);
   
   // Photo in separate column - increase row height if photo exists
@@ -583,7 +621,7 @@ function drawQuestionRow(doc, item, index, colWidths, photos = {}) {
   // Column 6: Photo thumbnail or dash
   if (hasPhoto) {
     try {
-      const photoBuffer = photos[item.photo_url];
+      const photoBuffer = photos[resolvedPhotoKey];
       if (photoBuffer) {
         const photoSize = Math.min(colWidths[5] - 8, rowHeight - 6, 40);
         doc.image(photoBuffer, x + 4, startY + 3, { width: photoSize, height: photoSize });
@@ -1070,7 +1108,16 @@ async function generateEnhancedAuditPdf(auditId, options = {}) {
   // Pre-fetch all photos in parallel batches (5 at a time) instead of sequentially
   const photos = {};
   const PHOTO_CONCURRENCY = 5;
-  const uniquePhotoUrls = [...new Set(items.filter(i => i.photo_url).map(i => i.photo_url))];
+  const uniquePhotoUrls = [...new Set(
+    items
+      .flatMap((item) => {
+        const urls = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0)
+          ? item.photo_urls
+          : parsePhotoUrls(item.photo_url);
+        return urls;
+      })
+      .filter(Boolean)
+  )];
   for (let i = 0; i < uniquePhotoUrls.length; i += PHOTO_CONCURRENCY) {
     const batch = uniquePhotoUrls.slice(i, i + PHOTO_CONCURRENCY);
     const results = await Promise.allSettled(batch.map(url => fetchImage(url)));

@@ -130,8 +130,9 @@ const ScheduledAuditsScreen = () => {
   // Silent fetch for auto-refresh (no loading spinners)
   const fetchScheduledAuditsSilent = async () => {
     try {
-      // Use throttled request - remove cache-busting to allow caching
-      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`);
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits?limit=200&page=1`, {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       let schedulesData = response.data.schedules || [];
       schedulesData = schedulesData.filter(schedule => {
         const status = getStatusValue(schedule.status);
@@ -612,9 +613,9 @@ const ScheduledAuditsScreen = () => {
 
   const fetchScheduledAudits = async () => {
     try {
-      if (__DEV__) console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits`);
+      if (__DEV__) console.log('[Mobile] Fetching scheduled audits from:', `${API_BASE_URL}/scheduled-audits?limit=200&page=1`);
       if (__DEV__) console.log('[Mobile] Current user:', user?.email);
-      const response = await axios.get(`${API_BASE_URL}/scheduled-audits`, {
+      const response = await axios.get(`${API_BASE_URL}/scheduled-audits?limit=200&page=1`, {
         headers: { 'Cache-Control': 'no-cache' }
       });
       if (__DEV__) console.log('[Mobile] Response status:', response.status);

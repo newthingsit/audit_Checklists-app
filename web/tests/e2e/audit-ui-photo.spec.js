@@ -24,6 +24,8 @@ const getLocation = (locations) => {
   return locations[0];
 };
 
+const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const login = async (page) => {
   await page.goto('/login');
   await page.fill('input[type="email"]', email);
@@ -37,8 +39,9 @@ const startAudit = async (page, templateId, locationName) => {
   const storeInput = page.locator('main input[aria-autocomplete="list"]').first();
   await storeInput.click();
   await storeInput.fill(locationName);
-  await page.getByRole('option', { name: new RegExp(locationName, 'i') }).first().waitFor({ state: 'visible' });
-  await page.getByRole('option', { name: new RegExp(locationName, 'i') }).first().click();
+  const escapedLocation = escapeRegex(locationName);
+  await page.getByRole('option', { name: new RegExp(`^${escapedLocation}$`, 'i') }).first().waitFor({ state: 'visible' });
+  await page.getByRole('option', { name: new RegExp(`^${escapedLocation}$`, 'i') }).first().click();
   await page.getByRole('button', { name: /next/i }).click();
 };
 
@@ -299,52 +302,56 @@ test.describe.serial('Audit UI/photo fix', () => {
       }
     });
 
-    const templatesRes = await api.get('/api/templates?dedupe=true');
-    expect(templatesRes.ok()).toBeTruthy();
-    const templatesData = await templatesRes.json();
-    const templates = templatesData.templates || [];
+    try {
+      const templatesRes = await api.get('/api/templates?dedupe=true');
+      expect(templatesRes.ok()).toBeTruthy();
+      const templatesData = await templatesRes.json();
+      const templates = templatesData.templates || [];
 
-    const locationsRes = await api.get('/api/locations');
-    expect(locationsRes.ok()).toBeTruthy();
-    const locationsData = await locationsRes.json();
-    const location = getLocation(locationsData.locations || []);
-    expect(location).toBeTruthy();
+      const locationsRes = await api.get('/api/locations');
+      expect(locationsRes.ok()).toBeTruthy();
+      const locationsData = await locationsRes.json();
+      const location = getLocation(locationsData.locations || []);
+      expect(location).toBeTruthy();
 
-    const cvrTemplate = findTemplateByName(templates, 'NEW CVR - CDR Checklist');
-    expect(cvrTemplate).toBeTruthy();
+      const cvrTemplate = findTemplateByName(templates, 'NEW CVR - CDR Checklist');
+      expect(cvrTemplate).toBeTruthy();
 
-    const cvrTemplateRes = await api.get(`/api/checklists/${cvrTemplate.id}`);
-    expect(cvrTemplateRes.ok()).toBeTruthy();
-    const cvrPayload = await cvrTemplateRes.json();
-    expect(cvrPayload.template?.ui_version).toBe(2);
-    expect(cvrPayload.template?.allow_photo).toBeTruthy();
+      const cvrTemplateRes = await api.get(`/api/checklists/${cvrTemplate.id}`);
+      expect(cvrTemplateRes.ok()).toBeTruthy();
+      const cvrPayload = await cvrTemplateRes.json();
+      expect(cvrPayload.template?.ui_version).toBe(2);
+      expect(cvrPayload.template?.allow_photo).toBeTruthy();
 
-    const photoPath = path.join(__dirname, '../fixtures/photo1.jpg');
-    const auditId = await quickAuditWithPhoto(page, cvrTemplate.id, location.name, photoPath);
+      const photoPath = path.join(__dirname, '../fixtures/photo1.jpg');
+      const auditId = await quickAuditWithPhoto(page, cvrTemplate.id, location.name, photoPath);
 
-    const batchItems = buildBatchItems(cvrPayload.items || []);
-        const batchRes = await api.put(`/api/audits/${auditId}/items/batch`, {
-          data: {
-            items: batchItems,
-            audit_category: null,
-            enforce_required: true
-          }
-        });
-    const batchText = await batchRes.text();
-    expect(batchRes.ok(), `Batch update failed: ${batchRes.status()} ${batchText}`).toBeTruthy();
-    const completeRes = await api.put(`/api/audits/${auditId}/complete`);
-    expect(completeRes.ok()).toBeTruthy();
+      const batchItems = buildBatchItems(cvrPayload.items || []);
+      const batchRes = await api.put(`/api/audits/${auditId}/items/batch`, {
+        data: {
+          items: batchItems,
+          audit_category: null,
+          enforce_required: true
+        }
+      });
+      const batchText = await batchRes.text();
+      expect(batchRes.ok(), `Batch update failed: ${batchRes.status()} ${batchText}`).toBeTruthy();
+      const completeRes = await api.put(`/api/audits/${auditId}/complete`);
+      expect(completeRes.ok()).toBeTruthy();
 
-    const auditRes = await api.get(`/api/audits/${auditId}`);
-    expect(auditRes.ok()).toBeTruthy();
-    const auditData = await auditRes.json();
-    expect(auditData.audit?.status).toBe('completed');
+      const auditRes = await api.get(`/api/audits/${auditId}`);
+      expect(auditRes.ok()).toBeTruthy();
+      const auditData = await auditRes.json();
+      expect(auditData.audit?.status).toBe('completed');
 
-    const reportRes = await api.get(`/api/reports/audit/${auditId}/report`);
-    expect(reportRes.ok()).toBeTruthy();
+      const reportRes = await api.get(`/api/reports/audit/${auditId}/report`);
+      expect(reportRes.ok()).toBeTruthy();
 
-    await page.goto(`/audit/${auditId}/report`, { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(new RegExp(`/audit/${auditId}/report`, 'i'));
+      await page.goto(`/audit/${auditId}/report`, { waitUntil: 'domcontentloaded' });
+      await expect(page).toHaveURL(new RegExp(`/audit/${auditId}/report`, 'i'));
+    } finally {
+      await api.dispose();
+    }
   });
 
   test('QA checklist end-to-end', async ({ page }) => {
@@ -362,53 +369,57 @@ test.describe.serial('Audit UI/photo fix', () => {
       }
     });
 
-    const templatesRes = await api.get('/api/templates?dedupe=true');
-    expect(templatesRes.ok()).toBeTruthy();
-    const templatesData = await templatesRes.json();
-    const templates = templatesData.templates || [];
+    try {
+      const templatesRes = await api.get('/api/templates?dedupe=true');
+      expect(templatesRes.ok()).toBeTruthy();
+      const templatesData = await templatesRes.json();
+      const templates = templatesData.templates || [];
 
-    const locationsRes = await api.get('/api/locations');
-    expect(locationsRes.ok()).toBeTruthy();
-    const locationsData = await locationsRes.json();
-    const location = getLocation(locationsData.locations || []);
-    expect(location).toBeTruthy();
+      const locationsRes = await api.get('/api/locations');
+      expect(locationsRes.ok()).toBeTruthy();
+      const locationsData = await locationsRes.json();
+      const location = getLocation(locationsData.locations || []);
+      expect(location).toBeTruthy();
 
-    const qaTemplate = findTemplateByName(templates, 'New QA - CDR');
-    expect(qaTemplate).toBeTruthy();
+      const qaTemplate = findTemplateByName(templates, 'New QA - CDR');
+      expect(qaTemplate).toBeTruthy();
 
-    const qaTemplateRes = await api.get(`/api/checklists/${qaTemplate.id}`);
-    expect(qaTemplateRes.ok()).toBeTruthy();
-    const qaPayload = await qaTemplateRes.json();
-    expect(qaPayload.template?.ui_version).toBe(2);
-    expect(qaPayload.template?.allow_photo).toBeTruthy();
+      const qaTemplateRes = await api.get(`/api/checklists/${qaTemplate.id}`);
+      expect(qaTemplateRes.ok()).toBeTruthy();
+      const qaPayload = await qaTemplateRes.json();
+      expect(qaPayload.template?.ui_version).toBe(2);
+      expect(qaPayload.template?.allow_photo).toBeTruthy();
 
-    const photoPath = path.join(__dirname, '../fixtures/photo1.jpg');
-    const { auditId, pendingRequired } = await fillChecklist(page, qaTemplate.id, location.name, photoPath);
+      const photoPath = path.join(__dirname, '../fixtures/photo1.jpg');
+      const { auditId, pendingRequired } = await fillChecklist(page, qaTemplate.id, location.name, photoPath);
 
-    if (pendingRequired > 0) {
-      const batchItems = buildBatchItems(qaPayload.items || []);
-          const batchRes = await api.put(`/api/audits/${auditId}/items/batch`, {
-            data: {
-              items: batchItems,
-              audit_category: null,
-              enforce_required: true
-            }
-          });
-      expect(batchRes.ok()).toBeTruthy();
-      const completeRes = await api.put(`/api/audits/${auditId}/complete`);
-      expect(completeRes.ok()).toBeTruthy();
+      if (pendingRequired > 0) {
+        const batchItems = buildBatchItems(qaPayload.items || []);
+        const batchRes = await api.put(`/api/audits/${auditId}/items/batch`, {
+          data: {
+            items: batchItems,
+            audit_category: null,
+            enforce_required: true
+          }
+        });
+        expect(batchRes.ok()).toBeTruthy();
+        const completeRes = await api.put(`/api/audits/${auditId}/complete`);
+        expect(completeRes.ok()).toBeTruthy();
+      }
+
+      const auditRes = await api.get(`/api/audits/${auditId}`);
+      expect(auditRes.ok()).toBeTruthy();
+      const auditData = await auditRes.json();
+      expect(auditData.audit?.status).toBe('completed');
+
+      const reportRes = await api.get(`/api/reports/audit/${auditId}/report`);
+      expect(reportRes.ok()).toBeTruthy();
+
+      await page.goto(`/audit/${auditId}/report`);
+      await expect(page.getByText(/report/i)).toBeVisible();
+      await expect(page.locator('img[alt="Audit"]').first()).toBeVisible();
+    } finally {
+      await api.dispose();
     }
-
-    const auditRes = await api.get(`/api/audits/${auditId}`);
-    expect(auditRes.ok()).toBeTruthy();
-    const auditData = await auditRes.json();
-    expect(auditData.audit?.status).toBe('completed');
-
-    const reportRes = await api.get(`/api/reports/audit/${auditId}/report`);
-    expect(reportRes.ok()).toBeTruthy();
-
-    await page.goto(`/audit/${auditId}/report`);
-    await expect(page.getByText(/report/i)).toBeVisible();
-    await expect(page.locator('img[alt="Audit"]').first()).toBeVisible();
   });
 });

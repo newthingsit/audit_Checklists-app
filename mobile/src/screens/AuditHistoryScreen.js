@@ -18,6 +18,8 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
 import { themeConfig, getScoreColor } from '../config/theme';
 import { useTemplates } from '../context/TemplateContext';
+import { useAuth } from '../context/AuthContext';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError, ServerError } from '../components/ErrorState';
@@ -41,6 +43,7 @@ const AuditHistoryScreen = () => {
   const [templateFilter, setTemplateFilter] = useState('all');
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const { templates } = useTemplates();
+  const { user } = useAuth();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
   const intervalRef = useRef(null);
@@ -222,6 +225,16 @@ const AuditHistoryScreen = () => {
     setRefreshing(true);
     fetchAudits(false);
   };
+
+  // Real-time sync via SSE – refresh history instantly on audit events
+  useRealtimeSync(
+    useCallback((eventType) => {
+      if (['audit_scheduled', 'audit_completed', 'audit_updated'].includes(eventType)) {
+        fetchAudits(true);
+      }
+    }, [fetchAudits]),
+    !!user && isFocused
+  );
 
   const getStatusStyles = (status) => {
     switch (status) {

@@ -308,6 +308,48 @@ const normalizeSignatureData = (value) => {
   return `data:image/png;base64,${raw}`;
 };
 
+const parsePhotoUrls = (raw) => {
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  const value = String(raw).trim();
+  if (!value) return [];
+
+  // JSON payload support: ["/uploads/a.jpg", "/uploads/b.jpg"]
+  if (value.startsWith('[') || value.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry) => String(entry || '').trim())
+          .filter(Boolean);
+      }
+      if (parsed && Array.isArray(parsed.urls)) {
+        return parsed.urls
+          .map((entry) => String(entry || '').trim())
+          .filter(Boolean);
+      }
+    } catch (err) {
+      // Fall through to delimiter-based parsing
+    }
+  }
+
+  // Delimited fallback support: "url1,url2" or newline separated values
+  if (value.includes(',') || value.includes('\n')) {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  return [value];
+};
+
 async function getAuditReportData(auditId, options = {}) {
   const dbInstance = db.getDb();
   const dbType = (process.env.DB_TYPE || 'sqlite').toLowerCase();
@@ -367,14 +409,20 @@ async function getAuditReportData(auditId, options = {}) {
     [auditId]
   );
 
-  const itemsWithScores = items.map(item => ({
-    ...item,
-    comment: normalizeMultiSelectionComment(item),
-    nonScored: isNonScoredInputType(item.input_type),
-    maxScore: isNonScoredInputType(item.input_type)
-      ? 0
-      : parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 0
-  }));
+  const itemsWithScores = items.map(item => {
+    const photoUrls = parsePhotoUrls(item.photo_url);
+    return {
+      ...item,
+      // Keep backward compatibility with existing consumers expecting photo_url
+      photo_url: photoUrls[0] || item.photo_url || null,
+      photo_urls: photoUrls,
+      comment: normalizeMultiSelectionComment(item),
+      nonScored: isNonScoredInputType(item.input_type),
+      maxScore: isNonScoredInputType(item.input_type)
+        ? 0
+        : parseNumeric(item.max_mark) || parseNumeric(item.selected_mark) || 0
+    };
+  });
 
   let totalPerfect = 0;
   let totalActual = 0;

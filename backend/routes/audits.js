@@ -2288,6 +2288,19 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
           
           // When audit is completed, trigger ALL completion side effects
           if (scoreData.status === 'completed') {
+            // Broadcast real-time event so dashboard/history refresh immediately on mobile/web
+            try {
+              const sseManager = require('../utils/sse-manager');
+              sseManager.broadcast('audit_completed', {
+                auditId,
+                score: scoreData.score,
+                completed: scoreData.completed,
+                total: scoreData.total,
+              });
+            } catch (sseErr) {
+              // SSE is optional - never fail batch save for this
+            }
+
             // Auto-create action items for failed items
             const { autoCreateActionItems } = require('../utils/autoActions');
             autoCreateActionItems(dbInstance, auditId, { onlyCritical: false, defaultDueDays: 7 }, (actionErr, actions) => {
@@ -2568,6 +2581,19 @@ router.put('/:id(\\d+)/complete', authenticate, (req, res) => {
           completed: scoreData?.completed || 0,
           total: scoreData?.total || 0
         });
+      }
+
+      // Broadcast real-time event so dashboard/history refresh immediately on mobile/web
+      try {
+        const sseManager = require('../utils/sse-manager');
+        sseManager.broadcast('audit_completed', {
+          auditId,
+          score: scoreData.score,
+          completed: scoreData.completed,
+          total: scoreData.total,
+        });
+      } catch (sseErr) {
+        // SSE is optional - never fail completion for this
       }
 
       handleScheduledAuditCompletion(dbInstance, auditId, 'completed');

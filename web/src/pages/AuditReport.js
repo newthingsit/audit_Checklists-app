@@ -36,6 +36,39 @@ const normalizePhotoUrl = (raw) => {
   return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
 };
 
+const extractPhotoUrls = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((entry) => String(entry || '').trim()).filter(Boolean);
+  }
+
+  const value = String(raw).trim();
+  if (!value) return [];
+
+  if (value.startsWith('[') || value.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => String(entry || '').trim()).filter(Boolean);
+      }
+      if (parsed && Array.isArray(parsed.urls)) {
+        return parsed.urls.map((entry) => String(entry || '').trim()).filter(Boolean);
+      }
+    } catch (err) {
+      // Fall through to delimiter parsing.
+    }
+  }
+
+  if (value.includes(',') || value.includes('\n')) {
+    return value
+      .split(/[\n,]/)
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  return [value];
+};
+
 const formatScore = (actual, perfect) => {
   const actualNum = Number(actual);
   const perfectNum = Number(perfect);
@@ -296,13 +329,25 @@ const AuditReport = () => {
                         </TableCell>
                         <TableCell>{item.comment || '—'}</TableCell>
                         <TableCell>
-                          {item.photo_url ? (
-                            <img
-                              src={normalizePhotoUrl(item.photo_url)}
-                              alt="Audit"
-                              style={{ maxWidth: 80, maxHeight: 80 }}
-                            />
-                          ) : '—'}
+                          {(() => {
+                            const photoUrls = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0)
+                              ? item.photo_urls
+                              : extractPhotoUrls(item.photo_url);
+                            if (!photoUrls.length) return '—';
+
+                            return (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 180 }}>
+                                {photoUrls.map((photoUrl, photoIndex) => (
+                                  <img
+                                    key={`${item.audit_item_id || item.item_id || 'item'}-${photoIndex}`}
+                                    src={normalizePhotoUrl(photoUrl)}
+                                    alt={`Audit ${photoIndex + 1}`}
+                                    style={{ maxWidth: 80, maxHeight: 80 }}
+                                  />
+                                ))}
+                              </Box>
+                            );
+                          })()}
                         </TableCell>
                       </TableRow>
                     ))}
