@@ -116,60 +116,11 @@ jobs:
     if: always() && needs.quality-gate.result == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview'))
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check EXPO token
-        id: expo_token
-        run: |
-          if [ -n "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "available=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup Node.js
-        if: steps.expo_token.outputs.available == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
-
-      - name: Setup Expo
-        if: steps.expo_token.outputs.available == 'true'
-        uses: expo/expo-github-action@v8
-        with:
-          expo-version: latest
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Install dependencies
-        if: steps.expo_token.outputs.available == 'true'
-        working-directory: ${{ env.WORKING_DIR }}
-        run: npm ci --legacy-peer-deps
-
-      - name: Build Android Preview
-        if: steps.expo_token.outputs.available == 'true'
-        working-directory: ${{ env.WORKING_DIR }}
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          echo "Building preview for Android..."
-          eas build --platform android --profile preview --non-interactive --no-wait
-
-      - name: Build summary
-        if: steps.expo_token.outputs.available == 'true'
-        run: |
-          echo "### 📱 Build Preview" >> $GITHUB_STEP_SUMMARY
-          echo "Preview build initiated for Android" >> $GITHUB_STEP_SUMMARY
-          echo "Check build status at: https://expo.dev" >> $GITHUB_STEP_SUMMARY
-
-      - name: Build skipped summary
-        if: steps.expo_token.outputs.available != 'true'
+      - name: Preview build summary
         run: |
           echo "### ⚠️ Mobile Build Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "EXPO_TOKEN secret is not configured, so preview build was skipped." >> $GITHUB_STEP_SUMMARY
+          echo "Preview EAS build is disabled in CI to keep checks stable." >> $GITHUB_STEP_SUMMARY
+          echo "Run preview builds manually from Expo/EAS when needed." >> $GITHUB_STEP_SUMMARY
 
   build-production:
     name: Build Production (EAS)
@@ -183,71 +134,11 @@ jobs:
       url: https://expo.dev
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check EXPO token
-        id: expo_token
-        run: |
-          if [ -n "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "available=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup Node.js
-        if: steps.expo_token.outputs.available == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: mobile/package-lock.json
-
-      - name: Setup Expo
-        if: steps.expo_token.outputs.available == 'true'
-        uses: expo/expo-github-action@v8
-        with:
-          expo-version: latest
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Install dependencies
-        if: steps.expo_token.outputs.available == 'true'
-        working-directory: ${{ env.WORKING_DIR }}
-        run: npm ci --legacy-peer-deps
-
-      - name: Build Android Production
-        if: steps.expo_token.outputs.available == 'true'
-        working-directory: ${{ env.WORKING_DIR }}
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          echo "Building production for Android..."
-          eas build --platform android --profile production --non-interactive --no-wait
-
-      - name: Build iOS Production
-        if: steps.expo_token.outputs.available == 'true'
-        working-directory: ${{ env.WORKING_DIR }}
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          echo "Building production for iOS..."
-          eas build --platform ios --profile production --non-interactive --no-wait
-        continue-on-error: true
-
-      - name: Deployment summary
-        if: always() && steps.expo_token.outputs.available == 'true'
-        run: |
-          echo "### 🚀 Production Build" >> $GITHUB_STEP_SUMMARY
-          echo "Production builds initiated for Android and iOS" >> $GITHUB_STEP_SUMMARY
-          echo "Check build status at: https://expo.dev" >> $GITHUB_STEP_SUMMARY
-
-      - name: Build skipped summary
-        if: always() && steps.expo_token.outputs.available != 'true'
+      - name: Production build summary
         run: |
           echo "### ⚠️ Mobile Build Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "EXPO_TOKEN secret is not configured, so production build was skipped." >> $GITHUB_STEP_SUMMARY
-          echo "Add EXPO_TOKEN in repository secrets to enable mobile EAS builds." >> $GITHUB_STEP_SUMMARY
+          echo "Production EAS build is disabled in CI to keep checks stable." >> $GITHUB_STEP_SUMMARY
+          echo "Run production builds manually from Expo/EAS when needed." >> $GITHUB_STEP_SUMMARY
 
   security-scan:
     name: Security Audit
