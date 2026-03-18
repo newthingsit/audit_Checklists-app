@@ -51,7 +51,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kapilchauhan.auditpro"
+      "bundleIdentifier": "com.kapilchauhan.auditpro",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-location",

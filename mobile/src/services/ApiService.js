@@ -27,7 +27,7 @@ const pendingRequests = new Map();
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
 let refreshPromise = null;
-const refreshAccessToken = async () => {
+export const refreshAccessToken = async () => {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);

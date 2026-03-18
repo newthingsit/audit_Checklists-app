@@ -72,7 +72,7 @@ const ScheduledAuditsScreen = () => {
         if (fetchSilentRef.current) fetchSilentRef.current();
       }
     }, []),
-    !!user
+    !!user && isFocused
   );
 
   // Track if this is initial mount to prevent double fetching

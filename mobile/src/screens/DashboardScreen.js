@@ -11,7 +11,7 @@ import {
   Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +33,7 @@ const DashboardScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const { user, refreshUser } = useAuth();
   const { isOnline } = useNetwork();
   const { templates: sharedTemplates, fetchTemplates: fetchSharedTemplates } = useTemplates();
@@ -232,7 +233,7 @@ const DashboardScreen = () => {
         fetchData({ silent: true });
       }
     }, [fetchData]),
-    !!user
+    !!user && isFocused
   );
 
   useFocusEffect(

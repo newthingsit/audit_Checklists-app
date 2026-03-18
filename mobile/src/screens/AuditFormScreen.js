@@ -24,6 +24,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
+import { refreshAccessToken } from '../services/ApiService';
 import { isPhotoFixTemplate } from '../config/photoFix';
 import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -2008,6 +2009,7 @@ const AuditFormScreen = () => {
   // Photo upload with retry logic - Optimized for large audits (174+ items)
   const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
     let lastError = null;
+    let effectiveAuthToken = authToken;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       let didTimeout = false; // Declare outside try block to be accessible in catch
@@ -2015,7 +2017,7 @@ const AuditFormScreen = () => {
         
         // Create AbortController for timeout handling
         const controller = new AbortController();
-        const timeoutMs = 30000; // 30 second timeout (uploads can be slow on mobile networks)
+        const timeoutMs = 90000; // 90 second timeout for slower mobile-data uploads
         const timeoutId = setTimeout(() => {
           didTimeout = true;
           controller.abort();
@@ -2024,7 +2026,7 @@ const AuditFormScreen = () => {
         const uploadUrl = `${API_BASE_URL}/photo`;
         const requestHeaders = {
             'Accept': 'application/json',
-            ...(authToken ? { 'Authorization': authToken } : {}),
+          ...(effectiveAuthToken ? { 'Authorization': effectiveAuthToken } : {}),
         };
         
         const uploadResponse = await fetch(uploadUrl, {
@@ -2039,6 +2041,13 @@ const AuditFormScreen = () => {
         if (!uploadResponse.ok) {
           const errorData = await uploadResponse.json().catch(() => ({}));
           if (uploadResponse.status === 401) {
+            const newToken = await refreshAccessToken();
+            if (newToken) {
+              effectiveAuthToken = `Bearer ${newToken}`;
+              if (attempt < maxRetries) {
+                continue;
+              }
+            }
             throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
           } else if (uploadResponse.status === 404) {
             throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };

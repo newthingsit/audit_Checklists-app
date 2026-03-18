@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '../config/api';
+import { refreshAccessToken } from '../services/ApiService';
 
 /**
  * useRealtimeSync – Subscribes to Server-Sent Events (SSE) from the backend
@@ -57,13 +58,24 @@ export function useRealtimeSync(onEvent, enabled = true) {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const response = await fetch(sseUrl, {
+      const connectWithToken = async (tokenValue) => fetch(sseUrl, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${tokenValue}`,
           'Accept': 'text/event-stream',
         },
         signal: controller.signal,
       });
+
+      let response = await connectWithToken(token);
+
+      // Mobile data sessions can hit token expiry while app is active.
+      // Refresh once and reconnect transparently before falling back to polling.
+      if (response.status === 401) {
+        const refreshedToken = await refreshAccessToken();
+        if (refreshedToken) {
+          response = await connectWithToken(refreshedToken);
+        }
+      }
 
       if (!response.ok || !response.body) {
         throw new Error(`SSE connection failed: ${response.status}`);
