@@ -39,6 +39,7 @@ jobs:
               - **/lcov-report/**
               - **/*.md
 
-      - uses: github/codeql-action/autobuild@v3
+      # JavaScript is an interpreted language; skipping autobuild avoids
+      # false failures in monorepos without a single root build command.
 
       - uses: github/codeql-action/analyze@v3

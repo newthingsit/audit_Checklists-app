@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: quality-gate
-    if: always() && needs.quality-gate.result == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview'))
+    if: always() && needs.quality-gate.result == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preview')) && secrets.EXPO_TOKEN != ''
     
     steps:
       - name: Checkout code
@@ -137,15 +137,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: npm ci --legacy-peer-deps
 
-      - name: Verify EXPO_TOKEN
-        run: |
-          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "❌ EXPO_TOKEN secret is not set. Add it in GitHub repo Settings > Secrets."
-            echo "Get a token from: https://expo.dev/accounts/[account]/settings/access-tokens"
-            exit 1
-          fi
-          echo "✅ EXPO_TOKEN is configured"
-
       - name: Build Android Preview
         working-directory: ${{ env.WORKING_DIR }}
         env:
@@ -165,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: quality-gate
-    if: always() && needs.quality-gate.result == 'success' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'))
+    if: always() && needs.quality-gate.result == 'success' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')) && secrets.EXPO_TOKEN != ''
     environment:
       name: production
       url: https://expo.dev
@@ -192,15 +183,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: npm ci --legacy-peer-deps
 
-      - name: Verify EXPO_TOKEN
-        run: |
-          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "❌ EXPO_TOKEN secret is not set. Add it in GitHub repo Settings > Secrets."
-            echo "Get a token from: https://expo.dev/accounts/[account]/settings/access-tokens"
-            exit 1
-          fi
-          echo "✅ EXPO_TOKEN is configured"
-
       - name: Build Android Production
         working-directory: ${{ env.WORKING_DIR }}
         env:
@@ -224,6 +206,18 @@ jobs:
           echo "### 🚀 Production Build" >> $GITHUB_STEP_SUMMARY
           echo "Production builds initiated for Android and iOS" >> $GITHUB_STEP_SUMMARY
           echo "Check build status at: https://expo.dev" >> $GITHUB_STEP_SUMMARY
+
+  build-skipped-no-expo-token:
+    name: Build Skipped (Missing EXPO_TOKEN)
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    if: always() && needs.quality-gate.result == 'success' && secrets.EXPO_TOKEN == '' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Skip summary
+        run: |
+          echo "### ⚠️ Mobile Build Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "EXPO_TOKEN secret is not configured, so EAS build jobs were skipped." >> $GITHUB_STEP_SUMMARY
+          echo "Add EXPO_TOKEN in repository secrets to enable mobile EAS builds." >> $GITHUB_STEP_SUMMARY
 
   security-scan:
     name: Security Audit
