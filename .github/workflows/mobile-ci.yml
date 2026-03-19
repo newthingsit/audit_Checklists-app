@@ -186,8 +186,8 @@ jobs:
             echo "✅ All tests passed - Production ready"
             exit 0
           elif [[ "${{ needs.test.result }}" == "failure" ]]; then
-            echo "⚠️ Tests have failures (97.4% pass rate acceptable for Phase G)"
-            echo "Allowing deployment with test warnings - monitor production carefully"
+            echo "⚠️ Tests have failures. Current policy allows deployment with warnings."
+            echo "Review failing tests and monitor production deployment carefully."
             exit 0
           else
             echo "❌ Tests did not complete - blocking deployment"
@@ -198,10 +198,17 @@ jobs:
         if: always()
         run: |
           echo "### 🎯 Quality Gate Results" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests**: ${{ needs.test.result }} ⚠️ (97.4% pass rate - acceptable)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Security**: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Decision**: Allowing production deployment with test warnings" >> $GITHUB_STEP_SUMMARY
-          echo "- Core functionality verified (1157/1188 tests passing)" >> $GITHUB_STEP_SUMMARY
-          echo "- Remaining failures are edge cases (Alert mocking, integration tests)" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚠️ Monitor production deployment closely" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.test.result }}" == "success" ]]; then
+            echo "**Decision**: Quality gate passed." >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ All configured mobile CI checks completed successfully." >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test.result }}" == "failure" ]]; then
+            echo "**Decision**: Quality gate passed with warnings." >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ Tests failed, but deployment is currently allowed by policy." >> $GITHUB_STEP_SUMMARY
+            echo "- Recommended: fix failures before production promotion." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Decision**: Quality gate failed." >> $GITHUB_STEP_SUMMARY
+            echo "- ❌ Test job did not complete." >> $GITHUB_STEP_SUMMARY
+          fi
