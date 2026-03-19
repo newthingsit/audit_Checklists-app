@@ -159,8 +159,36 @@ router.get('/', authenticate, (req, res) => {
         logger.error('Error fetching audits:', err.message);
         return res.status(500).json({ error: 'Database error' });
       }
+
+      // Auto-heal stale statuses where progress is already fully complete.
+      // This keeps history cards consistent even if a previous submit path missed status finalization.
+      const normalizedAudits = (audits || []).map((audit) => {
+        const totalItems = Number(audit.total_items) || 0;
+        const completedItems = Number(audit.completed_items) || 0;
+        const rawStatus = String(audit.status || '').toLowerCase();
+        const shouldMarkCompleted = totalItems > 0 && completedItems >= totalItems && (rawStatus === 'in_progress' || rawStatus === 'pending');
+
+        if (shouldMarkCompleted) {
+          dbInstance.run(
+            'UPDATE audits SET status = ? WHERE id = ?',
+            ['completed', audit.id],
+            (updateErr) => {
+              if (updateErr) {
+                logger.warn('[Audit List] Failed to auto-heal stale completed status', {
+                  auditId: audit.id,
+                  error: updateErr.message,
+                });
+              }
+            }
+          );
+          return { ...audit, status: 'completed' };
+        }
+
+        return audit;
+      });
+
       res.json({ 
-        audits: audits || [],
+        audits: normalizedAudits,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -360,19 +388,42 @@ router.get('/:id(\\d+)', authenticate, (req, res) => {
             const needsProgressUpdate =
               audit.completed_items !== completionStats.completed ||
               audit.total_items !== completionStats.total;
+            const currentStatus = String(audit.status || '').toLowerCase();
+            const shouldMarkCompleted =
+              completionStats.completed >= completionStats.total &&
+              (currentStatus === 'in_progress' || currentStatus === 'pending');
 
             if (needsProgressUpdate) {
               audit.completed_items = completionStats.completed;
               audit.total_items = completionStats.total;
+            }
+            if (shouldMarkCompleted) {
+              audit.status = 'completed';
+            }
+
+            if (needsProgressUpdate || shouldMarkCompleted) {
+              const updateFields = [];
+              const updateParams = [];
+
+              if (needsProgressUpdate) {
+                updateFields.push('completed_items = ?', 'total_items = ?');
+                updateParams.push(completionStats.completed, completionStats.total);
+              }
+              if (shouldMarkCompleted) {
+                updateFields.push('status = ?');
+                updateParams.push('completed');
+              }
+
+              updateParams.push(auditId);
 
               dbInstance.run(
-                'UPDATE audits SET completed_items = ?, total_items = ? WHERE id = ?',
-                [completionStats.completed, completionStats.total, auditId],
+                `UPDATE audits SET ${updateFields.join(', ')} WHERE id = ?`,
+                updateParams,
                 (updateErr) => {
                   if (updateErr) {
-                    logger.warn('[Audit Fetch] Failed to refresh audit progress counts', {
+                    logger.warn('[Audit Fetch] Failed to refresh audit progress/status', {
                       auditId,
-                      error: updateErr.message
+                      error: updateErr.message,
                     });
                   }
                 }

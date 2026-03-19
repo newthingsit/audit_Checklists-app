@@ -46,8 +46,15 @@ const NotificationSettingsScreen = () => {
   };
 
   const handleReminderTimeChange = async (hours) => {
+    const previousValue = localPrefs.reminderTime;
     setLocalPrefs(prev => ({ ...prev, reminderTime: hours }));
-    await updatePreferences({ reminderTime: hours });
+    try {
+      await updatePreferences({ reminderTime: hours });
+    } catch (error) {
+      console.error('Error updating reminder time:', error);
+      setLocalPrefs(prev => ({ ...prev, reminderTime: previousValue }));
+      Alert.alert('Error', 'Failed to update reminder timing. Please try again.');
+    }
   };
 
   const handleClearAll = () => {
@@ -60,8 +67,13 @@ const NotificationSettingsScreen = () => {
           text: 'Clear All', 
           style: 'destructive',
           onPress: async () => {
-            await cancelAllNotifications();
-            Alert.alert('Success', 'All notifications cleared');
+            try {
+              await cancelAllNotifications();
+              Alert.alert('Success', 'All notifications cleared');
+            } catch (error) {
+              console.error('Error clearing notifications:', error);
+              Alert.alert('Error', 'Failed to clear notifications. Please try again.');
+            }
           }
         },
       ]

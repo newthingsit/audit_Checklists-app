@@ -292,18 +292,23 @@ export const createTemplate = (overrides = {}) => {
 
 // Helper function to create API response
 export const createApiResponse = (data, status = 200) => {
-  return Promise.resolve({
+  return {
     status,
     data,
-  });
+  };
 };
 
 // Helper function to create API error
 export const createApiError = (status = 500, error = null) => {
-  return Promise.reject({
-    response: {
-      status,
-      data: error || sampleApiErrors.serverError.data,
-    },
-  });
+  if (typeof status !== 'number') {
+    return {
+      status: 500,
+      data: status || sampleApiErrors.serverError.data,
+    };
+  }
+
+  return {
+    status,
+    data: error || sampleApiErrors.serverError.data,
+  };
 };

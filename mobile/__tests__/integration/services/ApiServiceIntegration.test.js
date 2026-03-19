@@ -7,6 +7,7 @@
 
 import axios from 'axios';
 import {
+  setupApiMocks,
   setupIntegrationTests,
   cleanupIntegrationTests,
   mockApiEndpoint,
@@ -30,6 +31,7 @@ describe('Integration: API Service Layer', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    setupApiMocks();
   });
 
   describe('GET Requests - Data Retrieval', () => {

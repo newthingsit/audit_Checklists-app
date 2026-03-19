@@ -39,9 +39,8 @@ const defaultNotificationContext = {
   preferences: {
     enabled: true,
     scheduledAuditReminders: true,
-    dueDateAlerts: true,
-    taskAssignments: true,
-    statusUpdates: false,
+    overdueActionAlerts: true,
+    auditCompletionNotices: false,
     reminderTime: 24,
   },
   updatePreferences: jest.fn(() => Promise.resolve()),
@@ -59,9 +58,11 @@ describe('NotificationSettingsScreen', () => {
     mockNavigation.navigate.mockClear();
     mockNavigation.goBack.mockClear();
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
-    defaultNotificationContext.updatePreferences.mockClear();
+    defaultNotificationContext.updatePreferences.mockReset();
+    defaultNotificationContext.updatePreferences.mockResolvedValue();
     defaultNotificationContext.refreshScheduledNotifications.mockClear();
-    defaultNotificationContext.cancelAllNotifications.mockClear();
+    defaultNotificationContext.cancelAllNotifications.mockReset();
+    defaultNotificationContext.cancelAllNotifications.mockResolvedValue();
   });
 
   afterEach(() => {
@@ -82,7 +83,8 @@ describe('NotificationSettingsScreen', () => {
     test('should display all notification types', () => {
       render(<NotificationSettingsScreen />);
       expect(screen.getByText('Audit Reminders')).toBeTruthy();
-      expect(screen.getByText('Due Date Alerts')).toBeTruthy();
+      expect(screen.getByText('Overdue Alerts')).toBeTruthy();
+      expect(screen.getByText('Completion Notices')).toBeTruthy();
     });
 
     test('should display notification type icons', () => {
@@ -139,7 +141,7 @@ describe('NotificationSettingsScreen', () => {
 
     test('should display due date alerts toggle', () => {
       render(<NotificationSettingsScreen />);
-      expect(screen.getByText('Due Date Alerts')).toBeTruthy();
+      expect(screen.getByText('Overdue Alerts')).toBeTruthy();
     });
 
     test('should display all notification type descriptions', () => {
@@ -253,8 +255,8 @@ describe('NotificationSettingsScreen', () => {
       });
 
       Alert.alert.mockImplementation((title, message, buttons) => {
-        const confirmButton = buttons.find(b => b.text === 'Clear All');
-        confirmButton.onPress();
+        const confirmButton = buttons?.find(b => b.text === 'Clear All');
+        confirmButton?.onPress();
       });
 
       render(<NotificationSettingsScreen />);
@@ -276,7 +278,7 @@ describe('NotificationSettingsScreen', () => {
       Alert.alert.mockImplementation((title, message, buttons) => {
         if (buttons) {
           const confirmButton = buttons.find(b => b.text === 'Clear All');
-          confirmButton.onPress();
+          confirmButton?.onPress();
         }
       });
 
@@ -297,8 +299,8 @@ describe('NotificationSettingsScreen', () => {
       });
 
       Alert.alert.mockImplementation((title, message, buttons) => {
-        const cancelButton = buttons.find(b => b.text === 'Cancel');
-        // Cancel does nothing
+        const cancelButton = buttons?.find(b => b.text === 'Cancel');
+        cancelButton?.onPress?.();
       });
 
       render(<NotificationSettingsScreen />);
@@ -351,7 +353,7 @@ describe('NotificationSettingsScreen', () => {
       Alert.alert.mockImplementation((title, message, buttons) => {
         if (buttons) {
           const confirmButton = buttons.find(b => b.text === 'Clear All');
-          confirmButton.onPress();
+          confirmButton?.onPress();
         }
       });
 

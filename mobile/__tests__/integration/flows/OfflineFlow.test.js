@@ -122,6 +122,8 @@ describe('Integration: Offline-to-Online Sync Flow', () => {
     });
 
     it('should show offline indicator to user', () => {
+      mockNetwork.isOnline = false;
+
       const isOnlineIndicatorShown = !mockNetwork.isOnline;
 
       expect(isOnlineIndicatorShown).toBe(true);
@@ -163,7 +165,7 @@ describe('Integration: Offline-to-Online Sync Flow', () => {
       const unsubscribe = mockNetwork.subscribeToNetworkChange(() => {});
 
       expect(mockNetwork.subscribeToNetworkChange).toHaveBeenCalled();
-      expect(unsubscribe).toBeInstanceOf(Function);
+      expect(typeof unsubscribe).toBe('function');
     });
 
     it('should debounce rapid network changes', async () => {

@@ -1,0 +1,133 @@
+name: Mobile Android Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+      wait_for_build:
+        description: Wait for EAS build completion
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: mobile-android-build-${{ github.ref }}-${{ github.event.inputs.profile || 'preview' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  WORKING_DIR: ./mobile
+
+jobs:
+  android-build:
+    name: Android EAS Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Expo token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Missing EXPO_TOKEN secret. Add an Expo access token in repository secrets before running this workflow."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIR }}
+        run: npm ci --legacy-peer-deps
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          expo-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Resolve build mode
+        id: build_mode
+        shell: bash
+        run: |
+          if [ "${{ github.event.inputs.wait_for_build }}" = "true" ]; then
+            echo "wait_flag=--wait" >> $GITHUB_OUTPUT
+          else
+            echo "wait_flag=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Start Android build
+        id: eas_build
+        working-directory: ${{ env.WORKING_DIR }}
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          PROFILE="${{ github.event.inputs.profile }}"
+          WAIT_FLAG="${{ steps.build_mode.outputs.wait_flag }}"
+
+          eas build --platform android --profile "$PROFILE" --non-interactive $WAIT_FLAG --json > build-result.json
+
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('build-result.json','utf8')); const build=Array.isArray(data)?data[0]:data; if(!build){process.exit(1);} const outputs=[['id',build.id||''],['status',build.status||''],['details_url',build.webpageUrl||''],['artifact_url',(build.artifacts&&build.artifacts.buildUrl)||'']]; fs.appendFileSync(process.env.GITHUB_OUTPUT, outputs.map(([k,v]) => `${k}=${String(v).replace(/\n/g,' ')}`).join('\n') + '\n');"
+
+      - name: Download Android artifact
+        if: ${{ github.event.inputs.wait_for_build == 'true' && steps.eas_build.outputs.artifact_url != '' }}
+        working-directory: ${{ env.WORKING_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE="${{ github.event.inputs.profile }}"
+          mkdir -p dist
+          EXT="aab"
+          if [ "$PROFILE" = "preview" ]; then
+            EXT="apk"
+          fi
+          curl -L "${{ steps.eas_build.outputs.artifact_url }}" -o "dist/android-${PROFILE}.${EXT}"
+          echo "artifact_path=mobile/dist/android-${PROFILE}.${EXT}" >> $GITHUB_OUTPUT
+
+      - name: Upload Android artifact
+        if: ${{ github.event.inputs.wait_for_build == 'true' && steps.eas_build.outputs.artifact_url != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ github.event.inputs.profile }}-${{ github.run_id }}
+          path: mobile/dist/*
+          if-no-files-found: error
+
+      - name: Build summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Android EAS Build" >> $GITHUB_STEP_SUMMARY
+          echo "- Profile: ${{ github.event.inputs.profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Waited for completion: ${{ github.event.inputs.wait_for_build }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build ID: ${{ steps.eas_build.outputs.id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ steps.eas_build.outputs.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build details: ${{ steps.eas_build.outputs.details_url }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.eas_build.outputs.artifact_url }}" ]; then
+            echo "- Artifact URL resolved: yes" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Artifact URL resolved: no" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ github.event.inputs.profile }}" = "production" ]; then
+            echo "- Note: production Android output may be an AAB depending on EAS profile configuration." >> $GITHUB_STEP_SUMMARY
+          fi

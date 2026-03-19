@@ -5,13 +5,18 @@ import DashboardScreen from '../../src/screens/DashboardScreen';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
 import { useOffline } from '../../src/context/OfflineContext';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useTemplates } from '../../src/context/TemplateContext';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 
 // Mock contexts
 jest.mock('../../src/context/AuthContext');
 jest.mock('../../src/context/NetworkContext');
 jest.mock('../../src/context/OfflineContext');
+jest.mock('../../src/context/TemplateContext');
+jest.mock('../../src/hooks/useRealtimeSync', () => ({
+  useRealtimeSync: jest.fn(),
+}));
 jest.mock('@react-navigation/native');
 jest.mock('axios');
 
@@ -129,7 +134,17 @@ describe('DashboardScreen', () => {
     useAuth.mockReturnValue(defaultAuthContext);
     useNetwork.mockReturnValue(defaultNetworkContext);
     useOffline.mockReturnValue(defaultOfflineContext);
-    useOffline.mockReturnValue(defaultOfflineContext);
+    useTemplates.mockReturnValue({
+      templates: [
+        { id: 1, name: 'Template 1', category: 'Restaurant' },
+        { id: 2, name: 'Template 2', category: 'Retail' },
+        { id: 3, name: 'Template 3', category: 'Hotel' },
+        { id: 4, name: 'Template 4', category: 'Cafe' },
+        { id: 5, name: 'Template 5', category: 'Store' },
+      ],
+      fetchTemplates: jest.fn(() => Promise.resolve([])),
+    });
+    useIsFocused.mockReturnValue(true);
     
     useNavigation.mockReturnValue({
       navigate: jest.fn(),

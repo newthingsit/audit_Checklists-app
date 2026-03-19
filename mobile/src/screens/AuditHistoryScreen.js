@@ -108,6 +108,16 @@ const AuditHistoryScreen = () => {
     applyFilters();
   }, [searchTerm, statusFilter, templateFilter, audits]);
 
+  const getEffectiveAuditStatus = useCallback((audit) => {
+    const totalItems = Number(audit?.total_items) || 0;
+    const completedItems = Number(audit?.completed_items) || 0;
+    const rawStatus = String(audit?.status || '').toLowerCase();
+    if (totalItems > 0 && completedItems >= totalItems) {
+      return 'completed';
+    }
+    return rawStatus;
+  }, []);
+
   const applyFilters = () => {
     let filtered = audits;
 
@@ -120,7 +130,7 @@ const AuditHistoryScreen = () => {
     }
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(audit => audit.status === statusFilter);
+      filtered = filtered.filter(audit => getEffectiveAuditStatus(audit) === statusFilter);
     }
 
     if (templateFilter !== 'all') {
@@ -272,8 +282,9 @@ const AuditHistoryScreen = () => {
   };
 
   const renderAudit = ({ item, index }) => {
-    const statusStyles = getStatusStyles(item.status);
-    const isCompleted = item.status === 'completed';
+    const effectiveStatus = getEffectiveAuditStatus(item);
+    const statusStyles = getStatusStyles(effectiveStatus);
+    const isCompleted = effectiveStatus === 'completed';
     
     return (
       <TouchableOpacity

@@ -51,12 +51,13 @@ const AuditDetailScreen = () => {
     try {
       setFetchError(null);
       const response = await axios.get(`${API_BASE_URL}/audits/${id}`);
-      setAudit(response.data.audit);
+      const fetchedAudit = response?.data?.audit || null;
+      setAudit(fetchedAudit);
       setItems(response.data.items || []);
       setTimeStats(response.data.timeStats || null);
       
       // Fetch action plan for completed audits
-      if (response.data.audit.status === 'completed') {
+      if (fetchedAudit?.status === 'completed') {
         try {
           const actionPlanResponse = await axios.get(`${API_BASE_URL}/audits/${id}/action-plan`);
           setActionPlan(actionPlanResponse.data);
@@ -173,6 +174,11 @@ const AuditDetailScreen = () => {
   const progress = totalItems > 0 
     ? Math.min(100, (completedItems / totalItems) * 100)
     : 0;
+  const rawStatus = String(audit.status || '').toLowerCase();
+  const effectiveStatus = totalItems > 0 && completedItems >= totalItems ? 'completed' : rawStatus;
+  const statusLabel = effectiveStatus === 'in_progress'
+    ? 'In Progress'
+    : (effectiveStatus || 'unknown').charAt(0).toUpperCase() + (effectiveStatus || 'unknown').slice(1);
 
   return (
     <ScrollView 
@@ -190,13 +196,11 @@ const AuditDetailScreen = () => {
       <View style={styles.statusContainer}>
         <View style={styles.statusRow}>
           <View
-            style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(audit.status) }]}
+            style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(effectiveStatus) }]}
             testID="audit-status"
             accessibilityLabel="audit-status"
           >
-            <Text style={styles.statusText}>
-              {audit.status === 'in_progress' ? 'In Progress' : (audit.status || 'Unknown').charAt(0).toUpperCase() + (audit.status || 'unknown').slice(1)}
-            </Text>
+            <Text style={styles.statusText}>{statusLabel}</Text>
           </View>
           {audit.score !== null && (
             <View style={styles.scoreContainer}>
@@ -237,7 +241,7 @@ const AuditDetailScreen = () => {
         </View>
       )}
 
-      {audit.status === 'in_progress' && (
+      {effectiveStatus === 'in_progress' && (
         <View style={styles.actionContainer}>
           <TouchableOpacity
             style={styles.continueButton}

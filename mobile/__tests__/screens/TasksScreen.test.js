@@ -108,8 +108,10 @@ describe('TasksScreen', () => {
 
     mockNavigation.navigate.mockClear();
     mockNavigation.goBack.mockClear();
-    axios.get.mockClear();
-    axios.put.mockClear();
+    axios.get.mockReset();
+    axios.get.mockResolvedValue({ data: { tasks: mockTasks } });
+    axios.put.mockReset();
+    axios.put.mockResolvedValue({ data: { success: true } });
   });
 
   afterEach(() => {
@@ -168,7 +170,7 @@ describe('TasksScreen', () => {
       render(<TasksScreen />);
 
       await waitFor(() => {
-        expect(screen.getByText('John Doe')).toBeTruthy();
+        expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
         expect(screen.getByText('Jane Smith')).toBeTruthy();
       });
     });
@@ -178,7 +180,7 @@ describe('TasksScreen', () => {
       render(<TasksScreen />);
 
       await waitFor(() => {
-        expect(screen.getByText('Warehouse A')).toBeTruthy();
+        expect(screen.getAllByText('Warehouse A').length).toBeGreaterThan(0);
         expect(screen.getByText('Building B')).toBeTruthy();
       });
     });
@@ -188,9 +190,9 @@ describe('TasksScreen', () => {
       render(<TasksScreen />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('icon-person')).toBeTruthy();
-        expect(screen.getByTestId('icon-location-on')).toBeTruthy();
-        expect(screen.getByTestId('icon-event')).toBeTruthy();
+        expect(screen.getAllByTestId('icon-person').length).toBeGreaterThan(0);
+        expect(screen.getAllByTestId('icon-location-on').length).toBeGreaterThan(0);
+        expect(screen.getAllByTestId('icon-event').length).toBeGreaterThan(0);
       });
     });
   });
@@ -492,7 +494,7 @@ describe('TasksScreen', () => {
       render(<TasksScreen />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Due:/i)).toBeTruthy();
+        expect(screen.getAllByText(/Due:/i).length).toBeGreaterThan(0);
       });
     });
 

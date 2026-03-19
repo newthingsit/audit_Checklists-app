@@ -24,7 +24,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/api';
-import { refreshAccessToken } from '../services/ApiService';
+import { apiClient } from '../services/ApiService';
 import { isPhotoFixTemplate } from '../config/photoFix';
 import { themeConfig, cvrTheme, isCvrTemplate } from '../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -2007,86 +2007,62 @@ const AuditFormScreen = () => {
   }, [auditStatus, comments, getSosAverageItems, items, moveToNextCategory, selectedCategory]);
 
   // Photo upload with retry logic - Optimized for large audits (174+ items)
-  const uploadPhotoWithRetry = async (formData, authToken, maxRetries = 3) => {
+  const uploadPhotoWithRetry = async (formData, maxRetries = 3) => {
     let lastError = null;
-    let effectiveAuthToken = authToken;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      let didTimeout = false; // Declare outside try block to be accessible in catch
       try {
-        
-        // Create AbortController for timeout handling
-        const controller = new AbortController();
-        const timeoutMs = 90000; // 90 second timeout for slower mobile-data uploads
-        const timeoutId = setTimeout(() => {
-          didTimeout = true;
-          controller.abort();
-        }, timeoutMs);
-        
-        const uploadUrl = `${API_BASE_URL}/photo`;
-        const requestHeaders = {
+        const uploadResponse = await apiClient.post('/photo', formData, {
+          timeout: 90000,
+          headers: {
             'Accept': 'application/json',
-          ...(effectiveAuthToken ? { 'Authorization': effectiveAuthToken } : {}),
-        };
-        
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: requestHeaders,
-          body: formData,
-          signal: controller.signal,
+            'Content-Type': 'multipart/form-data',
+          },
         });
-        
-        clearTimeout(timeoutId);
-
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json().catch(() => ({}));
-          if (uploadResponse.status === 401) {
-            const newToken = await refreshAccessToken();
-            if (newToken) {
-              effectiveAuthToken = `Bearer ${newToken}`;
-              if (attempt < maxRetries) {
-                continue;
-              }
-            }
-            throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
-          } else if (uploadResponse.status === 404) {
-            throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
-          } else if (uploadResponse.status === 429) {
-            // Rate limited - wait longer and retry with exponential backoff
-            if (attempt < maxRetries) {
-              const retryAfterHeader = uploadResponse.headers?.get?.('retry-after');
-              const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
-              const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
-              const waitTime = retryAfterMs ?? Math.min(5000 * attempt, 30000); // Max 30 seconds wait
-              console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-              continue;
-            }
-            throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
-          } else {
-            throw { type: 'server', message: errorData.error || `Server error: ${uploadResponse.status}` };
-          }
-        }
-
-        const responseData = await uploadResponse.json();
-        return responseData;
+        return uploadResponse.data;
       } catch (error) {
         lastError = error;
+        const statusCode = error?.response?.status;
+        const isTimeout = error?.code === 'ECONNABORTED' || error?.message?.toLowerCase()?.includes('timeout');
+        const isNetworkFailure = !error?.response && (error?.message?.includes('Network Error') || error?.message?.includes('Network request failed'));
+        const responseError = error?.response?.data;
         
         // Metro-visible debug line (device cannot reach 127.0.0.1 ingest endpoint)
         console.log('[Upload][Debug]', {
           attempt,
           maxRetries,
-          didTimeout,
+          statusCode,
           errorName: error?.name,
           errorMessage: error?.message,
         });
+
+        if (statusCode === 401) {
+          throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
+        }
+        if (statusCode === 404) {
+          throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
+        }
+        if (statusCode === 429) {
+          if (attempt < maxRetries) {
+            const retryAfterHeader = error?.response?.headers?.['retry-after'];
+            const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+            const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+            const waitTime = retryAfterMs ?? Math.min(5000 * attempt, 30000);
+            console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
+        }
+        if (statusCode >= 500) {
+          throw { type: 'server', message: responseError?.error || `Server error: ${statusCode}` };
+        }
         
         // Don't retry on auth or not found errors
         if (error.noRetry) throw error;
         
         // Handle timeout errors
-        if (didTimeout || error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('aborted')) {
+        if (isTimeout) {
           if (attempt < maxRetries) {
             console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
@@ -2096,7 +2072,7 @@ const AuditFormScreen = () => {
         }
         
         // Network errors - retry with exponential backoff
-        if (error.message?.includes('Network request failed') && attempt < maxRetries) {
+        if (isNetworkFailure && attempt < maxRetries) {
           console.log(`Network error. Retrying ${attempt + 1}/${maxRetries}...`);
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
@@ -2153,10 +2129,8 @@ const AuditFormScreen = () => {
           name: `photo_${itemId}_${Date.now()}.jpg`,
         });
 
-        const authToken = axios.defaults.headers.common['Authorization'];
-        
         // Use retry logic for upload
-        const responseData = await uploadPhotoWithRetry(formData, authToken);
+        const responseData = await uploadPhotoWithRetry(formData);
 
         const photoUrl = responseData.photo_url;
         const baseUrl = API_BASE_URL.replace('/api', '');
@@ -3125,7 +3099,6 @@ const AuditFormScreen = () => {
       let uploadedPictureUrls = [];
       if (infoPictures.length > 0) {
         try {
-          const authToken = axios.defaults.headers.common['Authorization'];
           for (const picture of infoPictures) {
             // Handle both object format { uri: ... } and string format
             const pictureUri = typeof picture === 'string' ? picture : (picture?.uri || '');
@@ -3142,7 +3115,7 @@ const AuditFormScreen = () => {
                 name: `info_picture_${Date.now()}_${Math.random()}.jpg`,
               });
               
-              const responseData = await uploadPhotoWithRetry(formData, authToken);
+              const responseData = await uploadPhotoWithRetry(formData);
               if (responseData?.photo_url) {
                 uploadedPictureUrls.push(responseData.photo_url);
               }

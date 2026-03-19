@@ -268,9 +268,9 @@ describe('Integration: Location Service', () => {
         longitude: -74.006,
       };
 
-      const locations = sampleLocations.map(loc => ({
+      const locations = sampleLocations.map((loc, index) => ({
         ...loc,
-        distance: 100 + Math.random() * 1000,
+        distance: index === 0 ? 250 : 750 + index * 50,
       }));
 
       const nearby = locations.filter(loc => loc.distance < 500);
@@ -325,7 +325,7 @@ describe('Integration: Location Service', () => {
         '/locations?lat=40.7128&lng=-74.006&radius=1000'
       );
 
-      expect(response.data).toHaveLength(2);
+      expect(response.data.data).toHaveLength(2);
     });
 
     it('should fetch location details', async () => {
@@ -342,7 +342,7 @@ describe('Integration: Location Service', () => {
 
       const response = await axios.get('/locations/1');
 
-      expect(response.data.name).toBe('Main Office');
+      expect(response.data.data.name).toBe('Main Office');
     });
 
     it('should save location preference', async () => {

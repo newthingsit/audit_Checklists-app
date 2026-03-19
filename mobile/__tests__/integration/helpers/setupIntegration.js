@@ -15,17 +15,17 @@ const API_BASE_URL = 'http://api.example.com';
  */
 export const setupApiMocks = () => {
   // Reset axios method mocks specifically (don't clear them entirely)
-  if (axios.get && axios.get.mockClear) {
-    axios.get.mockClear();
+  if (axios.get && axios.get.mockReset) {
+    axios.get.mockReset();
   }
-  if (axios.post && axios.post.mockClear) {
-    axios.post.mockClear();
+  if (axios.post && axios.post.mockReset) {
+    axios.post.mockReset();
   }
-  if (axios.put && axios.put.mockClear) {
-    axios.put.mockClear();
+  if (axios.put && axios.put.mockReset) {
+    axios.put.mockReset();
   }
-  if (axios.delete && axios.delete.mockClear) {
-    axios.delete.mockClear();
+  if (axios.delete && axios.delete.mockReset) {
+    axios.delete.mockReset();
   }
 
   // Return cleanup function (no restore needed since jest.setup.js defines permanent mocks)
@@ -44,26 +44,51 @@ export const setupApiMocks = () => {
  * @param {number} status - HTTP status code (default: 200)
  */
 export const mockApiEndpoint = (method, urlPattern, response, status = 200) => {
-  const mockFn = axios[method];
+  const normalizedMethod = String(method).toLowerCase();
 
-  mockFn.mockImplementation((url, ...rest) => {
+  if (!axios[normalizedMethod]) {
+    axios[normalizedMethod] = jest.fn();
+  }
+
+  const mockFn = axios[normalizedMethod];
+  const previousImplementation = mockFn.getMockImplementation();
+
+  mockFn.mockImplementation(async (url, ...rest) => {
     const isMatch =
       urlPattern instanceof RegExp ? urlPattern.test(url) : url.includes(urlPattern);
 
     if (isMatch) {
-      const responseData = typeof response === 'function' ? response(url, ...rest) : response;
+      let responseData;
 
-      if (status >= 400) {
-        return Promise.reject({
-          response: { status, data: responseData },
-        });
+      try {
+        responseData = typeof response === 'function'
+          ? await response(url, ...rest)
+          : response;
+      } catch (error) {
+        throw error;
       }
 
-      return Promise.resolve({ status, data: responseData });
+      if (status === 0) {
+        throw {
+          code: 'NETWORK_ERROR',
+          response: { status: 0, data: responseData },
+        };
+      }
+
+      if (status >= 400) {
+        throw {
+          response: { status, data: responseData },
+        };
+      }
+
+      return { status, data: responseData };
     }
 
-    // Delegate to other handlers or reject
-    return Promise.reject(new Error(`Unmocked URL: ${url}`));
+    if (previousImplementation) {
+      return previousImplementation(url, ...rest);
+    }
+
+    throw new Error(`Unmocked URL: ${url}`);
   });
 
   return mockFn;

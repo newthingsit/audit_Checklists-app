@@ -49,6 +49,7 @@ export const createMockLocationContext = (overrides = {}) => {
     isTracking: false,
     permissionStatus: 'granted',
     requestPermission: jest.fn(),
+    checkPermission: jest.fn(),
     startTracking: jest.fn(),
     stopTracking: jest.fn(),
     getDistance: jest.fn(() => 0.5),

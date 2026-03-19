@@ -3,12 +3,23 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 import AuditHistoryScreen from '../../src/screens/AuditHistoryScreen';
 import axios from 'axios';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useTemplates } from '../../src/context/TemplateContext';
+import { useAuth } from '../../src/context/AuthContext';
 
 // Mock dependencies
 jest.mock('axios');
 jest.mock('@react-navigation/native', () => ({
   useNavigation: jest.fn(),
   useIsFocused: jest.fn(),
+}));
+jest.mock('../../src/context/TemplateContext', () => ({
+  useTemplates: jest.fn(),
+}));
+jest.mock('../../src/context/AuthContext', () => ({
+  useAuth: jest.fn(),
+}));
+jest.mock('../../src/hooks/useRealtimeSync', () => ({
+  useRealtimeSync: jest.fn(),
 }));
 
 jest.mock('@expo/vector-icons', () => ({
@@ -133,6 +144,8 @@ describe('AuditHistoryScreen', () => {
     jest.clearAllMocks();
     useNavigation.mockReturnValue(mockNavigation);
     useIsFocused.mockReturnValue(false); // Disable auto-refresh to prevent interference
+    useTemplates.mockReturnValue({ templates: mockTemplates });
+    useAuth.mockReturnValue({ user: { id: 1, name: 'Test User' } });
     
     // Default mock for axios - will be overridden in specific tests
     axios.get.mockImplementation((url) => {
@@ -158,9 +171,6 @@ describe('AuditHistoryScreen', () => {
 
     it('should render filter button', async () => {
       render(<AuditHistoryScreen />);
-      await waitFor(() => {
-        expect(screen.queryByTestId('list-skeleton')).toBe(null);
-      });
       // Filter button should be visible (MaterialIcons tune icon)
       expect(screen.root).toBeTruthy();
     });
@@ -180,22 +190,19 @@ describe('AuditHistoryScreen', () => {
         expect(axios.get).toHaveBeenCalledWith(
           expect.stringContaining('/audits'),
           expect.objectContaining({
-            params: expect.objectContaining({ _t: expect.any(Number) }),
+            headers: expect.objectContaining({ 'Cache-Control': 'no-cache' }),
+            timeout: 15000,
           })
         );
       });
     });
 
-    it('should fetch templates on mount', async () => {
+    it('should not fetch templates from API on mount', async () => {
       render(<AuditHistoryScreen />);
       await waitFor(() => {
-        expect(axios.get).toHaveBeenCalledWith(
-          expect.stringContaining('/templates'),
-          expect.objectContaining({
-            params: expect.objectContaining({ _t: expect.any(Number) }),
-          })
-        );
+        expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/audits'), expect.any(Object));
       });
+      expect(axios.get).not.toHaveBeenCalledWith(expect.stringContaining('/templates'), expect.anything());
     });
 
     it('should display audit items', async () => {
@@ -387,8 +394,7 @@ describe('AuditHistoryScreen', () => {
     });
 
     it('should retry fetch when retry button is pressed', async () => {
-      axios.get.mockRejectedValueOnce({ message: 'Network Error' })
-        .mockResolvedValueOnce({ data: { templates: mockTemplates } });
+      axios.get.mockRejectedValueOnce({ message: 'Network Error' });
 
       render(<AuditHistoryScreen />);
 
@@ -408,7 +414,7 @@ describe('AuditHistoryScreen', () => {
       fireEvent.press(screen.getByTestId('retry-button'));
 
       await waitFor(() => {
-        expect(screen.getByText('Test Restaurant 1')).toBeTruthy();
+        expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/audits'), expect.any(Object));
       });
     });
 

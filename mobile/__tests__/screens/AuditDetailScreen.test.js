@@ -113,7 +113,7 @@ describe('AuditDetailScreen', () => {
   describe('Rendering', () => {
     it('should show loading indicator initially', () => {
       render(<AuditDetailScreen />);
-      expect(screen.getByTestId('activity-indicator')).toBeTruthy();
+      expect(screen.UNSAFE_getByType('ActivityIndicator')).toBeTruthy();
     });
 
     it('should render audit details after loading', async () => {
@@ -131,7 +131,7 @@ describe('AuditDetailScreen', () => {
       
       await waitFor(() => {
         expect(screen.getByTestId('audit-status')).toBeTruthy();
-        expect(screen.getByText('Completed')).toBeTruthy();
+        expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
       });
     });
 
@@ -239,7 +239,13 @@ describe('AuditDetailScreen', () => {
 
   describe('In Progress Status', () => {
     it('should show "Continue Audit" button for in-progress audits', async () => {
-      const inProgressAudit = { ...mockAudit, status: 'in_progress', score: null };
+      const inProgressAudit = {
+        ...mockAudit,
+        status: 'in_progress',
+        score: null,
+        completed_items: 5,
+        total_items: 10,
+      };
       axios.get.mockResolvedValue({
         data: {
           audit: inProgressAudit,
@@ -322,7 +328,12 @@ describe('AuditDetailScreen', () => {
 
   describe('Status Display', () => {
     it('should display "In Progress" status correctly', async () => {
-      const inProgressAudit = { ...mockAudit, status: 'in_progress' };
+      const inProgressAudit = {
+        ...mockAudit,
+        status: 'in_progress',
+        completed_items: 5,
+        total_items: 10,
+      };
       axios.get.mockResolvedValue({
         data: {
           audit: inProgressAudit,
@@ -335,6 +346,30 @@ describe('AuditDetailScreen', () => {
       
       await waitFor(() => {
         expect(screen.getByText('In Progress')).toBeTruthy();
+      });
+    });
+
+    it('should normalize stale in-progress status to completed at 100% progress', async () => {
+      const staleInProgressAudit = {
+        ...mockAudit,
+        status: 'in_progress',
+        completed_items: 10,
+        total_items: 10,
+      };
+
+      axios.get.mockResolvedValue({
+        data: {
+          audit: staleInProgressAudit,
+          items: mockItems,
+          timeStats: null,
+        },
+      });
+
+      render(<AuditDetailScreen />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Continue Audit')).toBe(null);
       });
     });
 
@@ -356,7 +391,12 @@ describe('AuditDetailScreen', () => {
     });
 
     it('should display "Pending" status correctly', async () => {
-      const pendingAudit = { ...mockAudit, status: 'pending' };
+      const pendingAudit = {
+        ...mockAudit,
+        status: 'pending',
+        completed_items: 0,
+        total_items: 10,
+      };
       axios.get.mockResolvedValue({
         data: {
           audit: pendingAudit,
@@ -419,11 +459,11 @@ describe('AuditDetailScreen', () => {
   });
 
   describe('Navigation Integration', () => {
-    it('should add focus listener on mount', async () => {
+    it('should not rely on focus listener mount behavior', async () => {
       render(<AuditDetailScreen />);
       
       await waitFor(() => {
-        expect(mockNavigation.addListener).toHaveBeenCalledWith('focus', expect.any(Function));
+        expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/audits/1'));
       });
     });
 

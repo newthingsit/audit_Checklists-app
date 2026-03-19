@@ -4,12 +4,16 @@ import { View, Text, TextInput } from 'react-native';
 import ChecklistsScreen from '../../src/screens/ChecklistsScreen';
 import { useAuth } from '../../src/context/AuthContext';
 import { useNetwork } from '../../src/context/NetworkContext';
+import { useTemplates } from '../../src/context/TemplateContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 
 // Mock contexts
 jest.mock('../../src/context/AuthContext');
 jest.mock('../../src/context/NetworkContext');
+jest.mock('../../src/context/TemplateContext', () => ({
+  useTemplates: jest.fn(),
+}));
 jest.mock('@react-navigation/native');
 jest.mock('axios');
 
@@ -26,11 +30,16 @@ jest.mock('../../src/config/theme', () => ({
       bg: '#FFFBEB',
     },
     border: { default: '#E5E7EB' },
+    dashboardCards: {
+      card1: ['#3B82F6', '#1E40AF'],
+      card2: ['#10B981', '#047857'],
+    },
     text: {
       primary: '#1E293B',
       secondary: '#64748B',
       disabled: '#94A3B8',
     },
+    border: { default: '#E5E7EB', light: '#E5E7EB' },
     background: {
       default: '#F1F5F9',
       paper: '#FFFFFF',
@@ -80,7 +89,7 @@ jest.mock('../../src/components/EmptyState', () => {
   const React = require('react');
   const { View: RNView } = require('react-native');
   return {
-    NoTemplates: React.createElement(RNView, { testID: 'no-templates' }),
+    NoTemplates: () => React.createElement(RNView, { testID: 'no-templates' }),
   };
 });
 
@@ -125,6 +134,35 @@ describe('ChecklistsScreen', () => {
     isConnected: true,
   };
 
+  const buildTemplateContext = () => {
+    const React = require('react');
+
+    return () => {
+      const [templates, setTemplates] = React.useState([]);
+      const [loading, setLoading] = React.useState(false);
+      const fetchTemplates = React.useCallback(async (options = {}) => {
+        setLoading(true);
+        try {
+          const response = await axios.get('http://api.test.com/templates', {
+            params: options,
+          });
+          const nextTemplates = Array.isArray(response?.data?.templates)
+            ? response.data.templates
+            : [];
+          setTemplates(nextTemplates);
+          return response?.data;
+        } catch (error) {
+          setTemplates([]);
+          return null;
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      return { templates, loading, fetchTemplates };
+    };
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     
@@ -145,6 +183,8 @@ describe('ChecklistsScreen', () => {
         }
       };
     });
+
+    useTemplates.mockImplementation(buildTemplateContext());
 
     axios.get.mockResolvedValue({
       data: {
@@ -195,7 +235,7 @@ describe('ChecklistsScreen', () => {
       await waitFor(() => {
         expect(axios.get).toHaveBeenCalledWith(
           expect.stringContaining('/templates'),
-          expect.any(Object)
+          expect.objectContaining({ params: expect.any(Object) })
         );
       }, { timeout: 3000 });
     });

@@ -488,7 +488,7 @@ describe('Integration: Notification Service', () => {
 
       const response = await axios.get('/audits');
 
-      expect(response.data).toHaveLength(2);
+      expect(response.data.data).toHaveLength(2);
     });
 
     it('should send notification analytics', async () => {

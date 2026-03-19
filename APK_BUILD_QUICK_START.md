@@ -3,14 +3,24 @@
 *Last updated: January 28, 2026*
 
 ## **FASTEST: Use GitHub Actions (No Setup Required)**
+
 ✅ **Recommended** - Takes ~2 minutes of your time, ~10-15 min build time
 
-1. Go to: https://github.com/YOUR_REPO/actions
-2. Click: **"Build Android Release APK"** (or any Android workflow)
-3. Click: **"Run workflow"** → Select **main** → **"Run workflow"**
-4. Wait ~10-15 minutes
-5. Download: **app-release.apk** from Artifacts
-6. Done! No local setup, no restarts, no WSL
+1. Add repository secret: `EXPO_TOKEN`
+2. Go to: `https://github.com/<owner>/<repo>/actions`
+3. Click: **"Mobile Android Build"**
+4. Click: **"Run workflow"**
+5. Choose profile:
+   - `preview` for APK
+   - `production` for production EAS output
+6. Wait for the workflow to finish
+7. Download the uploaded artifact from the run
+
+Notes:
+
+- `preview` maps to the current EAS profile that generates an Android APK.
+- `production` may generate an AAB instead of an APK unless the EAS profile is changed.
+- This avoids the Windows limitation for `eas build --local`.
 
 ---
 
@@ -84,7 +94,7 @@ npx eas build --platform android --profile release --local --output app-release.
 
 | Method | Time | Setup | Best For |
 |--------|------|-------|----------|
-| **GitHub Actions** | 15 min (mostly waiting) | None | Getting APK NOW, CI/CD pipelines |
+| **GitHub Actions** | 15 min (mostly waiting) | Expo token secret | Getting APK NOW, CI/CD pipelines |
 | **WSL2 Local** | 30 min setup + 5 min builds | One-time | Development, testing, fast iterations |
 | **Cloud (Alternatives)** | 10-20 min | Account + creds | If WSL fails, use EAS managed build |
 
@@ -122,6 +132,15 @@ npm run build:apk:preview
 # or
 npm run build:apk:release
 ```
+
+### **GitHub Actions build fails with missing EXPO_TOKEN**
+The `Mobile Android Build` workflow requires an Expo access token.
+
+**Fix:**
+1. In GitHub, open repository settings.
+2. Go to **Secrets and variables** → **Actions**.
+3. Add secret `EXPO_TOKEN`.
+4. Re-run the workflow.
 
 ### **"node.exe is not recognized" when running `npm`/`npx`**
 This means Node.js isn't installed (or isn't on your PATH) in the shell you're using.
@@ -200,7 +219,7 @@ rm -rf ~/.gradle/caches
 ## **Next Actions**
 
 ### **Now (5 minutes):**
-Go to GitHub Actions and click "Run workflow" on the Android APK builder.
+Open GitHub Actions, run **Mobile Android Build**, and choose the `preview` profile for an APK artifact.
 
 ### **Later (when ready to develop locally):**
 Run `1_Enable-WSL2.ps1`, restart, then run `2_Android-SDK-Setup.sh` in WSL.

@@ -1,16 +1,16 @@
 module.exports = {
-  preset: 'react-native',
+  preset: 'jest-expo',
   
   // Setup files
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   
   // Transform files - Transform React Native, Expo, and other ESM packages
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-navigation|@sentry|@expo|expo|expo-.*)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native|@react-navigation|@sentry|expo(nent)?|@expo(nent)?/.*|expo-.*|react-native-svg)/)',
   ],
   
   // Module paths
-  moduleFileExtensions: ['js', 'jsx', 'json'],
+  moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json'],
   
   // Test match patterns
   testMatch: [
@@ -18,7 +18,8 @@ module.exports = {
     '**/__tests__/**/*.spec.js'
   ],
   
-  // Coverage
+  // Coverage (enabled explicitly via CLI / CI scripts)
+  collectCoverage: false,
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',
     '!src/**/__tests__/**',
@@ -46,10 +47,9 @@ module.exports = {
   // Module name mapper for assets
   moduleNameMapper: {
     '\\.(jpg|jpeg|png|gif|svg|ttf|woff|woff2)$': '<rootDir>/__mocks__/fileMock.js',
+    '^expo/src/async-require/messageSocket$': '<rootDir>/__mocks__/emptyModule.js',
   },
   
-  // Globals
-  globals: {
-    __DEV__: true,
-  },
+  // Keep test environment explicit for compatibility across Jest versions.
+  testEnvironment: 'node',
 };

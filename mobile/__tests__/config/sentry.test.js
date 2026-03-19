@@ -14,7 +14,17 @@ import {
   captureApiError,
 } from '../../src/config/sentry';
 
-jest.mock('@sentry/react-native');
+jest.mock('@sentry/react-native', () => ({
+  init: jest.fn(),
+  setUser: jest.fn(),
+  addBreadcrumb: jest.fn(),
+  captureException: jest.fn(),
+  captureMessage: jest.fn(),
+  startTransaction: jest.fn(() => ({ finish: jest.fn() })),
+  wrap: jest.fn((component) => component),
+  ReactNativeTracing: jest.fn(),
+  ReactNavigationInstrumentation: jest.fn(),
+}));
 jest.mock('expo-constants', () => ({
   expoConfig: {
     version: '2.1.4',
@@ -352,7 +362,7 @@ describe('Sentry Configuration', () => {
         finish: jest.fn(),
       };
 
-      Sentry.startTransaction = jest.fn().mockReturnValue(mockTransaction);
+      Sentry.startTransaction.mockReturnValue(mockTransaction);
 
       const transaction = startSentryTransaction('Load Audits', 'http');
 
