@@ -284,10 +284,10 @@ echo "✓ Setup complete! Navigate to /mnt/d/audit_Checklists-app/mobile and run
 If WSL setup is too complex, simply use the GitHub Actions workflow:
 
 1. Go to your repo → **Actions** tab
-2. Select **"Build Android Release APK"** workflow
-3. Click **"Run workflow"** → confirm
+2. Select **"Mobile Android Build"** workflow
+3. Click **"Run workflow"** → choose the `preview` profile → confirm
 4. Wait for completion (~10-15 minutes)
-5. Download `app-release.apk` from Artifacts
+5. Download the uploaded Android artifact from the workflow run
 
 This bypasses local setup entirely.
 

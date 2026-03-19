@@ -176,7 +176,7 @@ User continues from where they left off ✅
 ```bash
 # Via GitHub Actions (recommended)
 Go to: https://github.com/newthingsit/audit_Checklists-app/actions
-Run: "Build Android Release APK" workflow on master branch
+Run: "Mobile Android Build" workflow on master branch with the `preview` profile
 
 # Or via local WSL/EAS
 cd mobile

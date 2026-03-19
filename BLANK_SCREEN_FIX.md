@@ -45,12 +45,12 @@ Updated [app.json](app.json) with complete configuration:
 
 2. **Trigger Build**:
    - Go to: https://github.com/YOUR_REPO/actions
-   - Click "Build Android Release APK"
-   - Click "Run workflow" → Select "main" → "Run workflow"
+   - Click "Mobile Android Build"
+   - Click "Run workflow" → Select `preview` profile → "Run workflow"
    - Wait ~10-15 minutes
 
 3. **Download & Install**:
-   - Download `app-release.apk` from Artifacts
+   - Download the uploaded Android artifact from the workflow run
    - Transfer to phone
    - Uninstall old version first
    - Install new APK
