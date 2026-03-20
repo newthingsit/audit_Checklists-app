@@ -24,8 +24,8 @@ export function useRealtimeSync(onEvent, enabled = true) {
   const appStateRef = useRef(AppState.currentState);
   const onEventRef = useRef(onEvent);
   const retriesRef = useRef(0);
-  const MAX_RETRIES = 5;
-  const BASE_DELAY = 3000; // 3 seconds
+  const MAX_RETRIES = 10;
+  const BASE_DELAY = 2000; // 2 seconds
 
   // Keep callback ref fresh
   useEffect(() => {

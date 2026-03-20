@@ -2012,8 +2012,10 @@ const AuditFormScreen = () => {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        // apiClient interceptor handles 401 → token refresh → automatic retry,
+        // so we do NOT manually intercept 401 here.
         const uploadResponse = await apiClient.post('/photo', formData, {
-          timeout: 90000,
+          timeout: 60000,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'multipart/form-data',
@@ -2027,7 +2029,6 @@ const AuditFormScreen = () => {
         const isNetworkFailure = !error?.response && (error?.message?.includes('Network Error') || error?.message?.includes('Network request failed'));
         const responseError = error?.response?.data;
         
-        // Metro-visible debug line (device cannot reach 127.0.0.1 ingest endpoint)
         console.log('[Upload][Debug]', {
           attempt,
           maxRetries,
@@ -2036,11 +2037,12 @@ const AuditFormScreen = () => {
           errorMessage: error?.message,
         });
 
+        // 401 means the interceptor already tried token refresh and it failed
         if (statusCode === 401) {
-          throw { type: 'auth', message: 'Authentication required. Please login again.', noRetry: true };
+          throw { type: 'auth', message: 'Authentication required. Please login again.' };
         }
         if (statusCode === 404) {
-          throw { type: 'notfound', message: 'Upload endpoint not found.', noRetry: true };
+          throw { type: 'notfound', message: 'Upload endpoint not found.' };
         }
         if (statusCode === 429) {
           if (attempt < maxRetries) {
@@ -2055,20 +2057,19 @@ const AuditFormScreen = () => {
           throw { type: 'ratelimit', message: 'Too many uploads. Please wait a moment and try again.' };
         }
         if (statusCode >= 500) {
-          throw { type: 'server', message: responseError?.error || `Server error: ${statusCode}` };
-        }
-        
-        // Don't retry on auth or not found errors
-        if (error.noRetry) throw error;
-        
-        // Handle timeout errors
-        if (isTimeout) {
           if (attempt < maxRetries) {
-            console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
+            console.log(`Server error ${statusCode}. Retrying ${attempt + 1}/${maxRetries}...`);
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
             continue;
           }
-          throw { type: 'timeout', message: 'Upload timed out. Please check your connection and try again.' };
+          throw { type: 'server', message: responseError?.error || `Server error: ${statusCode}` };
+        }
+        
+        // Handle timeout errors - retry with backoff
+        if (isTimeout && attempt < maxRetries) {
+          console.log(`Upload timeout. Retrying ${attempt + 1}/${maxRetries}...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          continue;
         }
         
         // Network errors - retry with exponential backoff
@@ -2079,6 +2080,9 @@ const AuditFormScreen = () => {
         }
         
         if (attempt === maxRetries) {
+          if (isTimeout) {
+            throw { type: 'timeout', message: 'Upload timed out. Please check your connection and try again.' };
+          }
           throw error;
         }
       }
@@ -3099,41 +3103,47 @@ const AuditFormScreen = () => {
       let uploadedPictureUrls = [];
       if (infoPictures.length > 0) {
         try {
+          // Separate pictures into those needing upload and those already uploaded
+          const uploadPromises = [];
+          const resolvedUrls = [];
+          
           for (const picture of infoPictures) {
-            // Handle both object format { uri: ... } and string format
             const pictureUri = typeof picture === 'string' ? picture : (picture?.uri || '');
             const uriString = String(pictureUri);
             
-            // Skip local file paths that haven't been uploaded yet - they need to be uploaded
             if (uriString.startsWith('file://')) {
-              // Upload the local picture - use the original URI from picture object, not converted string
-              const formData = new FormData();
+              // Queue upload for parallel execution
               const fileUri = typeof picture === 'string' ? picture : picture?.uri;
-              formData.append('photo', {
-                uri: fileUri,
-                type: 'image/jpeg',
-                name: `info_picture_${Date.now()}_${Math.random()}.jpg`,
-              });
-              
-              const responseData = await uploadPhotoWithRetry(formData);
-              if (responseData?.photo_url) {
-                uploadedPictureUrls.push(responseData.photo_url);
-              }
+              uploadPromises.push((async () => {
+                const formData = new FormData();
+                formData.append('photo', {
+                  uri: fileUri,
+                  type: 'image/jpeg',
+                  name: `info_picture_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`,
+                });
+                const responseData = await uploadPhotoWithRetry(formData);
+                return responseData?.photo_url || null;
+              })());
             } else if (uriString.startsWith('http://') || uriString.startsWith('https://')) {
-              // Already a full URL - extract path from URL
               try {
                 const urlObj = new URL(uriString);
-                uploadedPictureUrls.push(urlObj.pathname);
+                resolvedUrls.push(urlObj.pathname);
               } catch (e) {
-                // If URL parsing fails, try to extract path manually
                 const pathMatch = uriString.match(/\/uploads\/[^?]+/);
-                uploadedPictureUrls.push(pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, ''));
+                resolvedUrls.push(pathMatch ? pathMatch[0] : uriString.replace(/^https?:\/\/[^\/]+/, ''));
               }
             } else {
-              // Already a server path - use as-is
-              uploadedPictureUrls.push(uriString.startsWith('/') ? uriString : `/${uriString}`);
+              resolvedUrls.push(uriString.startsWith('/') ? uriString : `/${uriString}`);
             }
           }
+          
+          // Upload all pending pictures in parallel
+          if (uploadPromises.length > 0) {
+            const uploadResults = await Promise.all(uploadPromises);
+            resolvedUrls.push(...uploadResults.filter(Boolean));
+          }
+          
+          uploadedPictureUrls = resolvedUrls;
         } catch (uploadError) {
           console.error('Error uploading info pictures:', uploadError);
           Alert.alert('Error', 'Failed to upload pictures. Please try again.');
@@ -3523,52 +3533,54 @@ const AuditFormScreen = () => {
         }
         
         // Fallback to individual updates if batch fails
-        // IMPORTANT: Do NOT fire all item updates in parallel (can trigger 429 and make all fail).
+        // Use small parallel batches of 5 to speed up while avoiding 429
         const perItemUrl = (itemId) => `${API_BASE_URL}/audits/${activeAuditId}/items/${itemId}`;
         const errors = [];
+        const BATCH_SIZE = 5;
 
-        for (const updateData of allBatchItems) {
-          const itemId = updateData.itemId;
-          const maxItemRetries = 3;
-          let attempt = 0;
+        for (let i = 0; i < allBatchItems.length; i += BATCH_SIZE) {
+          const chunk = allBatchItems.slice(i, i + BATCH_SIZE);
+          const chunkResults = await Promise.allSettled(
+            chunk.map(async (updateData) => {
+              const itemId = updateData.itemId;
+              const maxItemRetries = 3;
+              let attempt = 0;
 
-          while (true) {
-            try {
-              attempt += 1;
-              await axios.put(perItemUrl(itemId), updateData);
-              break;
-            } catch (itemError) {
-              const status = itemError?.response?.status;
-              const retryAfterHeader = itemError?.response?.headers?.['retry-after'];
-              const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
-              const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
-              const waitMs = retryAfterMs ?? Math.min(750 * attempt, 4000);
+              while (true) {
+                try {
+                  attempt += 1;
+                  await axios.put(perItemUrl(itemId), updateData);
+                  return { itemId, ok: true };
+                } catch (itemError) {
+                  const status = itemError?.response?.status;
+                  const retryAfterHeader = itemError?.response?.headers?.['retry-after'];
+                  const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : null;
+                  const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : null;
+                  const waitMs = retryAfterMs ?? Math.min(750 * attempt, 4000);
 
-              console.warn(`Failed to update item ${itemId} (attempt ${attempt}/${maxItemRetries}):`, itemError?.message || itemError);
-
-              if (status === 401) {
-                throw itemError;
+                  if (status === 401) throw itemError;
+                  if (status === 400 || status === 404 || status === 403) {
+                    return { itemId, ok: false, error: itemError };
+                  }
+                  if (attempt < maxItemRetries && (status === 429 || !status)) {
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                    continue;
+                  }
+                  return { itemId, ok: false, error: itemError };
+                }
               }
+            })
+          );
 
-              // Don't retry on 400/404/403 errors
-              if (status === 400 || status === 404 || status === 403) {
-                errors.push({ itemId, error: itemError });
-                break;
-              }
-
-              // Retry on 429 + network-ish errors
-              if (attempt < maxItemRetries && (status === 429 || !status)) {
-                await new Promise(resolve => setTimeout(resolve, waitMs));
-                continue;
-              }
-
-              errors.push({ itemId, error: itemError });
-              break;
+          for (const result of chunkResults) {
+            if (result.status === 'rejected') {
+              // Re-throw auth errors
+              if (result.reason?.response?.status === 401) throw result.reason;
+              errors.push({ itemId: 'unknown', error: result.reason });
+            } else if (!result.value.ok) {
+              errors.push({ itemId: result.value.itemId, error: result.value.error });
             }
           }
-
-          // Small spacing between requests to reduce burstiness
-          await new Promise(resolve => setTimeout(resolve, 60));
         }
 
         if (errors.length > 0) {
@@ -3590,111 +3602,53 @@ const AuditFormScreen = () => {
       // NOTE: The backend batch response already contains the definitive status.
       // Use batchResponseStatus as primary signal for immediate completion detection.
       
-      // Refresh audit data to get updated completion status and sync form state
-      // Use backend's completion status as source of truth (it checks ALL items across ALL categories)
-      try {
-        const auditResponse = await axios.get(`${API_BASE_URL}/audits/${activeAuditId}`);
-        const updatedAudit = auditResponse.data.audit;
-        const updatedAuditItems = auditResponse.data.items || [];
-        
-        // Use batch response status as primary signal, fall back to GET response
-        const isAuditCompleted = batchResponseStatus === 'completed' || updatedAudit.status === 'completed';
-        if (isAuditCompleted) {
-          clearDraftStorage();
-        }
-        console.log('[AuditForm] Save response - batch status:', batchResponseStatus, 'audit status:', updatedAudit.status, 'isAuditCompleted:', isAuditCompleted, 'completed_items:', updatedAudit.completed_items, 'total_items:', updatedAudit.total_items);
-        
-        // REAL-TIME STATUS UPDATE: Update status immediately
-        const effectiveStatus = isAuditCompleted ? 'completed' : (updatedAudit.status || auditStatus);
-        if (effectiveStatus) {
-          setAuditStatus(prevStatus => {
-            if (prevStatus !== effectiveStatus) {
-              console.log('[AuditForm] Updated auditStatus state from', prevStatus, 'to', effectiveStatus, '(real-time update)');
-              return effectiveStatus;
-            }
-            return prevStatus;
-          });
-        }
-        
-        // CRITICAL: Update form state with saved responses to reflect what was saved
-        // This ensures the form shows the saved data when user continues
-        const updatedResponses = { ...responses };
-        const updatedSelectedOptions = { ...selectedOptions };
-        const updatedComments = { ...comments };
-        const updatedMultipleSelections = { ...multipleSelections };
-        const updatedPhotos = { ...photos };
-        const baseUrl = API_BASE_URL.replace('/api', '');
-        const itemTypeById = {};
-        items.forEach(item => {
-          itemTypeById[item.id] = String(item.input_type || '').toLowerCase();
-        });
-        
-        updatedAuditItems.forEach(auditItem => {
-          const itemId = auditItem.item_id;
-          const itemType = itemTypeById[itemId];
-          const isMultiSelect = isMultiSelectFieldType(itemType);
-          // Update responses
-          if (auditItem.status) {
-            updatedResponses[itemId] = auditItem.status;
-          }
-          // Update selected options
-          if (auditItem.selected_option_id) {
-            updatedSelectedOptions[itemId] = auditItem.selected_option_id;
-          }
-          // Update comments
-          if (auditItem.comment) {
-            if (isMultiSelect) {
-              const parsed = parseMultiSelectionComment(auditItem.comment);
-              if (parsed) {
-                updatedComments[itemId] = parsed.text || '';
-                updatedMultipleSelections[itemId] = parsed.selections;
-              } else {
-                updatedComments[itemId] = auditItem.comment;
+      // Use the batch response status directly to avoid an expensive full audit refetch.
+      // The form already holds the current state — no need to re-download all items.
+      const isAuditCompleted = batchResponseStatus === 'completed';
+
+      if (isAuditCompleted) {
+        clearDraftStorage();
+        setAuditStatus('completed');
+        console.log('[AuditForm] Audit completed (batch confirmed). Skipping full refetch.');
+
+        // Refresh detailed data in background (non-blocking) for consistency
+        fetchAuditDataById(activeAuditId).catch(() => {});
+
+        Alert.alert(
+          'Success',
+          'All categories completed! Audit is now complete. PDF report will be available in audit details.',
+          [
+            {
+              text: 'View Audit',
+              onPress: () => {
+                navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
               }
-            } else {
-              updatedComments[itemId] = auditItem.comment;
+            },
+            {
+              text: 'Done',
+              style: 'cancel',
+              onPress: () => {
+                navigation.setParams({ refreshAuditDetail: true });
+                navigation.goBack();
+              }
             }
-          }
-          // Update photos
-          if (auditItem.photo_url) {
-            const normalizedPhoto = normalizePhotoValue(auditItem.photo_url, baseUrl);
-            if (normalizedPhoto) {
-              updatedPhotos[itemId] = normalizedPhoto;
-            }
-          }
-        });
-        
-        // Update form state with refreshed data
-        console.log('[AuditForm] Updating form state after save - responses:', Object.keys(updatedResponses).length, 'items updated');
-        setResponses(updatedResponses);
-        setSelectedOptions(updatedSelectedOptions);
-        setComments(updatedComments);
-        setMultipleSelections(updatedMultipleSelections);
-        setPhotos(updatedPhotos);
-        
-        // Recalculate category completion status based on ALL saved items (not just filtered)
-        // Get ALL items from template to check completion properly
-        const allTemplateItems = items; // items already contains all template items
+          ]
+        );
+      } else {
+        // Audit still in progress — use local state to calculate remaining categories
+        // instead of fetching all items from the server.
         const updatedCategoryStatus = {};
-        
         categories.forEach(cat => {
-          // Get ALL items in this category from the template
-          const categoryItems = allTemplateItems.filter(item => item.category === cat);
+          const categoryItems = items.filter(item => item.category === cat);
           const completedInCategory = categoryItems.filter(item => {
-            const auditItem = updatedAuditItems.find(ai => ai.item_id === item.id);
-            if (!auditItem) return false;
-            // Check if item has a valid mark (not null, not empty, not undefined)
-            // Also check status field as a fallback
-            const markValue = auditItem.mark;
-            const hasMark = markValue !== null && 
-                           markValue !== undefined && 
-                           String(markValue).trim() !== '';
-            const hasStatus = auditItem.status && 
-                             auditItem.status !== 'pending' && 
-                             auditItem.status !== '';
-            return hasMark || hasStatus;
+            const status = responses[item.id];
+            const hasStatus = status && status !== 'pending' && status !== '';
+            const hasOption = selectedOptions[item.id] !== undefined && selectedOptions[item.id] !== null;
+            const hasMulti = (multipleSelections[item.id] || []).length > 0;
+            const hasComment = comments[item.id] && String(comments[item.id]).trim() !== '';
+            const hasPhoto = hasPhotoForItem(item.id);
+            return hasStatus || hasOption || hasMulti || hasComment || hasPhoto;
           }).length;
-          
           updatedCategoryStatus[cat] = {
             completed: completedInCategory,
             total: categoryItems.length,
@@ -3702,154 +3656,74 @@ const AuditFormScreen = () => {
           };
         });
         setCategoryCompletionStatus(updatedCategoryStatus);
-        
-        // Use backend completion status as source of truth
-        const currentStatus = isAuditCompleted ? 'completed' : (updatedAudit.status || auditStatus);
-        if (isAuditCompleted || currentStatus === 'completed') {
-          // Audit is fully completed - all categories are done
-          console.log('[AuditForm] Audit completed, refreshing data');
-          
-          // Refresh data in background for consistency
-          fetchAuditDataById(activeAuditId).catch(() => {});
-          
-          Alert.alert(
-            'Success', 
-            'All categories completed! Audit is now complete. PDF report will be available in audit details.',
-            [
-              { 
-                text: 'View Audit', 
-                onPress: () => {
-                  navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
-                }
-              },
-              {
-                text: 'Done',
-                style: 'cancel',
-                onPress: () => {
-                  navigation.setParams({ refreshAuditDetail: true });
-                  navigation.goBack();
-                }
-              }
-            ]
-          );
-        } else {
-          // Audit is still in progress - show remaining categories
-          const remainingCategories = categories.filter(cat => {
-            const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
-            return !status.isComplete;
-          });
-          
-          // If all categories appear complete locally but backend hasn't set completed yet,
-          // trigger completion synchronously before showing the alert
-          const allCategoriesComplete = categories.every(cat => {
-            const status = updatedCategoryStatus[cat] || { completed: 0, total: 0, isComplete: false };
-            return status.isComplete;
-          });
-          if (allCategoriesComplete && categories.length > 0) {
-            try {
-              const completeResponse = await axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`);
-              console.log('[AuditForm] Backend confirmed completion via /complete endpoint');
-              setAuditStatus('completed');
-              clearDraftStorage();
-              
-              // Refresh data in background
-              fetchAuditDataById(activeAuditId).catch(() => {});
-              
-              Alert.alert(
-                'Success', 
-                'All categories completed! Audit is now complete. PDF report will be available in audit details.',
-                [
-                  { 
-                    text: 'View Audit', 
-                    onPress: () => {
-                      navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
-                    }
-                  },
-                  {
-                    text: 'Done',
-                    style: 'cancel',
-                    onPress: () => {
-                      navigation.setParams({ refreshAuditDetail: true });
-                      navigation.goBack();
-                    }
+
+        // Check if all categories are actually complete locally
+        const allCategoriesComplete = categories.length > 0 && categories.every(cat => {
+          const status = updatedCategoryStatus[cat] || { isComplete: false };
+          return status.isComplete;
+        });
+
+        if (allCategoriesComplete) {
+          // Backend batch didn't return 'completed' but locally all categories are done.
+          // Trigger explicit completion.
+          try {
+            await axios.put(`${API_BASE_URL}/audits/${activeAuditId}/complete`);
+            console.log('[AuditForm] Backend confirmed completion via /complete endpoint');
+            setAuditStatus('completed');
+            clearDraftStorage();
+            fetchAuditDataById(activeAuditId).catch(() => {});
+
+            Alert.alert(
+              'Success',
+              'All categories completed! Audit is now complete. PDF report will be available in audit details.',
+              [
+                {
+                  text: 'View Audit',
+                  onPress: () => {
+                    navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
                   }
-                ]
-              );
-              // Skip the "category saved" alert below since we showed completion
-              setSaving(false);
-              saveInFlightRef.current = false;
-              return;
-            } catch (completeErr) {
-              console.log('[AuditForm] Backend completion check:', completeErr.message);
-              // Fall through to show category saved message
-            }
+                },
+                {
+                  text: 'Done',
+                  style: 'cancel',
+                  onPress: () => {
+                    navigation.setParams({ refreshAuditDetail: true });
+                    navigation.goBack();
+                  }
+                }
+              ]
+            );
+            setSaving(false);
+            saveInFlightRef.current = false;
+            return;
+          } catch (completeErr) {
+            console.log('[AuditForm] Backend completion check:', completeErr.message);
+            // Fall through to show category saved message
           }
-          
-          const message = remainingCategories.length > 0
-            ? `Category saved successfully! ${remainingCategories.length} categor${remainingCategories.length === 1 ? 'y' : 'ies'} remaining.`
-            : 'Category saved successfully!';
-          
-          Alert.alert(
-            'Success', 
-            message,
-            [
-              {
-                text: 'Done',
-                onPress: () => {
-                  navigation.setParams({ refreshAuditDetail: true });
-                  navigation.goBack();
-                }
-              }
-            ]
-          );
         }
-      } catch (refreshError) {
-        // If refresh fails but batch said completed, still show completion
-        if (batchResponseStatus === 'completed') {
-          console.log('[AuditForm] Refresh failed but batch confirmed completion');
-          setAuditStatus('completed');
-          clearDraftStorage();
-          Alert.alert(
-            'Success', 
-            'All categories completed! Audit is now complete. PDF report will be available in audit details.',
-            [
-              { 
-                text: 'View Audit', 
-                onPress: () => {
-                  navigation.navigate('AuditDetail', { id: activeAuditId, refresh: true });
-                }
-              },
-              {
-                text: 'Done',
-                style: 'cancel',
-                onPress: () => {
-                  navigation.setParams({ refreshAuditDetail: true });
-                  navigation.goBack();
-                }
+
+        const remainingCategories = categories.filter(cat => {
+          const status = updatedCategoryStatus[cat] || { isComplete: false };
+          return !status.isComplete;
+        });
+
+        const message = remainingCategories.length > 0
+          ? `Category saved successfully! ${remainingCategories.length} categor${remainingCategories.length === 1 ? 'y' : 'ies'} remaining.`
+          : 'Category saved successfully!';
+
+        Alert.alert(
+          'Success',
+          message,
+          [
+            {
+              text: 'Done',
+              onPress: () => {
+                navigation.setParams({ refreshAuditDetail: true });
+                navigation.goBack();
               }
-            ]
-          );
-        } else {
-          // If refresh fails, show basic success message
-          console.warn('Failed to refresh audit data:', refreshError);
-          Alert.alert(
-            'Success', 
-            'Audit saved successfully. You can continue with other categories.',
-            [
-              { 
-                text: 'Continue', 
-                style: 'cancel',
-                onPress: () => {
-                  // Dismiss alert and allow user to continue working on the audit
-                }
-              },
-              { 
-                text: 'Done', 
-                onPress: () => navigation.goBack() 
-              }
-            ]
-          );
-        }
+            }
+          ]
+        );
       }
     } catch (error) {
       console.error('Error saving audit:', error);

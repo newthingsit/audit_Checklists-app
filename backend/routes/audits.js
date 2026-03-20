@@ -2403,6 +2403,21 @@ router.put('/:id(\\d+)/items/batch', authenticate, async (req, res) => {
           completed: scoreData?.completed,
           total: scoreData?.total
         });
+
+        // Broadcast audit_updated for non-completed saves so dashboard/history refresh
+        if (!scoreData || scoreData.status !== 'completed') {
+          try {
+            const sseManager = require('../utils/sse-manager');
+            sseManager.broadcast('audit_updated', {
+              auditId,
+              score: scoreData?.score,
+              completed: scoreData?.completed,
+              total: scoreData?.total,
+            });
+          } catch (sseErr) {
+            // SSE is optional
+          }
+        }
       });
 
     } catch (error) {

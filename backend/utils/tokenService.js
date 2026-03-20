@@ -13,7 +13,7 @@ const db = require('../config/database-loader');
 const logger = require('./logger');
 const { JWT_SECRET } = require('../middleware/auth');
 
-const ACCESS_TOKEN_EXPIRY = '15m';
+const ACCESS_TOKEN_EXPIRY = '2h'; // 2 hours — audits can take 30+ min; short expiry causes 401 during photo uploads
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Detect database type

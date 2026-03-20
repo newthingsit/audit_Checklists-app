@@ -251,6 +251,16 @@ export const AuthProvider = ({ children }) => {
     
     loadStoredAuth();
 
+    // Proactive token refresh: refresh the access token before it expires
+    // Token lifetime is 2 hours; refresh at 80% (every ~96 min) to avoid 401s
+    const PROACTIVE_REFRESH_MS = 96 * 60 * 1000; // 96 minutes
+    let proactiveTimer = null;
+    if (token) {
+      proactiveTimer = setInterval(() => {
+        silentRefresh().catch(() => {});
+      }, PROACTIVE_REFRESH_MS);
+    }
+
     // Listen for app state changes to refresh user data when app comes to foreground
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (
@@ -258,18 +268,20 @@ export const AuthProvider = ({ children }) => {
         nextAppState === 'active' &&
         token
       ) {
-        // App has come to the foreground, refresh user data
+        // App has come to the foreground, refresh user data and token
         refreshUser();
+        silentRefresh().catch(() => {});
       }
       appState.current = nextAppState;
     });
 
     return () => {
       subscription?.remove();
+      if (proactiveTimer) clearInterval(proactiveTimer);
       axios.interceptors.response.eject(interceptorId);
       setAuthEventListener(null);
     };
-  }, [token, loadStoredAuth, refreshUser, handleAuthError]);
+  }, [token, loadStoredAuth, refreshUser, handleAuthError, silentRefresh]);
 
   const login = async (email, password) => {
     try {

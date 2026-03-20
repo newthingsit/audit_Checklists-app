@@ -24,8 +24,8 @@ import { ListSkeleton } from '../components/LoadingSkeleton';
 import { NoHistory, NoSearchResults } from '../components/EmptyState';
 import { NetworkError, ServerError } from '../components/ErrorState';
 
-// Auto-refresh interval in milliseconds (60 seconds - reduced from 5s to prevent server overload)
-const AUTO_REFRESH_INTERVAL = 60000;
+// Auto-refresh interval in milliseconds (15 seconds for near-real-time updates)
+const AUTO_REFRESH_INTERVAL = 15000;
 
 // Maximum retry attempts for error recovery
 const MAX_RETRY_ATTEMPTS = 3;

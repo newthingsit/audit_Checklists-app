@@ -85,10 +85,10 @@ const DashboardScreen = () => {
                                     isAdmin(user);
 
   const fetchData = useCallback(async (options = {}) => {
-    const { silent = false } = options;
-    // Prevent concurrent/duplicate fetches within 3 seconds
+    const { silent = false, force = false } = options;
+    // Prevent concurrent/duplicate fetches within 3 seconds (bypass with force)
     const now = Date.now();
-    if (now - lastRefreshRef.current < 3000) {
+    if (!force && now - lastRefreshRef.current < 3000) {
       // If the first call won the race with silent=true while we still
       // show the spinner, clear it so the UI isn't stuck.
       if (!silent && loading) {
@@ -230,7 +230,7 @@ const DashboardScreen = () => {
   useRealtimeSync(
     useCallback((eventType) => {
       if (['audit_scheduled', 'audit_completed', 'audit_updated'].includes(eventType)) {
-        fetchData({ silent: true });
+        fetchData({ silent: true, force: true });
       }
     }, [fetchData]),
     !!user && isFocused
@@ -246,7 +246,8 @@ const DashboardScreen = () => {
         refreshUser();
       }
       if (user) {
-        fetchData({ silent: true });
+        // Force refresh to pick up audit completions immediately on screen focus
+        fetchData({ silent: true, force: true });
       }
     }, [refreshUser, fetchData, user])
   );
